@@ -16,3 +16,4 @@ dist/
 coverage/
 backend/local_storage/*
 !backend/local_storage/.gitkeep
+backend/tests/test_out.txt

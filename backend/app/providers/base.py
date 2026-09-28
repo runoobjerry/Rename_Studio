@@ -16,6 +16,10 @@ class StorageProvider(ABC):
         raise NotImplementedError
 
     @abstractmethod
+    async def rename(self, file_id: str, new_name: str) -> FileItem:
+        raise NotImplementedError
+
+    @abstractmethod
     def validate_name(self, name: str) -> str | None:
         """Return a user-facing validation error, or None when valid."""
         raise NotImplementedError

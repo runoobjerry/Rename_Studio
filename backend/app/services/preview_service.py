@@ -5,15 +5,28 @@ from app.providers.registry import ProviderRegistry
 from app.rules.base import RuleContext
 from app.schemas.files import FileItem
 from app.schemas.rename import PreviewItem, RenamePreviewRequest, RenamePreviewResponse
+from app.services.preview_store import PreviewStore
 from app.services.rename_engine import RenameEngine
 
 
 class PreviewService:
-    def __init__(self, providers: ProviderRegistry, engine: RenameEngine) -> None:
+    def __init__(
+        self,
+        providers: ProviderRegistry,
+        engine: RenameEngine,
+        store: PreviewStore | None = None,
+    ) -> None:
         self.providers = providers
         self.engine = engine
+        self.store = store or PreviewStore()
 
     async def preview(self, request: RenamePreviewRequest) -> RenamePreviewResponse:
+        items, files, valid = await self.evaluate(request)
+        return self.store.save(request, items, valid, files)
+
+    async def evaluate(
+        self, request: RenamePreviewRequest
+    ) -> tuple[list[PreviewItem], list[FileItem], bool]:
         provider = self.providers.get(request.provider)
         if len(request.file_ids) != len(set(request.file_ids)):
             raise ValidationError("Duplicate file IDs are not allowed")
@@ -72,7 +85,4 @@ class PreviewService:
                 )
             )
 
-        return RenamePreviewResponse(
-            items=results,
-            valid=all(item.valid for item in results),
-        )
+        return results, files, all(item.valid for item in results)

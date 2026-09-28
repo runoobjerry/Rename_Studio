@@ -10,7 +10,7 @@ class FileService:
 
     def list_providers(self) -> list[ProviderInfo]:
         return [
-            ProviderInfo(id=provider.id, name=provider.display_name, writable=False)
+            ProviderInfo(id=provider.id, name=provider.display_name, writable=True)
             for provider in self.providers.all()
         ]
 

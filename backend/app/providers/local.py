@@ -2,7 +2,12 @@ import re
 from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
 
-from app.core.errors import NotFoundError, ValidationError
+from app.core.errors import (
+    NotFoundError,
+    ProviderError,
+    RenameConflictError,
+    ValidationError,
+)
 from app.providers.base import StorageProvider
 from app.schemas.files import FileItem
 
@@ -70,6 +75,29 @@ class LocalProvider(StorageProvider):
         if not path.exists():
             raise NotFoundError("File not found", details={"file_id": file_id})
         return self._to_item(path)
+
+    async def rename(self, file_id: str, new_name: str) -> FileItem:
+        source = self._resolve(file_id)
+        if not source.exists() or not source.is_file():
+            raise NotFoundError("File not found", details={"file_id": file_id})
+        validation_error = self.validate_name(new_name)
+        if validation_error is not None:
+            raise ValidationError(validation_error, details={"new_name": new_name})
+
+        target = source.with_name(new_name)
+        if target.exists() and target != source:
+            raise RenameConflictError(
+                "Target filename already exists",
+                details={"file_id": file_id, "new_name": new_name},
+            )
+        try:
+            renamed = source.rename(target)
+        except OSError as exc:
+            raise ProviderError(
+                "Local file rename failed",
+                details={"file_id": file_id, "new_name": new_name},
+            ) from exc
+        return self._to_item(renamed)
 
     def validate_name(self, name: str) -> str | None:
         if not name or not name.strip():

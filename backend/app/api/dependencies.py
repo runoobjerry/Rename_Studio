@@ -7,8 +7,10 @@ from app.rules.insert import InsertRule
 from app.rules.padding import PaddingRule
 from app.rules.registry import RuleRegistry
 from app.rules.text_operations import RemoveRule, ReplaceRule
+from app.services.execute_service import ExecuteService
 from app.services.file_service import FileService
 from app.services.preview_service import PreviewService
+from app.services.preview_store import PreviewStore
 from app.services.rename_engine import RenameEngine
 
 
@@ -31,7 +33,24 @@ def get_file_service() -> FileService:
     return FileService(get_provider_registry())
 
 
+@lru_cache
+def get_preview_store() -> PreviewStore:
+    return PreviewStore()
+
+
+@lru_cache
 def get_preview_service() -> PreviewService:
     return PreviewService(
-        get_provider_registry(), RenameEngine(get_rule_registry())
+        get_provider_registry(),
+        RenameEngine(get_rule_registry()),
+        get_preview_store(),
+    )
+
+
+@lru_cache
+def get_execute_service() -> ExecuteService:
+    return ExecuteService(
+        get_provider_registry(),
+        get_preview_store(),
+        get_preview_service(),
     )

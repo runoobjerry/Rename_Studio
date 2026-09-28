@@ -3,6 +3,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Query
 
 from app.api.dependencies import (
+    get_execute_service,
     get_file_service,
     get_preview_service,
     get_rule_registry,
@@ -10,8 +11,14 @@ from app.api.dependencies import (
 from app.rules.registry import RuleRegistry
 from app.schemas.common import HealthResponse
 from app.schemas.files import DirectoryListing, ProviderInfo
-from app.schemas.rename import RenamePreviewRequest, RenamePreviewResponse
+from app.schemas.rename import (
+    RenameExecuteRequest,
+    RenameExecuteResponse,
+    RenamePreviewRequest,
+    RenamePreviewResponse,
+)
 from app.schemas.rules import RuleDefinition
+from app.services.execute_service import ExecuteService
 from app.services.file_service import FileService
 from app.services.preview_service import PreviewService
 
@@ -57,3 +64,15 @@ async def preview_rename(
     service: Annotated[PreviewService, Depends(get_preview_service)],
 ) -> RenamePreviewResponse:
     return await service.preview(request)
+
+
+@router.post(
+    "/rename/execute",
+    response_model=RenameExecuteResponse,
+    tags=["rename"],
+)
+async def execute_rename(
+    request: RenameExecuteRequest,
+    service: Annotated[ExecuteService, Depends(get_execute_service)],
+) -> RenameExecuteResponse:
+    return await service.execute(request.preview_id)

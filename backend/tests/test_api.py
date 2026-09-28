@@ -2,13 +2,19 @@ from pathlib import Path
 
 from fastapi.testclient import TestClient
 
-from app.api.dependencies import get_file_service, get_preview_service
+from app.api.dependencies import (
+    get_execute_service,
+    get_file_service,
+    get_preview_service,
+)
 from app.main import create_app
 from app.providers.local import LocalProvider
 from app.providers.registry import ProviderRegistry
 from app.rules.registry import RuleRegistry
+from app.services.execute_service import ExecuteService
 from app.services.file_service import FileService
 from app.services.preview_service import PreviewService
+from app.services.preview_store import PreviewStore
 from app.services.rename_engine import RenameEngine
 
 
@@ -45,3 +51,21 @@ def test_validation_errors_use_standard_shape() -> None:
 
     assert response.status_code == 422
     assert response.json()["error"]["code"] == "REQUEST_VALIDATION_ERROR"
+
+
+def test_execute_requires_a_server_generated_preview(tmp_path: Path) -> None:
+    providers = ProviderRegistry([LocalProvider(tmp_path)])
+    store = PreviewStore()
+    preview = PreviewService(providers, RenameEngine(RuleRegistry()), store)
+    execute = ExecuteService(providers, store, preview)
+    app = create_app()
+    app.dependency_overrides[get_execute_service] = lambda: execute
+
+    with TestClient(app) as client:
+        response = client.post(
+            "/rename/execute",
+            json={"preview_id": "not-created-by-preview"},
+        )
+
+    assert response.status_code == 404
+    assert response.json()["error"]["code"] == "PREVIEW_NOT_FOUND"

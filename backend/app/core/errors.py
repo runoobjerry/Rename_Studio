@@ -28,3 +28,18 @@ class ValidationError(AppError):
 
 class RuleConfigurationError(ValidationError):
     code = "RULE_CONFIGURATION_ERROR"
+
+
+class RenameConflictError(AppError):
+    code = "RENAME_CONFLICT"
+    status_code = 409
+
+
+class PreviewExpiredError(AppError):
+    code = "PREVIEW_EXPIRED"
+    status_code = 409
+
+
+class PreviewNotFoundError(AppError):
+    code = "PREVIEW_NOT_FOUND"
+    status_code = 404

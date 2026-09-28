@@ -45,6 +45,22 @@ export interface PreviewItem {
 }
 
 export interface PreviewResponse {
+  preview_id: string;
+  expires_at: string;
   items: PreviewItem[];
   valid: boolean;
+}
+
+export interface ExecuteItem {
+  file_id: string;
+  original_name: string;
+  new_name: string;
+  status: "renamed" | "skipped" | "failed";
+  error: string | null;
+}
+
+export interface ExecuteResponse {
+  preview_id: string;
+  status: "completed" | "partial" | "failed";
+  items: ExecuteItem[];
 }

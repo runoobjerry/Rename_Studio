@@ -1,5 +1,6 @@
 import type {
   DirectoryListing,
+  ExecuteResponse,
   PreviewResponse,
   ProviderInfo,
   RuleDefinition,
@@ -44,5 +45,13 @@ export function createPreview(
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ provider, file_ids: fileIds, rules }),
+  });
+}
+
+export function executePreview(previewId: string): Promise<ExecuteResponse> {
+  return request("/rename/execute", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ preview_id: previewId }),
   });
 }

@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from app.core.errors import NotFoundError, ValidationError
+from app.core.errors import NotFoundError, RenameConflictError, ValidationError
 from app.providers.local import LocalProvider
 
 
@@ -51,3 +51,25 @@ def test_validates_windows_compatible_names(
 ) -> None:
     provider = LocalProvider(tmp_path)
     assert (provider.validate_name(name) is None) is is_valid
+
+
+@pytest.mark.asyncio
+async def test_renames_file_without_leaving_its_parent(tmp_path: Path) -> None:
+    (tmp_path / "old.txt").write_text("content", encoding="utf-8")
+    provider = LocalProvider(tmp_path)
+
+    renamed = await provider.rename("old.txt", "new.txt")
+
+    assert renamed.id == "new.txt"
+    assert not (tmp_path / "old.txt").exists()
+    assert (tmp_path / "new.txt").read_text(encoding="utf-8") == "content"
+
+
+@pytest.mark.asyncio
+async def test_rename_rejects_existing_target(tmp_path: Path) -> None:
+    (tmp_path / "old.txt").write_text("old", encoding="utf-8")
+    (tmp_path / "new.txt").write_text("new", encoding="utf-8")
+    provider = LocalProvider(tmp_path)
+
+    with pytest.raises(RenameConflictError):
+        await provider.rename("old.txt", "new.txt")

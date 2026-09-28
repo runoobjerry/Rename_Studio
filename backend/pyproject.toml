@@ -17,8 +17,10 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = [
-  "pytest>=8.3,<9.0",
-  "pytest-asyncio>=0.24,<1.0",
+  # Starlette TestClient prefers httpx2 while application code keeps using httpx.
+  "httpx2>=2.0,<3.0",
+  "pytest>=8.4,<9.0",
+  "pytest-asyncio>=1.4,<2.0",
 ]
 
 [tool.hatch.build.targets.wheel]
