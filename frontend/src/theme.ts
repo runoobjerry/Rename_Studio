@@ -48,6 +48,25 @@ export function createAppTheme(mode: PaletteMode) {
           root: { fontWeight: 700 },
         },
       },
+      MuiMenu: {
+        styleOverrides: {
+          paper: {
+            marginTop: 4,
+            border: `1px solid ${dark ? "rgba(255,255,255,0.09)" : "rgba(20,35,29,0.10)"}`,
+            backgroundImage: "none",
+          },
+        },
+      },
+      MuiMenuItem: {
+        styleOverrides: {
+          root: {
+            minHeight: 34,
+            margin: "2px 6px",
+            borderRadius: 8,
+            fontSize: 13,
+          },
+        },
+      },
       MuiCssBaseline: {
         styleOverrides: {
           ":root": {
@@ -60,6 +79,8 @@ export function createAppTheme(mode: PaletteMode) {
             "--app-text-muted": dark ? "#9aada5" : "#60716a",
             "--app-danger": dark ? "#ff9d96" : "#a83f38",
             "--app-danger-soft": dark ? "rgba(255,100,90,0.13)" : "#fff0ee",
+            "--app-scrollbar-thumb": dark ? "#3b4f46" : "#c4d0ca",
+            "--app-scrollbar-thumb-hover": dark ? "#526b60" : "#98aaa1",
           },
           body: { minWidth: 320 },
           "button, input, select": { font: "inherit" },

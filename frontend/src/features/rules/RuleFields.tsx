@@ -1,4 +1,6 @@
 import Checkbox from "@mui/material/Checkbox";
+import MenuItem from "@mui/material/MenuItem";
+import TextField from "@mui/material/TextField";
 
 import type { RuleSpec } from "../../types";
 
@@ -19,13 +21,17 @@ function PaddingFields({ rule, onChange }: RuleFieldsProps) {
     <div className="rule-fields">
       <label>
         填充类型
-        <select
+        <TextField
+          select
+          fullWidth
+          size="small"
           value={mode}
           onChange={(event) => onChange({ mode: event.target.value })}
+          slotProps={{ select: { inputProps: { "aria-label": "填充类型" } } }}
         >
-          <option value="number">数字序列补零</option>
-          <option value="text">文本填充</option>
-        </select>
+          <MenuItem value="number">数字序列补零</MenuItem>
+          <MenuItem value="text">文本填充</MenuItem>
+        </TextField>
       </label>
       <label>
         目标长度
@@ -49,13 +55,17 @@ function PaddingFields({ rule, onChange }: RuleFieldsProps) {
           </label>
           <label>
             填充位置
-            <select
+            <TextField
+              select
+              fullWidth
+              size="small"
               value={valueAsString(rule, "side", "left")}
               onChange={(event) => onChange({ side: event.target.value })}
+              slotProps={{ select: { inputProps: { "aria-label": "填充位置" } } }}
             >
-              <option value="left">从左侧填充</option>
-              <option value="right">从右侧填充</option>
-            </select>
+              <MenuItem value="left">从左侧填充</MenuItem>
+              <MenuItem value="right">从右侧填充</MenuItem>
+            </TextField>
           </label>
         </>
       )}
@@ -87,14 +97,18 @@ function TextOperationFields({ rule, onChange }: RuleFieldsProps) {
         )}
         <label>
           操作序数
-          <select
+          <TextField
+            select
+            fullWidth
+            size="small"
             value={valueAsString(rule, "occurrence", "all")}
             onChange={(event) => onChange({ occurrence: event.target.value })}
+            slotProps={{ select: { inputProps: { "aria-label": "操作序数" } } }}
           >
-            <option value="all">全部</option>
-            <option value="first">首个</option>
-            <option value="last">末个</option>
-          </select>
+            <MenuItem value="all">全部</MenuItem>
+            <MenuItem value="first">首个</MenuItem>
+            <MenuItem value="last">末个</MenuItem>
+          </TextField>
         </label>
       </div>
       <div className="rule-options">
@@ -147,16 +161,20 @@ function InsertFields({ rule, onChange }: RuleFieldsProps) {
         </label>
         <label>
           插入位置
-          <select
+          <TextField
+            select
+            fullWidth
+            size="small"
             value={position}
             onChange={(event) => onChange({ position: event.target.value })}
+            slotProps={{ select: { inputProps: { "aria-label": "插入位置" } } }}
           >
-            <option value="prefix">前缀</option>
-            <option value="suffix">后缀</option>
-            <option value="index">第几个字符位置</option>
-            <option value="before_text">指定文本之前</option>
-            <option value="after_text">指定文本之后</option>
-          </select>
+            <MenuItem value="prefix">前缀</MenuItem>
+            <MenuItem value="suffix">后缀</MenuItem>
+            <MenuItem value="index">第几个字符位置</MenuItem>
+            <MenuItem value="before_text">指定文本之前</MenuItem>
+            <MenuItem value="after_text">指定文本之后</MenuItem>
+          </TextField>
         </label>
         {usesIndex && (
           <label>

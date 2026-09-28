@@ -21,9 +21,9 @@ h1 { margin: 0; font-family: Georgia, serif; font-size: clamp(42px, 7vw, 82px); 
 .stage-badge span { display: block; font-family: Georgia, serif; font-size: 34px; }
 .stage-badge small { color: #557466; font-size: 10px; font-weight: 800; letter-spacing: 0.1em; }
 
-.workspace-grid { display: grid; grid-template-columns: minmax(0, 1.55fr) minmax(280px, 0.8fr); gap: 18px; }
-.m4-grid { display: grid; grid-template-columns: minmax(0, 0.9fr) minmax(420px, 1.35fr); gap: 18px; margin-bottom: 18px; }
-.panel { border: 1px solid #d8d7d0; border-radius: 22px; background: rgba(255, 255, 252, 0.82); box-shadow: 0 16px 48px rgba(38, 48, 42, 0.06); overflow: hidden; }
+.workspace-grid { display: grid; grid-template-columns: minmax(0, 1.55fr) minmax(280px, 0.8fr); gap: 12px; }
+.m4-grid { display: grid; grid-template-columns: minmax(0, 0.9fr) minmax(420px, 1.35fr); gap: 12px; margin-bottom: 12px; }
+.panel { border: 1px solid #d8d7d0; border-radius: 14px; background: rgba(255, 255, 252, 0.82); box-shadow: 0 16px 48px rgba(38, 48, 42, 0.06); overflow: hidden; }
 .panel-heading { display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 24px 26px; border-bottom: 1px solid #e2e1db; }
 .panel-heading h2 { margin: 0; font-family: Georgia, serif; font-size: 26px; font-weight: 500; }
 .panel-heading code, .count { padding: 6px 10px; border-radius: 999px; background: #eef0eb; color: #59635d; font-size: 12px; }
@@ -56,7 +56,7 @@ h1 { margin: 0; font-family: Georgia, serif; font-size: clamp(42px, 7vw, 82px); 
 .connection-status { padding: 6px 10px; border-radius: 999px; color: #7a4e45; background: #f5e8e3; font-size: 12px; font-weight: 750; }
 .connection-status.connected { color: #376049; background: #e2f0e7; }
 .inline-error { margin: 0; padding: 12px 14px; border-radius: 10px; color: #873b35; background: #fff0ee; line-height: 1.5; }
-.rule-editor-heading { align-items: flex-start; }
+.rule-editor-heading { align-items: center; }
 .rule-add-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
 .rule-list { display: grid; gap: 12px; padding: 18px; }
 .rule-card { padding: 16px; border: 1px solid #dfe3dc; border-radius: 16px; background: #fafbf8; }
@@ -66,7 +66,8 @@ h1 { margin: 0; font-family: Georgia, serif; font-size: clamp(42px, 7vw, 82px); 
 .rule-actions button { padding: 5px 8px; border: 1px solid #d5dbd4; border-radius: 8px; color: #59635d; background: white; font-size: 12px; }
 .rule-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
 .rule-fields label { display: grid; gap: 6px; color: #6d756f; font-size: 12px; font-weight: 700; }
-.rule-fields input, .rule-fields select { width: 100%; padding: 9px 10px; border: 1px solid #cfd6cf; border-radius: 9px; color: #28332c; background: white; }
+.rule-fields > label > input,
+.rule-fields > label > select { width: 100%; padding: 9px 10px; border: 1px solid #cfd6cf; border-radius: 9px; color: #28332c; background: white; }
 .rule-options { display: flex; flex-wrap: wrap; gap: 14px; margin-top: 14px; }
 .option-toggle { display: inline-flex; align-items: center; gap: 6px; color: #59635d; font-size: 13px; }
 
@@ -107,6 +108,7 @@ th { color: #727a74; font-size: 12px; letter-spacing: 0.08em; text-transform: up
 .app-main {
   width: auto;
   margin: 0;
+  padding-top: 0;
   padding-bottom: 64px;
   color: var(--app-text);
 }
@@ -157,13 +159,13 @@ th { color: #727a74; font-size: 12px; letter-spacing: 0.08em; text-transform: up
 .workspace-grid {
   grid-template-columns: minmax(0, 1.65fr) minmax(320px, 0.8fr);
   align-items: start;
-  gap: 16px;
+  gap: 12px;
 }
 
 .workspace-primary {
   display: grid;
   min-width: 0;
-  gap: 16px;
+  gap: 12px;
 }
 
 .workspace-primary .preview {
@@ -269,8 +271,8 @@ th {
 .location-content input,
 .location-content select,
 .settings-content input,
-.rule-fields input,
-.rule-fields select {
+.rule-fields > label > input,
+.rule-fields > label > select {
   border-color: var(--app-border);
   color: var(--app-text);
   background: var(--app-surface-muted);
@@ -280,14 +282,38 @@ th {
 .location-content input:focus,
 .location-content select:focus,
 .settings-content input:focus,
-.rule-fields input:focus,
-.rule-fields select:focus {
+.rule-fields > label > input:focus,
+.rule-fields > label > select:focus {
   border-color: var(--accent);
   box-shadow: 0 0 0 3px var(--accent-soft);
 }
 
 .rule-card {
   border-color: var(--app-border);
+}
+
+.rule-fields .MuiOutlinedInput-root {
+  border-radius: 9px;
+  color: var(--app-text);
+  background: var(--app-surface-muted);
+  font-size: 12px;
+}
+
+.rule-fields .MuiOutlinedInput-notchedOutline {
+  border-color: var(--app-border);
+}
+
+.rule-fields .MuiOutlinedInput-root:hover .MuiOutlinedInput-notchedOutline {
+  border-color: var(--app-text-muted);
+}
+
+.rule-fields .MuiOutlinedInput-root.Mui-focused .MuiOutlinedInput-notchedOutline {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.rule-fields .MuiSelect-select {
+  padding: 8px 32px 8px 10px;
 }
 
 .inline-error,
@@ -316,7 +342,7 @@ th {
 .workspace-page {
   display: flex;
   flex-direction: column;
-  height: calc(100vh - 64px);
+  height: 100vh;
   overflow: hidden;
 }
 
@@ -340,30 +366,28 @@ th {
   flex: 0 0 auto;
   align-items: center;
   gap: 10px;
-  min-width: 220px;
-}
-
-.location-identity .eyebrow {
-  display: none;
+  min-width: 130px;
 }
 
 .location-identity h2 {
   white-space: nowrap;
 }
 
-.location-identity .path-pill {
-  max-width: 220px;
-}
-
 .location-toolbar .cloud-path-form {
   width: min(760px, 68%);
 }
 
-.location-toolbar .cloud-path-form label {
-  gap: 4px;
-  color: var(--app-text-muted);
-  font-size: 11px;
-  font-weight: 700;
+.location-toolbar .cloud-path-form {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+}
+
+.location-toolbar .local-path-form {
+  grid-template-columns: minmax(0, 1fr) auto auto;
+}
+
+.path-input-wrap {
+  min-width: 0;
 }
 
 .location-toolbar .cloud-path-form input {
@@ -428,9 +452,17 @@ th {
 }
 
 .panel-summary {
-  margin: 3px 0 0;
+  margin: 0;
   color: var(--app-text-muted);
   font-size: 12px;
+  white-space: nowrap;
+}
+
+.panel-title-line {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  min-width: 0;
 }
 
 .browser-heading-actions {
@@ -522,26 +554,17 @@ th {
 }
 
 .preview-table-wrap th:nth-child(1),
-.preview-table-wrap th:nth-child(3) {
-  width: 36%;
-}
-
 .preview-table-wrap th:nth-child(2) {
-  width: 34px;
+  width: calc((100% - 112px) / 2);
 }
 
-.preview-table-wrap th:nth-child(4) {
+.preview-table-wrap th:nth-child(3) {
   width: 112px;
 }
 
 .preview-name {
   overflow: hidden;
   text-overflow: ellipsis;
-}
-
-.preview-arrow {
-  color: var(--app-text-muted);
-  text-align: center;
 }
 
 .renamed-name {
@@ -597,6 +620,18 @@ th {
   margin-bottom: 10px;
 }
 
+.rule-heading-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.rule-actions .MuiIconButton-root {
+  width: 30px;
+  height: 30px;
+  padding: 5px;
+}
+
 .rule-enabled-control {
   min-width: 0;
 }
@@ -618,11 +653,60 @@ th {
   box-shadow: 0 8px 28px rgba(6, 25, 17, 0.05);
 }
 
+.sidebar-meta {
+  display: grid;
+  gap: 2px;
+  margin-top: 4px;
+  padding: 10px 12px 2px;
+  border-top: 1px solid var(--app-border);
+}
+
+.file-table-wrap,
+.preview-table-wrap,
+.rule-editor-panel .rule-list {
+  scrollbar-color: var(--app-scrollbar-thumb) transparent;
+  scrollbar-width: thin;
+}
+
+.file-table-wrap::-webkit-scrollbar,
+.preview-table-wrap::-webkit-scrollbar,
+.rule-editor-panel .rule-list::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.file-table-wrap::-webkit-scrollbar-track,
+.preview-table-wrap::-webkit-scrollbar-track,
+.rule-editor-panel .rule-list::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.file-table-wrap::-webkit-scrollbar-thumb,
+.preview-table-wrap::-webkit-scrollbar-thumb,
+.rule-editor-panel .rule-list::-webkit-scrollbar-thumb {
+  border: 2px solid transparent;
+  border-radius: 999px;
+  background: var(--app-scrollbar-thumb);
+  background-clip: padding-box;
+}
+
+.file-table-wrap::-webkit-scrollbar-thumb:hover,
+.preview-table-wrap::-webkit-scrollbar-thumb:hover,
+.rule-editor-panel .rule-list::-webkit-scrollbar-thumb:hover {
+  background: var(--app-scrollbar-thumb-hover);
+  background-clip: padding-box;
+}
+
 @media (max-width: 900px) {
   .workspace-page {
     display: block;
     height: auto;
     overflow: visible;
+  }
+
+  .location-toolbar .cloud-path-form,
+  .location-toolbar .local-path-form {
+    width: 100%;
   }
 
   .workspace-primary,
@@ -634,6 +718,27 @@ th {
   .preview,
   .rule-editor-panel {
     max-height: 420px;
+  }
+}
+
+@media (max-width: 600px) {
+  .location-toolbar .cloud-path-form,
+  .location-toolbar .local-path-form {
+    grid-template-columns: 1fr;
+  }
+
+  .panel-title-line {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .rule-heading-actions {
+    width: 100%;
+  }
+
+  .rule-heading-actions .MuiButton-root {
+    flex: 1;
   }
 }
 

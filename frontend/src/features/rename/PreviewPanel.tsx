@@ -21,6 +21,12 @@ export function PreviewPanel({
   executeError,
 }: PreviewPanelProps) {
   const executionById = new Map(execution?.items.map((item) => [item.file_id, item]));
+  const pendingCount = preview?.items.filter(
+    (item) => item.changed && item.valid && !executionById.has(item.file_id),
+  ).length ?? 0;
+  const unchangedCount = preview?.items.filter(
+    (item) => !item.changed || executionById.get(item.file_id)?.status === "skipped",
+  ).length ?? 0;
 
   function statusFor(item: PreviewResponse["items"][number]) {
     const result = executionById.get(item.file_id);
@@ -37,10 +43,12 @@ export function PreviewPanel({
   return (
     <section className="panel preview" aria-labelledby="preview-title">
       <div className="panel-heading">
-        <div>
+        <div className="panel-title-line">
           <h2 id="preview-title">重命名预览</h2>
           <p className="panel-summary">
-            {preview ? `${preview.items.length} 项预览结果` : "预览后在此确认名称变化"}
+            {preview
+              ? `${pendingCount} 项待修改 · ${unchangedCount} 项无需修改`
+              : "0个文件被选中"}
           </p>
         </div>
       </div>
@@ -55,7 +63,6 @@ export function PreviewPanel({
             <thead>
               <tr>
                 <th>原文件名</th>
-                <th aria-label="变更方向" />
                 <th>新文件名</th>
                 <th>状态</th>
               </tr>
@@ -67,7 +74,6 @@ export function PreviewPanel({
                 return (
                   <tr key={item.file_id}>
                     <td className="preview-name">{item.original_name}</td>
-                    <td className="preview-arrow">→</td>
                     <td className={`preview-name ${renamed ? "renamed-name" : ""}`}>
                       {item.new_name}
                     </td>

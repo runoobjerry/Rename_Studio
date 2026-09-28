@@ -105,7 +105,7 @@ class PreviewService:
                 # 选中且会移走的源名称由执行规划器处理交换和循环依赖。
                 conflict = conflict or existing.id not in selected_ids
             if conflict and error is None:
-                error = "Target filename conflicts with another file"
+                error = "目标名称出现重复"
             results.append(
                 PreviewItem(
                     file_id=item.id,

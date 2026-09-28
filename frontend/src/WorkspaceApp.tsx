@@ -1,15 +1,13 @@
-import { useEffect, useMemo, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useState } from "react";
 import AutoFixHighRoundedIcon from "@mui/icons-material/AutoFixHighRounded";
 import CloudQueueRoundedIcon from "@mui/icons-material/CloudQueueRounded";
 import ComputerRoundedIcon from "@mui/icons-material/ComputerRounded";
-import FolderRoundedIcon from "@mui/icons-material/FolderRounded";
 import MenuRoundedIcon from "@mui/icons-material/MenuRounded";
-import RefreshRoundedIcon from "@mui/icons-material/RefreshRounded";
 import SettingsRoundedIcon from "@mui/icons-material/SettingsRounded";
 import {
   Alert,
-  AppBar,
   Box,
+  CircularProgress,
   CssBaseline,
   Divider,
   Drawer,
@@ -20,8 +18,6 @@ import {
   ListItemText,
   Stack,
   ThemeProvider,
-  Toolbar,
-  Tooltip,
   Typography,
   useMediaQuery,
 } from "@mui/material";
@@ -43,14 +39,31 @@ import { FileBrowser } from "./features/files/FileBrowser";
 import { PreviewPanel } from "./features/rename/PreviewPanel";
 import { RenameActions } from "./features/rename/RenameActions";
 import { cloneRule, DEFAULT_RULES, RuleEditor } from "./features/rules/RuleEditor";
-import { RulePickerPage } from "./features/rules/RulePickerPage";
-import { SettingsPage } from "./features/settings/SettingsPage";
 import { useRenameStore } from "./stores/useRenameStore";
 import { createAppTheme } from "./theme";
+
+const RulePickerPage = lazy(() =>
+  import("./features/rules/RulePickerPage").then((module) => ({
+    default: module.RulePickerPage,
+  })),
+);
+const SettingsPage = lazy(() =>
+  import("./features/settings/SettingsPage").then((module) => ({
+    default: module.SettingsPage,
+  })),
+);
 
 type AppView = "workspace" | "add-rule" | "settings";
 
 const drawerWidth = 244;
+
+function SecondaryPageFallback() {
+  return (
+    <Box sx={{ display: "grid", minHeight: 240, placeItems: "center" }}>
+      <CircularProgress size={28} aria-label="正在加载页面" />
+    </Box>
+  );
+}
 
 function initialMode(): PaletteMode {
   const saved = window.localStorage.getItem("renamer-color-mode");
@@ -228,6 +241,10 @@ export default function WorkspaceApp() {
           <ListItemText primary="设置" />
         </ListItemButton>
       </List>
+      <Box className="sidebar-meta">
+        <Typography variant="caption">© 2026 Rename Studio</Typography>
+        <Typography variant="caption" color="text.secondary">反馈与联系 · 待配置</Typography>
+      </Box>
     </Box>
   );
 
@@ -235,51 +252,6 @@ export default function WorkspaceApp() {
     <ThemeProvider theme={theme}>
       <CssBaseline />
       <Box sx={{ minHeight: "100vh", bgcolor: "background.default" }}>
-        <AppBar
-          position="fixed"
-          color="transparent"
-          elevation={0}
-          sx={{
-            ml: compactNavigation ? 0 : `${drawerWidth}px`,
-            width: compactNavigation ? "100%" : `calc(100% - ${drawerWidth}px)`,
-            borderBottom: 1,
-            borderColor: "divider",
-            bgcolor: "background.paper",
-          }}
-        >
-          <Toolbar sx={{ gap: 1.5 }}>
-            {compactNavigation && (
-              <IconButton edge="start" onClick={() => setMobileNavOpen(true)} aria-label="打开导航">
-                <MenuRoundedIcon />
-              </IconButton>
-            )}
-            <FolderRoundedIcon color="primary" />
-            <Box sx={{ minWidth: 0, flex: 1 }}>
-              <Typography variant="subtitle2" noWrap>
-                {view === "workspace" ? `${providerName} / ${path || "根目录"}` : view === "settings" ? "设置" : "添加规则"}
-              </Typography>
-              {view === "workspace" && (
-                <Typography variant="caption" color="text.secondary">
-                  {selectedIds.length} 项已选择 · {rules.length} 条规则
-                </Typography>
-              )}
-            </Box>
-            {view === "workspace" && (
-              <Tooltip title="刷新当前目录">
-                <span>
-                  <IconButton
-                    onClick={() => void files.refetch()}
-                    disabled={!files.data || files.isFetching}
-                    aria-label="刷新当前目录"
-                  >
-                    <RefreshRoundedIcon />
-                  </IconButton>
-                </span>
-              </Tooltip>
-            )}
-          </Toolbar>
-        </AppBar>
-
         <Drawer
           variant={compactNavigation ? "temporary" : "permanent"}
           open={compactNavigation ? mobileNavOpen : true}
@@ -288,7 +260,16 @@ export default function WorkspaceApp() {
           sx={{
             width: drawerWidth,
             flexShrink: 0,
-            "& .MuiDrawer-paper": { width: drawerWidth, borderRightColor: "divider" },
+            "& .MuiDrawer-paper": {
+              width: `calc(${drawerWidth}px - 16px)`,
+              height: "calc(100% - 16px)",
+              m: 1,
+              border: 1,
+              borderColor: "divider",
+              borderRadius: "14px",
+              boxSizing: "border-box",
+              overflow: "hidden",
+            },
           }}
         >
           {navigation}
@@ -297,34 +278,41 @@ export default function WorkspaceApp() {
         <Box
           component="main"
           className="app-main"
-          sx={{ ml: compactNavigation ? 0 : `${drawerWidth}px`, pt: 8, minHeight: "100vh" }}
+          sx={{ ml: compactNavigation ? 0 : `${drawerWidth - 8}px`, minHeight: "100vh" }}
         >
           <Box
             className={view === "workspace" ? "workspace-page" : undefined}
-            sx={{ width: "100%", maxWidth: 1680, mx: "auto", p: { xs: 1.5, sm: 2.5 } }}
+            sx={{ width: "100%", maxWidth: 1680, mx: "auto", p: 1.5 }}
           >
             {loadError && <Alert severity="error" sx={{ mb: 2 }}>无法连接后端：{loadError.message}</Alert>}
 
             {view === "settings" && (
-              <SettingsPage mode={mode} onModeChange={setMode} onBack={() => setView("workspace")} />
+              <Suspense fallback={<SecondaryPageFallback />}>
+                <SettingsPage mode={mode} onModeChange={setMode} onBack={() => setView("workspace")} />
+              </Suspense>
             )}
 
             {view === "add-rule" && (
-              <RulePickerPage
-                definitions={definitions.data ?? []}
-                onBack={() => setView("workspace")}
-                onSelect={addRule}
-              />
+              <Suspense fallback={<SecondaryPageFallback />}>
+                <RulePickerPage
+                  definitions={definitions.data ?? []}
+                  onBack={() => setView("workspace")}
+                  onSelect={addRule}
+                />
+              </Suspense>
             )}
 
             {view === "workspace" && (
               <>
                 <section className="panel location-panel" aria-labelledby="location-title">
                   <div className="location-toolbar">
+                    {compactNavigation && (
+                      <IconButton onClick={() => setMobileNavOpen(true)} aria-label="打开导航">
+                        <MenuRoundedIcon />
+                      </IconButton>
+                    )}
                     <div className="location-identity">
-                      <p className="eyebrow">当前位置</p>
                       <h2 id="location-title">{providerName}</h2>
-                      <span className="path-pill">/{path}</span>
                     </div>
                     {providerId === "onedrive" ? (
                       <form
@@ -334,14 +322,14 @@ export default function WorkspaceApp() {
                           navigate(cloudPath.replace(/\\/g, "/").replace(/^\/+|\/+$/g, ""));
                         }}
                       >
-                        <label>
-                          云端文件夹
+                        <div className="path-input-wrap">
                           <input
                             value={cloudPath}
                             onChange={(event) => setCloudPath(event.target.value)}
                             placeholder="例如：照片/待整理（留空表示根目录）"
+                            aria-label="云端文件夹路径"
                           />
-                        </label>
+                        </div>
                         <button type="submit" disabled={!oneDriveStatus.data?.connected}>打开文件夹</button>
                       </form>
                     ) : (
@@ -352,14 +340,14 @@ export default function WorkspaceApp() {
                           updateLocalRoot.mutate();
                         }}
                       >
-                        <label>
-                          本地根文件夹
+                        <div className="path-input-wrap">
                           <input
                             value={localRoot}
                             onChange={(event) => setLocalRoot(event.target.value)}
                             placeholder="例如：D:\\待整理文件"
+                            aria-label="本地根文件夹路径"
                           />
-                        </label>
+                        </div>
                         <button
                           type="button"
                           className="secondary-button"
@@ -394,7 +382,9 @@ export default function WorkspaceApp() {
                         listing={files.data}
                         providerName={providerName}
                         selectedIds={selectedIds}
+                        isRefreshing={files.isFetching}
                         onNavigate={navigate}
+                        onRefresh={() => void files.refetch()}
                         onToggle={(fileId) => {
                           toggleSelected(fileId);
                           preview.reset();

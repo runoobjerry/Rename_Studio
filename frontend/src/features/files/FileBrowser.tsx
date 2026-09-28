@@ -1,5 +1,6 @@
 import FolderRoundedIcon from "@mui/icons-material/FolderRounded";
 import InsertDriveFileOutlinedIcon from "@mui/icons-material/InsertDriveFileOutlined";
+import RefreshRoundedIcon from "@mui/icons-material/RefreshRounded";
 import {
   Button,
   Checkbox,
@@ -18,7 +19,9 @@ interface FileBrowserProps {
   listing: DirectoryListing;
   providerName: string;
   selectedIds: string[];
+  isRefreshing?: boolean;
   onNavigate: (path: string) => void;
+  onRefresh?: () => void;
   onToggle: (fileId: string) => void;
   onSelectAll: () => void;
   onClearSelection?: () => void;
@@ -49,7 +52,9 @@ export function FileBrowser({
   listing,
   providerName,
   selectedIds,
+  isRefreshing = false,
   onNavigate,
+  onRefresh,
   onToggle,
   onSelectAll,
   onClearSelection,
@@ -61,7 +66,7 @@ export function FileBrowser({
   return (
     <section className="panel browser" aria-labelledby="files-title">
       <div className="panel-heading">
-        <div>
+        <div className="panel-title-line">
           <h2 id="files-title">文件预览</h2>
           <p className="panel-summary">
             共 {listing.items.length} 项 · 已选择 {selectedCount} 项
@@ -73,6 +78,14 @@ export function FileBrowser({
               返回上级
             </Button>
           )}
+          <Button
+            size="small"
+            startIcon={<RefreshRoundedIcon />}
+            onClick={onRefresh}
+            disabled={!onRefresh || isRefreshing}
+          >
+            {isRefreshing ? "刷新中" : "刷新"}
+          </Button>
           <Button size="small" onClick={onSelectAll} disabled={listing.items.length === 0}>
             全选
           </Button>

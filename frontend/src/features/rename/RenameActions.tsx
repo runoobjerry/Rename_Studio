@@ -66,10 +66,10 @@ export function RenameActions({
       </Stack>
 
       <Dialog open={confirming} onClose={() => !isExecuting && setConfirming(false)}>
-        <DialogTitle>确认开始修改？</DialogTitle>
+        <DialogTitle>确认修改</DialogTitle>
         <DialogContent>
           <DialogContentText>
-            将根据当前预览修改 {providerName} 中的 {changedCount} 个项目。此操作不能绕过预览。
+            将根据当前预览值修改 {providerName} 中的 {changedCount} 个项目。此操作不可恢复！
           </DialogContentText>
         </DialogContent>
         <DialogActions>

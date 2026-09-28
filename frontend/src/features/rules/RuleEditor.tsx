@@ -1,4 +1,13 @@
+import ArrowDownwardRoundedIcon from "@mui/icons-material/ArrowDownwardRounded";
+import ArrowUpwardRoundedIcon from "@mui/icons-material/ArrowUpwardRounded";
+import ContentCopyRoundedIcon from "@mui/icons-material/ContentCopyRounded";
+import DeleteOutlineRoundedIcon from "@mui/icons-material/DeleteOutlineRounded";
+import DeleteSweepRoundedIcon from "@mui/icons-material/DeleteSweepRounded";
+import AddRoundedIcon from "@mui/icons-material/AddRounded";
+import Button from "@mui/material/Button";
+import IconButton from "@mui/material/IconButton";
 import Switch from "@mui/material/Switch";
+import Tooltip from "@mui/material/Tooltip";
 
 import type { RuleDefinition, RuleSpec } from "../../types";
 import { RuleFields } from "./RuleFields";
@@ -96,18 +105,28 @@ export function RuleEditor({ definitions, rules, onChange, onAddRule }: RuleEdit
   return (
     <section className="panel rule-editor-panel" aria-labelledby="rules-title">
       <div className="panel-heading rule-editor-heading">
-        <div>
-          <p className="eyebrow">Rule chain</p>
-          <h2 id="rules-title">重命名规则</h2>
+        <h2 id="rules-title">重命名规则</h2>
+        <div className="rule-heading-actions">
+          <Button
+            size="small"
+            variant="contained"
+            startIcon={<AddRoundedIcon />}
+            onClick={onAddRule}
+            disabled={availableRules.length === 0 || !onAddRule}
+          >
+            添加规则
+          </Button>
+          <Button
+            size="small"
+            variant="outlined"
+            color="error"
+            startIcon={<DeleteSweepRoundedIcon />}
+            onClick={() => onChange([])}
+            disabled={rules.length === 0}
+          >
+            一键清除
+          </Button>
         </div>
-        <button
-          className="secondary-button add-rule-button"
-          type="button"
-          onClick={onAddRule}
-          disabled={availableRules.length === 0 || !onAddRule}
-        >
-          ＋ 添加规则
-        </button>
       </div>
       {availableRules.length === 0 ? (
         <div className="notice">
@@ -136,32 +155,51 @@ export function RuleEditor({ definitions, rules, onChange, onAddRule }: RuleEdit
                 </strong>
               </label>
               <div className="rule-actions">
-                <button
-                  disabled={index === 0}
-                  onClick={() => moveRule(index, -1)}
-                  aria-label="上移规则"
-                >
-                  ↑
-                </button>
-                <button
-                  disabled={index === rules.length - 1}
-                  onClick={() => moveRule(index, 1)}
-                  aria-label="下移规则"
-                >
-                  ↓
-                </button>
-                <button onClick={() => onChange([...rules, cloneRule(rule)])}>
-                  复制
-                </button>
-                <button
-                  onClick={() =>
-                    onChange(
-                      rules.filter((_, itemIndex) => itemIndex !== index),
-                    )
-                  }
-                >
-                  删除
-                </button>
+                <Tooltip title="上移规则">
+                  <span>
+                    <IconButton
+                      size="small"
+                      disabled={index === 0}
+                      onClick={() => moveRule(index, -1)}
+                      aria-label="上移规则"
+                    >
+                      <ArrowUpwardRoundedIcon fontSize="small" />
+                    </IconButton>
+                  </span>
+                </Tooltip>
+                <Tooltip title="下移规则">
+                  <span>
+                    <IconButton
+                      size="small"
+                      disabled={index === rules.length - 1}
+                      onClick={() => moveRule(index, 1)}
+                      aria-label="下移规则"
+                    >
+                      <ArrowDownwardRoundedIcon fontSize="small" />
+                    </IconButton>
+                  </span>
+                </Tooltip>
+                <Tooltip title="复制规则">
+                  <IconButton
+                    size="small"
+                    onClick={() => onChange([...rules, cloneRule(rule)])}
+                    aria-label="复制规则"
+                  >
+                    <ContentCopyRoundedIcon fontSize="small" />
+                  </IconButton>
+                </Tooltip>
+                <Tooltip title="删除规则">
+                  <IconButton
+                    size="small"
+                    color="error"
+                    onClick={() =>
+                      onChange(rules.filter((_, itemIndex) => itemIndex !== index))
+                    }
+                    aria-label="删除规则"
+                  >
+                    <DeleteOutlineRoundedIcon fontSize="small" />
+                  </IconButton>
+                </Tooltip>
               </div>
             </div>
 
