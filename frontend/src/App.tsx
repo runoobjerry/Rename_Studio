@@ -11,6 +11,7 @@ export default function App() {
   const [path, setPath] = useState("");
   const selectedIds = useRenameStore((state) => state.selectedIds);
   const rules = useRenameStore((state) => state.rules);
+  const setRules = useRenameStore((state) => state.setRules);
   const toggleSelected = useRenameStore((state) => state.toggleSelected);
   const clearSelection = useRenameStore((state) => state.clearSelection);
 
@@ -61,7 +62,15 @@ export default function App() {
         ) : (
           <section className="panel"><p className="empty-state">正在读取本地目录…</p></section>
         )}
-        <RuleEditor definitions={definitions.data ?? []} rules={rules} />
+        <RuleEditor
+          definitions={definitions.data ?? []}
+          rules={rules}
+          onChange={(nextRules) => {
+            // 规则变化后旧预览立即失效，避免用户误读过期结果。
+            setRules(nextRules);
+            preview.reset();
+          }}
+        />
       </div>
 
       <PreviewPanel

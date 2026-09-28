@@ -7,11 +7,12 @@
 - 在受限根目录内浏览本地文件和子目录
 - 多选文件并生成只读重命名预览
 - 按注册表扩展的有序规则链架构
+- 填充规则：数字序列补零、文本自定义字符左/右填充
 - 文件名合法性、同批目标重复和已有文件冲突检测
 - 统一 API 错误结构
 - React WebUI、TanStack Query 服务端状态和 Zustand 选择状态
 
-当前没有注册具体重命名规则，因此空规则链预览会保持原文件名。`POST /rename/execute`、OneDrive、历史和撤销尚未实现；预览不会修改任何文件。
+当前已注册填充规则；空规则链仍会保持原文件名。`POST /rename/execute`、OneDrive、历史和撤销尚未实现；预览不会修改任何文件。
 
 ## 项目结构
 
@@ -54,7 +55,7 @@ Local Provider 会解析并校验所有路径，拒绝访问配置根目录之�
 
 ```powershell
 cd backend
-py -3.12 -m venv .venv
+python -m venv .venv
 .\.venv\Scripts\python -m pip install -e ".[dev]"
 .\.venv\Scripts\python -m uvicorn app.main:app --reload
 ```
@@ -99,7 +100,7 @@ npm run build
 | `GET` | `/health` | 可用 | 健康检查 |
 | `GET` | `/providers` | 可用 | Provider 列表 |
 | `GET` | `/files` | 可用 | 浏览本地目录 |
-| `GET` | `/rules` | 可用 | 已注册规则定义；当前为空 |
+| `GET` | `/rules` | 可用 | 已注册规则定义 |
 | `POST` | `/rename/preview` | 可用 | 生成只读预览 |
 | `POST` | `/rename/execute` | 未实现 | M3 安全执行 |
 
@@ -109,8 +110,21 @@ npm run build
 {
   "provider": "local",
   "file_ids": ["example.txt"],
-  "rules": []
+  "rules": [
+    {
+      "type": "padding",
+      "enabled": true,
+      "config": {
+        "mode": "number",
+        "length": 3,
+        "fill_character": "_",
+        "side": "left"
+      }
+    }
+  ]
 }
 ```
+
+数字模式会把主文件名中的每段连续数字分别补零，例如 `episode1-part12.mp4` 在长度为 3 时得到 `episode001-part012.mp4`。文本模式将整个主文件名填充到目标长度，可指定单个填充字符以及从左侧或右侧填充。两种模式都保留最后一个扩展名。
 
 加入具体规则时，只需实现 `RenameRule`、定义 Pydantic 配置、注册规则，并增加相应前端配置控件，无需修改 Rename Engine。

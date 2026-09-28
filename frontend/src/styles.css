@@ -38,6 +38,16 @@ h1 { margin: 0; font-family: Georgia, serif; font-size: clamp(42px, 7vw, 82px); 
 .notice { padding: 20px; border: 1px dashed #b9c8bd; border-radius: 16px; background: #f2f6f0; }
 .notice strong { color: #385343; }
 .notice p { margin: 8px 0 0; font-size: 14px; }
+.secondary-button { color: #315e49 !important; background: #e5eee7 !important; }
+.rule-list { display: grid; gap: 12px; padding: 18px; }
+.rule-card { padding: 16px; border: 1px solid #dfe3dc; border-radius: 16px; background: #fafbf8; }
+.rule-card-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
+.rule-card-heading label { display: flex; align-items: center; gap: 8px; }
+.rule-actions { display: flex; flex-wrap: wrap; gap: 5px; }
+.rule-actions button { padding: 5px 8px; border: 1px solid #d5dbd4; border-radius: 8px; color: #59635d; background: white; font-size: 12px; }
+.rule-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.rule-fields label { display: grid; gap: 6px; color: #6d756f; font-size: 12px; font-weight: 700; }
+.rule-fields input, .rule-fields select { width: 100%; padding: 9px 10px; border: 1px solid #cfd6cf; border-radius: 9px; color: #28332c; background: white; }
 
 .preview { margin-top: 18px; }
 .panel-heading button { padding: 11px 18px; border: 0; border-radius: 12px; color: white; background: #2f684e; font-weight: 750; }
@@ -56,4 +66,5 @@ th { color: #727a74; font-size: 12px; letter-spacing: 0.08em; text-transform: up
   .stage-badge { align-self: stretch; }
   .workspace-grid { grid-template-columns: 1fr; }
   .panel-heading { align-items: flex-start; }
+  .rule-fields { grid-template-columns: 1fr; }
 }
