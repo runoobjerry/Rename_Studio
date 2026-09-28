@@ -4,6 +4,7 @@ from enum import StrEnum
 from pydantic import BaseModel, Field
 
 from app.rules.base import RenameRule, RuleContext
+from app.rules.filename import split_extension
 
 
 class PaddingMode(StrEnum):
@@ -32,7 +33,7 @@ class PaddingRule(RenameRule[PaddingConfig]):
     def apply(
         self, filename: str, context: RuleContext, config: PaddingConfig
     ) -> str:
-        stem, extension = self._split_extension(filename)
+        stem, extension = split_extension(filename)
 
         if config.mode == PaddingMode.NUMBER:
             # 每段连续数字独立补零，超过目标长度的数字保持不变。
@@ -47,11 +48,3 @@ class PaddingRule(RenameRule[PaddingConfig]):
             padded = fill + stem if config.side == PaddingSide.LEFT else stem + fill
 
         return padded + extension
-
-    @staticmethod
-    def _split_extension(filename: str) -> tuple[str, str]:
-        # 仅把最后一个非首位句点视为扩展名，隐藏文件名按无扩展名处理。
-        dot_index = filename.rfind(".")
-        if dot_index <= 0:
-            return filename, ""
-        return filename[:dot_index], filename[dot_index:]

@@ -39,6 +39,8 @@ h1 { margin: 0; font-family: Georgia, serif; font-size: clamp(42px, 7vw, 82px); 
 .notice strong { color: #385343; }
 .notice p { margin: 8px 0 0; font-size: 14px; }
 .secondary-button { color: #315e49 !important; background: #e5eee7 !important; }
+.rule-editor-heading { align-items: flex-start; }
+.rule-add-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
 .rule-list { display: grid; gap: 12px; padding: 18px; }
 .rule-card { padding: 16px; border: 1px solid #dfe3dc; border-radius: 16px; background: #fafbf8; }
 .rule-card-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
@@ -48,6 +50,8 @@ h1 { margin: 0; font-family: Georgia, serif; font-size: clamp(42px, 7vw, 82px); 
 .rule-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
 .rule-fields label { display: grid; gap: 6px; color: #6d756f; font-size: 12px; font-weight: 700; }
 .rule-fields input, .rule-fields select { width: 100%; padding: 9px 10px; border: 1px solid #cfd6cf; border-radius: 9px; color: #28332c; background: white; }
+.rule-options { display: flex; flex-wrap: wrap; gap: 14px; margin-top: 14px; }
+.option-toggle { display: inline-flex; align-items: center; gap: 6px; color: #59635d; font-size: 13px; }
 
 .preview { margin-top: 18px; }
 .panel-heading button { padding: 11px 18px; border: 0; border-radius: 12px; color: white; background: #2f684e; font-weight: 750; }

@@ -12,6 +12,27 @@ const definition: RuleDefinition = {
   config_schema: {},
 };
 
+const replaceDefinition: RuleDefinition = {
+  type: "replace",
+  name: "替换",
+  description: "替换匹配文本",
+  config_schema: {},
+};
+
+const removeDefinition: RuleDefinition = {
+  type: "remove",
+  name: "移除",
+  description: "移除匹配文本",
+  config_schema: {},
+};
+
+const insertDefinition: RuleDefinition = {
+  type: "insert",
+  name: "插入",
+  description: "插入指定文本",
+  config_schema: {},
+};
+
 const textRule: RuleSpec = {
   type: "padding",
   enabled: true,
@@ -49,6 +70,103 @@ describe("RuleEditor", () => {
     expect(onChange).toHaveBeenCalledWith([
       expect.objectContaining({
         config: expect.objectContaining({ fill_character: "-" }),
+      }),
+    ]);
+  });
+
+  it("adds replacement and removal rules", () => {
+    const onChange = vi.fn();
+    render(
+      <RuleEditor
+        definitions={[replaceDefinition, removeDefinition]}
+        rules={[]}
+        onChange={onChange}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "+ 替换" }));
+    fireEvent.click(screen.getByRole("button", { name: "+ 移除" }));
+
+    expect(onChange).toHaveBeenNthCalledWith(
+      1,
+      [expect.objectContaining({ type: "replace" })],
+    );
+    expect(onChange).toHaveBeenNthCalledWith(
+      2,
+      [expect.objectContaining({ type: "remove" })],
+    );
+  });
+
+  it("updates replacement matching options", () => {
+    const onChange = vi.fn();
+    const rule: RuleSpec = {
+      type: "replace",
+      enabled: true,
+      config: {
+        search: "old",
+        replacement: "new",
+        occurrence: "all",
+        case_sensitive: true,
+        whole_word: false,
+        ignore_extension: true,
+      },
+    };
+    render(
+      <RuleEditor
+        definitions={[replaceDefinition]}
+        rules={[rule]}
+        onChange={onChange}
+      />,
+    );
+
+    fireEvent.change(screen.getByLabelText("操作序数"), {
+      target: { value: "last" },
+    });
+
+    expect(onChange).toHaveBeenCalledWith([
+      expect.objectContaining({
+        config: expect.objectContaining({ occurrence: "last" }),
+      }),
+    ]);
+  });
+
+  it("adds and configures an index insertion rule", () => {
+    const onChange = vi.fn();
+    const rule: RuleSpec = {
+      type: "insert",
+      enabled: true,
+      config: {
+        text: "-",
+        position: "index",
+        index: 1,
+        from_right: false,
+        anchor: "",
+      },
+    };
+    const view = render(
+      <RuleEditor
+        definitions={[insertDefinition]}
+        rules={[]}
+        onChange={onChange}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "+ 插入" }));
+    expect(onChange).toHaveBeenCalledWith([
+      expect.objectContaining({ type: "insert" }),
+    ]);
+
+    view.rerender(
+      <RuleEditor
+        definitions={[insertDefinition]}
+        rules={[rule]}
+        onChange={onChange}
+      />,
+    );
+    fireEvent.click(screen.getByLabelText("从右往左计数"));
+    expect(onChange).toHaveBeenLastCalledWith([
+      expect.objectContaining({
+        config: expect.objectContaining({ from_right: true }),
       }),
     ]);
   });
