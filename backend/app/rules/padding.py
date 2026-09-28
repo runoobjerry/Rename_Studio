@@ -33,7 +33,10 @@ class PaddingRule(RenameRule[PaddingConfig]):
     def apply(
         self, filename: str, context: RuleContext, config: PaddingConfig
     ) -> str:
-        stem, extension = split_extension(filename)
+        # 文件夹没有扩展名语义，即使名称中包含句点也处理完整名称。
+        stem, extension = (
+            (filename, "") if context.is_directory else split_extension(filename)
+        )
 
         if config.mode == PaddingMode.NUMBER:
             # 每段连续数字独立补零，超过目标长度的数字保持不变。

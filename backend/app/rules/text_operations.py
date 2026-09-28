@@ -62,8 +62,10 @@ def _apply_to_filename(
     filename: str,
     config: TextMatchConfig,
     replacement: str,
+    *,
+    is_directory: bool,
 ) -> str:
-    if config.ignore_extension:
+    if config.ignore_extension and not is_directory:
         target, extension = split_extension(filename)
     else:
         target, extension = filename, ""
@@ -88,7 +90,12 @@ class ReplaceRule(RenameRule[ReplaceConfig]):
     def apply(
         self, filename: str, context: RuleContext, config: ReplaceConfig
     ) -> str:
-        return _apply_to_filename(filename, config, config.replacement)
+        return _apply_to_filename(
+            filename,
+            config,
+            config.replacement,
+            is_directory=context.is_directory,
+        )
 
 
 class RemoveRule(RenameRule[RemoveConfig]):
@@ -100,4 +107,9 @@ class RemoveRule(RenameRule[RemoveConfig]):
     def apply(
         self, filename: str, context: RuleContext, config: RemoveConfig
     ) -> str:
-        return _apply_to_filename(filename, config, "")
+        return _apply_to_filename(
+            filename,
+            config,
+            "",
+            is_directory=context.is_directory,
+        )

@@ -41,7 +41,9 @@ class InsertRule(RenameRule[InsertConfig]):
     def apply(
         self, filename: str, context: RuleContext, config: InsertConfig
     ) -> str:
-        stem, extension = split_extension(filename)
+        stem, extension = (
+            (filename, "") if context.is_directory else split_extension(filename)
+        )
         insert_at = self._resolve_position(stem, config)
         if insert_at is None:
             return filename

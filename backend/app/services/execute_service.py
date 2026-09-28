@@ -80,13 +80,18 @@ class ExecuteService:
 
     @staticmethod
     def _source_changed(before: FileItem, current: FileItem) -> bool:
-        return (
+        identity_changed = (
             before.id != current.id
             or before.name != current.name
             or before.parent_path != current.parent_path
-            or before.size != current.size
-            or before.modified_at != current.modified_at
+            or before.is_directory != current.is_directory
         )
+        if identity_changed:
+            return True
+        # 子文件夹内容不在本批次范围内，因此不以目录时间戳判断预览失效。
+        if before.is_directory:
+            return False
+        return before.size != current.size or before.modified_at != current.modified_at
 
     async def _execute_snapshot(
         self, snapshot: PreviewSnapshot

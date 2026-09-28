@@ -32,14 +32,21 @@ class PreviewService:
             raise ValidationError("Duplicate file IDs are not allowed")
 
         files = [await provider.get_metadata(file_id) for file_id in request.file_ids]
-        if any(item.is_directory for item in files):
-            raise ValidationError("Directories cannot be renamed in this preview")
+        if any(item.id == "" for item in files):
+            raise ValidationError("Configured storage root cannot be selected")
+        if len({item.parent_path for item in files}) != 1:
+            raise ValidationError("All selected items must be in the same directory")
 
         candidates = [
             self.engine.apply(
                 item.name,
                 request.rules,
-                RuleContext(file_id=item.id, index=index, total=len(files)),
+                RuleContext(
+                    file_id=item.id,
+                    index=index,
+                    total=len(files),
+                    is_directory=item.is_directory,
+                ),
             )
             for index, item in enumerate(files)
         ]

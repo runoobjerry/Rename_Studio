@@ -137,3 +137,22 @@ async def test_reports_partial_provider_failure(tmp_path: Path) -> None:
     assert [item.status for item in result.items] == ["renamed", "failed"]
     assert (tmp_path / "one-new.txt").exists()
     assert (tmp_path / "two.txt").exists()
+
+
+@pytest.mark.asyncio
+async def test_renames_selected_directory_without_renaming_children(
+    tmp_path: Path,
+) -> None:
+    folder = tmp_path / "season-one"
+    folder.mkdir()
+    (folder / "episode-one.txt").write_text("episode", encoding="utf-8")
+    preview_service, execute_service = build_services(tmp_path)
+    preview = await preview_service.preview(
+        request_for({"season-one": "season-01"})
+    )
+
+    result = await execute_service.execute(preview.preview_id)
+
+    assert result.status == "completed"
+    assert (tmp_path / "season-01" / "episode-one.txt").exists()
+    assert not (tmp_path / "season-01" / "episode-01.txt").exists()

@@ -92,3 +92,14 @@ def test_replacement_is_literal_text() -> None:
 def test_empty_search_is_rejected(config_model: type[TextMatchConfig]) -> None:
     with pytest.raises(ValidationError):
         config_model.model_validate({"search": ""})
+
+
+def test_ignore_extension_does_not_hide_part_of_directory_name() -> None:
+    context = RuleContext(file_id="folder.v1", index=0, total=1, is_directory=True)
+    config = ReplaceConfig(
+        search="v1",
+        replacement="v2",
+        ignore_extension=True,
+    )
+
+    assert ReplaceRule().apply("folder.v1", context, config) == "folder.v2"

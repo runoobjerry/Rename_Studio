@@ -9,6 +9,7 @@ class RuleContext:
     file_id: str
     index: int
     total: int
+    is_directory: bool = False
 
 
 class EmptyRuleConfig(BaseModel):

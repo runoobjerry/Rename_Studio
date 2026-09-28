@@ -102,3 +102,43 @@ async def test_detects_existing_file_conflict(tmp_path: Path) -> None:
 
     assert preview.valid is False
     assert preview.items[0].conflict is True
+
+
+@pytest.mark.asyncio
+async def test_allows_directory_name_in_preview(tmp_path: Path) -> None:
+    (tmp_path / "folder").mkdir()
+    service = build_service(tmp_path)
+
+    preview = await service.preview(
+        RenamePreviewRequest(provider="local", file_ids=["folder"], rules=[])
+    )
+
+    assert preview.valid is True
+    assert preview.items[0].original_name == "folder"
+
+
+@pytest.mark.asyncio
+async def test_rejects_items_from_different_parent_directories(tmp_path: Path) -> None:
+    (tmp_path / "root.txt").write_text("root", encoding="utf-8")
+    (tmp_path / "folder").mkdir()
+    (tmp_path / "folder" / "child.txt").write_text("child", encoding="utf-8")
+    service = build_service(tmp_path)
+
+    with pytest.raises(ValidationError):
+        await service.preview(
+            RenamePreviewRequest(
+                provider="local",
+                file_ids=["root.txt", "folder/child.txt"],
+                rules=[],
+            )
+        )
+
+
+@pytest.mark.asyncio
+async def test_rejects_configured_storage_root(tmp_path: Path) -> None:
+    service = build_service(tmp_path)
+
+    with pytest.raises(ValidationError):
+        await service.preview(
+            RenamePreviewRequest(provider="local", file_ids=["/"], rules=[])
+        )

@@ -78,8 +78,10 @@ class LocalProvider(StorageProvider):
 
     async def rename(self, file_id: str, new_name: str) -> FileItem:
         source = self._resolve(file_id)
-        if not source.exists() or not source.is_file():
-            raise NotFoundError("File not found", details={"file_id": file_id})
+        if source == self.root:
+            raise ValidationError("Configured storage root cannot be renamed")
+        if not source.exists():
+            raise NotFoundError("File or directory not found", details={"file_id": file_id})
         validation_error = self.validate_name(new_name)
         if validation_error is not None:
             raise ValidationError(validation_error, details={"new_name": new_name})

@@ -30,6 +30,7 @@ h1 { margin: 0; font-family: Georgia, serif; font-size: clamp(42px, 7vw, 82px); 
 .file-row { display: grid; grid-template-columns: 28px minmax(0, 1fr) auto; align-items: center; width: 100%; min-height: 58px; padding: 8px 26px; border: 0; border-bottom: 1px solid #ecebe6; color: inherit; background: transparent; text-align: left; }
 .file-row:hover { background: #f4f6f1; }
 .file-row.directory { grid-template-columns: 28px minmax(0, 1fr) auto; }
+.directory-name { display: flex; align-items: center; gap: 8px; min-width: 0; padding: 0; border: 0; color: inherit; background: transparent; text-align: left; }
 .file-name { overflow: hidden; font-weight: 650; text-overflow: ellipsis; white-space: nowrap; }
 .file-meta { color: #7c837e; font-size: 13px; }
 .file-icon { color: #668d78; font-size: 20px; }

@@ -73,3 +73,25 @@ async def test_rename_rejects_existing_target(tmp_path: Path) -> None:
 
     with pytest.raises(RenameConflictError):
         await provider.rename("old.txt", "new.txt")
+
+
+@pytest.mark.asyncio
+async def test_renames_directory_without_touching_children(tmp_path: Path) -> None:
+    folder = tmp_path / "old-folder"
+    folder.mkdir()
+    (folder / "child.txt").write_text("child", encoding="utf-8")
+    provider = LocalProvider(tmp_path)
+
+    renamed = await provider.rename("old-folder", "new-folder")
+
+    assert renamed.is_directory is True
+    assert renamed.id == "new-folder"
+    assert (tmp_path / "new-folder" / "child.txt").read_text(encoding="utf-8") == "child"
+
+
+@pytest.mark.asyncio
+async def test_cannot_rename_configured_storage_root(tmp_path: Path) -> None:
+    provider = LocalProvider(tmp_path)
+
+    with pytest.raises(ValidationError):
+        await provider.rename("", "renamed-root")

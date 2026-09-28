@@ -24,7 +24,7 @@ export function FileBrowser({
       <div className="panel-heading">
         <div>
           <p className="eyebrow">Local Provider</p>
-          <h2 id="files-title">文件</h2>
+          <h2 id="files-title">文件与文件夹</h2>
         </div>
         <code>/{listing.path}</code>
       </div>
@@ -38,15 +38,25 @@ export function FileBrowser({
       <div className="file-list">
         {listing.items.map((item) =>
           item.is_directory ? (
-            <button
+            <div
               className="file-row directory"
               key={item.id}
-              onClick={() => onNavigate(item.path)}
             >
-              <span className="file-icon">⌁</span>
-              <span className="file-name">{item.name}</span>
-              <span className="file-meta">目录 →</span>
-            </button>
+              <input
+                type="checkbox"
+                aria-label={`选择文件夹 ${item.name}`}
+                checked={selectedIds.includes(item.id)}
+                onChange={() => onToggle(item.id)}
+              />
+              <button
+                className="directory-name"
+                onClick={() => onNavigate(item.path)}
+              >
+                <span className="file-icon">⌁</span>
+                <span className="file-name">{item.name}</span>
+              </button>
+              <span className="file-meta">打开 →</span>
+            </div>
           ) : (
             <label className="file-row" key={item.id}>
               <input

@@ -70,3 +70,15 @@ def test_text_longer_than_target_is_unchanged() -> None:
 def test_rejects_invalid_configuration(config: dict[str, object]) -> None:
     with pytest.raises(ValidationError):
         PaddingConfig.model_validate(config)
+
+
+def test_text_padding_treats_full_directory_name_as_stem() -> None:
+    context = RuleContext(file_id="a.b", index=0, total=1, is_directory=True)
+    config = PaddingConfig(
+        mode=PaddingMode.TEXT,
+        length=5,
+        fill_character="_",
+        side=PaddingSide.RIGHT,
+    )
+
+    assert PaddingRule().apply("a.b", context, config) == "a.b__"

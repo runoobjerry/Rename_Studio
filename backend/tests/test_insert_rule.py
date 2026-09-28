@@ -99,3 +99,10 @@ def test_out_of_range_index_clamps_to_filename_edge() -> None:
 def test_rejects_invalid_configuration(values: dict[str, object]) -> None:
     with pytest.raises(ValidationError):
         InsertConfig.model_validate(values)
+
+
+def test_directory_name_does_not_have_extension_semantics() -> None:
+    context = RuleContext(file_id="folder.v1", index=0, total=1, is_directory=True)
+    config = InsertConfig(text="-new", position=InsertPosition.SUFFIX)
+
+    assert InsertRule().apply("folder.v1", context, config) == "folder.v1-new"
