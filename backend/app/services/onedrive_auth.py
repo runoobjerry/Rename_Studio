@@ -1,3 +1,4 @@
+import asyncio
 import base64
 import hashlib
 import json
@@ -52,6 +53,7 @@ class OneDriveAuthService:
         self._client_secret: str | None = None
         self._tokens: TokenSet | None = None
         self._pending: dict[str, PendingAuthorization] = {}
+        self._refresh_lock = asyncio.Lock()
         self._load_credentials()
 
     def settings(self) -> OneDriveSettingsResponse:
@@ -143,11 +145,24 @@ class OneDriveAuthService:
     async def access_token(self, *, force_refresh: bool = False) -> str:
         if self._tokens is None:
             raise AuthenticationError("OneDrive account is not connected")
+        token_before_refresh = self._tokens.access_token
         expires_soon = self._tokens.expires_at <= datetime.now(UTC) + timedelta(
             seconds=60
         )
         if force_refresh or expires_soon:
-            await self._refresh_access_token()
+            # 并发批次共用一次刷新，避免刷新令牌被重复轮换。
+            async with self._refresh_lock:
+                if self._tokens is None:
+                    raise AuthenticationError("OneDrive account is not connected")
+                token_was_refreshed = (
+                    self._tokens.access_token != token_before_refresh
+                )
+                expires_soon = (
+                    self._tokens.expires_at
+                    <= datetime.now(UTC) + timedelta(seconds=60)
+                )
+                if not token_was_refreshed and (force_refresh or expires_soon):
+                    await self._refresh_access_token()
         if self._tokens is None:
             raise AuthenticationError("OneDrive account is not connected")
         return self._tokens.access_token

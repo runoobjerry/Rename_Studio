@@ -69,13 +69,14 @@ export function fetchRules(): Promise<RuleDefinition[]> {
 
 export function createPreview(
   provider: string,
+  path: string,
   fileIds: string[],
   rules: RuleSpec[],
 ): Promise<PreviewResponse> {
   return request("/rename/preview", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ provider, file_ids: fileIds, rules }),
+    body: JSON.stringify({ provider, path, file_ids: fileIds, rules }),
   });
 }
 

@@ -45,6 +45,16 @@ class FailingLocalProvider(LocalProvider):
         return await super().rename(file_id, new_name)
 
 
+class TrackingLocalProvider(LocalProvider):
+    def __init__(self, root: Path) -> None:
+        super().__init__(root)
+        self.rename_targets: list[str] = []
+
+    async def rename(self, file_id: str, new_name: str) -> FileItem:
+        self.rename_targets.append(new_name)
+        return await super().rename(file_id, new_name)
+
+
 def build_services(
     root: Path, provider: LocalProvider | None = None
 ) -> tuple[PreviewService, ExecuteService]:
@@ -68,7 +78,8 @@ def request_for(names: dict[str, str]) -> RenamePreviewRequest:
 @pytest.mark.asyncio
 async def test_executes_valid_preview_once(tmp_path: Path) -> None:
     (tmp_path / "one.txt").write_text("one", encoding="utf-8")
-    preview_service, execute_service = build_services(tmp_path)
+    provider = TrackingLocalProvider(tmp_path)
+    preview_service, execute_service = build_services(tmp_path, provider)
     preview = await preview_service.preview(request_for({"one.txt": "renamed.txt"}))
 
     result = await execute_service.execute(preview.preview_id)
@@ -76,6 +87,7 @@ async def test_executes_valid_preview_once(tmp_path: Path) -> None:
     assert result.status == "completed"
     assert result.items[0].status == "renamed"
     assert (tmp_path / "renamed.txt").exists()
+    assert provider.rename_targets == ["renamed.txt"]
     with pytest.raises(PreviewNotFoundError):
         await execute_service.execute(preview.preview_id)
 
@@ -84,7 +96,8 @@ async def test_executes_valid_preview_once(tmp_path: Path) -> None:
 async def test_executes_swap_with_temporary_names(tmp_path: Path) -> None:
     (tmp_path / "a.txt").write_text("A", encoding="utf-8")
     (tmp_path / "b.txt").write_text("B", encoding="utf-8")
-    preview_service, execute_service = build_services(tmp_path)
+    provider = TrackingLocalProvider(tmp_path)
+    preview_service, execute_service = build_services(tmp_path, provider)
     preview = await preview_service.preview(
         request_for({"a.txt": "b.txt", "b.txt": "a.txt"})
     )
@@ -94,6 +107,10 @@ async def test_executes_swap_with_temporary_names(tmp_path: Path) -> None:
     assert result.status == "completed"
     assert (tmp_path / "a.txt").read_text(encoding="utf-8") == "B"
     assert (tmp_path / "b.txt").read_text(encoding="utf-8") == "A"
+    temporary_count = sum(
+        name.startswith("onedriver-renamer-") for name in provider.rename_targets
+    )
+    assert temporary_count == 2
     assert not list(tmp_path.glob("onedriver-renamer-*"))
 
 

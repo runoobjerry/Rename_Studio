@@ -1,4 +1,5 @@
 import asyncio
+from collections.abc import Awaitable, Callable
 from datetime import datetime
 from email.utils import parsedate_to_datetime
 from urllib.parse import quote
@@ -23,15 +24,26 @@ from app.services.onedrive_auth import OneDriveAuthService
 GRAPH_ROOT = "https://graph.microsoft.com/v1.0"
 MAX_BATCH_SIZE = 20
 MAX_RETRIES = 3
+READ_BATCH_CONCURRENCY = 3
+WRITE_BATCH_CONCURRENCY = 2
+DRIVE_ITEM_SELECT = "id,name,parentReference,folder,size,lastModifiedDateTime"
 
 
 class OneDriveProvider(StorageProvider):
     id = "onedrive"
     display_name = "OneDrive Personal"
 
-    def __init__(self, auth: OneDriveAuthService, *, timeout: float = 30.0) -> None:
+    def __init__(
+        self,
+        auth: OneDriveAuthService,
+        *,
+        timeout: float = 30.0,
+        client: httpx.AsyncClient | None = None,
+    ) -> None:
         self.auth = auth
         self.timeout = timeout
+        self._client = client
+        self._owns_client = client is None
 
     async def list_files(self, path: str) -> list[FileItem]:
         normalized = path.replace("\\", "/").strip("/")
@@ -40,6 +52,7 @@ class OneDriveProvider(StorageProvider):
             url = f"{GRAPH_ROOT}/me/drive/root:/{encoded}:/children"
         else:
             url = f"{GRAPH_ROOT}/me/drive/root/children"
+        url = f"{url}?$select={DRIVE_ITEM_SELECT}&$top=200"
 
         items: list[FileItem] = []
         while url:
@@ -69,10 +82,18 @@ class OneDriveProvider(StorageProvider):
         return self._to_item(payload)
 
     async def get_metadata_many(self, file_ids: list[str]) -> list[FileItem]:
-        results: dict[str, FileItem | AppError] = {}
-        for offset in range(0, len(file_ids), MAX_BATCH_SIZE):
-            chunk = file_ids[offset : offset + MAX_BATCH_SIZE]
-            results.update(await self._metadata_batch(chunk))
+        chunks = [
+            file_ids[offset : offset + MAX_BATCH_SIZE]
+            for offset in range(0, len(file_ids), MAX_BATCH_SIZE)
+        ]
+        chunk_results = await self._run_bounded(
+            chunks, self._metadata_batch, READ_BATCH_CONCURRENCY
+        )
+        results = {
+            file_id: outcome
+            for chunk_result in chunk_results
+            for file_id, outcome in chunk_result.items()
+        }
         items: list[FileItem] = []
         for file_id in file_ids:
             outcome = results[file_id]
@@ -92,7 +113,10 @@ class OneDriveProvider(StorageProvider):
                 {
                     "id": str(index),
                     "method": "GET",
-                    "url": f"/me/drive/items/{quote(file_id, safe='')}",
+                    "url": (
+                        f"/me/drive/items/{quote(file_id, safe='')}"
+                        f"?$select={DRIVE_ITEM_SELECT}"
+                    ),
                 }
                 for index, file_id in enumerate(file_ids)
             ]
@@ -161,11 +185,18 @@ class OneDriveProvider(StorageProvider):
     async def rename_many(
         self, requests: list[RenameRequest]
     ) -> dict[str, FileItem | AppError]:
-        results: dict[str, FileItem | AppError] = {}
-        for offset in range(0, len(requests), MAX_BATCH_SIZE):
-            chunk = requests[offset : offset + MAX_BATCH_SIZE]
-            results.update(await self._rename_batch(chunk))
-        return results
+        chunks = [
+            requests[offset : offset + MAX_BATCH_SIZE]
+            for offset in range(0, len(requests), MAX_BATCH_SIZE)
+        ]
+        chunk_results = await self._run_bounded(
+            chunks, self._rename_batch, WRITE_BATCH_CONCURRENCY
+        )
+        return {
+            file_id: outcome
+            for chunk_result in chunk_results
+            for file_id, outcome in chunk_result.items()
+        }
 
     async def _rename_batch(
         self,
@@ -279,13 +310,12 @@ class OneDriveProvider(StorageProvider):
             token = await self.auth.access_token(force_refresh=force_refresh)
             force_refresh = False
             try:
-                async with httpx.AsyncClient(timeout=self.timeout) as client:
-                    response = await client.request(
-                        method,
-                        url,
-                        headers={"Authorization": f"Bearer {token}"},
-                        json=json,
-                    )
+                response = await self._http_client().request(
+                    method,
+                    url,
+                    headers={"Authorization": f"Bearer {token}"},
+                    json=json,
+                )
             except httpx.HTTPError as exc:
                 if attempt < MAX_RETRIES:
                     await asyncio.sleep(min(2**attempt, 8))
@@ -310,6 +340,34 @@ class OneDriveProvider(StorageProvider):
                 raise self._graph_error(response.status_code, payload)
             return payload
         raise ProviderError("Microsoft Graph request failed after retries")
+
+    def _http_client(self) -> httpx.AsyncClient:
+        if self._client is None or self._client.is_closed:
+            self._client = httpx.AsyncClient(timeout=self.timeout)
+            self._owns_client = True
+        return self._client
+
+    async def aclose(self) -> None:
+        if (
+            self._owns_client
+            and self._client is not None
+            and not self._client.is_closed
+        ):
+            await self._client.aclose()
+
+    @staticmethod
+    async def _run_bounded[InputT, ResultT](
+        values: list[InputT],
+        operation: Callable[[InputT], Awaitable[ResultT]],
+        concurrency: int,
+    ) -> list[ResultT]:
+        semaphore = asyncio.Semaphore(concurrency)
+
+        async def run(value: InputT) -> ResultT:
+            async with semaphore:
+                return await operation(value)
+
+        return list(await asyncio.gather(*(run(value) for value in values)))
 
     @staticmethod
     def _to_item(payload: dict[str, object]) -> FileItem:

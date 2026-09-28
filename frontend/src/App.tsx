@@ -39,14 +39,14 @@ export default function App() {
     enabled: providerId === "local" || oneDriveStatus.data?.connected === true,
   });
   const preview = useMutation({
-    mutationFn: () => createPreview(providerId, selectedIds, rules),
+    mutationFn: () => createPreview(providerId, path, selectedIds, rules),
   });
   const execution = useMutation({
     mutationFn: executePreview,
-    onSuccess: async () => {
-      // 执行后重新读取目录，避免 UI 继续显示已失效的文件 ID。
-      await queryClient.invalidateQueries({ queryKey: ["files"] });
+    onSuccess: () => {
       clearSelection();
+      // 先展示执行结果，目录刷新在后台完成，避免把读取延迟算入执行等待时间。
+      void queryClient.invalidateQueries({ queryKey: ["files"] });
     },
   });
 

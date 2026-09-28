@@ -49,7 +49,8 @@ async def test_lists_path_with_pagination_and_maps_folders() -> None:
 
     items = await provider.list_files("Photos/2026")
 
-    assert provider.calls[0][1].endswith("/root:/Photos/2026:/children")
+    assert "/root:/Photos/2026:/children?" in provider.calls[0][1]
+    assert "$select=" in provider.calls[0][1]
     assert provider.calls[1][1] == next_link
     assert [item.name for item in items] == ["Trip", "photo.jpg"]
     assert items[0].is_directory is True

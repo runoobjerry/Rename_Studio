@@ -8,6 +8,7 @@ from app.providers.local import LocalProvider
 from app.providers.registry import ProviderRegistry
 from app.rules.base import RenameRule, RuleContext
 from app.rules.registry import RuleRegistry
+from app.schemas.files import FileItem
 from app.schemas.rename import RenamePreviewRequest
 from app.schemas.rules import RuleSpec
 from app.services.preview_service import PreviewService
@@ -28,6 +29,21 @@ class ConstantRule(RenameRule[ConstantConfig]):
         self, filename: str, context: RuleContext, config: ConstantConfig
     ) -> str:
         return config.value
+
+
+class CountingLocalProvider(LocalProvider):
+    def __init__(self, root: Path) -> None:
+        super().__init__(root)
+        self.list_calls = 0
+        self.metadata_many_calls = 0
+
+    async def list_files(self, path: str) -> list[FileItem]:
+        self.list_calls += 1
+        return await super().list_files(path)
+
+    async def get_metadata_many(self, file_ids: list[str]) -> list[FileItem]:
+        self.metadata_many_calls += 1
+        return await super().get_metadata_many(file_ids)
 
 
 def build_service(root: Path, *, with_test_rule: bool = False) -> PreviewService:
@@ -53,6 +69,25 @@ async def test_empty_rules_produce_read_only_unchanged_preview(tmp_path: Path) -
     assert preview.items[0].new_name == "one.txt"
     assert preview.items[0].changed is False
     assert file_path.read_text(encoding="utf-8") == "unchanged"
+
+
+@pytest.mark.asyncio
+async def test_known_directory_preview_uses_one_listing(tmp_path: Path) -> None:
+    (tmp_path / "one.txt").write_text("one", encoding="utf-8")
+    provider = CountingLocalProvider(tmp_path)
+    service = PreviewService(
+        ProviderRegistry([provider]), RenameEngine(RuleRegistry())
+    )
+
+    preview = await service.preview(
+        RenamePreviewRequest(
+            provider="local", path="", file_ids=["one.txt"], rules=[]
+        )
+    )
+
+    assert preview.valid is True
+    assert provider.list_calls == 1
+    assert provider.metadata_many_calls == 0
 
 
 @pytest.mark.asyncio

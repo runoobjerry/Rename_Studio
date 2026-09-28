@@ -1,3 +1,5 @@
+import asyncio
+
 from app.core.errors import ValidationError
 from app.providers.base import StorageProvider
 
@@ -16,3 +18,8 @@ class ProviderRegistry:
 
     def all(self) -> list[StorageProvider]:
         return list(self._providers.values())
+
+    async def aclose(self) -> None:
+        await asyncio.gather(
+            *(provider.aclose() for provider in self._providers.values())
+        )

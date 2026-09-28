@@ -8,6 +8,7 @@ from app.schemas.rules import RuleSpec
 
 class RenamePreviewRequest(BaseModel):
     provider: str = "local"
+    path: str | None = None
     file_ids: list[str] = Field(min_length=1)
     rules: list[RuleSpec] = Field(default_factory=list)
 

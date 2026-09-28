@@ -53,3 +53,6 @@ class StorageProvider(ABC):
 
     def normalize_name(self, name: str) -> str:
         return name.casefold()
+
+    async def aclose(self) -> None:
+        """Release provider-owned network resources when the app shuts down."""
