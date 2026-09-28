@@ -1,3 +1,5 @@
+import Switch from "@mui/material/Switch";
+
 import type { RuleDefinition, RuleSpec } from "../../types";
 import { RuleFields } from "./RuleFields";
 
@@ -5,9 +7,10 @@ interface RuleEditorProps {
   definitions: RuleDefinition[];
   rules: RuleSpec[];
   onChange: (rules: RuleSpec[]) => void;
+  onAddRule?: () => void;
 }
 
-const DEFAULT_RULES: Record<string, RuleSpec> = {
+export const DEFAULT_RULES: Record<string, RuleSpec> = {
   padding: {
     type: "padding",
     enabled: true,
@@ -54,11 +57,11 @@ const DEFAULT_RULES: Record<string, RuleSpec> = {
   },
 };
 
-function cloneRule(rule: RuleSpec): RuleSpec {
+export function cloneRule(rule: RuleSpec): RuleSpec {
   return { ...rule, config: { ...rule.config } };
 }
 
-export function RuleEditor({ definitions, rules, onChange }: RuleEditorProps) {
+export function RuleEditor({ definitions, rules, onChange, onAddRule }: RuleEditorProps) {
   const availableRules = definitions.filter(
     (definition) => DEFAULT_RULES[definition.type] !== undefined,
   );
@@ -91,25 +94,20 @@ export function RuleEditor({ definitions, rules, onChange }: RuleEditorProps) {
   }
 
   return (
-    <section className="panel" aria-labelledby="rules-title">
+    <section className="panel rule-editor-panel" aria-labelledby="rules-title">
       <div className="panel-heading rule-editor-heading">
         <div>
           <p className="eyebrow">Rule chain</p>
           <h2 id="rules-title">重命名规则</h2>
         </div>
-        <div className="rule-add-actions">
-          {availableRules.map((definition) => (
-            <button
-              className="secondary-button"
-              key={definition.type}
-              onClick={() =>
-                onChange([...rules, cloneRule(DEFAULT_RULES[definition.type])])
-              }
-            >
-              + {definition.name}
-            </button>
-          ))}
-        </div>
+        <button
+          className="secondary-button add-rule-button"
+          type="button"
+          onClick={onAddRule}
+          disabled={availableRules.length === 0 || !onAddRule}
+        >
+          ＋ 添加规则
+        </button>
       </div>
       {availableRules.length === 0 ? (
         <div className="notice">
@@ -124,13 +122,14 @@ export function RuleEditor({ definitions, rules, onChange }: RuleEditorProps) {
         {rules.map((rule, index) => (
           <article className="rule-card" key={`${rule.type}-${index}`}>
             <div className="rule-card-heading">
-              <label>
-                <input
-                  type="checkbox"
+              <label className="rule-enabled-control">
+                <Switch
+                  size="small"
                   checked={rule.enabled}
                   onChange={(event) =>
                     updateRule(index, { ...rule, enabled: event.target.checked })
                   }
+                  slotProps={{ input: { "aria-label": `${ruleName(rule.type)}启用状态` } }}
                 />
                 <strong>
                   {index + 1}. {ruleName(rule.type)}

@@ -1,3 +1,5 @@
+import Checkbox from "@mui/material/Checkbox";
+
 import type { RuleSpec } from "../../types";
 
 
@@ -97,26 +99,29 @@ function TextOperationFields({ rule, onChange }: RuleFieldsProps) {
       </div>
       <div className="rule-options">
         <label className="option-toggle">
-          <input
-            type="checkbox"
+          <Checkbox
+            size="small"
             checked={Boolean(rule.config.case_sensitive ?? true)}
             onChange={(event) => onChange({ case_sensitive: event.target.checked })}
+            slotProps={{ input: { "aria-label": "区分大小写" } }}
           />
           区分大小写
         </label>
         <label className="option-toggle">
-          <input
-            type="checkbox"
+          <Checkbox
+            size="small"
             checked={Boolean(rule.config.whole_word ?? false)}
             onChange={(event) => onChange({ whole_word: event.target.checked })}
+            slotProps={{ input: { "aria-label": "仅全字匹配" } }}
           />
           仅全字匹配
         </label>
         <label className="option-toggle">
-          <input
-            type="checkbox"
+          <Checkbox
+            size="small"
             checked={Boolean(rule.config.ignore_extension ?? true)}
             onChange={(event) => onChange({ ignore_extension: event.target.checked })}
+            slotProps={{ input: { "aria-label": "忽略扩展名" } }}
           />
           忽略扩展名
         </label>
@@ -178,10 +183,11 @@ function InsertFields({ rule, onChange }: RuleFieldsProps) {
       {usesIndex && (
         <div className="rule-options">
           <label className="option-toggle">
-            <input
-              type="checkbox"
+            <Checkbox
+              size="small"
               checked={Boolean(rule.config.from_right ?? false)}
               onChange={(event) => onChange({ from_right: event.target.checked })}
+              slotProps={{ input: { "aria-label": "从右往左计数" } }}
             />
             从右往左计数
           </label>

@@ -18,7 +18,8 @@ import { RuleEditor } from "./features/rules/RuleEditor";
 import { OneDriveSettingsPanel } from "./features/settings/OneDriveSettingsPanel";
 import { useRenameStore } from "./stores/useRenameStore";
 
-export default function App() {
+// 保留旧编排仅供迁移期间对照；应用入口与外部导入统一使用新工作台。
+export function LegacyApp() {
   const queryClient = useQueryClient();
   const [providerId, setProviderId] = useState("local");
   const [path, setPath] = useState("");
@@ -298,3 +299,5 @@ export default function App() {
     </main>
   );
 }
+
+export { default } from "./WorkspaceApp";

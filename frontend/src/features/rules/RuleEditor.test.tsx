@@ -19,13 +19,6 @@ const replaceDefinition: RuleDefinition = {
   config_schema: {},
 };
 
-const removeDefinition: RuleDefinition = {
-  type: "remove",
-  name: "移除",
-  description: "移除匹配文本",
-  config_schema: {},
-};
-
 const insertDefinition: RuleDefinition = {
   type: "insert",
   name: "插入",
@@ -45,18 +38,20 @@ const textRule: RuleSpec = {
 };
 
 describe("RuleEditor", () => {
-  it("adds a number-padding rule with safe defaults", () => {
-    const onChange = vi.fn();
-    render(<RuleEditor definitions={[definition]} rules={[]} onChange={onChange} />);
+  it("opens the secondary rule picker", () => {
+    const onAddRule = vi.fn();
+    render(
+      <RuleEditor
+        definitions={[definition]}
+        rules={[]}
+        onChange={vi.fn()}
+        onAddRule={onAddRule}
+      />,
+    );
 
-    fireEvent.click(screen.getByRole("button", { name: "+ 添加填充" }));
+    fireEvent.click(screen.getByRole("button", { name: /添加规则/ }));
 
-    expect(onChange).toHaveBeenCalledWith([
-      expect.objectContaining({
-        type: "padding",
-        config: expect.objectContaining({ mode: "number", length: 3 }),
-      }),
-    ]);
+    expect(onAddRule).toHaveBeenCalledOnce();
   });
 
   it("updates the text fill character", () => {
@@ -72,29 +67,6 @@ describe("RuleEditor", () => {
         config: expect.objectContaining({ fill_character: "-" }),
       }),
     ]);
-  });
-
-  it("adds replacement and removal rules", () => {
-    const onChange = vi.fn();
-    render(
-      <RuleEditor
-        definitions={[replaceDefinition, removeDefinition]}
-        rules={[]}
-        onChange={onChange}
-      />,
-    );
-
-    fireEvent.click(screen.getByRole("button", { name: "+ 替换" }));
-    fireEvent.click(screen.getByRole("button", { name: "+ 移除" }));
-
-    expect(onChange).toHaveBeenNthCalledWith(
-      1,
-      [expect.objectContaining({ type: "replace" })],
-    );
-    expect(onChange).toHaveBeenNthCalledWith(
-      2,
-      [expect.objectContaining({ type: "remove" })],
-    );
   });
 
   it("updates replacement matching options", () => {
@@ -143,26 +115,14 @@ describe("RuleEditor", () => {
         anchor: "",
       },
     };
-    const view = render(
-      <RuleEditor
-        definitions={[insertDefinition]}
-        rules={[]}
-        onChange={onChange}
-      />,
-    );
-
-    fireEvent.click(screen.getByRole("button", { name: "+ 插入" }));
-    expect(onChange).toHaveBeenCalledWith([
-      expect.objectContaining({ type: "insert" }),
-    ]);
-
-    view.rerender(
+    render(
       <RuleEditor
         definitions={[insertDefinition]}
         rules={[rule]}
         onChange={onChange}
       />,
     );
+
     fireEvent.click(screen.getByLabelText("从右往左计数"));
     expect(onChange).toHaveBeenLastCalledWith([
       expect.objectContaining({

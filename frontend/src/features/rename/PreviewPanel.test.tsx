@@ -1,5 +1,5 @@
-import { fireEvent, render, screen } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { render, screen } from "@testing-library/react";
+import { describe, expect, it } from "vitest";
 
 import { PreviewPanel } from "./PreviewPanel";
 
@@ -21,43 +21,38 @@ const validPreview = {
 };
 
 describe("PreviewPanel", () => {
-  it("disables preview when no files are selected", () => {
-    render(
-      <PreviewPanel
-        selectedCount={0}
-        isPending={false}
-        onPreview={vi.fn()}
-      />,
-    );
+  it("shows the empty preview guidance", () => {
+    render(<PreviewPanel providerName="本地文件" />);
 
-    expect(screen.getByRole("button", { name: "预览 0 项" })).toBeDisabled();
+    expect(screen.getByText(/预览不会修改 本地文件 中的内容/)).toBeInTheDocument();
   });
 
-  it("requests a preview for selected files", () => {
-    const onPreview = vi.fn();
-    render(
-      <PreviewPanel selectedCount={2} isPending={false} onPreview={onPreview} />,
-    );
+  it("shows a pending change in the preview table", () => {
+    render(<PreviewPanel preview={validPreview} />);
 
-    fireEvent.click(screen.getByRole("button", { name: "预览 2 项" }));
-    expect(onPreview).toHaveBeenCalledOnce();
+    expect(screen.getByText("renamed.txt")).toBeInTheDocument();
+    expect(screen.getByText("待修改")).toBeInTheDocument();
   });
 
-  it("requires confirmation before executing a valid preview", () => {
-    const onExecute = vi.fn();
+  it("merges execution status into the preview row", () => {
     render(
       <PreviewPanel
         preview={validPreview}
-        selectedCount={1}
-        isPending={false}
-        onPreview={vi.fn()}
-        onExecute={onExecute}
+        execution={{
+          preview_id: "preview-1",
+          status: "completed",
+          items: [{
+            file_id: "one.txt",
+            original_name: "one.txt",
+            new_name: "renamed.txt",
+            status: "renamed",
+            error: null,
+          }],
+        }}
       />,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "执行 1 项重命名" }));
-    expect(onExecute).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole("button", { name: "确认执行" }));
-    expect(onExecute).toHaveBeenCalledWith("preview-1");
+    expect(screen.getByText("已修改")).toBeInTheDocument();
+    expect(screen.queryByText(/执行结果/)).not.toBeInTheDocument();
   });
 });
