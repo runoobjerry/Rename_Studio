@@ -1,9 +1,8 @@
-from pydantic import BaseModel, Field, SecretStr, field_validator
+from pydantic import BaseModel, Field, field_validator
 
 
 class OneDriveSettingsUpdate(BaseModel):
     client_id: str = Field(min_length=1, max_length=200)
-    client_secret: SecretStr = Field(min_length=1, max_length=500)
 
     @field_validator("client_id")
     @classmethod
@@ -14,13 +13,14 @@ class OneDriveSettingsUpdate(BaseModel):
 class OneDriveSettingsResponse(BaseModel):
     configured: bool
     client_id: str | None
-    client_secret_configured: bool
     redirect_uri: str
 
 
 class OneDriveAuthStatus(BaseModel):
     configured: bool
     connected: bool
+    account_display_name: str | None = None
+    account_email: str | None = None
 
 
 class OneDriveAuthStartResponse(BaseModel):

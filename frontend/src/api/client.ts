@@ -31,14 +31,11 @@ export function fetchOneDriveSettings(): Promise<OneDriveSettings> {
   return request("/onedrive/settings");
 }
 
-export function updateOneDriveSettings(
-  clientId: string,
-  clientSecret: string,
-): Promise<OneDriveSettings> {
+export function updateOneDriveSettings(clientId: string): Promise<OneDriveSettings> {
   return request("/onedrive/settings", {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ client_id: clientId, client_secret: clientSecret }),
+    body: JSON.stringify({ client_id: clientId }),
   });
 }
 
@@ -52,6 +49,10 @@ export function fetchOneDriveStatus(): Promise<OneDriveAuthStatus> {
 
 export function startOneDriveAuth(): Promise<OneDriveAuthStart> {
   return request("/onedrive/auth/start", { method: "POST" });
+}
+
+export function disconnectOneDriveAccount(): Promise<void> {
+  return request("/onedrive/auth/session", { method: "DELETE" });
 }
 
 export function fetchProviders(): Promise<ProviderInfo[]> {

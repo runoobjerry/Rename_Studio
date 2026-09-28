@@ -1,4 +1,5 @@
 import json
+from html import escape
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query, Response
@@ -79,7 +80,7 @@ async def update_onedrive_settings(
     request: OneDriveSettingsUpdate,
     service: Annotated[OneDriveAuthService, Depends(get_onedrive_auth_service)],
 ) -> OneDriveSettingsResponse:
-    return service.configure(request.client_id, request.client_secret.get_secret_value())
+    return service.configure(request.client_id)
 
 
 @router.delete("/onedrive/settings", status_code=204, tags=["onedrive"])
@@ -112,31 +113,44 @@ async def start_onedrive_auth(
     return service.start_authorization()
 
 
+@router.delete("/onedrive/auth/session", status_code=204, tags=["onedrive"])
+async def disconnect_onedrive_account(
+    service: Annotated[OneDriveAuthService, Depends(get_onedrive_auth_service)],
+) -> Response:
+    service.disconnect()
+    return Response(status_code=204)
+
+
 @router.get("/auth/onedrive/callback", response_class=HTMLResponse, tags=["onedrive"])
 async def finish_onedrive_auth(
     service: Annotated[OneDriveAuthService, Depends(get_onedrive_auth_service)],
     code: str | None = Query(default=None),
     state: str | None = Query(default=None),
     error: str | None = Query(default=None),
+    error_description: str | None = Query(default=None),
 ) -> HTMLResponse:
     success = False
     message = "OneDrive authorization failed. You can close this window."
     try:
         if error or not code or not state:
-            raise AuthenticationError("OneDrive authorization was cancelled or rejected")
+            raise AuthenticationError(
+                error_description or "OneDrive authorization was cancelled or rejected"
+            )
         await service.finish_authorization(code, state)
         success = True
         message = "OneDrive connected. You can close this window."
-    except AppError:
-        pass
+    except AppError as exc:
+        message = exc.message
 
     # 只向已配置的前端源通知结果，不把授权码或错误详情写入页面。
     target_origin = json.dumps(get_settings().frontend_origin)
     status = json.dumps("connected" if success else "failed")
+    result_message = json.dumps(message)
+    page_message = escape(message)
     html = f"""<!doctype html>
 <html lang=\"en\"><head><meta charset=\"utf-8\"><title>OneDrive authorization</title></head>
-<body><p>{message}</p><script>
-if (window.opener) window.opener.postMessage({{type: "onedrive-auth", status: {status}}}, {target_origin});
+<body><p>{page_message}</p><script>
+if (window.opener) window.opener.postMessage({{type: "onedrive-auth", status: {status}, message: {result_message}}}, {target_origin});
 setTimeout(() => window.close(), 500);
 </script></body></html>"""
     return HTMLResponse(content=html, status_code=200 if success else 400)

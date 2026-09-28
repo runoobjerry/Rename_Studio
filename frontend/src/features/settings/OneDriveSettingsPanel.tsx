@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import {
   clearOneDriveSettings,
+  disconnectOneDriveAccount,
   fetchOneDriveSettings,
   fetchOneDriveStatus,
   startOneDriveAuth,
@@ -12,7 +13,6 @@ import {
 export function OneDriveSettingsPanel() {
   const queryClient = useQueryClient();
   const [clientId, setClientId] = useState("");
-  const [clientSecret, setClientSecret] = useState("");
   const [popupError, setPopupError] = useState<string>();
   const settings = useQuery({
     queryKey: ["onedrive", "settings"],
@@ -33,9 +33,13 @@ export function OneDriveSettingsPanel() {
         ? new URL(settings.data.redirect_uri).origin
         : undefined;
       if (!callbackOrigin || event.origin !== callbackOrigin) return;
-      const data = event.data as { type?: string; status?: string };
+      const data = event.data as { type?: string; status?: string; message?: string };
       if (data.type !== "onedrive-auth") return;
-      setPopupError(data.status === "failed" ? "OneDrive 授权失败，请重试。" : undefined);
+      setPopupError(
+        data.status === "failed"
+          ? data.message || "OneDrive 授权失败，请重试。"
+          : undefined,
+      );
       void queryClient.invalidateQueries({ queryKey: ["onedrive"] });
     };
     window.addEventListener("message", receiveAuthResult);
@@ -43,9 +47,8 @@ export function OneDriveSettingsPanel() {
   }, [queryClient, settings.data?.redirect_uri]);
 
   const save = useMutation({
-    mutationFn: () => updateOneDriveSettings(clientId.trim(), clientSecret),
+    mutationFn: () => updateOneDriveSettings(clientId.trim()),
     onSuccess: async () => {
-      setClientSecret("");
       setPopupError(undefined);
       await queryClient.invalidateQueries({ queryKey: ["onedrive"] });
     },
@@ -54,7 +57,6 @@ export function OneDriveSettingsPanel() {
     mutationFn: clearOneDriveSettings,
     onSuccess: async () => {
       setClientId("");
-      setClientSecret("");
       setPopupError(undefined);
       await queryClient.invalidateQueries({ queryKey: ["onedrive"] });
       await queryClient.removeQueries({ queryKey: ["files", "onedrive"] });
@@ -72,8 +74,22 @@ export function OneDriveSettingsPanel() {
       if (!popup) setPopupError("浏览器阻止了登录窗口，请允许本站弹出窗口后重试。");
     },
   });
+  const disconnect = useMutation({
+    mutationFn: disconnectOneDriveAccount,
+    onSuccess: async () => {
+      setPopupError(undefined);
+      await queryClient.invalidateQueries({ queryKey: ["onedrive"] });
+      await queryClient.removeQueries({ queryKey: ["files", "onedrive"] });
+    },
+  });
 
-  const error = save.error ?? clear.error ?? connect.error ?? settings.error ?? status.error;
+  const error =
+    save.error ??
+    clear.error ??
+    connect.error ??
+    disconnect.error ??
+    settings.error ??
+    status.error;
 
   return (
     <section className="panel settings-panel" aria-labelledby="onedrive-settings-title">
@@ -96,23 +112,13 @@ export function OneDriveSettingsPanel() {
             autoComplete="off"
           />
         </label>
-        <label>
-          客户端密钥
-          <input
-            type="password"
-            value={clientSecret}
-            onChange={(event) => setClientSecret(event.target.value)}
-            placeholder={settings.data?.client_secret_configured ? "已设置；重新保存时请再次填写" : "Client secret value"}
-            autoComplete="new-password"
-          />
-        </label>
         <div className="settings-actions">
           <button
             type="button"
             onClick={() => save.mutate()}
-            disabled={!clientId.trim() || !clientSecret || save.isPending}
+            disabled={!clientId.trim() || save.isPending}
           >
-            保存设置
+            保存 App ID
           </button>
           <button
             type="button"
@@ -120,22 +126,38 @@ export function OneDriveSettingsPanel() {
             onClick={() => connect.mutate()}
             disabled={!status.data?.configured || connect.isPending}
           >
-            连接账号
+            {status.data?.connected ? "切换账号" : "网页登录"}
           </button>
+          {status.data?.connected && (
+            <button
+              type="button"
+              className="secondary-button"
+              onClick={() => disconnect.mutate()}
+              disabled={disconnect.isPending}
+            >
+              断开账号
+            </button>
+          )}
           <button
             type="button"
             className="clear-button"
             onClick={() => {
-              if (window.confirm("清除 App ID、密钥、授权状态和内存令牌？")) clear.mutate();
+              if (window.confirm("清除本地保存的 App ID 和当前账号授权？")) clear.mutate();
             }}
             disabled={!settings.data?.configured || clear.isPending}
           >
             清理设置
           </button>
         </div>
+        {status.data?.connected && (
+          <p className="settings-hint">
+            当前账号：{status.data.account_display_name ?? "Microsoft 用户"}
+            {status.data.account_email ? `（${status.data.account_email}）` : ""}
+          </p>
+        )}
         {settings.data && (
           <p className="settings-hint">
-            Azure 重定向 URI：<code>{settings.data.redirect_uri}</code>。App ID 和密钥保存在后端本地，授权令牌仅保存在内存中。
+            Azure 重定向 URI：<code>{settings.data.redirect_uri}</code>。应用只需 App ID；网页登录后刷新令牌保存在后端本地，切换或断开账号时会删除。
           </p>
         )}
         {(error || popupError) && (

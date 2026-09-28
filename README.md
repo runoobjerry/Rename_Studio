@@ -18,7 +18,7 @@
 - React WebUI、TanStack Query 服务端状态和 Zustand 选择状态
 - OneDrive 个人账号 OAuth 2.0 授权、目录浏览和 Graph 批量重命名
 - 当前目录文件及子文件夹名称的全选、反选
-- App ID/客户端密钥本地持久化、连接状态和一键清理
+- App ID、刷新令牌本地持久化、连接状态和一键清理
 
 当前已注册填充、替换、移除和插入规则；空规则链仍会保持原文件名。历史和撤销尚未实现。只有用户确认有效预览后，`POST /rename/execute` 才会修改本地文件或 OneDrive 项目。
 
@@ -86,12 +86,14 @@ npm run dev
 ## OneDrive 个人版设置
 
 1. 在 Microsoft Entra 管理中心注册应用，支持的账户类型选择包含“个人 Microsoft 账户”的选项。
-2. 在“身份验证”中添加 **Web** 重定向 URI：`http://localhost:8000/auth/onedrive/callback`。
-3. 创建客户端密钥，并复制密钥的 **Value**（不是 Secret ID）。
-4. 启动前后端，在页面“连接设置”中填写 App ID 与客户端密钥，保存后点击“连接账号”。
+2. 将原来的 **Web** 回调移除，改为在“身份验证”中添加“移动和桌面应用程序”平台及回调地址 `http://localhost:8000/auth/onedrive/callback`，并在高级设置中启用“允许公共客户端流”。
+3. 在 Microsoft Graph 的委托权限中确认已添加 `Files.ReadWrite` 和 `User.Read`。
+4. 启动前后端，在页面“连接设置”中只填写 App ID，保存后点击“网页登录”，并在微软账号选择器中选择要操作的账号。
 5. 授权完成后选择 `OneDrive Personal`，输入相对根目录的文件夹路径，例如 `照片/待整理`；留空表示根目录。
 
-OAuth 使用个人账户的 `consumers` 租户、授权码流程、PKCE 以及委托权限 `Files.ReadWrite`，并请求 `offline_access` 以刷新短期访问令牌。App ID 和客户端密钥默认保存在 `backend/.onedrive_credentials.json`，该文件已被 Git 忽略；后端启动时会自动加载，只有点击“清理设置”才会删除。待完成授权状态、访问令牌和刷新令牌仍仅保存在进程内存，不写入本地文件或日志，因此重启后端只需重新点击“连接账号”，不需要重填应用凭据。
+OAuth 使用个人账户的 `consumers` 租户、公共客户端授权码流程和 PKCE，不需要客户端密钥，并请求 `Files.ReadWrite`、`User.Read` 与 `offline_access` 委托权限。授权完成后页面会显示当前账号；“切换账号”先删除旧账号令牌，再打开账号选择器；“断开账号”删除账号令牌但保留 App ID；“清理设置”同时删除 App ID 和账号令牌。App ID、刷新令牌和账号显示信息默认保存在已被 Git 忽略的 `backend/.onedrive_credentials.json`，访问令牌只保存在进程内存中。后端重启后会使用刷新令牌恢复登录。
+
+刷新令牌等同于长期登录凭据，应保护该本地文件，不要复制、提交到 Git 或写入日志。旧版本配置中的客户端密钥会在后端读取后自动移除。
 
 Graph 目录读取支持分页和字段裁剪，网络连接在应用生命周期内复用；超过 20 项的批次采用有限并发。预览通过一次当前目录读取完成源文件与冲突确认，执行时复用实时校验结果。普通无名称依赖的项目直接改名，只有交换、循环或名称占用链使用临时名称。遇到 401 会尝试刷新令牌，遇到 429 或暂时性服务错误会遵循 `Retry-After` 并只重试失败项。真实账号授权与改名测试由用户执行。
 
@@ -124,9 +126,10 @@ npm run build
 | `GET` | `/rules` | 可用 | 已注册规则定义 |
 | `POST` | `/rename/preview` | 可用 | 生成只读预览 |
 | `POST` | `/rename/execute` | 可用 | 执行服务端生成的有效预览 |
-| `GET/PUT/DELETE` | `/onedrive/settings` | 可用 | 读取、更新或清理本地应用设置 |
+| `GET/PUT/DELETE` | `/onedrive/settings` | 可用 | 读取、更新或清理本地 App ID 与授权状态 |
 | `GET` | `/onedrive/auth/status` | 可用 | 查询配置与连接状态 |
 | `POST` | `/onedrive/auth/start` | 可用 | 创建浏览器授权地址 |
+| `DELETE` | `/onedrive/auth/session` | 可用 | 断开当前账号并保留应用设置 |
 | `GET` | `/auth/onedrive/callback` | 可用 | Microsoft OAuth 回调 |
 
 预览请求示例：

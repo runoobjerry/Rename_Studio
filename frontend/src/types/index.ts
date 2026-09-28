@@ -7,13 +7,14 @@ export interface ProviderInfo {
 export interface OneDriveSettings {
   configured: boolean;
   client_id: string | null;
-  client_secret_configured: boolean;
   redirect_uri: string;
 }
 
 export interface OneDriveAuthStatus {
   configured: boolean;
   connected: boolean;
+  account_display_name: string | null;
+  account_email: string | null;
 }
 
 export interface OneDriveAuthStart {
