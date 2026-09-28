@@ -1,8 +1,11 @@
 import base64
 import hashlib
+import json
+import logging
 import secrets
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 from urllib.parse import urlencode
 
 import httpx
@@ -18,6 +21,7 @@ from app.schemas.onedrive import (
 AUTHORIZE_URL = "https://login.microsoftonline.com/consumers/oauth2/v2.0/authorize"
 TOKEN_URL = "https://login.microsoftonline.com/consumers/oauth2/v2.0/token"
 SCOPES = "offline_access Files.ReadWrite"
+logger = logging.getLogger("onedriver_renamer.onedrive_auth")
 
 
 @dataclass(slots=True)
@@ -34,13 +38,21 @@ class TokenSet:
 
 
 class OneDriveAuthService:
-    def __init__(self, redirect_uri: str, *, timeout: float = 20.0) -> None:
+    def __init__(
+        self,
+        redirect_uri: str,
+        *,
+        credentials_file: Path | None = None,
+        timeout: float = 20.0,
+    ) -> None:
         self.redirect_uri = redirect_uri
+        self.credentials_file = credentials_file
         self.timeout = timeout
         self._client_id: str | None = None
         self._client_secret: str | None = None
         self._tokens: TokenSet | None = None
         self._pending: dict[str, PendingAuthorization] = {}
+        self._load_credentials()
 
     def settings(self) -> OneDriveSettingsResponse:
         return OneDriveSettingsResponse(
@@ -60,10 +72,13 @@ class OneDriveAuthService:
     def configured(self) -> bool:
         return bool(self._client_id and self._client_secret)
 
-    def configure(self, client_id: str, client_secret: str) -> OneDriveSettingsResponse:
+    def configure(
+        self, client_id: str, client_secret: str
+    ) -> OneDriveSettingsResponse:
         client_id = client_id.strip()
         if not client_id or not client_secret:
             raise ValidationError("OneDrive App ID and client secret are required")
+        self._save_credentials(client_id, client_secret)
         self._client_id = client_id
         self._client_secret = client_secret
         # 更换应用凭据后，旧授权上下文和令牌都不可继续使用。
@@ -72,6 +87,7 @@ class OneDriveAuthService:
         return self.settings()
 
     def clear(self) -> None:
+        self._delete_credentials()
         self._client_id = None
         self._client_secret = None
         self._tokens = None
@@ -209,3 +225,66 @@ class OneDriveAuthService:
             for state, pending in self._pending.items()
             if pending.expires_at > now
         }
+
+    def _load_credentials(self) -> None:
+        if self.credentials_file is None or not self.credentials_file.exists():
+            return
+        try:
+            payload = json.loads(self.credentials_file.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            logger.warning(
+                "could not load OneDrive credentials file path=%s",
+                self.credentials_file,
+            )
+            return
+        if not isinstance(payload, dict):
+            return
+        client_id = payload.get("client_id")
+        client_secret = payload.get("client_secret")
+        if (
+            isinstance(client_id, str)
+            and client_id
+            and isinstance(client_secret, str)
+            and client_secret
+        ):
+            self._client_id = client_id
+            self._client_secret = client_secret
+
+    def _save_credentials(self, client_id: str, client_secret: str) -> None:
+        if self.credentials_file is None:
+            return
+        temporary = self.credentials_file.with_name(
+            f"{self.credentials_file.name}.tmp"
+        )
+        try:
+            self.credentials_file.parent.mkdir(parents=True, exist_ok=True)
+            temporary.write_text(
+                json.dumps(
+                    {"client_id": client_id, "client_secret": client_secret},
+                    ensure_ascii=False,
+                ),
+                encoding="utf-8",
+            )
+            temporary.chmod(0o600)
+            # 同目录替换可避免进程中断时留下半写入的正式凭据文件。
+            temporary.replace(self.credentials_file)
+        except OSError as exc:
+            try:
+                temporary.unlink(missing_ok=True)
+            except OSError:
+                logger.warning(
+                    "could not remove temporary OneDrive credentials file path=%s",
+                    temporary,
+                )
+            raise ProviderError("Could not save OneDrive credentials locally") from exc
+
+    def _delete_credentials(self) -> None:
+        if self.credentials_file is None:
+            return
+        try:
+            self.credentials_file.unlink(missing_ok=True)
+            self.credentials_file.with_name(
+                f"{self.credentials_file.name}.tmp"
+            ).unlink(missing_ok=True)
+        except OSError as exc:
+            raise ProviderError("Could not delete local OneDrive credentials") from exc

@@ -18,7 +18,7 @@
 - React WebUI、TanStack Query 服务端状态和 Zustand 选择状态
 - OneDrive 个人账号 OAuth 2.0 授权、目录浏览和 Graph 批量重命名
 - 当前目录文件及子文件夹名称的全选、反选
-- App ID/客户端密钥内存设置、连接状态和一键清理
+- App ID/客户端密钥本地持久化、连接状态和一键清理
 
 当前已注册填充、替换、移除和插入规则；空规则链仍会保持原文件名。历史和撤销尚未实现。只有用户确认有效预览后，`POST /rename/execute` 才会修改本地文件或 OneDrive 项目。
 
@@ -91,7 +91,7 @@ npm run dev
 4. 启动前后端，在页面“连接设置”中填写 App ID 与客户端密钥，保存后点击“连接账号”。
 5. 授权完成后选择 `OneDrive Personal`，输入相对根目录的文件夹路径，例如 `照片/待整理`；留空表示根目录。
 
-OAuth 使用个人账户的 `consumers` 租户、授权码流程、PKCE 以及委托权限 `Files.ReadWrite`，并请求 `offline_access` 以刷新短期访问令牌。应用设置、待完成授权状态、访问令牌和刷新令牌仅保存在后端进程内存，不写入数据库、日志或 Git；重启后端或点击“清理设置”后需要重新连接。
+OAuth 使用个人账户的 `consumers` 租户、授权码流程、PKCE 以及委托权限 `Files.ReadWrite`，并请求 `offline_access` 以刷新短期访问令牌。App ID 和客户端密钥默认保存在 `backend/.onedrive_credentials.json`，该文件已被 Git 忽略；后端启动时会自动加载，只有点击“清理设置”才会删除。待完成授权状态、访问令牌和刷新令牌仍仅保存在进程内存，不写入本地文件或日志，因此重启后端只需重新点击“连接账号”，不需要重填应用凭据。
 
 Graph 目录读取支持分页；预览元数据和重命名按每批最多 20 项发送。遇到 401 会尝试刷新令牌，遇到 429 或暂时性服务错误会遵循 `Retry-After` 并只重试失败项。真实账号授权与改名测试由用户执行。
 
@@ -124,7 +124,7 @@ npm run build
 | `GET` | `/rules` | 可用 | 已注册规则定义 |
 | `POST` | `/rename/preview` | 可用 | 生成只读预览 |
 | `POST` | `/rename/execute` | 可用 | 执行服务端生成的有效预览 |
-| `GET/PUT/DELETE` | `/onedrive/settings` | 可用 | 读取、更新或清理内存设置 |
+| `GET/PUT/DELETE` | `/onedrive/settings` | 可用 | 读取、更新或清理本地应用设置 |
 | `GET` | `/onedrive/auth/status` | 可用 | 查询配置与连接状态 |
 | `POST` | `/onedrive/auth/start` | 可用 | 创建浏览器授权地址 |
 | `GET` | `/auth/onedrive/callback` | 可用 | Microsoft OAuth 回调 |

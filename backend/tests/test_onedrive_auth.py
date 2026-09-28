@@ -1,3 +1,4 @@
+from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
 from app.services.onedrive_auth import OneDriveAuthService
@@ -40,3 +41,30 @@ def test_clear_removes_configuration_and_connection_state() -> None:
     assert service.settings().configured is False
     assert service.settings().client_id is None
     assert service.status().connected is False
+
+
+def test_credentials_survive_restart_until_explicit_clear(tmp_path: Path) -> None:
+    credentials_file = tmp_path / ".onedrive_credentials.json"
+    first = OneDriveAuthService(
+        "http://localhost:8000/auth/onedrive/callback",
+        credentials_file=credentials_file,
+    )
+    first.configure("persisted-client-id", "persisted-secret")
+
+    restarted = OneDriveAuthService(
+        "http://localhost:8000/auth/onedrive/callback",
+        credentials_file=credentials_file,
+    )
+
+    assert restarted.settings().client_id == "persisted-client-id"
+    assert restarted.settings().client_secret_configured is True
+    assert restarted.status().connected is False
+
+    restarted.clear()
+
+    assert not credentials_file.exists()
+    after_clear = OneDriveAuthService(
+        "http://localhost:8000/auth/onedrive/callback",
+        credentials_file=credentials_file,
+    )
+    assert after_clear.settings().configured is False

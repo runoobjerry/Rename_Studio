@@ -135,7 +135,7 @@ export function OneDriveSettingsPanel() {
         </div>
         {settings.data && (
           <p className="settings-hint">
-            Azure 重定向 URI：<code>{settings.data.redirect_uri}</code>。凭据和令牌仅保存在后端进程内存中。
+            Azure 重定向 URI：<code>{settings.data.redirect_uri}</code>。App ID 和密钥保存在后端本地，授权令牌仅保存在内存中。
           </p>
         )}
         {(error || popupError) && (

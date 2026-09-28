@@ -19,7 +19,10 @@ from app.services.onedrive_auth import OneDriveAuthService
 @lru_cache
 def get_onedrive_auth_service() -> OneDriveAuthService:
     settings = get_settings()
-    return OneDriveAuthService(settings.onedrive_redirect_uri)
+    return OneDriveAuthService(
+        settings.onedrive_redirect_uri,
+        credentials_file=settings.onedrive_credentials_file,
+    )
 
 
 @lru_cache
