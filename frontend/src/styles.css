@@ -47,6 +47,7 @@ h1 { margin: 0; font-family: Georgia, serif; font-size: clamp(42px, 7vw, 82px); 
 .location-content label, .settings-content label { display: grid; gap: 7px; color: #59635d; font-size: 13px; font-weight: 750; }
 .location-content input, .location-content select, .settings-content input { width: 100%; padding: 10px 12px; border: 1px solid #cfd6cf; border-radius: 10px; color: #28332c; background: white; }
 .cloud-path-form { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: end; gap: 10px; }
+.local-path-form { grid-template-columns: minmax(0, 1fr) auto auto; }
 .cloud-path-form button, .settings-actions button { padding: 10px 14px; border: 0; border-radius: 10px; color: white; background: #2f684e; font-weight: 750; }
 .settings-actions { display: flex; flex-wrap: wrap; gap: 9px; }
 .settings-actions .clear-button { color: #8a3e38; background: #f6e6e3; }
@@ -99,4 +100,5 @@ th { color: #727a74; font-size: 12px; letter-spacing: 0.08em; text-transform: up
   .panel-heading { align-items: flex-start; }
   .rule-fields { grid-template-columns: 1fr; }
   .cloud-path-form { grid-template-columns: 1fr; }
+  .local-path-form { grid-template-columns: 1fr; }
 }

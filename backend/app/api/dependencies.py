@@ -29,7 +29,10 @@ def get_onedrive_auth_service() -> OneDriveAuthService:
 def get_provider_registry() -> ProviderRegistry:
     return ProviderRegistry(
         [
-            LocalProvider(get_settings().local_storage_root),
+            LocalProvider(
+                get_settings().local_storage_root,
+                settings_file=get_settings().local_settings_file,
+            ),
             OneDriveProvider(get_onedrive_auth_service()),
         ]
     )

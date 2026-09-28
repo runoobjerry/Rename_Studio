@@ -5,6 +5,7 @@
 ## 当前能力
 
 - 在受限根目录内浏览本地文件和子目录
+- 在 WebUI 中选择并持久化本地根文件夹
 - 多选当前目录中的文件和子文件夹名称并生成只读重命名预览
 - 使用短期预览凭证确认并执行本地批量重命名
 - 通过唯一临时名称安全处理交换和循环重命名
@@ -48,7 +49,7 @@ frontend/
 
 ### 1. 配置本地目录
 
-默认浏览 `backend/local_storage`。也可以复制 `.env.example` 为 `.env`，将 `LOCAL_STORAGE_ROOT` 改为需要测试的绝对目录：
+默认浏览 `backend/local_storage`。启动后可以在 WebUI 点击“浏览…”唤起后端所在电脑的系统文件夹选择器，也可以直接输入已有文件夹的绝对路径；选择结果保存在后端 `.local_settings.json`。也可以复制 `.env.example` 为 `.env`，用 `LOCAL_STORAGE_ROOT` 设置首次启动或本地配置不可用时的默认目录：
 
 ```dotenv
 LOCAL_STORAGE_ROOT=D:/rename-test
@@ -57,6 +58,8 @@ ONEDRIVE_REDIRECT_URI=http://localhost:8000/auth/onedrive/callback
 ```
 
 Local Provider 会解析并校验所有路径，拒绝访问配置根目录之外的内容。建议使用专门的测试目录，不要直接指向重要文件。
+
+系统文件夹选择器只能选择运行后端的电脑上的目录，并要求后端进程具有桌面会话；远程服务器或无图形界面环境应使用绝对路径输入。
 
 ### 2. 启动后端
 

@@ -6,6 +6,8 @@ credentials.json
 secrets.json
 .onedrive_credentials.json
 .onedrive_credentials.json.tmp
+.local_settings.json
+.local_settings.json.tmp
 AGENTS.md
 __pycache__/
 *.py[cod]

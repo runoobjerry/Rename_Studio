@@ -1,6 +1,8 @@
 import type {
   DirectoryListing,
   ExecuteResponse,
+  LocalFolderPick,
+  LocalSettings,
   PreviewResponse,
   ProviderInfo,
   RuleDefinition,
@@ -29,6 +31,22 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
 
 export function fetchOneDriveSettings(): Promise<OneDriveSettings> {
   return request("/onedrive/settings");
+}
+
+export function fetchLocalSettings(): Promise<LocalSettings> {
+  return request("/local/settings");
+}
+
+export function updateLocalSettings(rootPath: string): Promise<LocalSettings> {
+  return request("/local/settings", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ root_path: rootPath }),
+  });
+}
+
+export function pickLocalFolder(): Promise<LocalFolderPick> {
+  return request("/local/settings/pick", { method: "POST" });
 }
 
 export function updateOneDriveSettings(clientId: string): Promise<OneDriveSettings> {

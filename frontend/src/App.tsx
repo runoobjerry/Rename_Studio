@@ -5,9 +5,12 @@ import {
   createPreview,
   executePreview,
   fetchFiles,
+  fetchLocalSettings,
   fetchOneDriveStatus,
   fetchProviders,
   fetchRules,
+  pickLocalFolder,
+  updateLocalSettings,
 } from "./api/client";
 import { FileBrowser } from "./features/files/FileBrowser";
 import { PreviewPanel } from "./features/rename/PreviewPanel";
@@ -19,6 +22,7 @@ export default function App() {
   const queryClient = useQueryClient();
   const [providerId, setProviderId] = useState("local");
   const [path, setPath] = useState("");
+  const [localRoot, setLocalRoot] = useState("");
   const [cloudPath, setCloudPath] = useState("");
   const selectedIds = useRenameStore((state) => state.selectedIds);
   const rules = useRenameStore((state) => state.rules);
@@ -33,10 +37,21 @@ export default function App() {
     queryKey: ["onedrive", "status"],
     queryFn: fetchOneDriveStatus,
   });
+  const localSettings = useQuery({
+    queryKey: ["local", "settings"],
+    queryFn: fetchLocalSettings,
+  });
   const files = useQuery({
-    queryKey: ["files", providerId, path],
+    queryKey: [
+      "files",
+      providerId,
+      providerId === "local" ? localSettings.data?.root_path ?? "" : "",
+      path,
+    ],
     queryFn: () => fetchFiles(providerId, path),
-    enabled: providerId === "local" || oneDriveStatus.data?.connected === true,
+    enabled:
+      (providerId === "local" && localSettings.isSuccess) ||
+      (providerId === "onedrive" && oneDriveStatus.data?.connected === true),
   });
   const preview = useMutation({
     mutationFn: () => createPreview(providerId, path, selectedIds, rules),
@@ -49,6 +64,37 @@ export default function App() {
       void queryClient.invalidateQueries({ queryKey: ["files"] });
     },
   });
+  const updateLocalRoot = useMutation({
+    mutationFn: () => updateLocalSettings(localRoot.trim()),
+    onSuccess: async (settings) => {
+      setLocalRoot(settings.root_path);
+      queryClient.setQueryData(["local", "settings"], settings);
+      setPath("");
+      clearSelection();
+      preview.reset();
+      execution.reset();
+      await queryClient.invalidateQueries({ queryKey: ["files", "local"] });
+    },
+  });
+  const pickLocalRoot = useMutation({
+    mutationFn: pickLocalFolder,
+    onSuccess: async (settings) => {
+      if (!settings.selected) return;
+      setLocalRoot(settings.root_path);
+      queryClient.setQueryData(["local", "settings"], {
+        root_path: settings.root_path,
+      });
+      setPath("");
+      clearSelection();
+      preview.reset();
+      execution.reset();
+      await queryClient.invalidateQueries({ queryKey: ["files", "local"] });
+    },
+  });
+
+  useEffect(() => {
+    if (localSettings.data?.root_path) setLocalRoot(localSettings.data.root_path);
+  }, [localSettings.data?.root_path]);
 
   useEffect(() => {
     clearSelection();
@@ -65,7 +111,11 @@ export default function App() {
     execution.reset();
   }, [providerId, oneDriveStatus.data?.connected]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const loadError = providers.error ?? definitions.error ?? oneDriveStatus.error;
+  const loadError =
+    providers.error ??
+    definitions.error ??
+    oneDriveStatus.error ??
+    localSettings.error;
   const activeProvider = providers.data?.find((provider) => provider.id === providerId);
 
   const navigate = (nextPath: string) => {
@@ -132,7 +182,45 @@ export default function App() {
                 <button type="submit" disabled={!oneDriveStatus.data?.connected}>打开文件夹</button>
               </form>
             ) : (
-              <p className="settings-hint">本地目录：/{path || "（根目录）"}</p>
+              <form
+                className="cloud-path-form local-path-form"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  updateLocalRoot.mutate();
+                }}
+              >
+                <label>
+                  本地根文件夹
+                  <input
+                    value={localRoot}
+                    onChange={(event) => setLocalRoot(event.target.value)}
+                    placeholder="例如：D:\\待整理文件"
+                  />
+                </label>
+                <button
+                  type="button"
+                  className="secondary-button"
+                  onClick={() => pickLocalRoot.mutate()}
+                  disabled={pickLocalRoot.isPending}
+                >
+                  {pickLocalRoot.isPending ? "等待选择…" : "浏览…"}
+                </button>
+                <button
+                  type="submit"
+                  disabled={!localRoot.trim() || updateLocalRoot.isPending}
+                >
+                  {updateLocalRoot.isPending ? "切换中…" : "使用此文件夹"}
+                </button>
+              </form>
+            )}
+            {providerId === "local" && (
+              <p className="settings-hint">当前位置：/{path || "（根目录）"}</p>
+            )}
+            {providerId === "local" && updateLocalRoot.error && (
+              <p className="inline-error">切换失败：{updateLocalRoot.error.message}</p>
+            )}
+            {providerId === "local" && pickLocalRoot.error && (
+              <p className="inline-error">无法打开文件夹选择器：{pickLocalRoot.error.message}</p>
             )}
             {providerId === "onedrive" && !oneDriveStatus.data?.connected && (
               <p className="inline-error">请先在右侧保存应用设置并连接 OneDrive 账号。</p>

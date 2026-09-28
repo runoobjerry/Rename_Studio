@@ -4,6 +4,14 @@ export interface ProviderInfo {
   writable: boolean;
 }
 
+export interface LocalSettings {
+  root_path: string;
+}
+
+export interface LocalFolderPick extends LocalSettings {
+  selected: boolean;
+}
+
 export interface OneDriveSettings {
   configured: boolean;
   client_id: string | null;

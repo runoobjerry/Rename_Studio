@@ -1,3 +1,5 @@
+import json
+import logging
 from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
 
@@ -12,13 +14,28 @@ from app.providers.name_validation import validate_portable_name
 from app.schemas.files import FileItem
 
 
+logger = logging.getLogger("onedriver_renamer.local_provider")
+
+
 class LocalProvider(StorageProvider):
     id = "local"
     display_name = "Local Files"
 
-    def __init__(self, root: Path) -> None:
-        self.root = root.expanduser().resolve()
+    def __init__(self, root: Path, *, settings_file: Path | None = None) -> None:
+        self.settings_file = settings_file
+        self.root = self._load_root(root).expanduser().resolve()
         self.root.mkdir(parents=True, exist_ok=True)
+
+    def configure_root(self, root: str) -> Path:
+        candidate = Path(root).expanduser().resolve()
+        if not candidate.exists() or not candidate.is_dir():
+            raise ValidationError(
+                "Local root must be an existing directory",
+                details={"root_path": root},
+            )
+        self._save_root(candidate)
+        self.root = candidate
+        return self.root
 
     def _resolve(self, relative_path: str) -> Path:
         normalized = relative_path.replace("\\", "/").strip("/")
@@ -92,3 +109,38 @@ class LocalProvider(StorageProvider):
 
     def validate_name(self, name: str) -> str | None:
         return validate_portable_name(name)
+
+    def _load_root(self, fallback: Path) -> Path:
+        if self.settings_file is None or not self.settings_file.exists():
+            return fallback
+        try:
+            payload = json.loads(self.settings_file.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            logger.warning("could not load local settings path=%s", self.settings_file)
+            return fallback
+        root_path = payload.get("root_path") if isinstance(payload, dict) else None
+        if not isinstance(root_path, str) or not root_path:
+            return fallback
+        configured = Path(root_path).expanduser().resolve()
+        if configured.exists() and configured.is_dir():
+            return configured
+        logger.warning("configured local root is unavailable path=%s", configured)
+        return fallback
+
+    def _save_root(self, root: Path) -> None:
+        if self.settings_file is None:
+            return
+        temporary = self.settings_file.with_name(f"{self.settings_file.name}.tmp")
+        try:
+            self.settings_file.parent.mkdir(parents=True, exist_ok=True)
+            temporary.write_text(
+                json.dumps({"root_path": str(root)}, ensure_ascii=False),
+                encoding="utf-8",
+            )
+            temporary.replace(self.settings_file)
+        except OSError as exc:
+            try:
+                temporary.unlink(missing_ok=True)
+            except OSError:
+                logger.warning("could not remove temporary local settings path=%s", temporary)
+            raise ProviderError("Could not save the local root directory") from exc

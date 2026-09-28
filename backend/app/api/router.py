@@ -17,6 +17,11 @@ from app.core.errors import AppError, AuthenticationError
 from app.rules.registry import RuleRegistry
 from app.schemas.common import HealthResponse
 from app.schemas.files import DirectoryListing, ProviderInfo
+from app.schemas.local import (
+    LocalFolderPickResponse,
+    LocalSettingsResponse,
+    LocalSettingsUpdate,
+)
 from app.schemas.rename import (
     RenameExecuteRequest,
     RenameExecuteResponse,
@@ -58,6 +63,40 @@ async def list_files(
     path: str = Query(default=""),
 ) -> DirectoryListing:
     return await service.list_files(provider, path)
+
+
+@router.get(
+    "/local/settings",
+    response_model=LocalSettingsResponse,
+    tags=["local"],
+)
+async def get_local_settings(
+    service: Annotated[FileService, Depends(get_file_service)],
+) -> LocalSettingsResponse:
+    return service.local_settings()
+
+
+@router.put(
+    "/local/settings",
+    response_model=LocalSettingsResponse,
+    tags=["local"],
+)
+async def update_local_settings(
+    request: LocalSettingsUpdate,
+    service: Annotated[FileService, Depends(get_file_service)],
+) -> LocalSettingsResponse:
+    return service.configure_local_root(request.root_path)
+
+
+@router.post(
+    "/local/settings/pick",
+    response_model=LocalFolderPickResponse,
+    tags=["local"],
+)
+async def pick_local_folder(
+    service: Annotated[FileService, Depends(get_file_service)],
+) -> LocalFolderPickResponse:
+    return await service.pick_local_root()
 
 
 @router.get(

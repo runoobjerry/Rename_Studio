@@ -69,3 +69,22 @@ def test_execute_requires_a_server_generated_preview(tmp_path: Path) -> None:
 
     assert response.status_code == 404
     assert response.json()["error"]["code"] == "PREVIEW_NOT_FOUND"
+
+
+def test_updates_local_root_directory(tmp_path: Path) -> None:
+    initial = tmp_path / "initial"
+    selected = tmp_path / "selected"
+    initial.mkdir()
+    selected.mkdir()
+    providers = ProviderRegistry([LocalProvider(initial)])
+    app = create_app()
+    app.dependency_overrides[get_file_service] = lambda: FileService(providers)
+
+    with TestClient(app) as client:
+        response = client.put(
+            "/local/settings",
+            json={"root_path": str(selected)},
+        )
+
+    assert response.status_code == 200
+    assert Path(response.json()["root_path"]) == selected.resolve()

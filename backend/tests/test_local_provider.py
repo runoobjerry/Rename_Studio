@@ -1,9 +1,12 @@
+import json
 from pathlib import Path
 
 import pytest
 
 from app.core.errors import NotFoundError, RenameConflictError, ValidationError
 from app.providers.local import LocalProvider
+from app.providers.registry import ProviderRegistry
+from app.services.file_service import FileService
 
 
 @pytest.mark.asyncio
@@ -95,3 +98,66 @@ async def test_cannot_rename_configured_storage_root(tmp_path: Path) -> None:
 
     with pytest.raises(ValidationError):
         await provider.rename("", "renamed-root")
+
+
+def test_configures_and_persists_local_root(tmp_path: Path) -> None:
+    default_root = tmp_path / "default"
+    selected_root = tmp_path / "selected"
+    selected_root.mkdir()
+    settings_file = tmp_path / ".local_settings.json"
+    provider = LocalProvider(default_root, settings_file=settings_file)
+
+    configured = provider.configure_root(str(selected_root))
+    restarted = LocalProvider(default_root, settings_file=settings_file)
+
+    assert configured == selected_root.resolve()
+    assert restarted.root == selected_root.resolve()
+    assert json.loads(settings_file.read_text(encoding="utf-8")) == {
+        "root_path": str(selected_root.resolve())
+    }
+
+
+def test_rejects_missing_local_root(tmp_path: Path) -> None:
+    provider = LocalProvider(tmp_path / "default")
+
+    with pytest.raises(ValidationError):
+        provider.configure_root(str(tmp_path / "missing"))
+
+
+@pytest.mark.asyncio
+async def test_folder_picker_updates_local_root(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    initial = tmp_path / "initial"
+    selected = tmp_path / "selected"
+    initial.mkdir()
+    selected.mkdir()
+    provider = LocalProvider(initial)
+    service = FileService(ProviderRegistry([provider]))
+    monkeypatch.setattr(
+        "app.services.file_service.choose_local_directory",
+        lambda _initial: selected,
+    )
+
+    result = await service.pick_local_root()
+
+    assert result.selected is True
+    assert Path(result.root_path) == selected.resolve()
+    assert provider.root == selected.resolve()
+
+
+@pytest.mark.asyncio
+async def test_cancelled_folder_picker_keeps_local_root(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    provider = LocalProvider(tmp_path)
+    service = FileService(ProviderRegistry([provider]))
+    monkeypatch.setattr(
+        "app.services.file_service.choose_local_directory",
+        lambda _initial: None,
+    )
+
+    result = await service.pick_local_root()
+
+    assert result.selected is False
+    assert Path(result.root_path) == tmp_path.resolve()

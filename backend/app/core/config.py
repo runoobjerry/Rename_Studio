@@ -11,6 +11,7 @@ _BACKEND_ROOT = Path(__file__).resolve().parents[2]
 class Settings(BaseSettings):
     app_name: str = "OneDriver Renamer"
     local_storage_root: Path = Path("local_storage")
+    local_settings_file: Path = _BACKEND_ROOT / ".local_settings.json"
     frontend_origin: str = "http://localhost:5173"
     onedrive_redirect_uri: str = "http://localhost:8000/auth/onedrive/callback"
     onedrive_credentials_file: Path = _BACKEND_ROOT / ".onedrive_credentials.json"
@@ -24,6 +25,11 @@ class Settings(BaseSettings):
     @field_validator("local_storage_root")
     @classmethod
     def resolve_storage_root(cls, value: Path) -> Path:
+        return value.expanduser().resolve()
+
+    @field_validator("local_settings_file")
+    @classmethod
+    def resolve_local_settings_file(cls, value: Path) -> Path:
         return value.expanduser().resolve()
 
     @field_validator("onedrive_credentials_file")
