@@ -1,4 +1,7 @@
+import AddRoundedIcon from "@mui/icons-material/AddRounded";
+import RemoveRoundedIcon from "@mui/icons-material/RemoveRounded";
 import Checkbox from "@mui/material/Checkbox";
+import IconButton from "@mui/material/IconButton";
 import MenuItem from "@mui/material/MenuItem";
 import TextField from "@mui/material/TextField";
 
@@ -12,6 +15,51 @@ interface RuleFieldsProps {
 
 function valueAsString(rule: RuleSpec, key: string, fallback: string): string {
   return String(rule.config[key] ?? fallback);
+}
+
+interface NumberStepperProps {
+  label: string;
+  value: number;
+  min: number;
+  max: number;
+  onChange: (value: number) => void;
+}
+
+function NumberStepper({ label, value, min, max, onChange }: NumberStepperProps) {
+  const updateValue = (nextValue: number) => {
+    onChange(Math.min(max, Math.max(min, nextValue)));
+  };
+
+  return (
+    <div className="number-stepper" role="group" aria-label={label}>
+      <IconButton
+        type="button"
+        size="small"
+        disabled={value <= min}
+        onClick={() => updateValue(value - 1)}
+        aria-label={`${label}减一`}
+      >
+        <RemoveRoundedIcon fontSize="small" />
+      </IconButton>
+      <input
+        type="number"
+        min={min}
+        max={max}
+        value={value}
+        onChange={(event) => updateValue(Number(event.target.value))}
+        aria-label={label}
+      />
+      <IconButton
+        type="button"
+        size="small"
+        disabled={value >= max}
+        onClick={() => updateValue(value + 1)}
+        aria-label={`${label}加一`}
+      >
+        <AddRoundedIcon fontSize="small" />
+      </IconButton>
+    </div>
+  );
 }
 
 function PaddingFields({ rule, onChange }: RuleFieldsProps) {
@@ -35,12 +83,12 @@ function PaddingFields({ rule, onChange }: RuleFieldsProps) {
       </label>
       <label>
         目标长度
-        <input
-          type="number"
-          min="1"
-          max="255"
+        <NumberStepper
+          label="目标长度"
+          min={1}
+          max={255}
           value={Number(rule.config.length ?? 3)}
-          onChange={(event) => onChange({ length: Number(event.target.value) })}
+          onChange={(value) => onChange({ length: value })}
         />
       </label>
       {mode === "text" && (
@@ -179,12 +227,12 @@ function InsertFields({ rule, onChange }: RuleFieldsProps) {
         {usesIndex && (
           <label>
             字符位置
-            <input
-              type="number"
-              min="1"
-              max="255"
+            <NumberStepper
+              label="字符位置"
+              min={1}
+              max={255}
               value={Number(rule.config.index ?? 1)}
-              onChange={(event) => onChange({ index: Number(event.target.value) })}
+              onChange={(value) => onChange({ index: value })}
             />
           </label>
         )}

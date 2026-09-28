@@ -55,7 +55,7 @@ export function PreviewPanel({
 
       {error && <p className="error-banner">{error}</p>}
       {!preview && !error && (
-        <p className="empty-state">选择项目后生成预览；预览不会修改 {providerName} 中的内容。</p>
+        <p className="empty-state">点击预览按钮以查看修改名称；预览不会修改 {providerName} 中的内容。</p>
       )}
       {preview && (
         <div className="preview-table-wrap">

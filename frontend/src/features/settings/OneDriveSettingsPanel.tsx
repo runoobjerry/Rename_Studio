@@ -94,10 +94,7 @@ export function OneDriveSettingsPanel() {
   return (
     <section className="panel settings-panel" aria-labelledby="onedrive-settings-title">
       <div className="panel-heading">
-        <div>
-          <p className="eyebrow">OneDrive Personal</p>
-          <h2 id="onedrive-settings-title">连接设置</h2>
-        </div>
+        <h2 id="onedrive-settings-title">连接设置</h2>
         <span className={`connection-status ${status.data?.connected ? "connected" : ""}`}>
           {status.data?.connected ? "已连接" : "未连接"}
         </span>
@@ -157,7 +154,7 @@ export function OneDriveSettingsPanel() {
         )}
         {settings.data && (
           <p className="settings-hint">
-            Azure 重定向 URI：<code>{settings.data.redirect_uri}</code>。应用只需 App ID；网页登录后刷新令牌保存在后端本地，切换或断开账号时会删除。
+            填入 App ID 后再网页登录账号以刷新令牌。
           </p>
         )}
         {(error || popupError) && (

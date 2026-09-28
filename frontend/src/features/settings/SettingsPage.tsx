@@ -17,17 +17,24 @@ export function SettingsPage({ mode, onModeChange, onBack }: SettingsPageProps) 
 
   return (
     <Box component="section" aria-labelledby="settings-title">
-      <Button startIcon={<ArrowBackRoundedIcon />} onClick={onBack} sx={{ mb: 2 }}>
+      <Button
+        startIcon={<ArrowBackRoundedIcon />}
+        onClick={onBack}
+        sx={{ mb: 2, color: "primary.dark" }}
+      >
         返回工作台
       </Button>
-      <Stack spacing={1} sx={{ mb: 3 }}>
-        <Typography id="settings-title" variant="h4" component="h1">
+      <Stack
+        spacing={1.5}
+        sx={{ alignItems: "center", mb: 4, pt: 1, textAlign: "center" }}
+      >
+        <Typography id="settings-title" variant="h4" component="h1" color="textPrimary">
           设置
         </Typography>
-        <Typography color="text.secondary">管理存储连接和应用外观。</Typography>
+        <Typography color="textSecondary">管理存储连接和应用外观。</Typography>
       </Stack>
 
-      <Box sx={{ display: "grid", gap: 2.5, maxWidth: 900 }}>
+      <Box sx={{ display: "grid", gap: 2.5, width: "100%", maxWidth: 900, mx: "auto" }}>
         <Card variant="outlined">
           <CardContent>
             <Stack
@@ -35,10 +42,16 @@ export function SettingsPage({ mode, onModeChange, onBack }: SettingsPageProps) 
               sx={{ alignItems: "center", justifyContent: "space-between", gap: 2 }}
             >
               <Stack direction="row" spacing={1.5} sx={{ alignItems: "center" }}>
-                {darkMode ? <DarkModeRoundedIcon color="primary" /> : <LightModeRoundedIcon color="primary" />}
+                {darkMode ? (
+                  <DarkModeRoundedIcon sx={{ color: "primary.dark" }} />
+                ) : (
+                  <LightModeRoundedIcon sx={{ color: "primary.dark" }} />
+                )}
                 <Box>
-                  <Typography variant="h6">黑暗模式</Typography>
-                  <Typography variant="body2" color="text.secondary">
+                  <Typography variant="h6" color="textSecondary">
+                    黑暗模式
+                  </Typography>
+                  <Typography variant="body2" color="textSecondary">
                     在浅色与深色界面之间切换。
                   </Typography>
                 </Box>

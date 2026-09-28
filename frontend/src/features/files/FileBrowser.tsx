@@ -1,9 +1,11 @@
+import ArrowBackRoundedIcon from "@mui/icons-material/ArrowBackRounded";
 import FolderRoundedIcon from "@mui/icons-material/FolderRounded";
 import InsertDriveFileOutlinedIcon from "@mui/icons-material/InsertDriveFileOutlined";
 import RefreshRoundedIcon from "@mui/icons-material/RefreshRounded";
 import {
   Button,
   Checkbox,
+  IconButton,
   Table,
   TableBody,
   TableCell,
@@ -74,18 +76,28 @@ export function FileBrowser({
         </div>
         <div className="browser-heading-actions">
           {listing.parent_path !== null && (
-            <Button size="small" onClick={() => onNavigate(listing.parent_path ?? "")}>
-              返回上级
-            </Button>
+            <Tooltip title="返回上级" arrow>
+              <IconButton
+                size="small"
+                aria-label="返回上级"
+                onClick={() => onNavigate(listing.parent_path ?? "")}
+              >
+                <ArrowBackRoundedIcon fontSize="small" />
+              </IconButton>
+            </Tooltip>
           )}
-          <Button
-            size="small"
-            startIcon={<RefreshRoundedIcon />}
-            onClick={onRefresh}
-            disabled={!onRefresh || isRefreshing}
-          >
-            {isRefreshing ? "刷新中" : "刷新"}
-          </Button>
+          <Tooltip title={isRefreshing ? "刷新中" : "刷新"} arrow>
+            <span>
+              <IconButton
+                size="small"
+                aria-label={isRefreshing ? "刷新中" : "刷新"}
+                onClick={onRefresh}
+                disabled={!onRefresh || isRefreshing}
+              >
+                <RefreshRoundedIcon fontSize="small" />
+              </IconButton>
+            </span>
+          </Tooltip>
           <Button size="small" onClick={onSelectAll} disabled={listing.items.length === 0}>
             全选
           </Button>

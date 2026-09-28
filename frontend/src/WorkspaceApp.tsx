@@ -209,10 +209,16 @@ export default function WorkspaceApp() {
           <Typography variant="subtitle1" sx={{ fontWeight: 800, lineHeight: 1.1 }}>
             Rename Studio
           </Typography>
-          <Typography variant="caption" color="text.secondary">批量重命名工作台</Typography>
+          <Typography variant="caption" color="textPrimary">批量重命名工作台</Typography>
         </Box>
       </Stack>
-      <Typography variant="overline" color="text.secondary" sx={{ px: 1.5, mt: 1 }}>存储</Typography>
+      <Typography
+        variant="overline"
+        color="textPrimary"
+        sx={{ px: 1.5, mt: 1, fontSize: 20}}
+      >
+      存储位置
+      </Typography>
       <List disablePadding>
         {(providers.data ?? []).map((provider) => (
           <ListItemButton
@@ -242,8 +248,8 @@ export default function WorkspaceApp() {
         </ListItemButton>
       </List>
       <Box className="sidebar-meta">
-        <Typography variant="caption">© 2026 Rename Studio</Typography>
-        <Typography variant="caption" color="text.secondary">反馈与联系 · 待配置</Typography>
+        <Typography variant="caption" color="textSecondary">© 2026 Rename Studio</Typography>
+        <Typography variant="caption" color="textSecondary">Git · a4130b4</Typography>
       </Box>
     </Box>
   );
