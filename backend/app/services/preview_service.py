@@ -31,7 +31,7 @@ class PreviewService:
         if len(request.file_ids) != len(set(request.file_ids)):
             raise ValidationError("Duplicate file IDs are not allowed")
 
-        files = [await provider.get_metadata(file_id) for file_id in request.file_ids]
+        files = await provider.get_metadata_many(request.file_ids)
         if any(item.id == "" for item in files):
             raise ValidationError("Configured storage root cannot be selected")
         if len({item.parent_path for item in files}) != 1:
@@ -71,7 +71,7 @@ class PreviewService:
         for item, new_name, normalized_target in zip(
             files, candidates, normalized_targets, strict=True
         ):
-            error = provider.validate_name(new_name)
+            error = provider.validate_target_name(item, new_name)
             conflict = normalized_target in duplicate_targets
             existing = existing_by_parent[item.parent_path].get(normalized_target)
             if existing is not None and existing.id != item.id:

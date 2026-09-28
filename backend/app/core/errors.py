@@ -21,6 +21,16 @@ class ProviderError(AppError):
     status_code = 502
 
 
+class AuthenticationError(AppError):
+    code = "AUTHENTICATION_ERROR"
+    status_code = 401
+
+
+class RateLimitError(AppError):
+    code = "RATE_LIMIT_ERROR"
+    status_code = 429
+
+
 class ValidationError(AppError):
     code = "VALIDATION_ERROR"
     status_code = 422

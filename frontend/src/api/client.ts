@@ -5,6 +5,9 @@ import type {
   ProviderInfo,
   RuleDefinition,
   RuleSpec,
+  OneDriveAuthStart,
+  OneDriveAuthStatus,
+  OneDriveSettings,
 } from "../types";
 
 interface ApiErrorBody {
@@ -20,7 +23,35 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
     const body = (await response.json().catch(() => ({}))) as ApiErrorBody;
     throw new Error(body.error?.message ?? `Request failed (${response.status})`);
   }
+  if (response.status === 204) return undefined as T;
   return (await response.json()) as T;
+}
+
+export function fetchOneDriveSettings(): Promise<OneDriveSettings> {
+  return request("/onedrive/settings");
+}
+
+export function updateOneDriveSettings(
+  clientId: string,
+  clientSecret: string,
+): Promise<OneDriveSettings> {
+  return request("/onedrive/settings", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ client_id: clientId, client_secret: clientSecret }),
+  });
+}
+
+export function clearOneDriveSettings(): Promise<void> {
+  return request("/onedrive/settings", { method: "DELETE" });
+}
+
+export function fetchOneDriveStatus(): Promise<OneDriveAuthStatus> {
+  return request("/onedrive/auth/status");
+}
+
+export function startOneDriveAuth(): Promise<OneDriveAuthStart> {
+  return request("/onedrive/auth/start", { method: "POST" });
 }
 
 export function fetchProviders(): Promise<ProviderInfo[]> {

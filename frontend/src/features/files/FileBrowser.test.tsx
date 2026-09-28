@@ -37,9 +37,12 @@ describe("FileBrowser", () => {
     render(
       <FileBrowser
         listing={listing}
+        providerName="Local Files"
         selectedIds={[]}
         onNavigate={onNavigate}
         onToggle={onToggle}
+        onSelectAll={vi.fn()}
+        onInvertSelection={vi.fn()}
       />,
     );
 
@@ -54,14 +57,39 @@ describe("FileBrowser", () => {
     render(
       <FileBrowser
         listing={listing}
+        providerName="Local Files"
         selectedIds={[]}
         onNavigate={onNavigate}
         onToggle={vi.fn()}
+        onSelectAll={vi.fn()}
+        onInvertSelection={vi.fn()}
       />,
     );
 
     fireEvent.click(screen.getByRole("button", { name: /folder/ }));
 
     expect(onNavigate).toHaveBeenCalledWith("folder");
+  });
+
+  it("exposes select-all and invert-selection actions", () => {
+    const onSelectAll = vi.fn();
+    const onInvertSelection = vi.fn();
+    render(
+      <FileBrowser
+        listing={listing}
+        providerName="Local Files"
+        selectedIds={[]}
+        onNavigate={vi.fn()}
+        onToggle={vi.fn()}
+        onSelectAll={onSelectAll}
+        onInvertSelection={onInvertSelection}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "全选" }));
+    fireEvent.click(screen.getByRole("button", { name: "反选" }));
+
+    expect(onSelectAll).toHaveBeenCalledOnce();
+    expect(onInvertSelection).toHaveBeenCalledOnce();
   });
 });

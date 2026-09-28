@@ -2,9 +2,12 @@ import type { DirectoryListing } from "../../types";
 
 interface FileBrowserProps {
   listing: DirectoryListing;
+  providerName: string;
   selectedIds: string[];
   onNavigate: (path: string) => void;
   onToggle: (fileId: string) => void;
+  onSelectAll: () => void;
+  onInvertSelection: () => void;
 }
 
 function formatSize(size: number | null): string {
@@ -15,18 +18,29 @@ function formatSize(size: number | null): string {
 
 export function FileBrowser({
   listing,
+  providerName,
   selectedIds,
   onNavigate,
   onToggle,
+  onSelectAll,
+  onInvertSelection,
 }: FileBrowserProps) {
   return (
     <section className="panel browser" aria-labelledby="files-title">
       <div className="panel-heading">
         <div>
-          <p className="eyebrow">Local Provider</p>
+          <p className="eyebrow">{providerName}</p>
           <h2 id="files-title">文件与文件夹</h2>
         </div>
-        <code>/{listing.path}</code>
+        <div className="browser-heading-actions">
+          <button type="button" onClick={onSelectAll} disabled={listing.items.length === 0}>
+            全选
+          </button>
+          <button type="button" onClick={onInvertSelection} disabled={listing.items.length === 0}>
+            反选
+          </button>
+          <code>/{listing.path}</code>
+        </div>
       </div>
 
       {listing.parent_path !== null && (
@@ -70,7 +84,7 @@ export function FileBrowser({
           ),
         )}
         {listing.items.length === 0 && (
-          <p className="empty-state">此目录为空。将测试文件放入本地存储目录后刷新。</p>
+          <p className="empty-state">此目录为空。</p>
         )}
       </div>
     </section>

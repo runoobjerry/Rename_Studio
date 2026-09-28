@@ -1,6 +1,6 @@
 # OneDriver Renamer
 
-一个本地优先、规则驱动的批量文件重命名 WebUI。目前完成到 **M3：本地安全执行**。
+一个本地优先、规则驱动的批量文件重命名 WebUI。目前进入 **M4：OneDrive 个人版接入**。
 
 ## 当前能力
 
@@ -16,8 +16,11 @@
 - 文件名合法性、同批目标重复和已有文件冲突检测
 - 统一 API 错误结构
 - React WebUI、TanStack Query 服务端状态和 Zustand 选择状态
+- OneDrive 个人账号 OAuth 2.0 授权、目录浏览和 Graph 批量重命名
+- 当前目录文件及子文件夹名称的全选、反选
+- App ID/客户端密钥内存设置、连接状态和一键清理
 
-当前已注册填充、替换、移除和插入规则；空规则链仍会保持原文件名。OneDrive、历史和撤销尚未实现。只有用户确认有效预览后，`POST /rename/execute` 才会修改本地文件。
+当前已注册填充、替换、移除和插入规则；空规则链仍会保持原文件名。历史和撤销尚未实现。只有用户确认有效预览后，`POST /rename/execute` 才会修改本地文件或 OneDrive 项目。
 
 ## 项目结构
 
@@ -26,7 +29,7 @@ backend/
   app/
     api/          HTTP 路由与依赖组装
     core/         配置与领域错误
-    providers/    StorageProvider 与 LocalProvider
+    providers/    StorageProvider、LocalProvider 与 OneDriveProvider
     rules/        规则接口与注册表
     schemas/      Pydantic API 契约
     services/     文件服务、Rename Engine、Preview Service
@@ -50,6 +53,7 @@ frontend/
 ```dotenv
 LOCAL_STORAGE_ROOT=D:/rename-test
 FRONTEND_ORIGIN=http://localhost:5173
+ONEDRIVE_REDIRECT_URI=http://localhost:8000/auth/onedrive/callback
 ```
 
 Local Provider 会解析并校验所有路径，拒绝访问配置根目录之外的内容。建议使用专门的测试目录，不要直接指向重要文件。
@@ -79,6 +83,18 @@ npm run dev
 
 访问 `http://localhost:5173`。Vite 会把 `/api` 请求代理到后端。
 
+## OneDrive 个人版设置
+
+1. 在 Microsoft Entra 管理中心注册应用，支持的账户类型选择包含“个人 Microsoft 账户”的选项。
+2. 在“身份验证”中添加 **Web** 重定向 URI：`http://localhost:8000/auth/onedrive/callback`。
+3. 创建客户端密钥，并复制密钥的 **Value**（不是 Secret ID）。
+4. 启动前后端，在页面“连接设置”中填写 App ID 与客户端密钥，保存后点击“连接账号”。
+5. 授权完成后选择 `OneDrive Personal`，输入相对根目录的文件夹路径，例如 `照片/待整理`；留空表示根目录。
+
+OAuth 使用个人账户的 `consumers` 租户、授权码流程、PKCE 以及委托权限 `Files.ReadWrite`，并请求 `offline_access` 以刷新短期访问令牌。应用设置、待完成授权状态、访问令牌和刷新令牌仅保存在后端进程内存，不写入数据库、日志或 Git；重启后端或点击“清理设置”后需要重新连接。
+
+Graph 目录读取支持分页；预览元数据和重命名按每批最多 20 项发送。遇到 401 会尝试刷新令牌，遇到 429 或暂时性服务错误会遵循 `Retry-After` 并只重试失败项。真实账号授权与改名测试由用户执行。
+
 ## 测试
 
 后端：
@@ -96,7 +112,7 @@ npm test
 npm run build
 ```
 
-测试覆盖本地目录排序与路径隔离、名称验证、规则链、预览不可变性、冲突检测、短期预览、普通执行、循环交换、状态失效和部分失败。
+测试覆盖本地目录排序与路径隔离、名称验证、规则链、预览不可变性、冲突检测、短期预览、普通执行、循环交换、状态失效、部分失败，以及 OneDrive 授权 URL、密钥隐藏、分页映射和批处理适配。
 
 ## API
 
@@ -104,10 +120,14 @@ npm run build
 | --- | --- | --- | --- |
 | `GET` | `/health` | 可用 | 健康检查 |
 | `GET` | `/providers` | 可用 | Provider 列表 |
-| `GET` | `/files` | 可用 | 浏览本地目录 |
+| `GET` | `/files` | 可用 | 浏览本地或 OneDrive 目录 |
 | `GET` | `/rules` | 可用 | 已注册规则定义 |
 | `POST` | `/rename/preview` | 可用 | 生成只读预览 |
 | `POST` | `/rename/execute` | 可用 | 执行服务端生成的有效预览 |
+| `GET/PUT/DELETE` | `/onedrive/settings` | 可用 | 读取、更新或清理内存设置 |
+| `GET` | `/onedrive/auth/status` | 可用 | 查询配置与连接状态 |
+| `POST` | `/onedrive/auth/start` | 可用 | 创建浏览器授权地址 |
+| `GET` | `/auth/onedrive/callback` | 可用 | Microsoft OAuth 回调 |
 
 预览请求示例：
 
@@ -140,7 +160,7 @@ npm run build
 
 执行前服务端会重新读取文件并再次检查名称和冲突。预览过期、文件变化或重复执行都会被拒绝。当前预览凭证保存在单进程内存中，后端重启后自动失效。
 
-每个批次只允许选择同一目录下的直接子项。子文件夹可以改名，但不会递归枚举或重命名其中的文件；进入其他目录时，当前选择会被清空。
+每个批次只允许选择同一目录下的直接子项。该限制同时适用于本地和 OneDrive：子文件夹可以改名，但不会递归枚举或重命名其中的文件；进入其他目录或切换 Provider 时，当前选择会被清空。
 
 数字模式会把主文件名中的每段连续数字分别补零，例如 `episode1-part12.mp4` 在长度为 3 时得到 `episode001-part012.mp4`。文本模式将整个主文件名填充到目标长度，可指定单个填充字符以及从左侧或右侧填充。两种模式都保留最后一个扩展名。
 

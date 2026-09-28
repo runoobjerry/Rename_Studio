@@ -9,6 +9,7 @@ class Settings(BaseSettings):
     app_name: str = "OneDriver Renamer"
     local_storage_root: Path = Path("local_storage")
     frontend_origin: str = "http://localhost:5173"
+    onedrive_redirect_uri: str = "http://localhost:8000/auth/onedrive/callback"
 
     model_config = SettingsConfigDict(
         env_file=("../.env", ".env"),

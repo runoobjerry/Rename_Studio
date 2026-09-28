@@ -4,8 +4,8 @@ from dataclasses import dataclass
 from typing import Literal
 from uuid import uuid4
 
-from app.core.errors import AppError, PreviewExpiredError, ValidationError
-from app.providers.base import StorageProvider
+from app.core.errors import AppError, NotFoundError, PreviewExpiredError, ValidationError
+from app.providers.base import RenameRequest, StorageProvider
 from app.providers.registry import ProviderRegistry
 from app.schemas.files import FileItem
 from app.schemas.rename import (
@@ -39,7 +39,7 @@ class ExecuteService:
         self._lock = asyncio.Lock()
 
     async def execute(self, preview_id: str) -> RenameExecuteResponse:
-        # 单进程内串行执行，避免两个批次同时争用相同的本地文件名。
+        # 单进程内串行执行，避免两个批次同时争用相同目录中的目标名称。
         async with self._lock:
             snapshot = self.previews.get(preview_id)
             await self._revalidate(snapshot)
@@ -63,7 +63,7 @@ class ExecuteService:
             items, sources, valid = await self.preview_service.evaluate(
                 snapshot.request
             )
-        except AppError as exc:
+        except NotFoundError as exc:
             raise PreviewExpiredError(
                 "Files changed after the preview was created"
             ) from exc
@@ -111,36 +111,50 @@ class ExecuteService:
         if not changed:
             return self._response(snapshot.preview_id, results)
 
-        temp_names = await self._temporary_names(provider, changed)
+        sources = {source.id: source for source in snapshot.sources}
+        temp_names = await self._temporary_names(provider, changed, sources)
         staged: list[StagedRename] = []
-        for item, temp_name in zip(changed, temp_names, strict=True):
-            try:
-                temporary = await provider.rename(item.file_id, temp_name)
-                staged.append(StagedRename(preview=item, temporary=temporary))
-            except AppError as exc:
-                results[item.file_id].error = exc.message
-                await self._rollback_staging(provider, staged, results)
-                return self._response(snapshot.preview_id, results)
+        staging_requests = [
+            RenameRequest(item.file_id, temp_name)
+            for item, temp_name in zip(changed, temp_names, strict=True)
+        ]
+        staging_results = await provider.rename_many(staging_requests)
+        for item in changed:
+            outcome = staging_results[item.file_id]
+            if isinstance(outcome, AppError):
+                results[item.file_id].error = outcome.message
+            else:
+                staged.append(StagedRename(preview=item, temporary=outcome))
+        if len(staged) != len(changed):
+            await self._rollback_staging(provider, staged, results)
+            return self._response(snapshot.preview_id, results)
 
+        final_requests = [
+            RenameRequest(item.temporary.id, item.preview.new_name) for item in staged
+        ]
+        final_results = await provider.rename_many(final_requests)
         for staged_item in staged:
             item = staged_item.preview
-            try:
-                await provider.rename(staged_item.temporary.id, item.new_name)
+            outcome = final_results[staged_item.temporary.id]
+            if not isinstance(outcome, AppError):
                 results[item.file_id].status = "renamed"
                 results[item.file_id].error = None
-            except AppError as exc:
-                results[item.file_id].error = exc.message
+            else:
+                results[item.file_id].error = outcome.message
                 await self._rollback_one(provider, staged_item, results[item.file_id])
 
         return self._response(snapshot.preview_id, results)
 
     async def _temporary_names(
-        self, provider: StorageProvider, items: list[PreviewItem]
+        self,
+        provider: StorageProvider,
+        items: list[PreviewItem],
+        sources: dict[str, FileItem],
     ) -> list[str]:
         occupied_by_parent: dict[str, set[str]] = {}
         names: list[str] = []
         for item in items:
-            parent = item.file_id.rpartition("/")[0]
+            parent = sources[item.file_id].parent_path
             if parent not in occupied_by_parent:
                 siblings = await provider.list_files(parent)
                 occupied_by_parent[parent] = {
@@ -149,7 +163,7 @@ class ExecuteService:
 
             occupied = occupied_by_parent[parent]
             while True:
-                candidate = f".onedriver-renamer-{uuid4().hex}.tmp"
+                candidate = f"onedriver-renamer-{uuid4().hex}"
                 normalized = provider.normalize_name(candidate)
                 if normalized not in occupied and provider.validate_name(candidate) is None:
                     occupied.add(normalized)
@@ -163,10 +177,17 @@ class ExecuteService:
         staged: list[StagedRename],
         results: dict[str, ExecuteItem],
     ) -> None:
-        for staged_item in reversed(staged):
+        requests = [
+            RenameRequest(item.temporary.id, item.preview.original_name)
+            for item in reversed(staged)
+        ]
+        outcomes = await provider.rename_many(requests)
+        for staged_item in staged:
             result = results[staged_item.preview.file_id]
             result.error = "Batch staging failed; rename was rolled back"
-            await self._rollback_one(provider, staged_item, result)
+            outcome = outcomes[staged_item.temporary.id]
+            if isinstance(outcome, AppError):
+                result.error = f"{result.error}; rollback failed: {outcome.message}"
 
     @staticmethod
     async def _rollback_one(

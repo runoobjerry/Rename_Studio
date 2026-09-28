@@ -1,5 +1,6 @@
 from pathlib import PurePosixPath
 
+from app.core.errors import ValidationError
 from app.providers.registry import ProviderRegistry
 from app.schemas.files import DirectoryListing, ProviderInfo
 
@@ -16,7 +17,11 @@ class FileService:
 
     async def list_files(self, provider_id: str, path: str) -> DirectoryListing:
         provider = self.providers.get(provider_id)
-        normalized = path.replace("\\", "/").strip("/")
+        parts = [part for part in path.replace("\\", "/").split("/") if part]
+        # 路径只能从 Provider 根目录向下，避免不同 Provider 对点段产生歧义。
+        if any(part in {".", ".."} for part in parts):
+            raise ValidationError("Directory path cannot contain '.' or '..'")
+        normalized = "/".join(parts)
         parent: str | None = None
         if normalized:
             value = PurePosixPath(normalized).parent.as_posix()

@@ -2,6 +2,7 @@ from functools import lru_cache
 
 from app.core.config import get_settings
 from app.providers.local import LocalProvider
+from app.providers.onedrive import OneDriveProvider
 from app.providers.registry import ProviderRegistry
 from app.rules.insert import InsertRule
 from app.rules.padding import PaddingRule
@@ -12,11 +13,23 @@ from app.services.file_service import FileService
 from app.services.preview_service import PreviewService
 from app.services.preview_store import PreviewStore
 from app.services.rename_engine import RenameEngine
+from app.services.onedrive_auth import OneDriveAuthService
+
+
+@lru_cache
+def get_onedrive_auth_service() -> OneDriveAuthService:
+    settings = get_settings()
+    return OneDriveAuthService(settings.onedrive_redirect_uri)
 
 
 @lru_cache
 def get_provider_registry() -> ProviderRegistry:
-    return ProviderRegistry([LocalProvider(get_settings().local_storage_root)])
+    return ProviderRegistry(
+        [
+            LocalProvider(get_settings().local_storage_root),
+            OneDriveProvider(get_onedrive_auth_service()),
+        ]
+    )
 
 
 @lru_cache

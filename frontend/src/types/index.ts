@@ -4,6 +4,22 @@ export interface ProviderInfo {
   writable: boolean;
 }
 
+export interface OneDriveSettings {
+  configured: boolean;
+  client_id: string | null;
+  client_secret_configured: boolean;
+  redirect_uri: string;
+}
+
+export interface OneDriveAuthStatus {
+  configured: boolean;
+  connected: boolean;
+}
+
+export interface OneDriveAuthStart {
+  authorization_url: string;
+}
+
 export interface FileItem {
   id: string;
   name: string;
