@@ -37,7 +37,7 @@ describe("FileBrowser", () => {
     render(
       <FileBrowser
         listing={listing}
-        providerName="Local Files"
+        providerName="本地文件"
         selectedIds={[]}
         onNavigate={onNavigate}
         onToggle={onToggle}
@@ -57,7 +57,7 @@ describe("FileBrowser", () => {
     render(
       <FileBrowser
         listing={listing}
-        providerName="Local Files"
+        providerName="本地文件"
         selectedIds={[]}
         onNavigate={onNavigate}
         onToggle={vi.fn()}
@@ -77,7 +77,7 @@ describe("FileBrowser", () => {
     render(
       <FileBrowser
         listing={listing}
-        providerName="Local Files"
+        providerName="本地文件"
         selectedIds={[]}
         onNavigate={vi.fn()}
         onToggle={vi.fn()}

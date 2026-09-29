@@ -31,7 +31,7 @@ DRIVE_ITEM_SELECT = "id,name,parentReference,folder,size,lastModifiedDateTime"
 
 class OneDriveProvider(StorageProvider):
     id = "onedrive"
-    display_name = "OneDrive Personal"
+    display_name = "OneDrive"
 
     def __init__(
         self,

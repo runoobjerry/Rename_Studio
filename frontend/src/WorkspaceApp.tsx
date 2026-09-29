@@ -7,9 +7,9 @@ import SettingsRoundedIcon from "@mui/icons-material/SettingsRounded";
 import {
   Alert,
   Box,
+  Button,
   CircularProgress,
   CssBaseline,
-  Divider,
   Drawer,
   IconButton,
   List,
@@ -17,6 +17,7 @@ import {
   ListItemIcon,
   ListItemText,
   Stack,
+  TextField,
   ThemeProvider,
   Typography,
   useMediaQuery,
@@ -198,7 +199,15 @@ export default function WorkspaceApp() {
   };
 
   const navigation = (
-    <Box sx={{ display: "flex", flexDirection: "column", height: "100%", p: 1.5 }}>
+    <Box
+      sx={{
+        display: "flex",
+        flexDirection: "column",
+        height: "100%",
+        p: 1.5,
+        "& .MuiListItemButton-root": { borderRadius: "14px" },
+      }}
+    >
       <Stack
         direction="row"
         spacing={1.25}
@@ -214,8 +223,8 @@ export default function WorkspaceApp() {
       </Stack>
       <Typography
         variant="overline"
-        color="textPrimary"
-        sx={{ px: 1.5, mt: 1, fontSize: 20}}
+        color="textSecondary"
+        sx={{ px: 1.5, mt: 1}}
       >
       存储位置
       </Typography>
@@ -234,7 +243,6 @@ export default function WorkspaceApp() {
         ))}
       </List>
       <Box sx={{ flex: 1 }} />
-      <Divider sx={{ mb: 1 }} />
       <List disablePadding>
         <ListItemButton
           selected={view === "settings"}
@@ -329,14 +337,24 @@ export default function WorkspaceApp() {
                         }}
                       >
                         <div className="path-input-wrap">
-                          <input
+                          <TextField
+                            fullWidth
+                            hiddenLabel
+                            size="small"
                             value={cloudPath}
                             onChange={(event) => setCloudPath(event.target.value)}
                             placeholder="例如：照片/待整理（留空表示根目录）"
-                            aria-label="云端文件夹路径"
+                            slotProps={{ htmlInput: { "aria-label": "云端文件夹路径" } }}
                           />
                         </div>
-                        <button type="submit" disabled={!oneDriveStatus.data?.connected}>打开文件夹</button>
+                        <Button
+                          type="submit"
+                          variant="contained"
+                          disabled={!oneDriveStatus.data?.connected}
+                          sx={{ minHeight: 36, px: 1.5, py: 1, whiteSpace: "nowrap" }}
+                        >
+                          打开文件夹
+                        </Button>
                       </form>
                     ) : (
                       <form
@@ -347,36 +365,45 @@ export default function WorkspaceApp() {
                         }}
                       >
                         <div className="path-input-wrap">
-                          <input
+                          <TextField
+                            fullWidth
+                            hiddenLabel
+                            size="small"
                             value={localRoot}
                             onChange={(event) => setLocalRoot(event.target.value)}
                             placeholder="例如：D:\\待整理文件"
-                            aria-label="本地根文件夹路径"
+                            slotProps={{ htmlInput: { "aria-label": "本地根文件夹路径" } }}
                           />
                         </div>
-                        <button
+                        <Button
                           type="button"
-                          className="secondary-button"
+                          variant="outlined"
                           onClick={() => pickLocalRoot.mutate()}
                           disabled={pickLocalRoot.isPending}
+                          sx={{ minHeight: 36, px: 1.5, py: 1, whiteSpace: "nowrap" }}
                         >
                           {pickLocalRoot.isPending ? "等待选择…" : "浏览…"}
-                        </button>
-                        <button type="submit" disabled={!localRoot.trim() || updateLocalRoot.isPending}>
+                        </Button>
+                        <Button
+                          type="submit"
+                          variant="contained"
+                          disabled={!localRoot.trim() || updateLocalRoot.isPending}
+                          sx={{ minHeight: 36, px: 1.5, py: 1, whiteSpace: "nowrap" }}
+                        >
                           {updateLocalRoot.isPending ? "切换中…" : "使用此文件夹"}
-                        </button>
+                        </Button>
                       </form>
                     )}
                   </div>
                   <div className="location-feedback">
                     {providerId === "local" && updateLocalRoot.error && (
-                      <p className="inline-error">切换失败：{updateLocalRoot.error.message}</p>
+                      <Alert severity="error">切换失败：{updateLocalRoot.error.message}</Alert>
                     )}
                     {providerId === "local" && pickLocalRoot.error && (
-                      <p className="inline-error">无法打开文件夹选择器：{pickLocalRoot.error.message}</p>
+                      <Alert severity="error">无法打开文件夹选择器：{pickLocalRoot.error.message}</Alert>
                     )}
                     {providerId === "onedrive" && !oneDriveStatus.data?.connected && (
-                      <p className="inline-error">请先前往设置页面连接 OneDrive 账号。</p>
+                      <Alert severity="warning">请先前往设置页面连接 OneDrive 账号。</Alert>
                     )}
                   </div>
                 </section>
@@ -415,13 +442,17 @@ export default function WorkspaceApp() {
                       />
                     ) : (
                       <section className="panel">
-                        <p className={files.error ? "inline-error" : "empty-state"}>
-                          {files.error
-                            ? `目录读取失败：${files.error.message}`
-                            : providerId === "onedrive" && !oneDriveStatus.data?.connected
+                        {files.error ? (
+                          <Alert severity="error" sx={{ m: 2 }}>
+                            目录读取失败：{files.error.message}
+                          </Alert>
+                        ) : (
+                          <p className="empty-state">
+                            {providerId === "onedrive" && !oneDriveStatus.data?.connected
                               ? "连接 OneDrive 后可浏览云端目录。"
                               : "正在读取目录…"}
-                        </p>
+                          </p>
+                        )}
                       </section>
                     )}
                     <PreviewPanel

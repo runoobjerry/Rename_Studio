@@ -4,6 +4,7 @@ import InsertDriveFileOutlinedIcon from "@mui/icons-material/InsertDriveFileOutl
 import RefreshRoundedIcon from "@mui/icons-material/RefreshRounded";
 import {
   Button,
+  ButtonBase,
   Checkbox,
   IconButton,
   Table,
@@ -81,6 +82,7 @@ export function FileBrowser({
                 size="small"
                 aria-label="返回上级"
                 onClick={() => onNavigate(listing.parent_path ?? "")}
+                sx={{ border: 1, borderColor: "divider", borderRadius: "9px" }}
               >
                 <ArrowBackRoundedIcon fontSize="small" />
               </IconButton>
@@ -93,22 +95,40 @@ export function FileBrowser({
                 aria-label={isRefreshing ? "刷新中" : "刷新"}
                 onClick={onRefresh}
                 disabled={!onRefresh || isRefreshing}
+                sx={{ border: 1, borderColor: "divider", borderRadius: "9px" }}
               >
                 <RefreshRoundedIcon fontSize="small" />
               </IconButton>
             </span>
           </Tooltip>
-          <Button size="small" onClick={onSelectAll} disabled={listing.items.length === 0}>
+          <Button
+            size="small"
+            variant="outlined"
+            onClick={onSelectAll}
+            disabled={listing.items.length === 0}
+          >
             全选
           </Button>
-          <Button size="small" onClick={onInvertSelection} disabled={listing.items.length === 0}>
+          <Button
+            size="small"
+            variant="outlined"
+            onClick={onInvertSelection}
+            disabled={listing.items.length === 0}
+          >
             反选
           </Button>
         </div>
       </div>
 
       <TableContainer className="file-table-wrap">
-        <Table stickyHeader size="small" aria-label={`${providerName} 文件列表`}>
+        <Table
+          stickyHeader
+          size="small"
+          aria-label={`${providerName} 文件列表`}
+          sx={{
+            "& .MuiTableCell-paddingCheckbox": { width: 44, px: 1 },
+          }}
+        >
           <TableHead>
             <TableRow>
               <TableCell padding="checkbox">
@@ -145,10 +165,13 @@ export function FileBrowser({
                   <TableCell>
                     <Tooltip title={item.name} placement="top-start">
                       {item.is_directory ? (
-                        <button className="directory-name" onClick={() => onNavigate(item.path)}>
+                        <ButtonBase
+                          className="directory-name"
+                          onClick={() => onNavigate(item.path)}
+                        >
                           <FolderRoundedIcon className="file-icon" fontSize="small" />
                           <span className="file-name">{item.name}</span>
-                        </button>
+                        </ButtonBase>
                       ) : (
                         <span className="file-name-cell">
                           <InsertDriveFileOutlinedIcon className="file-icon" fontSize="small" />

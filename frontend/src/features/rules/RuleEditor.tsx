@@ -12,6 +12,8 @@ import Tooltip from "@mui/material/Tooltip";
 import type { RuleDefinition, RuleSpec } from "../../types";
 import { RuleFields } from "./RuleFields";
 
+const ruleActionSx = { width: 30, height: 30, p: "5px" } as const;
+
 interface RuleEditorProps {
   definitions: RuleDefinition[];
   rules: RuleSpec[];
@@ -113,6 +115,7 @@ export function RuleEditor({ definitions, rules, onChange, onAddRule }: RuleEdit
             startIcon={<AddRoundedIcon />}
             onClick={onAddRule}
             disabled={availableRules.length === 0 || !onAddRule}
+            sx={{ flex: { xs: 1, sm: "initial" } }}
           >
             添加规则
           </Button>
@@ -123,6 +126,7 @@ export function RuleEditor({ definitions, rules, onChange, onAddRule }: RuleEdit
             startIcon={<DeleteSweepRoundedIcon />}
             onClick={() => onChange([])}
             disabled={rules.length === 0}
+            sx={{ flex: { xs: 1, sm: "initial" } }}
           >
             一键清除
           </Button>
@@ -162,6 +166,7 @@ export function RuleEditor({ definitions, rules, onChange, onAddRule }: RuleEdit
                       disabled={index === 0}
                       onClick={() => moveRule(index, -1)}
                       aria-label="上移规则"
+                      sx={ruleActionSx}
                     >
                       <ArrowUpwardRoundedIcon fontSize="small" />
                     </IconButton>
@@ -174,6 +179,7 @@ export function RuleEditor({ definitions, rules, onChange, onAddRule }: RuleEdit
                       disabled={index === rules.length - 1}
                       onClick={() => moveRule(index, 1)}
                       aria-label="下移规则"
+                      sx={ruleActionSx}
                     >
                       <ArrowDownwardRoundedIcon fontSize="small" />
                     </IconButton>
@@ -184,6 +190,7 @@ export function RuleEditor({ definitions, rules, onChange, onAddRule }: RuleEdit
                     size="small"
                     onClick={() => onChange([...rules, cloneRule(rule)])}
                     aria-label="复制规则"
+                    sx={ruleActionSx}
                   >
                     <ContentCopyRoundedIcon fontSize="small" />
                   </IconButton>
@@ -196,6 +203,7 @@ export function RuleEditor({ definitions, rules, onChange, onAddRule }: RuleEdit
                       onChange(rules.filter((_, itemIndex) => itemIndex !== index))
                     }
                     aria-label="删除规则"
+                    sx={ruleActionSx}
                   >
                     <DeleteOutlineRoundedIcon fontSize="small" />
                   </IconButton>

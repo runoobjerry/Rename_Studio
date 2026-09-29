@@ -9,19 +9,25 @@ export function createAppTheme(mode: PaletteMode) {
   const textSecondary = dark ? "#a5b8b0" : "#586a62";
   const textDisabled = dark ? "#70837a" : "#87958f";
   const accentText = dark ? "#35f2a3" : "#007a4b";
+  const primaryMain = dark ? accent : "#007a4b";
+  const primaryLight = dark ? "#72ffc4" : "#2f9b6d";
+  const primaryDark = dark ? accentText : "#005c38";
+  const primaryContrast = dark ? "#04130d" : "#ffffff";
   const success = dark ? "#45e6a4" : "#007a4b";
   const warning = dark ? "#ffc56d" : "#925700";
   const error = dark ? "#ff9189" : "#b42318";
   const info = dark ? "#72d8cc" : "#146c64";
+  const surfaceMuted = dark ? "#14221c" : "#f6f9f7";
+  const divider = dark ? "rgba(255,255,255,0.09)" : "rgba(20,35,29,0.10)";
 
   return createTheme({
     palette: {
       mode,
       primary: {
-        main: accent,
-        light: dark ? "#72ffc4" : "#5dffc0",
-        dark: accentText,
-        contrastText: "#04130d",
+        main: primaryMain,
+        light: primaryLight,
+        dark: primaryDark,
+        contrastText: primaryContrast,
       },
       success: {
         main: success,
@@ -52,9 +58,9 @@ export function createAppTheme(mode: PaletteMode) {
         active: textSecondary,
         disabled: textDisabled,
         disabledBackground: dark ? "rgba(112,131,122,0.14)" : "rgba(135,149,143,0.12)",
-        selected: alpha(accent, dark ? 0.14 : 0.12),
+        selected: alpha(primaryMain, dark ? 0.14 : 0.12),
       },
-      divider: dark ? "rgba(255,255,255,0.09)" : "rgba(20,35,29,0.10)",
+      divider,
     },
     shape: { borderRadius: 14 },
     typography: {
@@ -67,27 +73,20 @@ export function createAppTheme(mode: PaletteMode) {
       MuiButton: {
         defaultProps: { disableElevation: true },
         styleOverrides: {
-          root: {
-            borderRadius: 10,
-            "&.MuiButton-text.MuiButton-colorPrimary, &.MuiButton-outlined.MuiButton-colorPrimary": {
-              color: accentText,
-            },
-            "&.MuiButton-outlined.MuiButton-colorPrimary": {
-              borderColor: alpha(accentText, 0.42),
-            },
-            "&.MuiButton-contained.MuiButton-colorPrimary": {
-              color: "#04130d",
-              backgroundColor: accent,
-            },
-          },
+          root: { borderRadius: 10 },
         },
       },
       MuiCard: {
         styleOverrides: {
           root: {
             backgroundImage: "none",
-            borderColor: dark ? "rgba(255,255,255,0.09)" : "rgba(20,35,29,0.10)",
+            borderColor: divider,
           },
+        },
+      },
+      MuiAlert: {
+        styleOverrides: {
+          root: { borderRadius: 10 },
         },
       },
       MuiChip: {
@@ -109,6 +108,24 @@ export function createAppTheme(mode: PaletteMode) {
               opacity: 1,
             },
           },
+        },
+      },
+      MuiOutlinedInput: {
+        styleOverrides: {
+          root: {
+            borderRadius: 10,
+            backgroundColor: surfaceMuted,
+            "&:hover .MuiOutlinedInput-notchedOutline": {
+              borderColor: textSecondary,
+            },
+            "&.Mui-focused": {
+              boxShadow: `0 0 0 3px ${alpha(primaryMain, dark ? 0.14 : 0.12)}`,
+            },
+            "&.Mui-focused .MuiOutlinedInput-notchedOutline": {
+              borderColor: primaryMain,
+            },
+          },
+          notchedOutline: { borderColor: divider },
         },
       },
       MuiListItemButton: {
@@ -143,17 +160,43 @@ export function createAppTheme(mode: PaletteMode) {
           },
         },
       },
+      MuiTableCell: {
+        styleOverrides: {
+          root: {
+            height: 38,
+            padding: "6px 12px",
+            borderColor: divider,
+            color: textSecondary,
+            fontSize: 12,
+            whiteSpace: "nowrap",
+          },
+          head: {
+            color: textPrimary,
+            backgroundColor: surfaceMuted,
+            fontWeight: 750,
+          },
+        },
+      },
+      MuiTableRow: {
+        styleOverrides: {
+          root: {
+            "&.Mui-selected, &.Mui-selected:hover": {
+              backgroundColor: alpha(primaryMain, dark ? 0.14 : 0.12),
+            },
+          },
+        },
+      },
       MuiCssBaseline: {
         styleOverrides: {
           ":root": {
             "--accent": accent,
-            "--accent-soft": alpha(accent, dark ? 0.14 : 0.12),
+            "--accent-soft": alpha(primaryMain, dark ? 0.14 : 0.12),
             "--accent-text": accentText,
             "--on-accent": "#04130d",
             "--app-background": dark ? "#08110e" : "#f4f7f6",
             "--app-surface": dark ? "#101a16" : "#ffffff",
-            "--app-surface-muted": dark ? "#14221c" : "#f6f9f7",
-            "--app-border": dark ? "rgba(255,255,255,0.09)" : "rgba(20,35,29,0.10)",
+            "--app-surface-muted": surfaceMuted,
+            "--app-border": divider,
             "--app-text": textPrimary,
             "--app-text-muted": textSecondary,
             "--app-text-disabled": textDisabled,

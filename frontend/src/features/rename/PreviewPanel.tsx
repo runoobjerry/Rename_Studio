@@ -1,3 +1,11 @@
+import Alert from "@mui/material/Alert";
+import Table from "@mui/material/Table";
+import TableBody from "@mui/material/TableBody";
+import TableCell from "@mui/material/TableCell";
+import TableContainer from "@mui/material/TableContainer";
+import TableHead from "@mui/material/TableHead";
+import TableRow from "@mui/material/TableRow";
+
 import type { ExecuteResponse, PreviewResponse } from "../../types";
 
 interface PreviewPanelProps {
@@ -53,40 +61,56 @@ export function PreviewPanel({
         </div>
       </div>
 
-      {error && <p className="error-banner">{error}</p>}
+      {error && <Alert severity="error" sx={{ m: 2 }}>{error}</Alert>}
       {!preview && !error && (
         <p className="empty-state">点击预览按钮以查看修改名称；预览不会修改 {providerName} 中的内容。</p>
       )}
       {preview && (
-        <div className="preview-table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>原文件名</th>
-                <th>新文件名</th>
-                <th>状态</th>
-              </tr>
-            </thead>
-            <tbody>
+        <TableContainer className="preview-table-wrap">
+          <Table
+            stickyHeader
+            size="small"
+            aria-label="重命名预览"
+            sx={{
+              minWidth: 560,
+              tableLayout: "fixed",
+              "& th:nth-of-type(1), & th:nth-of-type(2)": {
+                width: "calc((100% - 112px) / 2)",
+              },
+              "& th:nth-of-type(3)": { width: 112 },
+            }}
+          >
+            <TableHead>
+              <TableRow>
+                <TableCell>原文件名</TableCell>
+                <TableCell>新文件名</TableCell>
+                <TableCell>状态</TableCell>
+              </TableRow>
+            </TableHead>
+            <TableBody>
               {preview.items.map((item) => {
                 const status = statusFor(item);
                 const renamed = executionById.get(item.file_id)?.status === "renamed";
                 return (
-                  <tr key={item.file_id}>
-                    <td className="preview-name">{item.original_name}</td>
-                    <td className={`preview-name ${renamed ? "renamed-name" : ""}`}>
+                  <TableRow key={item.file_id}>
+                    <TableCell className="preview-name">{item.original_name}</TableCell>
+                    <TableCell className={`preview-name ${renamed ? "renamed-name" : ""}`}>
                       {item.new_name}
-                    </td>
-                    <td><span className={`status ${status.className}`}>{status.label}</span></td>
-                  </tr>
+                    </TableCell>
+                    <TableCell>
+                      <span className={`status ${status.className}`}>{status.label}</span>
+                    </TableCell>
+                  </TableRow>
                 );
               })}
-            </tbody>
-          </table>
-        </div>
+            </TableBody>
+          </Table>
+        </TableContainer>
       )}
 
-      {executeError && <p className="error-banner">执行失败：{executeError}</p>}
+      {executeError && (
+        <Alert severity="error" sx={{ m: 2 }}>执行失败：{executeError}</Alert>
+      )}
     </section>
   );
 }

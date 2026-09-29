@@ -1,5 +1,7 @@
 import AddRoundedIcon from "@mui/icons-material/AddRounded";
 import RemoveRoundedIcon from "@mui/icons-material/RemoveRounded";
+import Alert from "@mui/material/Alert";
+import Box from "@mui/material/Box";
 import Checkbox from "@mui/material/Checkbox";
 import IconButton from "@mui/material/IconButton";
 import MenuItem from "@mui/material/MenuItem";
@@ -31,7 +33,55 @@ function NumberStepper({ label, value, min, max, onChange }: NumberStepperProps)
   };
 
   return (
-    <div className="number-stepper" role="group" aria-label={label}>
+    <Box
+      role="group"
+      aria-label={label}
+      sx={{
+        display: "grid",
+        gridTemplateColumns: "36px minmax(0, 1fr) 36px",
+        alignItems: "stretch",
+        minHeight: 38,
+        overflow: "hidden",
+        border: 1,
+        borderColor: "divider",
+        borderRadius: "9px",
+        bgcolor: "action.hover",
+        "&:focus-within": {
+          borderColor: "primary.main",
+          boxShadow: (theme) => `0 0 0 3px ${theme.palette.action.selected}`,
+        },
+        "& .MuiIconButton-root": {
+          borderRadius: 0,
+          color: "text.secondary",
+        },
+        "& .MuiIconButton-root:first-of-type": {
+          borderRight: 1,
+          borderColor: "divider",
+        },
+        "& .MuiIconButton-root:last-of-type": {
+          borderLeft: 1,
+          borderColor: "divider",
+        },
+        "& input": {
+          width: "100%",
+          minWidth: 0,
+          px: 0.5,
+          py: 0.75,
+          border: 0,
+          color: "text.primary",
+          bgcolor: "transparent",
+          font: "inherit",
+          fontWeight: 700,
+          textAlign: "center",
+          outline: "none",
+          appearance: "textfield",
+        },
+        "& input::-webkit-inner-spin-button, & input::-webkit-outer-spin-button": {
+          m: 0,
+          appearance: "none",
+        },
+      }}
+    >
       <IconButton
         type="button"
         size="small"
@@ -58,7 +108,7 @@ function NumberStepper({ label, value, min, max, onChange }: NumberStepperProps)
       >
         <AddRoundedIcon fontSize="small" />
       </IconButton>
-    </div>
+    </Box>
   );
 }
 
@@ -95,10 +145,13 @@ function PaddingFields({ rule, onChange }: RuleFieldsProps) {
         <>
           <label>
             填充字符
-            <input
+            <TextField
+              fullWidth
+              hiddenLabel
+              size="small"
               value={valueAsString(rule, "fill_character", "_")}
-              maxLength={1}
               onChange={(event) => onChange({ fill_character: event.target.value })}
+              slotProps={{ htmlInput: { maxLength: 1, "aria-label": "填充字符" } }}
             />
           </label>
           <label>
@@ -129,17 +182,27 @@ function TextOperationFields({ rule, onChange }: RuleFieldsProps) {
       <div className="rule-fields">
         <label>
           {isReplace ? "查找内容" : "移除内容"}
-          <input
+          <TextField
+            fullWidth
+            hiddenLabel
+            size="small"
             value={valueAsString(rule, "search", "")}
             onChange={(event) => onChange({ search: event.target.value })}
+            slotProps={{
+              htmlInput: { "aria-label": isReplace ? "查找内容" : "移除内容" },
+            }}
           />
         </label>
         {isReplace && (
           <label>
             替换为
-            <input
+            <TextField
+              fullWidth
+              hiddenLabel
+              size="small"
               value={valueAsString(rule, "replacement", "")}
               onChange={(event) => onChange({ replacement: event.target.value })}
+              slotProps={{ htmlInput: { "aria-label": "替换为" } }}
             />
           </label>
         )}
@@ -202,9 +265,13 @@ function InsertFields({ rule, onChange }: RuleFieldsProps) {
       <div className="rule-fields">
         <label>
           插入内容
-          <input
+          <TextField
+            fullWidth
+            hiddenLabel
+            size="small"
             value={valueAsString(rule, "text", "")}
             onChange={(event) => onChange({ text: event.target.value })}
+            slotProps={{ htmlInput: { "aria-label": "插入内容" } }}
           />
         </label>
         <label>
@@ -239,9 +306,13 @@ function InsertFields({ rule, onChange }: RuleFieldsProps) {
         {usesAnchor && (
           <label>
             指定文本
-            <input
+            <TextField
+              fullWidth
+              hiddenLabel
+              size="small"
               value={valueAsString(rule, "anchor", "")}
               onChange={(event) => onChange({ anchor: event.target.value })}
+              slotProps={{ htmlInput: { "aria-label": "指定文本" } }}
             />
           </label>
         )}
@@ -269,5 +340,5 @@ export function RuleFields(props: RuleFieldsProps) {
     return <TextOperationFields {...props} />;
   }
   if (props.rule.type === "insert") return <InsertFields {...props} />;
-  return <p className="error-banner">不支持的规则类型：{props.rule.type}</p>;
+  return <Alert severity="error">不支持的规则类型：{props.rule.type}</Alert>;
 }
