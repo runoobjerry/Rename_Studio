@@ -1,56 +1,57 @@
-# UI State
+# UI 状态
 
-## Stage
+## 阶段
 
-Production-ready / Optimization.
+生产可用 / 优化。
 
-The core UI workflow is complete. Current work should refine quality and maintainability rather than add product features.
+核心 UI 工作流已完成。当前工作应优化质量和可维护性，而不是添加产品功能。
 
-## Current Focus
+## 当前重点
 
-- Visual and interaction consistency across light and dark modes.
-- Loading/error feedback, accessibility, responsive QA, and component cleanup.
-- Keep API and Preview First behavior unchanged.
+- 统一明暗模式下的视觉和交互体验。
+- 优化加载/错误反馈、可访问性、响应式质量保证和组件整理。
+- 保持 API 和预览优先行为不变。
 
-## Recently Completed
+## 最近完成
 
-- MUI application shell with responsive Drawer and secondary Settings/RulePicker views.
-- Compact file and rename preview tables with internal scrolling.
-- Rule editor actions, MUI field controls, rule picker cards, and semantic color system.
-- Preview/execute actions below the rule panel with MUI confirmation Dialog.
-- Execution results merged into preview rows and directory refresh after success.
-- Light/dark mode, OneDrive settings page, tooltips, icon actions, and consistent card geometry.
-- Lazy secondary views and manual vendor chunks.
-- Removed the unused `LegacyApp` and deleted its obsolete global CSS selectors.
-- Migrated active native controls, contextual errors, OneDrive connection status, and the rename preview table to MUI.
-- Moved shared input, table, selected-row, and Alert styling into the MUI theme; retained complex workspace layout and scrollbar CSS intentionally.
-- Corrected light-mode contrast for checked controls and primary contained buttons, and added the missing destructive-action border in OneDrive settings.
+- 采用 MUI 的应用外壳，包含响应式 Drawer 以及次级设置/规则选择器视图。
+- 具有内部滚动的紧凑文件表格和重命名预览表格。
+- 规则编辑器操作、MUI 字段控件、规则选择器卡片和语义颜色系统。
+- 规则面板下方的预览/执行操作以及 MUI 确认 Dialog。
+- 将执行结果合并到预览行，并在成功后刷新目录。
+- 明暗模式、OneDrive 设置页面、工具提示、图标操作和统一的卡片几何样式。
+- 懒加载次级视图和手动拆分 vendor chunks。
+- 移除了未使用的 `LegacyApp`，并删除了其过时的全局 CSS 选择器。
+- 将当前使用的原生控件、上下文错误、OneDrive 连接状态和重命名预览表格迁移到 MUI。
+- 将共享的输入框、表格、选中行和 Alert 样式移入 MUI 主题；有意保留复杂的工作区布局和滚动条 CSS。
+- 修正了浅色模式下已选控件和 primary contained 按钮的对比度，并补充了 OneDrive 设置中缺失的破坏性操作边框。
+- 通过组件局部 MUI 样式，将规则卡片内的输入值、下拉值和数字步进值统一为 13px。
 
-## Next
+## 下一步
 
-1. Preserve structured API errors in the frontend client.
-2. Add shared Snackbar/Alert notifications.
-3. Improve initial/settings/loading distinctions.
-4. Add preview expiry and recovery feedback.
-5. Complete accessibility and responsive checks.
-6. Expand orchestration and settings tests.
-7. Revisit remaining page-layout CSS only alongside measured responsive or maintainability work.
+1. 在前端客户端中保留结构化 API 错误。
+2. 添加共享的 Snackbar/Alert 通知。
+3. 改进初始加载、设置加载和其他加载状态之间的区分。
+4. 添加预览过期和恢复反馈。
+5. 完成可访问性和响应式检查。
+6. 扩充编排和设置相关测试。
+7. 仅在有实测的响应式或可维护性工作时，重新审视剩余的页面布局 CSS。
 
-## Known Issues
+## 已知问题
 
-- API errors currently lose HTTP status, code, and details.
-- No Toast/Snackbar success feedback.
-- Preview expiry is not shown.
-- Settings loading can briefly resemble a disconnected state.
-- Rule fields support four known rule types only.
-- Complex single-screen workspace layout and scrollbar behavior still use targeted CSS by design.
-- No RuleSet, History, Undo, Redo, search, sorting, filtering, or virtualization.
+- API 错误目前会丢失 HTTP 状态、错误代码和详细信息。
+- 没有 Toast/Snackbar 成功反馈。
+- 未显示预览过期信息。
+- 设置加载时可能短暂呈现为未连接状态。
+- 规则字段仅支持四种已知规则类型。
+- 复杂的单屏工作区布局和滚动条行为仍按设计使用有针对性的 CSS。
+- 没有规则集（RuleSet）、历史记录（History）、撤销（Undo）、重做（Redo）、搜索、排序、筛选或虚拟化。
 
-## Do Not Touch
+## 请勿修改
 
-- Backend API contract and Pydantic fields.
-- Rename Engine, Preview/Execute services, and Preview Store.
-- Provider/Rule registries and implementations.
-- OneDrive OAuth, token refresh, Graph pagination/batching, retry, and rate limiting.
-- Database structure.
+- 后端 API 契约和 Pydantic 字段。
+- Rename Engine、Preview/Execute 服务和 Preview Store。
+- Provider/Rule 注册表和实现。
+- OneDrive OAuth、令牌刷新、Graph 分页/批处理、重试和限流。
+- 数据库结构。
 

@@ -1,47 +1,41 @@
-# UI TODO
+# UI 待办事项
 
-This file contains future work only. Completed capabilities are summarized in `FRONTEND_HANDOFF.md`.
+本文件仅包含未来工作。已完成功能汇总于 `FRONTEND_HANDOFF.md`。
 
-## Done
+## 已完成
 
-The production UI baseline is complete. Finished migration tasks are intentionally not repeated as a checklist here.
+生产 UI 基线已完成。这里特意不再以清单形式重复已完成的迁移任务。
 
-- Removed the unused `LegacyApp` and its obsolete CSS layer.
-- Migrated active path/settings/rule inputs, action buttons, contextual errors, connection status, and rename preview table to MUI.
-- Consolidated shared outlined-input, table, selected-row, and alert styling in the MUI theme while retaining only page-specific layout CSS.
-- Added mode-aware primary colors for selected controls and emphasized buttons, and standardized the destructive settings action as an outlined button.
+- 移除了未使用的 `LegacyApp` 及其过时的 CSS 层。
+- 将当前使用的路径/设置/规则输入控件、操作按钮、上下文错误、连接状态和重命名预览表格迁移到 MUI。
+- 将共享的 outlined input、表格、选中行和 Alert 样式整合到 MUI 主题中，同时仅保留页面特定的布局 CSS。
+- 为选中控件和强调按钮添加了适配模式的 primary 颜色，并将设置中的破坏性操作统一为 outlined 按钮。
+- 将规则卡片内的输入框、下拉框和数字步进框文字统一为 13px，且不影响应用中的其他输入控件。
 
-## Optimization
+## 优化
 
-- [ ] Continue UI consistency review across spacing, typography, focus states, status colors, and dark-mode contrast.
-- [ ] Improve initial directory, background refresh, OAuth/settings, preview, and execution loading feedback without changing request behavior.
-- [ ] Refine empty and error presentation so authentication, provider, validation, conflict, expired preview, and partial execution states are visually distinct.
-- [ ] Complete accessibility review: keyboard traversal, visible focus, table semantics, error association, live status announcements, and non-color status cues.
-- [ ] Validate responsive behavior from 320px through desktop, including tables, rule controls, dialogs, and the temporary Drawer.
-- [ ] Keep remaining CSS limited to page layout, internal scrolling, responsive composition, and custom component geometry; migrate it only when a component is otherwise being changed.
-- [ ] Expand frontend tests for Workspace state clearing, Settings/OAuth feedback, RulePicker, theme switching, loading/error states, and Dialog edge cases.
-- [ ] Monitor bundle size and large-directory rendering; keep current lazy views/manual chunks and optimize only from measured evidence.
+- [ ] 继续检查 UI 一致性，包括间距、排版、焦点状态、状态颜色和深色模式对比度。
+- [ ] 改进初始目录、后台刷新、OAuth/设置、预览和执行的加载反馈，同时不改变请求行为。
+- [ ] 优化空状态和错误呈现，使身份验证、Provider、校验、冲突、预览过期和部分执行状态在视觉上易于区分。
+- [ ] 完成可访问性检查：键盘遍历、可见焦点、表格语义、错误关联、实时状态播报以及不依赖颜色的状态提示。
+- [ ] 验证从 320px 到桌面端的响应式行为，包括表格、规则控件、Dialog 和临时 Drawer。
+- [ ] 将剩余 CSS 继续限制在页面布局、内部滚动、响应式组合和自定义组件几何样式；仅在相关组件因其他原因发生变更时迁移这些 CSS。
+- [ ] 扩充前端测试，覆盖工作区状态清除、设置/OAuth 反馈、RulePicker、主题切换、加载/错误状态和 Dialog 边界情况。
+- [ ] 监控 bundle 大小和大目录渲染；保留当前的懒加载视图/手动 chunks，并仅依据实测数据进行优化。
 
-## Pending
+## 待处理
 
-- [ ] Add a typed `ApiError` that preserves HTTP status, `error.code`, `message`, and `details` from the existing API response.
-- [ ] Add a shared MUI Snackbar/Alert notification layer for settings, OAuth, preview, execute, and refresh outcomes while retaining contextual inline errors.
-- [ ] Display preview expiry information and provide a direct re-preview path for `PREVIEW_EXPIRED`.
-- [ ] Replace the native credential-clear `window.confirm` with the established MUI Dialog pattern.
+- [ ] 添加类型化的 `ApiError`，保留现有 API 响应中的 HTTP 状态、`error.code`、`message` 和 `details`。
+- [ ] 为设置、OAuth、预览、执行和刷新结果添加共享的 MUI Snackbar/Alert 通知层，同时保留上下文内联错误。
+- [ ] 显示预览过期信息，并为 `PREVIEW_EXPIRED` 提供直接重新预览的路径。
+- [ ] 使用已有的 MUI Dialog 模式替换原生的凭据清理 `window.confirm`。
 
-## Deferred
+## 延后
 
-- RuleSet UI until RuleSet API and persistence exist.
-- History, Undo, and Redo until corresponding backend APIs and persistence exist.
-- Search, sorting, filtering, and large-directory virtualization until requirements and API strategy are defined.
-- Drag-and-drop rule ordering; keep the accessible move up/down controls.
-- Shortcuts, rule templates, advanced workflows, optional motion, and deeper branding.
-- New Providers, advanced rules, and plugin UI.
-
-## Removed
-
-- Breadcrumb navigation: the current design uses the path control plus parent navigation.
-- Moving OneDrive settings into a Dialog: Settings is now a dedicated secondary page.
-- A file-size table column: the accepted compact table shows name, extension, and modified time.
-- Old tasks to install MUI or add the app shell, Drawer, theme, dark mode, file table, rule picker, preview table, and execute Dialog; these are implemented and no longer TODO items.
+- 在 RuleSet API 和持久化可用之前，延后规则集 UI。
+- 在对应后端 API 和持久化可用之前，延后历史记录、撤销和重做。
+- 在需求和 API 策略确定之前，延后搜索、排序、筛选和大目录虚拟化。
+- 延后拖放式规则排序；保留具备可访问性的上移/下移控件。
+- 延后快捷键、规则模板、高级工作流、可选动效和更深入的品牌设计。
+- 延后新的 Providers、高级规则和插件 UI。
 

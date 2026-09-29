@@ -256,8 +256,8 @@ export default function WorkspaceApp() {
         </ListItemButton>
       </List>
       <Box className="sidebar-meta">
-        <Typography variant="caption" color="textSecondary">© 2026 Rename Studio</Typography>
-        <Typography variant="caption" color="textSecondary">Git · a4130b4</Typography>
+        <Typography variant="caption" color="textSecondary">© 2026 JERRY </Typography>
+        <Typography variant="caption" color="textSecondary">Ver. 0.20-alpha</Typography>
       </Box>
     </Box>
   );

@@ -9,6 +9,9 @@ import TextField from "@mui/material/TextField";
 
 import type { RuleSpec } from "../../types";
 
+const ruleFieldsSx = {
+  "& .MuiInputBase-root": { height: 38, fontSize: 13 },
+} as const;
 
 interface RuleFieldsProps {
   rule: RuleSpec;
@@ -71,6 +74,7 @@ function NumberStepper({ label, value, min, max, onChange }: NumberStepperProps)
           color: "text.primary",
           bgcolor: "transparent",
           font: "inherit",
+          fontSize: 13,
           fontWeight: 700,
           textAlign: "center",
           outline: "none",
@@ -116,7 +120,7 @@ function PaddingFields({ rule, onChange }: RuleFieldsProps) {
   const mode = valueAsString(rule, "mode", "number");
 
   return (
-    <div className="rule-fields">
+    <Box className="rule-fields" sx={ruleFieldsSx}>
       <label>
         填充类型
         <TextField
@@ -170,7 +174,7 @@ function PaddingFields({ rule, onChange }: RuleFieldsProps) {
           </label>
         </>
       )}
-    </div>
+    </Box>
   );
 }
 
@@ -179,7 +183,7 @@ function TextOperationFields({ rule, onChange }: RuleFieldsProps) {
 
   return (
     <>
-      <div className="rule-fields">
+      <Box className="rule-fields" sx={ruleFieldsSx}>
         <label>
           {isReplace ? "查找内容" : "移除内容"}
           <TextField
@@ -221,7 +225,7 @@ function TextOperationFields({ rule, onChange }: RuleFieldsProps) {
             <MenuItem value="last">末个</MenuItem>
           </TextField>
         </label>
-      </div>
+      </Box>
       <div className="rule-options">
         <label className="option-toggle">
           <Checkbox
@@ -262,7 +266,7 @@ function InsertFields({ rule, onChange }: RuleFieldsProps) {
 
   return (
     <>
-      <div className="rule-fields">
+      <Box className="rule-fields" sx={ruleFieldsSx}>
         <label>
           插入内容
           <TextField
@@ -286,7 +290,7 @@ function InsertFields({ rule, onChange }: RuleFieldsProps) {
           >
             <MenuItem value="prefix">前缀</MenuItem>
             <MenuItem value="suffix">后缀</MenuItem>
-            <MenuItem value="index">第几个字符位置</MenuItem>
+            <MenuItem value="index">指定字符位置</MenuItem>
             <MenuItem value="before_text">指定文本之前</MenuItem>
             <MenuItem value="after_text">指定文本之后</MenuItem>
           </TextField>
@@ -316,7 +320,7 @@ function InsertFields({ rule, onChange }: RuleFieldsProps) {
             />
           </label>
         )}
-      </div>
+      </Box>
       {usesIndex && (
         <div className="rule-options">
           <label className="option-toggle">

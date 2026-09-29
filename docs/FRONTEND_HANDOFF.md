@@ -1,87 +1,86 @@
-# Frontend Handoff
+# 前端交接文档
 
-## Current Status
+## 当前状态
 
-Production-ready UI baseline completed. Current stage: refinement, consistency, performance, accessibility, and maintainability.
+生产可用的 UI 基线已完成。当前阶段：优化、统一性、性能、可访问性和可维护性。
 
-The working frontend supports Local Files and OneDrive Personal from browsing through preview-confirmed rename execution. RuleSet, History, and Undo/Redo are not available and must not be presented as working features.
+当前可用的前端支持本地文件和 OneDrive 个人版，覆盖从文件浏览到经预览确认后执行重命名的完整流程。规则集（RuleSet）、历史记录（History）和撤销/重做（Undo/Redo）尚不可用，不得将其呈现为可用功能。
 
-## Tech Stack
+## 技术栈
 
-- React 18 and TypeScript 5.6
+- React 18 和 TypeScript 5.6
 - Vite 5
-- Material UI 9 and Emotion
+- Material UI 9 和 Emotion
 - TanStack Query 5
 - Zustand 5
-- Vitest, Testing Library, and JSDOM
+- Vitest、Testing Library 和 JSDOM
 
-## Current Architecture
+## 当前架构
 
-- `src/App.tsx` is a minimal default export of `WorkspaceApp`; the unused legacy application has been removed.
-- `WorkspaceApp.tsx` owns query/mutation orchestration and three in-memory views: workspace, rule picker, and settings. There is no URL router or deep-link routing.
-- Settings and rule picker views are lazy-loaded.
-- `features/` contains file browsing, rule editing, rename preview/actions, and settings UI.
-- TanStack Query owns server state and cache invalidation. Zustand only stores selected IDs and the current rule chain.
-- `api/client.ts` is the only frontend HTTP layer; `types/index.ts` mirrors API response shapes.
-- `theme.ts` defines light/dark semantic colors and shared MUI overrides. `styles.css` is limited to page layout, internal scrolling, responsive composition, and custom component geometry.
+- `src/App.tsx` 仅用于默认导出 `WorkspaceApp`，保持最小化；未使用的旧版应用已移除。
+- `WorkspaceApp.tsx` 负责查询/变更编排以及三个内存视图：工作区、规则选择器和设置。当前没有 URL 路由器或深层链接路由。
+- 设置和规则选择器视图采用懒加载。
+- `features/` 包含文件浏览、规则编辑、重命名预览/操作以及设置 UI。
+- TanStack Query 负责服务端状态和缓存失效。Zustand 仅存储已选择的 ID 和当前规则链。
+- `api/client.ts` 是唯一的前端 HTTP 层；`types/index.ts` 映射 API 响应结构。
+- `theme.ts` 定义明暗模式的语义颜色和共享 MUI 覆盖样式。`styles.css` 仅用于页面布局、内部滚动、响应式组合和自定义组件几何样式。
 
-## Implemented Features
+## 已实现功能
 
-- Responsive MUI Drawer with Local Files, OneDrive, and Settings navigation.
-- Persisted light/dark mode based on user choice and system preference.
-- Local root path input plus backend-hosted folder picker.
-- OneDrive App ID settings, OAuth popup login, account switch, disconnect, and credential clearing.
-- Directory browsing, parent navigation, manual refresh, file/folder icons, name tooltips, modified time, and internal table scrolling.
-- File and folder selection with row checkbox, select all, invert selection, selected count, and selection reset on context changes.
-- Rule picker and ordered rule chain for `padding`, `replace`, `remove`, and `insert`.
-- Rule enable/disable, move up/down, duplicate, delete, and clear-all controls.
-- Server-generated rename preview with changed, unchanged, invalid, and conflict/error presentation.
-- Preview-first execution, MUI confirmation Dialog, duplicate-submit prevention, per-item execution status merged into the preview table, selection clearing, and background directory refresh.
-- Baseline loading, empty, error, disabled, tooltip, and responsive states.
+- 带有本地文件、OneDrive 和设置导航的响应式 MUI Drawer。
+- 根据用户选择和系统偏好持久化明暗模式。
+- 本地根路径输入以及由后端承载的文件夹选择器。
+- OneDrive App ID 设置、OAuth 弹窗登录、账号切换、断开连接和凭据清理。
+- 目录浏览、返回上级目录、手动刷新、文件/文件夹图标、名称工具提示、修改时间和表格内部滚动。
+- 文件和文件夹选择，支持行复选框、全选、反选、已选数量，以及上下文变化时重置选择。
+- 用于 `padding`、`replace`、`remove` 和 `insert` 的规则选择器及有序规则链。
+- 规则启用/禁用、上移/下移、复制、删除和全部清除控件。
+- 服务端生成的重命名预览，可呈现已更改、未更改、无效以及冲突/错误状态。
+- 预览优先执行、MUI 确认 Dialog、防止重复提交、将逐项执行状态合并到预览表格、清除选择以及后台刷新目录。
+- 基础的加载、空状态、错误、禁用、工具提示和响应式状态。
 
-Renaming a selected folder changes that folder's name only; it does not recursively rename its contents.
+重命名选中的文件夹只会更改该文件夹的名称；不会递归重命名其中的内容。
 
-## Important Components
+## 重要组件
 
-- `frontend/src/WorkspaceApp.tsx` — application shell, view state, queries, mutations, and invalidation rules.
-- `frontend/src/features/files/FileBrowser.tsx` — directory table, navigation, and selection.
-- `frontend/src/features/rules/RuleEditor.tsx` — ordered rule chain and rule actions.
-- `frontend/src/features/rules/RuleFields.tsx` — configuration UI for the four supported rule types.
-- `frontend/src/features/rules/RulePickerPage.tsx` — secondary rule selection page.
-- `frontend/src/features/rename/PreviewPanel.tsx` — preview and merged execution results.
-- `frontend/src/features/rename/RenameActions.tsx` — preview/execute buttons and confirmation Dialog.
-- `frontend/src/features/settings/SettingsPage.tsx` and `OneDriveSettingsPanel.tsx` — appearance and OneDrive settings.
-- `frontend/src/api/client.ts`, `frontend/src/types/index.ts`, `frontend/src/stores/useRenameStore.ts`, `frontend/src/theme.ts`, and `frontend/src/styles.css` — shared boundaries.
+- `frontend/src/WorkspaceApp.tsx` — 应用外壳、视图状态、查询、变更和缓存失效规则。
+- `frontend/src/features/files/FileBrowser.tsx` — 目录表格、导航和选择。
+- `frontend/src/features/rules/RuleEditor.tsx` — 有序规则链和规则操作。
+- `frontend/src/features/rules/RuleFields.tsx` — 四种受支持规则类型的配置 UI。
+- `frontend/src/features/rules/RulePickerPage.tsx` — 次级规则选择页面。
+- `frontend/src/features/rename/PreviewPanel.tsx` — 预览和合并后的执行结果。
+- `frontend/src/features/rename/RenameActions.tsx` — 预览/执行按钮和确认 Dialog。
+- `frontend/src/features/settings/SettingsPage.tsx` 和 `OneDriveSettingsPanel.tsx` — 外观和 OneDrive 设置。
+- `frontend/src/api/client.ts`、`frontend/src/types/index.ts`、`frontend/src/stores/useRenameStore.ts`、`frontend/src/theme.ts` 和 `frontend/src/styles.css` — 共享边界。
 
-## Stable Areas
+## 稳定区域
 
-- Backend API contract and Pydantic field names.
-- Preview-first safety model and one-time `preview_id` execution.
-- Rename Engine, Rule Registry, Provider Registry, conflict planning, and rollback behavior.
-- Local and OneDrive provider behavior, OAuth flow, token refresh, Graph pagination/batching, retry, and rate-limit handling.
-- Query keys and state-clearing behavior when provider, path, selection, rules, or local root changes.
+- 后端 API 契约和 Pydantic 字段名称。
+- 预览优先安全模型和使用一次性 `preview_id` 执行。
+- Rename Engine、Rule Registry、Provider Registry、冲突规划和回滚行为。
+- 本地和 OneDrive Provider 行为、OAuth 流程、令牌刷新、Graph 分页/批处理、重试和限流处理。
+- Provider、路径、选择、规则或本地根目录变化时的查询键和状态清除行为。
 
-UI refinement should not modify these areas unless the task explicitly requires it.
+除非任务明确要求，否则 UI 优化不应修改这些区域。
 
-## Known Limitations
+## 已知限制
 
-- `api/client.ts` converts API failures to plain `Error` and drops HTTP status, `error.code`, and `details`.
-- There is no Snackbar/Toast system. Errors are shown through a global Alert or local inline messages; successful settings actions have no transient notification.
-- Preview `expires_at` is not displayed and `PREVIEW_EXPIRED` has no dedicated recovery UI.
-- Initial directory and settings loading use text or implicit state rather than complete Skeleton/progress treatment; OneDrive settings can briefly look disconnected while loading.
-- The four rule field layouts are handwritten. A backend rule added to `/rules` does not automatically gain frontend fields.
-- `styles.css` now focuses on page layout, internal scrolling, responsive composition, and custom component geometry; shared control styling lives in the MUI theme.
-- Automated frontend tests cover FileBrowser, RuleEditor, PreviewPanel, and RenameActions only. Workspace orchestration, Settings, RulePicker, theme switching, and error/loading flows are not covered.
-- No frontend search, sort, filtering, virtualization, RuleSet, History, Undo, or Redo. `/files` has no pagination/query API; OneDrive Graph pagination is aggregated by the backend.
-- Real-account OneDrive authentication and rename still require environment-specific acceptance testing.
+- `api/client.ts` 将 API 失败转换为普通 `Error`，并丢弃 HTTP 状态、`error.code` 和 `details`。
+- 没有 Snackbar/Toast 系统。错误通过全局 Alert 或局部内联消息显示；设置操作成功后没有临时通知。
+- 未显示预览的 `expires_at`，且 `PREVIEW_EXPIRED` 没有专用的恢复 UI。
+- 初始目录和设置加载使用文本或隐式状态，而非完整的 Skeleton/进度处理；OneDrive 设置在加载时可能短暂显示为未连接状态。
+- 四种规则字段布局均为手写实现。后端新增到 `/rules` 的规则不会自动获得前端字段。
+- `styles.css` 现在专注于页面布局、内部滚动、响应式组合和自定义组件几何样式；共享控件样式位于 MUI 主题中。
+- 前端自动化测试仅覆盖 FileBrowser、RuleEditor、PreviewPanel 和 RenameActions。工作区编排、设置、RulePicker、主题切换以及错误/加载流程尚未覆盖。
+- 前端没有搜索、排序、筛选、虚拟化、规则集（RuleSet）、历史记录（History）、撤销（Undo）或重做（Redo）。`/files` 没有分页/查询 API；OneDrive Graph 分页由后端聚合。
 
-## Development Rules
+## 开发规则
 
-- Default to changes under `frontend/` and documentation under `docs/`.
-- Do not change the backend, API contract, Rename Engine, Rules, Providers, database, or OAuth flow for a visual issue.
-- Preserve Preview First and existing query invalidation/state reset behavior.
-- Read the target page, its direct components/styles, and the relevant `API_REFERENCE.md` section before editing.
-- Prefer small local changes and reuse current MUI components and semantic theme tokens.
-- Do not reintroduce completed UI migration plans or expose unavailable backend capabilities.
-- By default perform static checks only; the user runs builds and tests unless explicitly requested.
+- 默认只修改 `frontend/` 下的内容以及 `docs/` 下的文档。
+- 不要因视觉问题修改后端、API 契约、Rename Engine、Rules、Providers、数据库或 OAuth 流程。
+- 保持预览优先以及现有的查询失效/状态重置行为不变。
+- 编辑前先阅读目标页面、其直接关联的组件/样式，以及 `API_REFERENCE.md` 中的相关章节。
+- 优先进行小范围局部修改，并复用现有 MUI 组件和语义主题令牌。
+- 不要重新引入已完成的 UI 迁移计划，也不要暴露后端尚不可用的能力。
+- 默认仅执行静态检查；除非用户明确要求，否则由用户运行构建和测试。
 
