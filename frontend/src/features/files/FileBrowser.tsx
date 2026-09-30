@@ -4,9 +4,11 @@ import InsertDriveFileOutlinedIcon from "@mui/icons-material/InsertDriveFileOutl
 import RefreshRoundedIcon from "@mui/icons-material/RefreshRounded";
 import {
   Button,
+  Alert,
   ButtonBase,
   Checkbox,
   IconButton,
+  LinearProgress,
   Table,
   TableBody,
   TableCell,
@@ -23,6 +25,7 @@ interface FileBrowserProps {
   providerName: string;
   selectedIds: string[];
   isRefreshing?: boolean;
+  refreshError?: string;
   onNavigate: (path: string) => void;
   onRefresh?: () => void;
   onToggle: (fileId: string) => void;
@@ -56,6 +59,7 @@ export function FileBrowser({
   providerName,
   selectedIds,
   isRefreshing = false,
+  refreshError,
   onNavigate,
   onRefresh,
   onToggle,
@@ -67,7 +71,7 @@ export function FileBrowser({
   const allSelected = listing.items.length > 0 && selectedCount === listing.items.length;
 
   return (
-    <section className="panel browser" aria-labelledby="files-title">
+    <section className="panel browser" aria-labelledby="files-title" aria-busy={isRefreshing}>
       <div className="panel-heading">
         <div className="panel-title-line">
           <h2 id="files-title">文件预览</h2>
@@ -119,6 +123,10 @@ export function FileBrowser({
           </Button>
         </div>
       </div>
+      {isRefreshing && <LinearProgress aria-label="正在刷新目录" sx={{ flexShrink: 0 }} />}
+      {refreshError && (
+        <Alert severity="error">目录刷新失败，当前显示上次读取的内容：{refreshError}</Alert>
+      )}
 
       <TableContainer className="file-table-wrap">
         <Table

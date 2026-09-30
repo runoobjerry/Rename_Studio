@@ -12,18 +12,45 @@ import type {
   OneDriveSettings,
 } from "../types";
 
-interface ApiErrorBody {
-  error?: {
-    code?: string;
-    message?: string;
-  };
+export class ApiError extends Error {
+  readonly status: number;
+  readonly code: string | null;
+  readonly details: Record<string, unknown>;
+
+  constructor(
+    status: number,
+    message: string,
+    code: string | null = null,
+    details: Record<string, unknown> = {},
+  ) {
+    super(message);
+    this.name = "ApiError";
+    this.status = status;
+    this.code = code;
+    this.details = details;
+  }
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function responseError(status: number, body: unknown): ApiError {
+  // 代理和非标准错误响应也可能返回 HTML、null 或字段类型错误的 JSON。
+  const error = isRecord(body) && isRecord(body.error) ? body.error : {};
+  const message = typeof error.message === "string" && error.message.trim()
+    ? error.message
+    : `Request failed (${status})`;
+  const code = typeof error.code === "string" && error.code.trim() ? error.code : null;
+  const details = isRecord(error.details) ? error.details : {};
+  return new ApiError(status, message, code, details);
 }
 
 async function request<T>(url: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`/api${url}`, init);
   if (!response.ok) {
-    const body = (await response.json().catch(() => ({}))) as ApiErrorBody;
-    throw new Error(body.error?.message ?? `Request failed (${response.status})`);
+    const body: unknown = await response.json().catch(() => null);
+    throw responseError(response.status, body);
   }
   if (response.status === 204) return undefined as T;
   return (await response.json()) as T;

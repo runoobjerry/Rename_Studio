@@ -16,11 +16,14 @@ import {
   ListItemButton,
   ListItemIcon,
   ListItemText,
+  LinearProgress,
+  Skeleton,
   Stack,
   TextField,
   ThemeProvider,
   Typography,
   useMediaQuery,
+  useTheme,
 } from "@mui/material";
 import type { PaletteMode } from "@mui/material";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -42,6 +45,7 @@ import { RenameActions } from "./features/rename/RenameActions";
 import { cloneRule, DEFAULT_RULES, RuleEditor } from "./features/rules/RuleEditor";
 import { useRenameStore } from "./stores/useRenameStore";
 import { createAppTheme } from "./theme";
+import { errorMessage, NotificationProvider, useNotification } from "./components/NotificationProvider";
 
 const RulePickerPage = lazy(() =>
   import("./features/rules/RulePickerPage").then((module) => ({
@@ -73,9 +77,19 @@ function initialMode(): PaletteMode {
 }
 
 export default function WorkspaceApp() {
-  const queryClient = useQueryClient();
   const [mode, setMode] = useState<PaletteMode>(initialMode);
   const theme = useMemo(() => createAppTheme(mode), [mode]);
+  return (
+    <ThemeProvider theme={theme}>
+      <NotificationProvider><Workspace mode={mode} setMode={setMode} /></NotificationProvider>
+    </ThemeProvider>
+  );
+}
+
+function Workspace({ mode, setMode }: { mode: PaletteMode; setMode: (mode: PaletteMode) => void }) {
+  const notify = useNotification();
+  const queryClient = useQueryClient();
+  const theme = useTheme();
   const compactNavigation = useMediaQuery(theme.breakpoints.down("md"));
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [view, setView] = useState<AppView>("workspace");
@@ -114,14 +128,28 @@ export default function WorkspaceApp() {
   });
   const preview = useMutation({
     mutationFn: () => createPreview(providerId, path, selectedIds, rules),
+    onSuccess: (result) => notify(
+      result.valid ? "预览已生成，请确认新文件名。" : "预览包含无效名称或冲突，请检查预览结果。",
+      result.valid ? "success" : "warning",
+    ),
+    onError: (error) => notify(`预览失败：${errorMessage(error)}`, "error"),
   });
   const execution = useMutation({
     mutationFn: executePreview,
-    onSuccess: () => {
+    onSuccess: (result) => {
+      if (result.status !== "completed") {
+        const renamed = result.items.filter((item) => item.status === "renamed").length;
+        const failed = result.items.filter((item) => item.status === "failed").length;
+        notify(
+          `修改${result.status === "partial" ? "部分完成" : "失败"}：${renamed} 项已修改，${failed} 项失败。`,
+          result.status === "partial" ? "warning" : "error",
+        );
+      }
       clearSelection();
       // 先展示执行结果，目录刷新在后台完成，避免把读取延迟算入执行等待时间。
       void queryClient.invalidateQueries({ queryKey: ["files"] });
     },
+    onError: (error) => notify(`执行失败：${errorMessage(error)}`, "error"),
   });
   const updateLocalRoot = useMutation({
     mutationFn: () => updateLocalSettings(localRoot.trim()),
@@ -132,8 +160,10 @@ export default function WorkspaceApp() {
       clearSelection();
       preview.reset();
       execution.reset();
+      notify("已切换本地根文件夹。");
       await queryClient.invalidateQueries({ queryKey: ["files", "local"] });
     },
+    onError: (error) => notify(`切换失败：${errorMessage(error)}`, "error"),
   });
   const pickLocalRoot = useMutation({
     mutationFn: pickLocalFolder,
@@ -145,8 +175,10 @@ export default function WorkspaceApp() {
       clearSelection();
       preview.reset();
       execution.reset();
+      notify("已选择本地根文件夹。");
       await queryClient.invalidateQueries({ queryKey: ["files", "local"] });
     },
+    onError: (error) => notify(`选择文件夹失败：${errorMessage(error)}`, "error"),
   });
 
   useEffect(() => {
@@ -175,6 +207,7 @@ export default function WorkspaceApp() {
   const loadError = providers.error ?? definitions.error ?? oneDriveStatus.error ?? localSettings.error;
   const activeProvider = providers.data?.find((provider) => provider.id === providerId);
   const providerName = activeProvider?.name ?? providerId;
+  const settingsLoading = providerId === "local" ? localSettings.isPending : oneDriveStatus.isPending;
 
   const navigate = (nextPath: string) => {
     setPath(nextPath);
@@ -229,6 +262,7 @@ export default function WorkspaceApp() {
       存储位置
       </Typography>
       <List disablePadding>
+        {providers.isPending && <Skeleton variant="rounded" height={80} aria-label="正在加载存储位置" />}
         {(providers.data ?? []).map((provider) => (
           <ListItemButton
             key={provider.id}
@@ -263,7 +297,7 @@ export default function WorkspaceApp() {
   );
 
   return (
-    <ThemeProvider theme={theme}>
+    <>
       <CssBaseline />
       <Box sx={{ minHeight: "100vh", bgcolor: "background.default" }}>
         <Drawer
@@ -299,6 +333,9 @@ export default function WorkspaceApp() {
             sx={{ width: "100%", maxWidth: 1680, mx: "auto", p: 1.5 }}
           >
             {loadError && <Alert severity="error" sx={{ mb: 2 }}>无法连接后端：{loadError.message}</Alert>}
+            {(providers.isPending || definitions.isPending) && (
+              <LinearProgress aria-label="正在加载工作台配置" sx={{ flexShrink: 0, mb: 1 }} />
+            )}
 
             {view === "settings" && (
               <Suspense fallback={<SecondaryPageFallback />}>
@@ -402,7 +439,7 @@ export default function WorkspaceApp() {
                     {providerId === "local" && pickLocalRoot.error && (
                       <Alert severity="error">无法打开文件夹选择器：{pickLocalRoot.error.message}</Alert>
                     )}
-                    {providerId === "onedrive" && !oneDriveStatus.data?.connected && (
+                    {providerId === "onedrive" && oneDriveStatus.isSuccess && !oneDriveStatus.data.connected && (
                       <Alert severity="warning">请先前往设置页面连接 OneDrive 账号。</Alert>
                     )}
                   </div>
@@ -416,8 +453,14 @@ export default function WorkspaceApp() {
                         providerName={providerName}
                         selectedIds={selectedIds}
                         isRefreshing={files.isFetching}
+                        refreshError={files.error?.message}
                         onNavigate={navigate}
-                        onRefresh={() => void files.refetch()}
+                        onRefresh={() => {
+                          void files.refetch().then((result) => {
+                            if (result.error) notify(`刷新失败：${errorMessage(result.error)}`, "error");
+                            else notify("目录已刷新。");
+                          });
+                        }}
                         onToggle={(fileId) => {
                           toggleSelected(fileId);
                           preview.reset();
@@ -447,11 +490,20 @@ export default function WorkspaceApp() {
                             目录读取失败：{files.error.message}
                           </Alert>
                         ) : (
-                          <p className="empty-state">
-                            {providerId === "onedrive" && !oneDriveStatus.data?.connected
-                              ? "连接 OneDrive 后可浏览云端目录。"
-                              : "正在读取目录…"}
-                          </p>
+                          settingsLoading || files.isFetching ? (
+                            <Box sx={{ p: 2 }} aria-busy="true">
+                              <Typography role="status" variant="body2" sx={{ mb: 1 }}>
+                                {settingsLoading ? "正在读取存储设置…" : "正在读取目录…"}
+                              </Typography>
+                              {[0, 1, 2, 3].map((row) => <Skeleton key={row} height={38} />)}
+                            </Box>
+                          ) : (
+                            <p className="empty-state">
+                              {providerId === "onedrive" && oneDriveStatus.isSuccess && !oneDriveStatus.data.connected
+                                ? "连接 OneDrive 后可浏览云端目录。"
+                                : "目录暂不可用，请检查存储设置。"}
+                            </p>
+                          )
                         )}
                       </section>
                     )}
@@ -466,6 +518,7 @@ export default function WorkspaceApp() {
                   <div className="workspace-rules">
                     <RuleEditor
                       definitions={definitions.data ?? []}
+                      isLoading={definitions.isPending}
                       rules={rules}
                       onAddRule={() => setView("add-rule")}
                       onChange={(nextRules) => {
@@ -495,6 +548,6 @@ export default function WorkspaceApp() {
           </Box>
         </Box>
       </Box>
-    </ThemeProvider>
+    </>
   );
 }

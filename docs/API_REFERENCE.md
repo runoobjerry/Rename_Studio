@@ -267,5 +267,5 @@ Rules execute in array order; disabled rules are skipped. The frontend only rend
 
 ## Known API inconsistency
 
-No route/schema/client field mismatch was found during this audit. The current frontend client limitation is that it discards structured error status/code/details and exposes only `message`; this is tracked in `UI_TODO.md` and does not require an API change.
+No route/schema/client field mismatch was found during this audit. The frontend client now exposes HTTP failures as `ApiError`, preserving `status`, `code`, `message`, and `details`. Non-standard responses retain the HTTP status with a fallback message, null code, and empty details. Network failures remain their original errors. Existing UI consumers can continue reading `error.message`; dedicated code-based recovery remains tracked in `UI_TODO.md`.
 

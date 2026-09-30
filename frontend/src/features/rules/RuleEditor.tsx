@@ -8,6 +8,7 @@ import Button from "@mui/material/Button";
 import IconButton from "@mui/material/IconButton";
 import Switch from "@mui/material/Switch";
 import Tooltip from "@mui/material/Tooltip";
+import Skeleton from "@mui/material/Skeleton";
 
 import type { RuleDefinition, RuleSpec } from "../../types";
 import { RuleFields } from "./RuleFields";
@@ -19,6 +20,7 @@ interface RuleEditorProps {
   rules: RuleSpec[];
   onChange: (rules: RuleSpec[]) => void;
   onAddRule?: () => void;
+  isLoading?: boolean;
 }
 
 export const DEFAULT_RULES: Record<string, RuleSpec> = {
@@ -72,7 +74,7 @@ export function cloneRule(rule: RuleSpec): RuleSpec {
   return { ...rule, config: { ...rule.config } };
 }
 
-export function RuleEditor({ definitions, rules, onChange, onAddRule }: RuleEditorProps) {
+export function RuleEditor({ definitions, rules, onChange, onAddRule, isLoading = false }: RuleEditorProps) {
   const availableRules = definitions.filter(
     (definition) => DEFAULT_RULES[definition.type] !== undefined,
   );
@@ -132,7 +134,12 @@ export function RuleEditor({ definitions, rules, onChange, onAddRule }: RuleEdit
           </Button>
         </div>
       </div>
-      {availableRules.length === 0 ? (
+      {isLoading ? (
+        <div className="notice" role="status" aria-label="正在加载规则">
+          <Skeleton height={28} />
+          <Skeleton width="70%" height={28} />
+        </div>
+      ) : availableRules.length === 0 ? (
         <div className="notice">
           <strong>暂无可用规则</strong>
           <p>请确认后端规则注册表已经加载。</p>

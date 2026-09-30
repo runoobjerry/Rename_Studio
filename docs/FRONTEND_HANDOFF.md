@@ -65,13 +65,13 @@
 
 ## 已知限制
 
-- `api/client.ts` 将 API 失败转换为普通 `Error`，并丢弃 HTTP 状态、`error.code` 和 `details`。
-- 没有 Snackbar/Toast 系统。错误通过全局 Alert 或局部内联消息显示；设置操作成功后没有临时通知。
+- `api/client.ts` 的 `ApiError` 保留 HTTP status、code、message 和 details，兼容现有 `error.message`；网络失败保留原始错误。界面尚未按错误代码提供分类恢复。
+- `components/NotificationProvider.tsx` 提供共享 Snackbar/Alert 队列，覆盖设置、OAuth、预览、执行、本地目录切换和手动刷新结果；上下文错误仍保留。
 - 未显示预览的 `expires_at`，且 `PREVIEW_EXPIRED` 没有专用的恢复 UI。
-- 初始目录和设置加载使用文本或隐式状态，而非完整的 Skeleton/进度处理；OneDrive 设置在加载时可能短暂显示为未连接状态。
+- 初始目录、配置、规则和设置有 Skeleton/进度提示，后台刷新保留已有内容；OneDrive 状态区分加载、读取失败和未连接。OAuth 弹窗关闭/取消跟踪尚未实现。
 - 四种规则字段布局均为手写实现。后端新增到 `/rules` 的规则不会自动获得前端字段。
 - `styles.css` 现在专注于页面布局、内部滚动、响应式组合和自定义组件几何样式；共享控件样式位于 MUI 主题中。
-- 前端自动化测试仅覆盖 FileBrowser、RuleEditor、PreviewPanel 和 RenameActions。工作区编排、设置、RulePicker、主题切换以及错误/加载流程尚未覆盖。
+- 前端自动化测试覆盖 FileBrowser、RuleEditor、PreviewPanel、RenameActions 和 API 客户端。工作区编排、设置、RulePicker、主题切换以及错误/加载流程尚未覆盖；新增客户端用例待用户运行。
 - 前端没有搜索、排序、筛选、虚拟化、规则集（RuleSet）、历史记录（History）、撤销（Undo）或重做（Redo）。`/files` 没有分页/查询 API；OneDrive Graph 分页由后端聚合。
 
 ## 开发规则

@@ -3,6 +3,7 @@ import PlayArrowRoundedIcon from "@mui/icons-material/PlayArrowRounded";
 import PreviewRoundedIcon from "@mui/icons-material/PreviewRounded";
 import {
   Button,
+  CircularProgress,
   Dialog,
   DialogActions,
   DialogContent,
@@ -48,7 +49,7 @@ export function RenameActions({
         <Button
           fullWidth
           variant="outlined"
-          startIcon={<PreviewRoundedIcon />}
+          startIcon={isPreviewing ? <CircularProgress size={16} color="inherit" /> : <PreviewRoundedIcon />}
           disabled={selectedCount === 0 || isPreviewing || isExecuting}
           onClick={onPreview}
         >
@@ -57,7 +58,7 @@ export function RenameActions({
         <Button
           fullWidth
           variant="contained"
-          startIcon={<PlayArrowRoundedIcon />}
+          startIcon={isExecuting ? <CircularProgress size={16} color="inherit" /> : <PlayArrowRoundedIcon />}
           disabled={!preview?.valid || changedCount === 0 || isExecuting || hasExecuted}
           onClick={() => setConfirming(true)}
         >
@@ -76,6 +77,7 @@ export function RenameActions({
           <Button disabled={isExecuting} onClick={() => setConfirming(false)}>取消</Button>
           <Button
             variant="contained"
+            startIcon={isExecuting ? <CircularProgress size={16} color="inherit" /> : undefined}
             disabled={isExecuting || !preview}
             onClick={() => preview && onExecute(preview.preview_id)}
           >
