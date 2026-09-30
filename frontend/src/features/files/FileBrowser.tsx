@@ -1,3 +1,4 @@
+import { useState } from "react";
 import ArrowBackRoundedIcon from "@mui/icons-material/ArrowBackRounded";
 import FolderRoundedIcon from "@mui/icons-material/FolderRounded";
 import InsertDriveFileOutlinedIcon from "@mui/icons-material/InsertDriveFileOutlined";
@@ -19,6 +20,13 @@ import {
 } from "@mui/material";
 
 import type { DirectoryListing } from "../../types";
+import { CheckboxFilterMenu } from "../../components/CheckboxFilterMenu";
+
+const fileFilters = [
+  { value: "file", label: "文件" },
+  { value: "folder", label: "文件夹" },
+] as const;
+type FileFilter = typeof fileFilters[number]["value"];
 
 interface FileBrowserProps {
   listing: DirectoryListing;
@@ -29,9 +37,9 @@ interface FileBrowserProps {
   onNavigate: (path: string) => void;
   onRefresh?: () => void;
   onToggle: (fileId: string) => void;
-  onSelectAll: () => void;
+  onSelectAll: (visibleIds: string[]) => void;
   onClearSelection?: () => void;
-  onInvertSelection: () => void;
+  onInvertSelection: (visibleIds: string[]) => void;
 }
 
 function getExtension(name: string, isDirectory: boolean): string {
@@ -67,16 +75,21 @@ export function FileBrowser({
   onClearSelection,
   onInvertSelection,
 }: FileBrowserProps) {
+  const [filters, setFilters] = useState<FileFilter[]>(["file", "folder"]);
+  const visibleItems = listing.items.filter((item) => filters.includes(item.is_directory ? "folder" : "file"));
+  const visibleIds = visibleItems.map((item) => item.id);
   const selectedCount = listing.items.filter((item) => selectedIds.includes(item.id)).length;
-  const allSelected = listing.items.length > 0 && selectedCount === listing.items.length;
+  const visibleSelectedCount = visibleItems.filter((item) => selectedIds.includes(item.id)).length;
+  const allSelected = visibleItems.length > 0 && visibleSelectedCount === visibleItems.length;
 
   return (
     <section className="panel browser" aria-labelledby="files-title" aria-busy={isRefreshing}>
       <div className="panel-heading">
         <div className="panel-title-line">
-          <h2 id="files-title">文件预览</h2>
+          <h2 id="files-title">文件选择</h2>
           <p className="panel-summary">
             共 {listing.items.length} 项 · 已选择 {selectedCount} 项
+            {filters.length !== fileFilters.length && ` · 显示 ${visibleItems.length} 项`}
           </p>
         </div>
         <div className="browser-heading-actions">
@@ -108,19 +121,20 @@ export function FileBrowser({
           <Button
             size="small"
             variant="outlined"
-            onClick={onSelectAll}
-            disabled={listing.items.length === 0}
+            onClick={() => onSelectAll(visibleIds)}
+            disabled={visibleItems.length === 0}
           >
             全选
           </Button>
           <Button
             size="small"
             variant="outlined"
-            onClick={onInvertSelection}
-            disabled={listing.items.length === 0}
+            onClick={() => onInvertSelection(visibleIds)}
+            disabled={visibleItems.length === 0}
           >
             反选
           </Button>
+          <CheckboxFilterMenu label="筛选文件类型" options={fileFilters} selected={filters} onChange={setFilters} />
         </div>
       </div>
       {isRefreshing && <LinearProgress aria-label="正在刷新目录" sx={{ flexShrink: 0 }} />}
@@ -143,9 +157,10 @@ export function FileBrowser({
                 <Checkbox
                   size="small"
                   checked={allSelected}
-                  indeterminate={selectedCount > 0 && !allSelected}
-                  onChange={() => (allSelected ? onClearSelection?.() : onSelectAll())}
-                  slotProps={{ input: { "aria-label": "选择当前目录全部项目" } }}
+                  indeterminate={visibleSelectedCount > 0 && !allSelected}
+                  disabled={visibleItems.length === 0}
+                  onChange={() => (allSelected ? onClearSelection?.() : onSelectAll(visibleIds))}
+                  slotProps={{ input: { "aria-label": "选择当前显示的全部项目" } }}
                 />
               </TableCell>
               <TableCell>文件名</TableCell>
@@ -154,7 +169,7 @@ export function FileBrowser({
             </TableRow>
           </TableHead>
           <TableBody>
-            {listing.items.map((item) => {
+            {visibleItems.map((item) => {
               const selected = selectedIds.includes(item.id);
               return (
                 <TableRow key={item.id} hover selected={selected}>
@@ -193,9 +208,11 @@ export function FileBrowser({
                 </TableRow>
               );
             })}
-            {listing.items.length === 0 && (
+            {visibleItems.length === 0 && (
               <TableRow>
-                <TableCell colSpan={4} align="center">此目录为空。</TableCell>
+                <TableCell colSpan={4} align="center">
+                  {listing.items.length === 0 ? "此目录为空。" : "没有符合筛选条件的项目。"}
+                </TableCell>
               </TableRow>
             )}
           </TableBody>

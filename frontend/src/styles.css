@@ -163,9 +163,13 @@
 .browser-heading-actions {
   display: flex;
   align-items: center;
-  flex-wrap: nowrap;
+  flex-wrap: wrap;
   justify-content: flex-end;
   gap: 8px;
+}
+
+.browser .panel-heading {
+  flex-wrap: wrap;
 }
 
 .file-table-wrap,

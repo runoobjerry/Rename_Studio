@@ -1,3 +1,4 @@
+import { useState } from "react";
 import AddRoundedIcon from "@mui/icons-material/AddRounded";
 import RemoveRoundedIcon from "@mui/icons-material/RemoveRounded";
 import Alert from "@mui/material/Alert";
@@ -31,8 +32,17 @@ interface NumberStepperProps {
 }
 
 function NumberStepper({ label, value, min, max, onChange }: NumberStepperProps) {
+  const [draft, setDraft] = useState<{ text: string; value: number } | null>(null);
+  const text = draft?.value === value ? draft.text : String(value);
   const updateValue = (nextValue: number) => {
-    onChange(Math.min(max, Math.max(min, nextValue)));
+    const next = Math.min(max, Math.max(min, Math.trunc(nextValue)));
+    setDraft(null);
+    if (next !== value) onChange(next);
+  };
+  const commitInput = () => {
+    const parsed = Number(text);
+    // 输入中允许清空或暂时越界；规则配置始终只接收范围内的整数。
+    updateValue(text.trim() && Number.isFinite(parsed) ? parsed : value);
   };
 
   return (
@@ -99,8 +109,23 @@ function NumberStepper({ label, value, min, max, onChange }: NumberStepperProps)
         type="number"
         min={min}
         max={max}
-        value={value}
-        onChange={(event) => updateValue(Number(event.target.value))}
+        step={1}
+        inputMode="numeric"
+        value={text}
+        onChange={(event) => {
+          const nextText = event.target.value;
+          const parsed = Number(nextText);
+          const valid = nextText.trim() !== "" && Number.isInteger(parsed) && parsed >= min && parsed <= max;
+          setDraft({ text: nextText, value: valid ? parsed : value });
+          if (valid && parsed !== value) onChange(parsed);
+        }}
+        onBlur={commitInput}
+        onKeyDown={(event) => {
+          if (event.key === "Enter") {
+            event.preventDefault();
+            event.currentTarget.blur();
+          }
+        }}
         aria-label={label}
       />
       <IconButton

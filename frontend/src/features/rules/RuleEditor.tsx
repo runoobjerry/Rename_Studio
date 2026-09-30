@@ -109,7 +109,7 @@ export function RuleEditor({ definitions, rules, onChange, onAddRule, isLoading 
   return (
     <section className="panel rule-editor-panel" aria-labelledby="rules-title">
       <div className="panel-heading rule-editor-heading">
-        <h2 id="rules-title">重命名规则</h2>
+        <h2 id="rules-title">规则编辑</h2>
         <div className="rule-heading-actions">
           <Button
             size="small"

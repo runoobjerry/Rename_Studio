@@ -138,7 +138,10 @@ function Workspace({ mode, setMode }: { mode: PaletteMode; setMode: (mode: Palet
   const execution = useMutation({
     mutationFn: executePreview,
     onSuccess: (result) => {
-      if (result.status !== "completed") {
+      if (result.status === "completed") {
+        const renamed = result.items.filter((item) => item.status === "renamed").length;
+        notify(`修改全部成功：${renamed} 项已修改。`, "success");
+      } else {
         const renamed = result.items.filter((item) => item.status === "renamed").length;
         const failed = result.items.filter((item) => item.status === "failed").length;
         notify(
@@ -467,8 +470,8 @@ function Workspace({ mode, setMode }: { mode: PaletteMode; setMode: (mode: Palet
                           preview.reset();
                           execution.reset();
                         }}
-                        onSelectAll={() => {
-                          setSelectedIds(files.data.items.map((item) => item.id));
+                        onSelectAll={(visibleIds) => {
+                          setSelectedIds(visibleIds);
                           preview.reset();
                           execution.reset();
                         }}
@@ -477,9 +480,9 @@ function Workspace({ mode, setMode }: { mode: PaletteMode; setMode: (mode: Palet
                           preview.reset();
                           execution.reset();
                         }}
-                        onInvertSelection={() => {
+                        onInvertSelection={(visibleIds) => {
                           const selected = new Set(selectedIds);
-                          setSelectedIds(files.data.items.filter((item) => !selected.has(item.id)).map((item) => item.id));
+                          setSelectedIds(visibleIds.filter((id) => !selected.has(id)));
                           preview.reset();
                           execution.reset();
                         }}

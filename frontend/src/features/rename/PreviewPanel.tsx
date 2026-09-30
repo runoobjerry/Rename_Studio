@@ -1,3 +1,4 @@
+import { useState } from "react";
 import Alert from "@mui/material/Alert";
 import Table from "@mui/material/Table";
 import TableBody from "@mui/material/TableBody";
@@ -7,6 +8,14 @@ import TableHead from "@mui/material/TableHead";
 import TableRow from "@mui/material/TableRow";
 
 import type { ExecuteResponse, PreviewResponse } from "../../types";
+import { CheckboxFilterMenu } from "../../components/CheckboxFilterMenu";
+
+const statusFilters = [
+  { value: "error", label: "错误" },
+  { value: "unchanged", label: "无变化" },
+  { value: "pending", label: "待修改" },
+] as const;
+type StatusFilter = typeof statusFilters[number]["value"];
 
 interface PreviewPanelProps {
   preview?: PreviewResponse;
@@ -28,6 +37,7 @@ export function PreviewPanel({
   error,
   executeError,
 }: PreviewPanelProps) {
+  const [filters, setFilters] = useState<StatusFilter[]>(["error", "unchanged", "pending"]);
   const executionById = new Map(execution?.items.map((item) => [item.file_id, item]));
   const pendingCount = preview?.items.filter(
     (item) => item.changed && item.valid && !executionById.has(item.file_id),
@@ -48,17 +58,29 @@ export function PreviewPanel({
     return { label: item.changed ? "待修改" : "无变化", className: item.changed ? "pending" : "neutral" };
   }
 
+  const visibleItems = preview?.items.filter((item) => {
+    const result = executionById.get(item.file_id);
+    // 已执行项目仍按原预览分类，执行失败覆盖原分类，避免隐藏失败信息。
+    const category: StatusFilter = result?.status === "failed" ? "error"
+      : result?.status === "skipped" ? "unchanged"
+      : item.error || !item.valid || item.conflict ? "error"
+      : item.changed ? "pending" : "unchanged";
+    return filters.includes(category);
+  }) ?? [];
+
   return (
     <section className="panel preview" aria-labelledby="preview-title">
       <div className="panel-heading">
         <div className="panel-title-line">
-          <h2 id="preview-title">重命名预览</h2>
+          <h2 id="preview-title">修改预览</h2>
           <p className="panel-summary">
             {preview
               ? `${pendingCount} 项待修改 · ${unchangedCount} 项无需修改`
-              : "0个文件被选中"}
+              : "0 项待修改 · 0 项无需修改"}
+            {preview && filters.length !== statusFilters.length && ` · 显示 ${visibleItems.length} 项`}
           </p>
         </div>
+        <CheckboxFilterMenu label="筛选重命名状态" options={statusFilters} selected={filters} onChange={setFilters} />
       </div>
 
       {error && <Alert severity="error" sx={{ m: 2 }}>{error}</Alert>}
@@ -70,7 +92,7 @@ export function PreviewPanel({
           <Table
             stickyHeader
             size="small"
-            aria-label="重命名预览"
+            aria-label="修改预览"
             sx={{
               // 文件名列紧贴内容，状态列吸收剩余空间；长内容仍可撑开表格。
               width: "100%",
@@ -87,7 +109,7 @@ export function PreviewPanel({
               </TableRow>
             </TableHead>
             <TableBody>
-              {preview.items.map((item) => {
+              {visibleItems.map((item) => {
                 const status = statusFor(item);
                 const renamed = executionById.get(item.file_id)?.status === "renamed";
                 return (
@@ -102,6 +124,11 @@ export function PreviewPanel({
                   </TableRow>
                 );
               })}
+              {visibleItems.length === 0 && (
+                <TableRow>
+                  <TableCell colSpan={3} align="center">没有符合筛选条件的项目。</TableCell>
+                </TableRow>
+              )}
             </TableBody>
           </Table>
         </TableContainer>

@@ -33,7 +33,7 @@ describe("RenameActions", () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "预览" }));
+    fireEvent.click(screen.getByRole("button", { name: "刷新预览" }));
     expect(onPreview).toHaveBeenCalledOnce();
   });
 

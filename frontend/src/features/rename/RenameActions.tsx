@@ -53,7 +53,7 @@ export function RenameActions({
           disabled={selectedCount === 0 || isPreviewing || isExecuting}
           onClick={onPreview}
         >
-          {isPreviewing ? "正在预览…" : "预览"}
+          {isPreviewing ? "正在刷新…" : "刷新预览"}
         </Button>
         <Button
           fullWidth
