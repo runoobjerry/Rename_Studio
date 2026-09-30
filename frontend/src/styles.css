@@ -210,11 +210,6 @@
   color: var(--accent-text);
 }
 
-.preview-name {
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
 .renamed-name {
   color: var(--accent-text) !important;
   font-weight: 700 !important;

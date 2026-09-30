@@ -66,18 +66,17 @@ export function PreviewPanel({
         <p className="empty-state">点击预览按钮以查看修改名称；预览不会修改 {providerName} 中的内容。</p>
       )}
       {preview && (
-        <TableContainer className="preview-table-wrap">
+        <TableContainer className="preview-table-wrap" sx={{ minWidth: 0, maxWidth: "100%" }}>
           <Table
             stickyHeader
             size="small"
             aria-label="重命名预览"
             sx={{
-              minWidth: 560,
-              tableLayout: "fixed",
-              "& th:nth-of-type(1), & th:nth-of-type(2)": {
-                width: "calc((100% - 112px) / 2)",
-              },
-              "& th:nth-of-type(3)": { width: 112 },
+              // 文件名列紧贴内容，状态列吸收剩余空间；长内容仍可撑开表格。
+              width: "100%",
+              tableLayout: "auto",
+              "& th, & td": { whiteSpace: "nowrap" },
+              "& th:nth-of-type(-n+2), & td:nth-of-type(-n+2)": { width: "1%" },
             }}
           >
             <TableHead>
@@ -93,8 +92,8 @@ export function PreviewPanel({
                 const renamed = executionById.get(item.file_id)?.status === "renamed";
                 return (
                   <TableRow key={item.file_id}>
-                    <TableCell className="preview-name">{item.original_name}</TableCell>
-                    <TableCell className={`preview-name ${renamed ? "renamed-name" : ""}`}>
+                    <TableCell>{item.original_name}</TableCell>
+                    <TableCell className={renamed ? "renamed-name" : undefined}>
                       {item.new_name}
                     </TableCell>
                     <TableCell>
