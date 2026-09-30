@@ -1,7 +1,5 @@
 from enum import StrEnum
-from typing import Self
-
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field
 
 from app.rules.base import RenameRule, RuleContext
 from app.rules.filename import split_extension
@@ -16,21 +14,11 @@ class InsertPosition(StrEnum):
 
 
 class InsertConfig(BaseModel):
-    text: str = Field(min_length=1, max_length=255)
+    text: str = Field(max_length=255)
     position: InsertPosition = InsertPosition.PREFIX
     index: int = Field(default=1, ge=1, le=255)
     from_right: bool = False
     anchor: str = Field(default="", max_length=255)
-
-    @model_validator(mode="after")
-    def validate_anchor(self) -> Self:
-        if self.position in {
-            InsertPosition.BEFORE_TEXT,
-            InsertPosition.AFTER_TEXT,
-        } and not self.anchor:
-            raise ValueError("anchor cannot be empty for text-relative insertion")
-        return self
-
 
 class InsertRule(RenameRule[InsertConfig]):
     type = "insert"
@@ -41,6 +29,12 @@ class InsertRule(RenameRule[InsertConfig]):
     def apply(
         self, filename: str, context: RuleContext, config: InsertConfig
     ) -> str:
+        # 必要文本为空时跳过；纯空格仍是用户可指定的有效插入内容。
+        if config.text == "" or (
+            config.position in {InsertPosition.BEFORE_TEXT, InsertPosition.AFTER_TEXT}
+            and config.anchor == ""
+        ):
+            return filename
         stem, extension = (
             (filename, "") if context.is_directory else split_extension(filename)
         )

@@ -197,12 +197,14 @@ Supported rule configs:
 
 | Type | Config |
 | --- | --- |
-| `padding` | Required `mode: "number" | "text"`, `length: 1..255`; `fill_character` defaults to `_` and is one character; `side` defaults to `left`. |
-| `replace` | Required `search: 1..255`; `replacement` max 255, default empty; `occurrence: all | first | last`; `case_sensitive=true`; `whole_word=false`; `ignore_extension=true`. |
+| `padding` | Required `mode: "number" | "text"`, `length: 1..255`; `fill_character` defaults to `_`, max one character; empty text fill skips the rule; `side` defaults to `left`. |
+| `replace` | Required `search: 0..255`; empty search skips the rule. `replacement` max 255, default empty (deletes matches); `occurrence: all | first | last`; `case_sensitive=true`; `whole_word=false`; `ignore_extension=true`. |
 | `remove` | Same matching fields as replace, without `replacement`. |
-| `insert` | Required `text: 1..255`; `position: prefix | suffix | index | before_text | after_text`; `index: 1..255`; `from_right=false`; text-relative positions require non-empty `anchor` (max 255). |
+| `insert` | Required `text: 0..255`; empty text skips the rule. `position: prefix | suffix | index | before_text | after_text`; `index: 1..255`; `from_right=false`; text-relative positions with empty `anchor` skip the rule (max 255). |
 
 Rules execute in array order; disabled rules are skipped. The frontend only renders fields for these four known types.
+
+Empty means exactly `""`; whitespace remains meaningful text. Skipped rules preserve the current filename and allow later rules to run. Missing required fields, wrong types, invalid enum values and out-of-range lengths still return `RULE_CONFIGURATION_ERROR`.
 
 ## Rename Preview
 

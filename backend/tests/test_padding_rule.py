@@ -62,7 +62,6 @@ def test_text_longer_than_target_is_unchanged() -> None:
     "config",
     [
         {"mode": "number", "length": 0},
-        {"mode": "text", "length": 3, "fill_character": ""},
         {"mode": "text", "length": 3, "fill_character": "ab"},
         {"mode": "text", "length": 3, "side": "middle"},
     ],
@@ -70,6 +69,11 @@ def test_text_longer_than_target_is_unchanged() -> None:
 def test_rejects_invalid_configuration(config: dict[str, object]) -> None:
     with pytest.raises(ValidationError):
         PaddingConfig.model_validate(config)
+
+
+def test_empty_text_fill_preserves_filename() -> None:
+    config = PaddingConfig(mode=PaddingMode.TEXT, length=10, fill_character="")
+    assert PaddingRule().apply("猫.txt", CONTEXT, config) == "猫.txt"
 
 
 def test_text_padding_treats_full_directory_name_as_stem() -> None:

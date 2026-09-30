@@ -90,15 +90,26 @@ def test_out_of_range_index_clamps_to_filename_edge() -> None:
 @pytest.mark.parametrize(
     "values",
     [
-        {"text": ""},
         {"text": "X", "position": "index", "index": 0},
-        {"text": "X", "position": "before_text", "anchor": ""},
-        {"text": "X", "position": "after_text", "anchor": ""},
+        {"text": "X", "position": "unknown"},
     ],
 )
 def test_rejects_invalid_configuration(values: dict[str, object]) -> None:
     with pytest.raises(ValidationError):
         InsertConfig.model_validate(values)
+
+
+@pytest.mark.parametrize(
+    "values",
+    [
+        {"text": ""},
+        {"text": "X", "position": "before_text", "anchor": ""},
+        {"text": "X", "position": "after_text", "anchor": ""},
+    ],
+)
+def test_empty_required_text_preserves_filename(values: dict[str, object]) -> None:
+    config = InsertConfig.model_validate(values)
+    assert InsertRule().apply("猫-file.txt", CONTEXT, config) == "猫-file.txt"
 
 
 def test_directory_name_does_not_have_extension_semantics() -> None:

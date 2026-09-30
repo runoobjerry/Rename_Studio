@@ -1,5 +1,4 @@
 import pytest
-from pydantic import ValidationError
 
 from app.rules.base import RuleContext
 from app.rules.text_operations import (
@@ -8,7 +7,6 @@ from app.rules.text_operations import (
     RemoveRule,
     ReplaceConfig,
     ReplaceRule,
-    TextMatchConfig,
 )
 
 
@@ -85,13 +83,18 @@ def test_replacement_is_literal_text() -> None:
     assert ReplaceRule().apply("name.txt", CONTEXT, config) == r"\1-final.txt"
 
 
-@pytest.mark.parametrize(
-    "config_model",
-    [ReplaceConfig, RemoveConfig],
-)
-def test_empty_search_is_rejected(config_model: type[TextMatchConfig]) -> None:
-    with pytest.raises(ValidationError):
-        config_model.model_validate({"search": ""})
+def test_empty_search_preserves_filename() -> None:
+    assert ReplaceRule().apply(
+        "猫-file.txt", CONTEXT, ReplaceConfig(search="", replacement="new")
+    ) == "猫-file.txt"
+    assert RemoveRule().apply(
+        "猫-file.txt", CONTEXT, RemoveConfig(search="")
+    ) == "猫-file.txt"
+
+
+def test_empty_replacement_still_removes_matches() -> None:
+    config = ReplaceConfig(search="draft", replacement="")
+    assert ReplaceRule().apply("draft-file.txt", CONTEXT, config) == "-file.txt"
 
 
 def test_ignore_extension_does_not_hide_part_of_directory_name() -> None:

@@ -14,7 +14,7 @@ class MatchOccurrence(StrEnum):
 
 
 class TextMatchConfig(BaseModel):
-    search: str = Field(min_length=1, max_length=255)
+    search: str = Field(max_length=255)
     occurrence: MatchOccurrence = MatchOccurrence.ALL
     case_sensitive: bool = True
     whole_word: bool = False
@@ -38,6 +38,9 @@ def _replace_matches(
     case_sensitive: bool,
     whole_word: bool,
 ) -> str:
+    # 空查找内容表示规则尚未配置，避免正则空匹配修改每个字符间隙。
+    if search == "":
+        return text
     expression = re.escape(search)
     if whole_word:
         # Unicode 字母、数字或下划线相邻时，不视为完整单词。

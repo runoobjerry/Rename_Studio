@@ -128,10 +128,11 @@ function Workspace({ mode, setMode }: { mode: PaletteMode; setMode: (mode: Palet
   });
   const preview = useMutation({
     mutationFn: () => createPreview(providerId, path, selectedIds, rules),
-    onSuccess: (result) => notify(
-      result.valid ? "预览已生成，请确认新文件名。" : "预览包含无效名称或冲突，请检查预览结果。",
-      result.valid ? "success" : "warning",
-    ),
+    onSuccess: (result) => {
+      if (!result.valid) {
+        notify("预览包含无效名称或冲突，请检查预览结果。", "warning");
+      }
+    },
     onError: (error) => notify(`预览失败：${errorMessage(error)}`, "error"),
   });
   const execution = useMutation({
