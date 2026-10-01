@@ -2,6 +2,9 @@ import json
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
+import httpx
+import pytest
+
 from app.services.onedrive_auth import OneDriveAuthService
 
 
@@ -91,3 +94,82 @@ def test_credentials_survive_restart_until_explicit_clear(tmp_path: Path) -> Non
         credentials_file=credentials_file,
     )
     assert after_clear.settings().configured is False
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("account_id", ["graph-user-id", None, "", 123])
+async def test_account_id_is_loaded_and_persisted(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, account_id: object
+) -> None:
+    credentials_file = tmp_path / ".onedrive_credentials.json"
+    service = OneDriveAuthService(
+        "http://localhost:8000/auth/onedrive/callback",
+        credentials_file=credentials_file,
+    )
+    service.configure("client-id")
+    start = service.start_authorization()
+    state = parse_qs(urlparse(start.authorization_url).query)["state"][0]
+
+    def respond(request: httpx.Request) -> httpx.Response:
+        if request.method == "POST":
+            return httpx.Response(200, json={
+                "access_token": "test-access-token",
+                "refresh_token": "test-refresh-token",
+            })
+        return httpx.Response(200, json={
+            "id": account_id, "displayName": "Test User", "mail": "test@example.com",
+        })
+
+    original_client = httpx.AsyncClient
+    transport = httpx.MockTransport(respond)
+    monkeypatch.setattr(
+        httpx, "AsyncClient",
+        lambda **kwargs: original_client(transport=transport, **kwargs),
+    )
+    await service.finish_authorization("test-code", state)
+
+    expected = "graph-user-id" if account_id == "graph-user-id" else None
+    assert service.status().account_id == expected
+    persisted = json.loads(credentials_file.read_text(encoding="utf-8"))
+    assert persisted.get("account_id") == expected
+    restarted = OneDriveAuthService(
+        service.redirect_uri, credentials_file=credentials_file,
+    )
+    assert restarted.status().connected is True
+    assert restarted.status().account_id == expected
+
+
+@pytest.mark.parametrize("action", ["disconnect", "clear", "configure", "start_authorization"])
+def test_account_id_is_cleared_with_account_state(tmp_path: Path, action: str) -> None:
+    credentials_file = tmp_path / ".onedrive_credentials.json"
+    credentials_file.write_text(json.dumps({
+        "client_id": "client-id", "refresh_token": "test-refresh-token",
+        "account_id": "graph-user-id",
+    }), encoding="utf-8")
+    service = OneDriveAuthService(
+        "http://localhost:8000/auth/onedrive/callback",
+        credentials_file=credentials_file,
+    )
+    assert service.status().account_id == "graph-user-id"
+    if action == "configure":
+        service.configure("different-client-id")
+    else:
+        getattr(service, action)()
+
+    assert service.status().account_id is None
+    assert service.status().connected is False
+    if credentials_file.exists():
+        assert "account_id" not in json.loads(credentials_file.read_text(encoding="utf-8"))
+
+
+def test_legacy_credentials_without_account_id_remain_connected(tmp_path: Path) -> None:
+    credentials_file = tmp_path / ".onedrive_credentials.json"
+    credentials_file.write_text(json.dumps({
+        "client_id": "client-id", "refresh_token": "test-refresh-token",
+    }), encoding="utf-8")
+    service = OneDriveAuthService(
+        "http://localhost:8000/auth/onedrive/callback",
+        credentials_file=credentials_file,
+    )
+    assert service.status().connected is True
+    assert service.status().model_dump()["account_id"] is None

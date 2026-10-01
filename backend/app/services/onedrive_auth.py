@@ -55,6 +55,7 @@ class OneDriveAuthService:
         self.timeout = timeout
         self._client_id: str | None = None
         self._tokens: TokenSet | None = None
+        self._account_id: str | None = None
         self._account_display_name: str | None = None
         self._account_email: str | None = None
         self._pending: dict[str, PendingAuthorization] = {}
@@ -72,6 +73,7 @@ class OneDriveAuthService:
         return OneDriveAuthStatus(
             configured=self.configured,
             connected=self._tokens is not None,
+            account_id=self._account_id,
             account_display_name=self._account_display_name,
             account_email=self._account_email,
         )
@@ -87,6 +89,7 @@ class OneDriveAuthService:
         if self._client_id != client_id:
             # App ID 变化后，旧应用签发的刷新令牌不可继续使用。
             self._tokens = None
+            self._account_id = None
             self._account_display_name = None
             self._account_email = None
             self._pending.clear()
@@ -98,6 +101,7 @@ class OneDriveAuthService:
         self._delete_credentials()
         self._client_id = None
         self._tokens = None
+        self._account_id = None
         self._account_display_name = None
         self._account_email = None
         self._pending.clear()
@@ -105,6 +109,7 @@ class OneDriveAuthService:
     def disconnect(self) -> None:
         """Remove persisted account authorization while retaining the App ID."""
         self._tokens = None
+        self._account_id = None
         self._account_display_name = None
         self._account_email = None
         self._pending.clear()
@@ -226,6 +231,11 @@ class OneDriveAuthService:
             raise ProviderError("Microsoft Graph returned invalid account data") from exc
         if response.is_error or not isinstance(payload, dict):
             raise AuthenticationError("Could not verify the connected Microsoft account")
+        # Graph 用户 ID 是账号标识，不是应用 client_id 或云盘 drive ID。
+        account_id = payload.get("id")
+        self._account_id = (
+            account_id if isinstance(account_id, str) and account_id else None
+        )
         display_name = payload.get("displayName")
         mail = payload.get("mail")
         principal_name = payload.get("userPrincipalName")
@@ -321,6 +331,11 @@ class OneDriveAuthService:
                 refresh_token=refresh_token,
                 expires_at=datetime.now(UTC),
             )
+            # 旧凭据可能没有账号 ID；保持授权兼容，待重新登录获取。
+            account_id = payload.get("account_id")
+            self._account_id = (
+                account_id if isinstance(account_id, str) and account_id else None
+            )
             display_name = payload.get("account_display_name")
             email = payload.get("account_email")
             self._account_display_name = (
@@ -340,6 +355,8 @@ class OneDriveAuthService:
         payload = {"client_id": self._client_id}
         if self._tokens is not None and self._tokens.refresh_token:
             payload["refresh_token"] = self._tokens.refresh_token
+        if self._account_id:
+            payload["account_id"] = self._account_id
         if self._account_display_name:
             payload["account_display_name"] = self._account_display_name
         if self._account_email:
