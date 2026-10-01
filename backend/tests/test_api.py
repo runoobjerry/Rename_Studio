@@ -5,6 +5,7 @@ from fastapi.testclient import TestClient
 from app.api.dependencies import (
     get_execute_service,
     get_file_service,
+    get_onedrive_auth_service,
     get_preview_service,
 )
 from app.main import create_app
@@ -13,9 +14,30 @@ from app.providers.registry import ProviderRegistry
 from app.rules.registry import RuleRegistry
 from app.services.execute_service import ExecuteService
 from app.services.file_service import FileService
+from app.services.onedrive_auth import OneDriveAuthService
 from app.services.preview_service import PreviewService
 from app.services.preview_store import PreviewStore
 from app.services.rename_engine import RenameEngine
+
+
+def test_onedrive_status_returns_account_id(tmp_path: Path) -> None:
+    import json
+
+    credentials_file = tmp_path / ".onedrive_credentials.json"
+    credentials_file.write_text(json.dumps({
+        "client_id": "client-id", "refresh_token": "test-refresh-token",
+        "account_id": "graph-user-id",
+    }), encoding="utf-8")
+    service = OneDriveAuthService(
+        "http://localhost:8000/auth/onedrive/callback",
+        credentials_file=credentials_file,
+    )
+    app = create_app()
+    app.dependency_overrides[get_onedrive_auth_service] = lambda: service
+    with TestClient(app) as client:
+        response = client.get("/onedrive/auth/status")
+    assert response.status_code == 200
+    assert response.json()["account_id"] == "graph-user-id"
 
 
 def test_local_browse_and_preview_api(tmp_path: Path) -> None:

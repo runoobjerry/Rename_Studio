@@ -9,6 +9,7 @@ secrets.json
 .local_settings.json
 .local_settings.json.tmp
 AGENTS.md
+docs/
 __pycache__/
 *.py[cod]
 .pytest_cache/
@@ -21,3 +22,4 @@ coverage/
 backend/local_storage/*
 !backend/local_storage/.gitkeep
 backend/tests/test_out.txt
+*.tsbuildinfo
