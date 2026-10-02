@@ -57,6 +57,24 @@ async function openCloud() {
   await waitFor(() => expect(screen.getByRole("button", { name: "设为默认路径" })).toBeEnabled());
 }
 
+describe("inline rule menu integration", () => {
+  it("adds a rule without leaving the workspace", async () => {
+    vi.mocked(api.fetchRules).mockResolvedValue([
+      { type: "padding", name: "填充", description: "填充文件名", config_schema: {} },
+    ]);
+    render(<QueryClientProvider client={client}><WorkspaceApp /></QueryClientProvider>);
+    await waitFor(() => expect(screen.getByRole("button", { name: "添加规则" })).toBeEnabled());
+    fireEvent.click(screen.getByRole("button", { name: "添加规则" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "填充" }));
+    expect(useRenameStore.getState().rules).toEqual([
+      expect.objectContaining({ type: "padding", enabled: true }),
+    ]);
+    expect(screen.getByRole("textbox", { name: "本地根文件夹路径" })).toBeInTheDocument();
+    expect(screen.getByText("1. 填充")).toBeInTheDocument();
+    expect(screen.queryByText("返回工作台")).not.toBeInTheDocument();
+  });
+});
+
 describe("cloud default path integration", () => {
   it("restores on provider entry and re-entry, saves the opened path rather than unsent text", async () => {
     saveDefaultCloudPath("onedrive", "account-a", "照片");

@@ -43,23 +43,18 @@ import { FileBrowser } from "./features/files/FileBrowser";
 import { readDefaultCloudPath, saveDefaultCloudPath } from "./features/files/defaultCloudPath";
 import { PreviewPanel } from "./features/rename/PreviewPanel";
 import { RenameActions } from "./features/rename/RenameActions";
-import { cloneRule, DEFAULT_RULES, RuleEditor } from "./features/rules/RuleEditor";
+import { RuleEditor } from "./features/rules/RuleEditor";
 import { useRenameStore } from "./stores/useRenameStore";
 import { createAppTheme } from "./theme";
 import { errorMessage, NotificationProvider, useNotification } from "./components/NotificationProvider";
 
-const RulePickerPage = lazy(() =>
-  import("./features/rules/RulePickerPage").then((module) => ({
-    default: module.RulePickerPage,
-  })),
-);
 const SettingsPage = lazy(() =>
   import("./features/settings/SettingsPage").then((module) => ({
     default: module.SettingsPage,
   })),
 );
 
-type AppView = "workspace" | "add-rule" | "settings";
+type AppView = "workspace" | "settings";
 
 const drawerWidth = 244;
 
@@ -251,15 +246,6 @@ function Workspace({ mode, setMode }: { mode: PaletteMode; setMode: (mode: Palet
     }
   };
 
-  const addRule = (type: string) => {
-    const template = DEFAULT_RULES[type];
-    if (!template) return;
-    setRules([...rules, cloneRule(template)]);
-    preview.reset();
-    execution.reset();
-    setView("workspace");
-  };
-
   const navigation = (
     <Box
       sx={{
@@ -369,16 +355,6 @@ function Workspace({ mode, setMode }: { mode: PaletteMode; setMode: (mode: Palet
             {view === "settings" && (
               <Suspense fallback={<SecondaryPageFallback />}>
                 <SettingsPage mode={mode} onModeChange={setMode} onBack={() => setView("workspace")} />
-              </Suspense>
-            )}
-
-            {view === "add-rule" && (
-              <Suspense fallback={<SecondaryPageFallback />}>
-                <RulePickerPage
-                  definitions={definitions.data ?? []}
-                  onBack={() => setView("workspace")}
-                  onSelect={addRule}
-                />
               </Suspense>
             )}
 
@@ -561,7 +537,6 @@ function Workspace({ mode, setMode }: { mode: PaletteMode; setMode: (mode: Palet
                       definitions={definitions.data ?? []}
                       isLoading={definitions.isPending}
                       rules={rules}
-                      onAddRule={() => setView("add-rule")}
                       onChange={(nextRules) => {
                         // 规则变化后旧预览立即失效，避免用户误读过期结果。
                         setRules(nextRules);

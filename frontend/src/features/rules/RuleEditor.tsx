@@ -1,3 +1,4 @@
+import { useId, useState } from "react";
 import ArrowDownwardRoundedIcon from "@mui/icons-material/ArrowDownwardRounded";
 import ArrowUpwardRoundedIcon from "@mui/icons-material/ArrowUpwardRounded";
 import ContentCopyRoundedIcon from "@mui/icons-material/ContentCopyRounded";
@@ -6,6 +7,8 @@ import DeleteSweepRoundedIcon from "@mui/icons-material/DeleteSweepRounded";
 import AddRoundedIcon from "@mui/icons-material/AddRounded";
 import Button from "@mui/material/Button";
 import IconButton from "@mui/material/IconButton";
+import Menu from "@mui/material/Menu";
+import MenuItem from "@mui/material/MenuItem";
 import Switch from "@mui/material/Switch";
 import Tooltip from "@mui/material/Tooltip";
 import Skeleton from "@mui/material/Skeleton";
@@ -19,7 +22,6 @@ interface RuleEditorProps {
   definitions: RuleDefinition[];
   rules: RuleSpec[];
   onChange: (rules: RuleSpec[]) => void;
-  onAddRule?: () => void;
   isLoading?: boolean;
 }
 
@@ -74,7 +76,9 @@ export function cloneRule(rule: RuleSpec): RuleSpec {
   return { ...rule, config: { ...rule.config } };
 }
 
-export function RuleEditor({ definitions, rules, onChange, onAddRule, isLoading = false }: RuleEditorProps) {
+export function RuleEditor({ definitions, rules, onChange, isLoading = false }: RuleEditorProps) {
+  const menuId = useId();
+  const [anchor, setAnchor] = useState<HTMLElement | null>(null);
   const availableRules = definitions.filter(
     (definition) => DEFAULT_RULES[definition.type] !== undefined,
   );
@@ -113,16 +117,6 @@ export function RuleEditor({ definitions, rules, onChange, onAddRule, isLoading 
         <div className="rule-heading-actions">
           <Button
             size="small"
-            variant="contained"
-            startIcon={<AddRoundedIcon />}
-            onClick={onAddRule}
-            disabled={availableRules.length === 0 || !onAddRule}
-            sx={{ flex: { xs: 1, sm: "initial" } }}
-          >
-            添加规则
-          </Button>
-          <Button
-            size="small"
             variant="outlined"
             color="error"
             startIcon={<DeleteSweepRoundedIcon />}
@@ -132,8 +126,50 @@ export function RuleEditor({ definitions, rules, onChange, onAddRule, isLoading 
           >
             一键清除
           </Button>
+          <Button
+            id={`${menuId}-button`}
+            size="small"
+            variant="contained"
+            startIcon={<AddRoundedIcon />}
+            aria-haspopup="menu"
+            aria-expanded={Boolean(anchor)}
+            aria-controls={anchor ? `${menuId}-menu` : undefined}
+            onClick={(event) => setAnchor(event.currentTarget)}
+            disabled={isLoading || availableRules.length === 0}
+            sx={{ flex: { xs: 1, sm: "initial" } }}
+          >
+            添加规则
+          </Button>
         </div>
       </div>
+      <Menu
+        id={`${menuId}-menu`}
+        anchorEl={anchor}
+        open={Boolean(anchor)}
+        onClose={() => setAnchor(null)}
+        anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
+        transformOrigin={{ vertical: "top", horizontal: "right" }}
+        slotProps={{
+          paper: { sx: { minWidth: 96, maxWidth: "calc(100vw - 32px)", borderRadius: "10px" } },
+          // 固定每项 34px，菜单内容最多容纳八项，不截断可添加的规则。
+          list: { "aria-labelledby": `${menuId}-button`, dense: true, sx: { py: 0, maxHeight: 34 * 8, overflowY: "auto" } },
+        }}
+      >
+        {availableRules.map((definition) => (
+          <Tooltip key={definition.type} title={definition.description} placement="left" describeChild>
+            <MenuItem
+              dense
+              sx={{ height: 34, minHeight: 34, px: 1.5, py: 0, fontSize: 13 }}
+              onClick={() => {
+                onChange([...rules, cloneRule(DEFAULT_RULES[definition.type])]);
+                setAnchor(null);
+              }}
+            >
+              {definition.name}
+            </MenuItem>
+          </Tooltip>
+        ))}
+      </Menu>
       {isLoading ? (
         <div className="notice" role="status" aria-label="正在加载规则">
           <Skeleton height={28} />
