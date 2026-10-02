@@ -81,7 +81,7 @@ describe("RuleEditor", () => {
       render(<RuleEditor definitions={extras} rules={[]} onChange={vi.fn()} />);
       fireEvent.click(screen.getByRole("button", { name: "添加规则" }));
       expect(screen.getAllByRole("menuitem")).toHaveLength(9);
-      expect(screen.getByRole("menu")).toHaveStyle({ maxHeight: "272px", overflowY: "auto" });
+      expect(screen.getByRole("menu")).toHaveStyle({ maxHeight: "294px", overflowY: "auto" });
     } finally {
       extras.forEach((extra) => { delete DEFAULT_RULES[extra.type]; });
     }

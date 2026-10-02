@@ -15,6 +15,7 @@ import Skeleton from "@mui/material/Skeleton";
 
 import type { RuleDefinition, RuleSpec } from "../../types";
 import { RuleFields } from "./RuleFields";
+import { MENU_METRICS } from "../../theme";
 
 const ruleActionSx = { width: 30, height: 30, p: "5px" } as const;
 
@@ -150,16 +151,18 @@ export function RuleEditor({ definitions, rules, onChange, isLoading = false }: 
         anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
         transformOrigin={{ vertical: "top", horizontal: "right" }}
         slotProps={{
-          paper: { sx: { minWidth: 96, maxWidth: "calc(100vw - 32px)", borderRadius: "10px" } },
-          // 固定每项 34px，菜单内容最多容纳八项，不截断可添加的规则。
-          list: { "aria-labelledby": `${menuId}-button`, dense: true, sx: { py: 0, maxHeight: 34 * 8, overflowY: "auto" } },
+          paper: { sx: { minWidth: 96, maxWidth: "calc(100vw - 32px)" } },
+          // 八项高度加上共享边缘留白、七处项间距，不截断可添加的规则。
+          list: {
+            "aria-labelledby": `${menuId}-button`, dense: true,
+            sx: { maxHeight: MENU_METRICS.inset * 2 + MENU_METRICS.itemHeight * 8 + MENU_METRICS.gap * 7, overflowY: "auto", "& .MuiMenuItem-root": {justifyContent: "center",textAlign: "center", }, },
+          },
         }}
       >
         {availableRules.map((definition) => (
           <Tooltip key={definition.type} title={definition.description} placement="left" describeChild>
             <MenuItem
               dense
-              sx={{ height: 34, minHeight: 34, px: 1.5, py: 0, fontSize: 13 }}
               onClick={() => {
                 onChange([...rules, cloneRule(DEFAULT_RULES[definition.type])]);
                 setAnchor(null);

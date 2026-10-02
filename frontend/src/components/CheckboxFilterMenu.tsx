@@ -46,8 +46,8 @@ export function CheckboxFilterMenu<T extends string>({
         anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
         transformOrigin={{ vertical: "top", horizontal: "right" }}
         slotProps={{
-          paper: { sx: { minWidth: 136, borderRadius: "10px" } },
-          list: { "aria-labelledby": `${id}-button`, dense: true, sx: { py: 0.5 } },
+          paper: { sx: { minWidth: 136 } },
+          list: { "aria-labelledby": `${id}-button`, dense: true },
         }}
       >
         {options.map((option) => {
@@ -58,7 +58,6 @@ export function CheckboxFilterMenu<T extends string>({
               dense
               role="menuitemcheckbox"
               aria-checked={checked}
-              sx={{ minHeight: 34, px: 1, py: 0.25, gap: 0.75, fontSize: 13 }}
               onClick={() => onChange(checked
                 ? selected.filter((value) => value !== option.value)
                 : [...selected, option.value])}

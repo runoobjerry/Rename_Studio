@@ -3,6 +3,9 @@ import type { PaletteMode } from "@mui/material";
 
 const accent = "#00ff9d";
 
+// 菜单共享几何参数；有可见条数限制的菜单也按这些值计算滚动高度。
+export const MENU_METRICS = { itemHeight: 34, inset: 4, gap: 2 } as const;
+
 export function createAppTheme(mode: PaletteMode) {
   const dark = mode === "dark";
   const textPrimary = dark ? "#f1f7f4" : "#14231d";
@@ -145,16 +148,29 @@ export function createAppTheme(mode: PaletteMode) {
         styleOverrides: {
           paper: {
             marginTop: 4,
-            border: `1px solid ${dark ? "rgba(255,255,255,0.09)" : "rgba(20,35,29,0.10)"}`,
+            padding: 0,
+            borderRadius: 10,
+            border: `1px solid ${divider}`,
             backgroundImage: "none",
+          },
+          list: {
+            boxSizing: "border-box",
+            padding: MENU_METRICS.inset,
+            display: "flex",
+            flexDirection: "column",
+            gap: MENU_METRICS.gap,
           },
         },
       },
       MuiMenuItem: {
         styleOverrides: {
           root: {
-            minHeight: 34,
-            margin: "2px 6px",
+            boxSizing: "border-box",
+            height: MENU_METRICS.itemHeight,
+            minHeight: MENU_METRICS.itemHeight,
+            margin: 0,
+            padding: "4px 12px",
+            gap: 6,
             borderRadius: 8,
             fontSize: 13,
           },
