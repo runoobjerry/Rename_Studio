@@ -145,12 +145,16 @@ interface PreviewItem {
 {
   configured: boolean;
   connected: boolean;
+  account_id: string | null;
   account_display_name: string | null;
   account_email: string | null;
 }
 ```
 
 - A persisted refresh token can initially report connected after backend restart; the next Graph request performs real refresh/validation.
+- `account_id` is the Microsoft Graph `/me` user `id`, not the application `client_id`, a drive ID, or a file ID. Treat it as an opaque string.
+- The ID is loaded after browser authorization and persisted with the account profile, so it survives backend restart. It is cleared when disconnecting, starting a new login, changing App ID, or deleting settings.
+- `account_id` can be `null` even when `connected` is true: older saved credentials may lack it, or the optional profile request may fail or omit a valid ID. Reauthorize to obtain it; do not treat a missing ID as an authorization failure. This endpoint reads local state and does not fetch Graph profile data.
 
 ### `POST /onedrive/auth/start`
 

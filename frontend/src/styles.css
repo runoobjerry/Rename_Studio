@@ -107,7 +107,8 @@
   gap: 10px;
 }
 
-.local-path-form {
+.local-path-form,
+.cloud-default-path-form {
   grid-template-columns: minmax(0, 1fr) auto auto;
 }
 

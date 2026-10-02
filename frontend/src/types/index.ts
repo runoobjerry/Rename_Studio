@@ -21,6 +21,7 @@ export interface OneDriveSettings {
 export interface OneDriveAuthStatus {
   configured: boolean;
   connected: boolean;
+  account_id: string | null;
   account_display_name: string | null;
   account_email: string | null;
 }

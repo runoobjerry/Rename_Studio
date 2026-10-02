@@ -19,6 +19,7 @@ class OneDriveSettingsResponse(BaseModel):
 class OneDriveAuthStatus(BaseModel):
     configured: bool
     connected: bool
+    account_id: str | None = None
     account_display_name: str | None = None
     account_email: str | None = None
 

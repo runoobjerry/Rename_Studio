@@ -40,6 +40,7 @@ import {
   updateLocalSettings,
 } from "./api/client";
 import { FileBrowser } from "./features/files/FileBrowser";
+import { readDefaultCloudPath, saveDefaultCloudPath } from "./features/files/defaultCloudPath";
 import { PreviewPanel } from "./features/rename/PreviewPanel";
 import { RenameActions } from "./features/rename/RenameActions";
 import { cloneRule, DEFAULT_RULES, RuleEditor } from "./features/rules/RuleEditor";
@@ -97,6 +98,7 @@ function Workspace({ mode, setMode }: { mode: PaletteMode; setMode: (mode: Palet
   const [path, setPath] = useState("");
   const [localRoot, setLocalRoot] = useState("");
   const [cloudPath, setCloudPath] = useState("");
+  const [restoredCloudSession, setRestoredCloudSession] = useState<string | null>(null);
   const selectedIds = useRenameStore((state) => state.selectedIds);
   const rules = useRenameStore((state) => state.rules);
   const setRules = useRenameStore((state) => state.setRules);
@@ -114,17 +116,21 @@ function Workspace({ mode, setMode }: { mode: PaletteMode; setMode: (mode: Palet
     queryKey: ["local", "settings"],
     queryFn: fetchLocalSettings,
   });
+  const cloudAccountId = providerId === "onedrive" ? oneDriveStatus.data?.account_id : null;
+  const cloudConnected = providerId === "onedrive" && oneDriveStatus.data?.connected === true;
+  const cloudSession = cloudConnected ? JSON.stringify([providerId, cloudAccountId ?? null]) : null;
+  const cloudReady = cloudConnected && restoredCloudSession === cloudSession;
   const files = useQuery({
     queryKey: [
       "files",
       providerId,
-      providerId === "local" ? localSettings.data?.root_path ?? "" : "",
+      providerId === "local" ? localSettings.data?.root_path ?? "" : cloudSession,
       path,
     ],
     queryFn: () => fetchFiles(providerId, path),
     enabled:
       (providerId === "local" && localSettings.isSuccess) ||
-      (providerId === "onedrive" && oneDriveStatus.data?.connected === true),
+      cloudReady,
   });
   const preview = useMutation({
     mutationFn: () => createPreview(providerId, path, selectedIds, rules),
@@ -197,16 +203,24 @@ function Workspace({ mode, setMode }: { mode: PaletteMode; setMode: (mode: Palet
     clearSelection();
     preview.reset();
     execution.reset();
-  }, [path, providerId]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [path, providerId, cloudSession]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
-    if (providerId !== "onedrive" || oneDriveStatus.data?.connected !== false) return;
-    setPath("");
-    setCloudPath("");
+    if (providerId !== "onedrive" || restoredCloudSession === cloudSession) return;
+    let defaultPath = "";
+    try {
+      if (cloudConnected && cloudAccountId) defaultPath = readDefaultCloudPath(providerId, cloudAccountId);
+    } catch {
+      notify("无法读取默认路径，将打开云盘根目录。请检查浏览器存储权限。", "warning");
+    }
+    // 恢复完成前不请求目录，避免以旧账号路径读取新账号或混用缓存。
+    setPath(defaultPath);
+    setCloudPath(defaultPath);
+    setRestoredCloudSession(cloudSession);
     clearSelection();
     preview.reset();
     execution.reset();
-  }, [providerId, oneDriveStatus.data?.connected]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [providerId, cloudSession, restoredCloudSession]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const loadError = providers.error ?? definitions.error ?? oneDriveStatus.error ?? localSettings.error;
   const activeProvider = providers.data?.find((provider) => provider.id === providerId);
@@ -222,8 +236,19 @@ function Workspace({ mode, setMode }: { mode: PaletteMode; setMode: (mode: Palet
     setProviderId(nextProviderId);
     setPath("");
     setCloudPath("");
+    setRestoredCloudSession(null);
     setView("workspace");
     setMobileNavOpen(false);
+  };
+
+  const setDefaultCloudPath = () => {
+    if (!cloudAccountId || !cloudReady || !files.isSuccess || files.isFetching || files.error) return;
+    try {
+      saveDefaultCloudPath(providerId, cloudAccountId, files.data.path);
+      notify(`已将“${files.data.path || "根目录"}”设为当前账号的默认路径。`);
+    } catch {
+      notify("默认路径保存失败，请检查浏览器存储权限或可用空间。", "error");
+    }
   };
 
   const addRule = (type: string) => {
@@ -371,7 +396,7 @@ function Workspace({ mode, setMode }: { mode: PaletteMode; setMode: (mode: Palet
                     </div>
                     {providerId === "onedrive" ? (
                       <form
-                        className="cloud-path-form"
+                        className="cloud-path-form cloud-default-path-form"
                         onSubmit={(event) => {
                           event.preventDefault();
                           navigate(cloudPath.replace(/\\/g, "/").replace(/^\/+|\/+$/g, ""));
@@ -395,6 +420,15 @@ function Workspace({ mode, setMode }: { mode: PaletteMode; setMode: (mode: Palet
                           sx={{ minHeight: 36, px: 1.5, py: 1, whiteSpace: "nowrap" }}
                         >
                           打开文件夹
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="outlined"
+                          onClick={setDefaultCloudPath}
+                          disabled={!cloudAccountId || !cloudReady || !files.isSuccess || files.isFetching || Boolean(files.error) || oneDriveStatus.isError}
+                          sx={{ minHeight: 36, px: 1.5, py: 1, whiteSpace: "nowrap" }}
+                        >
+                          设为默认路径
                         </Button>
                       </form>
                     ) : (
@@ -437,6 +471,9 @@ function Workspace({ mode, setMode }: { mode: PaletteMode; setMode: (mode: Palet
                     )}
                   </div>
                   <div className="location-feedback">
+                    {cloudConnected && !cloudAccountId && (
+                      <Alert severity="info">当前账号缺少账号 ID，仍可浏览文件；请重新登录后设置默认路径。</Alert>
+                    )}
                     {providerId === "local" && updateLocalRoot.error && (
                       <Alert severity="error">切换失败：{updateLocalRoot.error.message}</Alert>
                     )}
@@ -451,7 +488,7 @@ function Workspace({ mode, setMode }: { mode: PaletteMode; setMode: (mode: Palet
 
                 <div className="workspace-grid">
                   <div className="workspace-primary">
-                    {files.data ? (
+                    {files.data && (providerId === "local" || cloudReady) ? (
                       <FileBrowser
                         listing={files.data}
                         providerName={providerName}
