@@ -37,7 +37,7 @@ export function PreviewPanel({
   error,
   executeError,
 }: PreviewPanelProps) {
-  const [filters, setFilters] = useState<StatusFilter[]>(["error", "unchanged", "pending"]);
+  const [filters, setFilters] = useState<StatusFilter[]>([]);
   const executionById = new Map(execution?.items.map((item) => [item.file_id, item]));
   const pendingCount = preview?.items.filter(
     (item) => item.changed && item.valid && !executionById.has(item.file_id),
@@ -59,6 +59,7 @@ export function PreviewPanel({
   }
 
   const visibleItems = preview?.items.filter((item) => {
+    if (filters.length === 0) return true;
     const result = executionById.get(item.file_id);
     // 已执行项目仍按原预览分类，执行失败覆盖原分类，避免隐藏失败信息。
     const category: StatusFilter = result?.status === "failed" ? "error"
@@ -77,10 +78,10 @@ export function PreviewPanel({
             {preview
               ? `${pendingCount} 项待修改 · ${unchangedCount} 项无需修改`
               : "0 项待修改 · 0 项无需修改"}
-            {preview && filters.length !== statusFilters.length && ` · 显示 ${visibleItems.length} 项`}
+            {preview && filters.length > 0 && ` · 显示 ${visibleItems.length} 项`}
           </p>
         </div>
-        <CheckboxFilterMenu label="筛选重命名状态" options={statusFilters} selected={filters} onChange={setFilters} />
+        <CheckboxFilterMenu label="筛选状态" options={statusFilters} selected={filters} onChange={setFilters} />
       </div>
 
       {error && <Alert severity="error" sx={{ m: 2 }}>{error}</Alert>}

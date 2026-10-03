@@ -75,8 +75,8 @@ export function FileBrowser({
   onClearSelection,
   onInvertSelection,
 }: FileBrowserProps) {
-  const [filters, setFilters] = useState<FileFilter[]>(["file", "folder"]);
-  const visibleItems = listing.items.filter((item) => filters.includes(item.is_directory ? "folder" : "file"));
+  const [filters, setFilters] = useState<FileFilter[]>([]);
+  const visibleItems = listing.items.filter((item) => filters.length === 0 || filters.includes(item.is_directory ? "folder" : "file"));
   const visibleIds = visibleItems.map((item) => item.id);
   const selectedCount = listing.items.filter((item) => selectedIds.includes(item.id)).length;
   const visibleSelectedCount = visibleItems.filter((item) => selectedIds.includes(item.id)).length;
@@ -89,7 +89,7 @@ export function FileBrowser({
           <h2 id="files-title">文件选择</h2>
           <p className="panel-summary">
             共 {listing.items.length} 项 · 已选择 {selectedCount} 项
-            {filters.length !== fileFilters.length && ` · 显示 ${visibleItems.length} 项`}
+            {filters.length > 0 && ` · 显示 ${visibleItems.length} 项`}
           </p>
         </div>
         <div className="browser-heading-actions">
@@ -134,7 +134,7 @@ export function FileBrowser({
           >
             反选
           </Button>
-          <CheckboxFilterMenu label="筛选文件类型" options={fileFilters} selected={filters} onChange={setFilters} />
+          <CheckboxFilterMenu label="筛选项目" options={fileFilters} selected={filters} onChange={setFilters} />
         </div>
       </div>
       {isRefreshing && <LinearProgress aria-label="正在刷新目录" sx={{ flexShrink: 0 }} />}

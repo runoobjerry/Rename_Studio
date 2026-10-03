@@ -40,8 +40,8 @@ describe("FileBrowser", () => {
     const props = { listing, providerName: "本地文件", selectedIds: ["folder"],
       onNavigate: vi.fn(), onToggle: vi.fn(), onSelectAll, onInvertSelection, onClearSelection };
     const { rerender } = render(<FileBrowser {...props} />);
-    fireEvent.click(screen.getByRole("button", { name: "筛选文件类型" }));
-    fireEvent.click(screen.getByRole("menuitemcheckbox", { name: "文件夹" }));
+    fireEvent.click(screen.getByRole("button", { name: "筛选项目" }));
+    fireEvent.click(screen.getByRole("menuitemcheckbox", { name: "文件" }));
     fireEvent.keyDown(screen.getByRole("menu"), { key: "Escape" });
     await waitFor(() => expect(screen.queryByRole("menu")).not.toBeInTheDocument());
 
@@ -60,30 +60,47 @@ describe("FileBrowser", () => {
     fireEvent.click(header);
     expect(onClearSelection).toHaveBeenCalledOnce();
 
-    fireEvent.click(screen.getByRole("button", { name: "筛选文件类型" }));
+    fireEvent.click(screen.getByRole("button", { name: "筛选项目" }));
     fireEvent.click(screen.getByRole("menuitemcheckbox", { name: "文件" }));
     fireEvent.keyDown(screen.getByRole("menu"), { key: "Escape" });
     await waitFor(() => expect(screen.queryByRole("menu")).not.toBeInTheDocument());
-    expect(screen.getByRole("button", { name: "全选" })).toBeDisabled();
-    expect(screen.getByRole("button", { name: "反选" })).toBeDisabled();
-    expect(header).toBeDisabled();
+    expect(screen.getByRole("button", { name: "全选" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "反选" })).toBeEnabled();
+    expect(header).toBeEnabled();
+    expect(screen.getByText("folder")).toBeInTheDocument();
+    expect(screen.getByText("file.txt")).toBeInTheDocument();
   });
   it("filters rows without changing selected IDs or directory selection actions", () => {
     const onSelectAll = vi.fn();
     const onToggle = vi.fn();
     render(<FileBrowser listing={listing} providerName="本地文件" selectedIds={["folder"]}
       onNavigate={vi.fn()} onToggle={onToggle} onSelectAll={onSelectAll} onInvertSelection={vi.fn()} />);
-    fireEvent.click(screen.getByRole("button", { name: "筛选文件类型" }));
-    const folders = screen.getByRole("menuitemcheckbox", { name: "文件夹" });
-    expect(folders).toHaveAttribute("aria-checked", "true");
-    fireEvent.click(folders);
+    fireEvent.click(screen.getByRole("button", { name: "筛选项目" }));
+    const files = screen.getByRole("menuitemcheckbox", { name: "文件" });
+    expect(files).toHaveAttribute("aria-checked", "false");
+    expect(screen.getByRole("menuitemcheckbox", { name: "文件夹" })).toHaveAttribute("aria-checked", "false");
+    expect(screen.getByText("folder")).toBeInTheDocument();
+    fireEvent.click(files);
     expect(screen.queryByText("folder")).not.toBeInTheDocument();
     expect(screen.getByText("file.txt")).toBeInTheDocument();
     expect(screen.getByText(/已选择 1 项/)).toBeInTheDocument();
     expect(onToggle).not.toHaveBeenCalled();
     expect(onSelectAll).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole("menuitemcheckbox", { name: "文件" }));
+    expect(screen.getByText("folder")).toBeInTheDocument();
+    expect(screen.getByText("file.txt")).toBeInTheDocument();
+  });
+  it("disables bulk actions when an active filter has no matching rows", async () => {
+    render(<FileBrowser listing={{ ...listing, items: [listing.items[0]] }} providerName="本地文件" selectedIds={[]}
+      onNavigate={vi.fn()} onToggle={vi.fn()} onSelectAll={vi.fn()} onInvertSelection={vi.fn()} />);
+    fireEvent.click(screen.getByRole("button", { name: "筛选项目" }));
+    fireEvent.click(screen.getByRole("menuitemcheckbox", { name: "文件" }));
+    fireEvent.keyDown(screen.getByRole("menu"), { key: "Escape" });
+    await waitFor(() => expect(screen.queryByRole("menu")).not.toBeInTheDocument());
     expect(screen.getByText("没有符合筛选条件的项目。")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "全选" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "反选" })).toBeDisabled();
+    expect(screen.getByRole("checkbox", { name: "选择当前显示的全部项目" })).toBeDisabled();
   });
   it("selects a directory name without navigating into it", () => {
     const onNavigate = vi.fn();

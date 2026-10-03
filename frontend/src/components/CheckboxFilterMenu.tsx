@@ -1,6 +1,7 @@
 import { useId, useState } from "react";
-import ArrowDropDownRoundedIcon from "@mui/icons-material/ArrowDropDownRounded";
-import { Button, Checkbox, ListItemText, Menu, MenuItem } from "@mui/material";
+import FilterList from "@mui/icons-material/FilterList";
+import FilterListOff from "@mui/icons-material/FilterListOff";
+import { Checkbox, IconButton, ListItemText, Menu, MenuItem, Tooltip } from "@mui/material";
 
 interface CheckboxFilterMenuProps<T extends string> {
   label: string;
@@ -14,30 +15,29 @@ export function CheckboxFilterMenu<T extends string>({
 }: CheckboxFilterMenuProps<T>) {
   const id = useId();
   const [anchor, setAnchor] = useState<HTMLElement | null>(null);
+  const active = selected.length > 0;
   return (
     <>
-      <Button
-        id={`${id}-button`}
-        size="small"
-        variant="outlined"
-        endIcon={<ArrowDropDownRoundedIcon />}
-        aria-label={label}
-        aria-haspopup="menu"
-        aria-expanded={Boolean(anchor)}
-        aria-controls={anchor ? `${id}-menu` : undefined}
-        onClick={(event) => setAnchor(event.currentTarget)}
-        sx={{
-          minHeight: 30,
-          px: 1.25,
-          py: 0.5,
-          fontSize: 13,
-          whiteSpace: "nowrap",
-          "& .MuiButton-endIcon": { ml: 0.5 },
-          "& .MuiButton-endIcon > svg": { fontSize: 18 },
-        }}
-      >
-        筛选{selected.length !== options.length ? ` (${selected.length}/${options.length})` : ""}
-      </Button>
+      <Tooltip title={`${label}（${active ? "已启用" : "未启用"}）`} arrow>
+        <IconButton
+          id={`${id}-button`}
+          size="small"
+          aria-label={label}
+          aria-haspopup="menu"
+          aria-expanded={Boolean(anchor)}
+          aria-controls={anchor ? `${id}-menu` : undefined}
+          onClick={(event) => setAnchor(event.currentTarget)}
+          sx={{
+            width: 30,
+            height: 30,
+            p: 0.75,
+            color: active ? "primary.main" : "text.secondary",
+            "& .MuiSvgIcon-root": { fontSize: 18 },
+          }}
+        >
+          {active ? <FilterList /> : <FilterListOff />}
+        </IconButton>
+      </Tooltip>
       <Menu
         id={`${id}-menu`}
         anchorEl={anchor}
