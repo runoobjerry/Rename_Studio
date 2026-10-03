@@ -18,11 +18,13 @@ describe.each(["light", "dark"] as const)("filter icon in %s mode", (mode) => {
     render(<ThemeProvider theme={theme}><Filter /></ThemeProvider>);
     const button = screen.getByRole("button", { name: "筛选项目" });
     expect(button).toHaveStyle({ color: theme.palette.text.secondary });
-    expect(screen.getByTestId("FilterListOffIcon")).toBeInTheDocument();
+    expect(button).toHaveStyle({ padding: "5px", border: "0px" });
+    expect(screen.getByTestId("FilterListOffIcon")).toHaveStyle({ fontSize: "20px" });
     fireEvent.click(button);
     fireEvent.click(screen.getByRole("menuitemcheckbox", { name: "文件" }));
     expect(button).toHaveStyle({ color: theme.palette.primary.main });
-    expect(screen.getByTestId("FilterListIcon")).toBeInTheDocument();
+    expect(button).toHaveStyle({ padding: "5px", border: "0px" });
+    expect(screen.getByTestId("FilterListIcon")).toHaveStyle({ fontSize: "20px" });
     fireEvent.click(screen.getByRole("menuitemcheckbox", { name: "文件夹" }));
     expect(screen.getByTestId("FilterListIcon")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("menuitemcheckbox", { name: "文件" }));

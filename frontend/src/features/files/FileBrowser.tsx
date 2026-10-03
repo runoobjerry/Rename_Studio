@@ -4,11 +4,10 @@ import FolderRoundedIcon from "@mui/icons-material/FolderRounded";
 import InsertDriveFileOutlinedIcon from "@mui/icons-material/InsertDriveFileOutlined";
 import RefreshRoundedIcon from "@mui/icons-material/RefreshRounded";
 import {
-  Button,
   Alert,
+  Box,
   ButtonBase,
   Checkbox,
-  IconButton,
   LinearProgress,
   Table,
   TableBody,
@@ -21,6 +20,8 @@ import {
 
 import type { DirectoryListing } from "../../types";
 import { CheckboxFilterMenu } from "../../components/CheckboxFilterMenu";
+import { PanelIconButton } from "../../components/PanelIconButton";
+import selectInverseIcon from "../../assets/icon/select-inverse.svg";
 
 const fileFilters = [
   { value: "file", label: "文件" },
@@ -95,45 +96,49 @@ export function FileBrowser({
         <div className="browser-heading-actions">
           {listing.parent_path !== null && (
             <Tooltip title="返回上级" arrow>
-              <IconButton
+              <PanelIconButton
                 size="small"
                 aria-label="返回上级"
                 onClick={() => onNavigate(listing.parent_path ?? "")}
-                sx={{ border: 1, borderColor: "divider", borderRadius: "9px" }}
               >
                 <ArrowBackRoundedIcon fontSize="small" />
-              </IconButton>
+              </PanelIconButton>
             </Tooltip>
           )}
           <Tooltip title={isRefreshing ? "刷新中" : "刷新"} arrow>
             <span>
-              <IconButton
+              <PanelIconButton
                 size="small"
                 aria-label={isRefreshing ? "刷新中" : "刷新"}
                 onClick={onRefresh}
                 disabled={!onRefresh || isRefreshing}
-                sx={{ border: 1, borderColor: "divider", borderRadius: "9px" }}
               >
                 <RefreshRoundedIcon fontSize="small" />
-              </IconButton>
+              </PanelIconButton>
             </span>
           </Tooltip>
-          <Button
-            size="small"
-            variant="outlined"
-            onClick={() => onSelectAll(visibleIds)}
-            disabled={visibleItems.length === 0}
-          >
-            全选
-          </Button>
-          <Button
-            size="small"
-            variant="outlined"
-            onClick={() => onInvertSelection(visibleIds)}
-            disabled={visibleItems.length === 0}
-          >
-            反选
-          </Button>
+          <Tooltip title="反选" arrow>
+            <span>
+              <PanelIconButton
+                size="small"
+                aria-label="反选"
+                onClick={() => onInvertSelection(visibleIds)}
+                disabled={visibleItems.length === 0}
+              >
+                <Box
+                  component="span"
+                  aria-hidden="true"
+                  sx={{
+                    width: 20,
+                    height: 20,
+                    bgcolor: "currentColor",
+                    mask: `url("${selectInverseIcon}") center / contain no-repeat`,
+                    WebkitMask: `url("${selectInverseIcon}") center / contain no-repeat`,
+                  }}
+                />
+              </PanelIconButton>
+            </span>
+          </Tooltip>
           <CheckboxFilterMenu label="筛选项目" options={fileFilters} selected={filters} onChange={setFilters} />
         </div>
       </div>

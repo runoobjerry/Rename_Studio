@@ -1,5 +1,7 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { ThemeProvider } from "@mui/material";
+import { createAppTheme } from "../../theme";
 
 import { FileBrowser } from "./FileBrowser";
 
@@ -33,6 +35,25 @@ const listing = {
 };
 
 describe("FileBrowser", () => {
+  it.each(["light", "dark"] as const)("uses shared icon-only toolbar controls in %s mode without changing the filter", (mode) => {
+    const theme = createAppTheme(mode);
+    render(<ThemeProvider theme={theme}>
+      <FileBrowser listing={{ ...listing, parent_path: "" }} providerName="本地文件" selectedIds={[]}
+        onNavigate={vi.fn()} onToggle={vi.fn()} onRefresh={vi.fn()} onSelectAll={vi.fn()} onInvertSelection={vi.fn()} />
+    </ThemeProvider>);
+    for (const name of ["返回上级", "刷新", "反选"]) {
+      const button = screen.getByRole("button", { name });
+      expect(button).toHaveStyle({ color: theme.palette.text.secondary, padding: "5px", border: "0px" });
+      expect(button.textContent).toBe("");
+    }
+    expect(screen.getByTestId("ArrowBackRoundedIcon")).toHaveStyle({ fontSize: "20px" });
+    expect(screen.getByTestId("RefreshRoundedIcon")).toHaveStyle({ fontSize: "20px" });
+    const inverseIcon = screen.getByRole("button", { name: "反选" }).querySelector("span");
+    expect(inverseIcon).toHaveStyle({ width: "20px", height: "20px" });
+    expect(screen.getByTestId("FilterListOffIcon")).toHaveStyle({ fontSize: "20px" });
+    expect(screen.queryByRole("button", { name: "全选" })).not.toBeInTheDocument();
+  });
+
   it("passes only visible IDs to bulk actions and uses visible rows for header state", async () => {
     const onSelectAll = vi.fn();
     const onInvertSelection = vi.fn();
@@ -48,7 +69,8 @@ describe("FileBrowser", () => {
     const header = screen.getByRole("checkbox", { name: "选择当前显示的全部项目" });
     expect(header).not.toBeChecked();
     expect(header).toHaveAttribute("data-indeterminate", "false");
-    fireEvent.click(screen.getByRole("button", { name: "全选" }));
+    expect(screen.queryByRole("button", { name: "全选" })).not.toBeInTheDocument();
+    fireEvent.click(header);
     expect(onSelectAll).toHaveBeenCalledWith(["file.txt"]);
     fireEvent.click(screen.getByRole("button", { name: "反选" }));
     expect(onInvertSelection).toHaveBeenCalledWith(["file.txt"]);
@@ -64,7 +86,6 @@ describe("FileBrowser", () => {
     fireEvent.click(screen.getByRole("menuitemcheckbox", { name: "文件" }));
     fireEvent.keyDown(screen.getByRole("menu"), { key: "Escape" });
     await waitFor(() => expect(screen.queryByRole("menu")).not.toBeInTheDocument());
-    expect(screen.getByRole("button", { name: "全选" })).toBeEnabled();
     expect(screen.getByRole("button", { name: "反选" })).toBeEnabled();
     expect(header).toBeEnabled();
     expect(screen.getByText("folder")).toBeInTheDocument();
@@ -98,7 +119,7 @@ describe("FileBrowser", () => {
     fireEvent.keyDown(screen.getByRole("menu"), { key: "Escape" });
     await waitFor(() => expect(screen.queryByRole("menu")).not.toBeInTheDocument());
     expect(screen.getByText("没有符合筛选条件的项目。")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "全选" })).toBeDisabled();
+    expect(screen.queryByRole("button", { name: "全选" })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "反选" })).toBeDisabled();
     expect(screen.getByRole("checkbox", { name: "选择当前显示的全部项目" })).toBeDisabled();
   });

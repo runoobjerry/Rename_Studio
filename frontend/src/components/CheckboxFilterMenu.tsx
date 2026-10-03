@@ -1,7 +1,8 @@
 import { useId, useState } from "react";
 import FilterList from "@mui/icons-material/FilterList";
 import FilterListOff from "@mui/icons-material/FilterListOff";
-import { Checkbox, IconButton, ListItemText, Menu, MenuItem, Tooltip } from "@mui/material";
+import { Checkbox, ListItemText, Menu, MenuItem, Tooltip } from "@mui/material";
+import { PanelIconButton } from "./PanelIconButton";
 
 interface CheckboxFilterMenuProps<T extends string> {
   label: string;
@@ -19,7 +20,7 @@ export function CheckboxFilterMenu<T extends string>({
   return (
     <>
       <Tooltip title={`${label}（${active ? "已启用" : "未启用"}）`} arrow>
-        <IconButton
+        <PanelIconButton
           id={`${id}-button`}
           size="small"
           aria-label={label}
@@ -27,16 +28,10 @@ export function CheckboxFilterMenu<T extends string>({
           aria-expanded={Boolean(anchor)}
           aria-controls={anchor ? `${id}-menu` : undefined}
           onClick={(event) => setAnchor(event.currentTarget)}
-          sx={{
-            width: 30,
-            height: 30,
-            p: 0.75,
-            color: active ? "primary.main" : "text.secondary",
-            "& .MuiSvgIcon-root": { fontSize: 18 },
-          }}
+          sx={active ? { color: "primary.main" } : undefined}
         >
           {active ? <FilterList /> : <FilterListOff />}
-        </IconButton>
+        </PanelIconButton>
       </Tooltip>
       <Menu
         id={`${id}-menu`}
