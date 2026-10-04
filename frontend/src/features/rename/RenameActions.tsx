@@ -52,11 +52,12 @@ export function RenameActions({
   const percent = total > 0 ? Math.min(100, Math.floor(processed / total * 100)) : 0;
   const phaseLabels = {
     waiting: "等待确认", validating: "正在复核", staging: "正在准备临时名称",
-    renaming: "正在修改", rollback: "正在回滚", finished: "处理结束", failed: "执行中断",
+    renaming: "正在修改", rollback: "正在回滚", finished: "处理结束", failed: "执行失败",
   };
   const started = applied || isExecuting || hasExecuted || Boolean(executeError);
   const executionError = executeError ?? currentProgress?.error;
   const phase = hasExecuted ? "finished" : executionError ? "failed" : currentProgress?.phase ?? "waiting";
+  const isFailed = phase === "failed";
 
   useEffect(() => {
     setConfirming(false);
@@ -97,7 +98,7 @@ export function RenameActions({
         <DialogContent>
           {started ? (
             <DialogContentText role="status" sx={{ color: executionError || (isExecuting && progressError) ? "error.main" : "text.secondary" }}>
-              {executionError ? `执行失败：${executionError}` : isExecuting && progressError
+              {executionError ? `返回错误：${executionError}，请尝试刷新文件目录。` : isExecuting && progressError
                 ? `暂时无法读取进度：${progressError}；执行请求仍在进行，请勿重复提交。`
                 : `当前任务已处理 ${processed} 项，共 ${total} 项。稍等片刻，请勿刷新页面。`}
             </DialogContentText>
@@ -109,17 +110,21 @@ export function RenameActions({
           )}
         </DialogContent>
         <DialogActions>
-          <Button disabled={isExecuting} onClick={() => setConfirming(false)}>取消</Button>
-          <Button
-            disabled={isExecuting || hasExecuted || !preview}
-            onClick={() => {
-              if (!preview) return;
-              setApplied(true);
-              onExecute(preview.preview_id);
-            }}
-          >
-            应用
+          <Button disabled={isExecuting} onClick={() => setConfirming(false)}>
+            {isFailed ? "关闭" : "取消"}
           </Button>
+          {!isFailed && (
+            <Button
+              disabled={isExecuting || hasExecuted || !preview}
+              onClick={() => {
+                if (!preview) return;
+                setApplied(true);
+                onExecute(preview.preview_id);
+              }}
+            >
+              应用
+            </Button>
+          )}
         </DialogActions>
         <LinearProgress variant="determinate" color="primary" value={percent} aria-label="修改进度" sx={{ height: 4, flexShrink: 0, bgcolor: "transparent" }} />
       </Dialog>
