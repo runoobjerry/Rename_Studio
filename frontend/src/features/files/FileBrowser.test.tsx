@@ -91,7 +91,7 @@ describe("FileBrowser", () => {
     expect(screen.getByText("folder")).toBeInTheDocument();
     expect(screen.getByText("file.txt")).toBeInTheDocument();
   });
-  it("filters rows without changing selected IDs or directory selection actions", () => {
+  it("clears hidden selections when the file filter changes", () => {
     const onSelectAll = vi.fn();
     const onToggle = vi.fn();
     render(<FileBrowser listing={listing} providerName="本地文件" selectedIds={["folder"]}
@@ -106,7 +106,7 @@ describe("FileBrowser", () => {
     expect(screen.getByText("file.txt")).toBeInTheDocument();
     expect(screen.getByText(/已选择 1 项/)).toBeInTheDocument();
     expect(onToggle).not.toHaveBeenCalled();
-    expect(onSelectAll).not.toHaveBeenCalled();
+    expect(onSelectAll).toHaveBeenCalledWith([]);
     fireEvent.click(screen.getByRole("menuitemcheckbox", { name: "文件" }));
     expect(screen.getByText("folder")).toBeInTheDocument();
     expect(screen.getByText("file.txt")).toBeInTheDocument();

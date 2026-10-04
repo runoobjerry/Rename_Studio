@@ -139,7 +139,15 @@ export function FileBrowser({
               </PanelIconButton>
             </span>
           </Tooltip>
-          <CheckboxFilterMenu label="筛选项目" options={fileFilters} selected={filters} onChange={setFilters} />
+          <CheckboxFilterMenu label="筛选项目" options={fileFilters} selected={filters} onChange={(nextFilters) => {
+            setFilters(nextFilters);
+            // 被筛选隐藏的项目退出选择，取消筛选也不恢复旧选择。
+            const nextVisibleIds = new Set(listing.items
+              .filter((item) => nextFilters.length === 0 || nextFilters.includes(item.is_directory ? "folder" : "file"))
+              .map((item) => item.id));
+            const nextSelectedIds = selectedIds.filter((id) => nextVisibleIds.has(id));
+            if (nextSelectedIds.length !== selectedIds.length) onSelectAll(nextSelectedIds);
+          }} />
         </div>
       </div>
       {isRefreshing && <LinearProgress aria-label="正在刷新目录" sx={{ flexShrink: 0 }} />}
