@@ -2,6 +2,7 @@ import asyncio
 import logging
 from dataclasses import dataclass
 from typing import Literal
+from time import monotonic
 from uuid import uuid4
 
 from app.core.errors import AppError, NotFoundError, PreviewExpiredError, ValidationError
@@ -12,6 +13,7 @@ from app.schemas.rename import (
     ExecuteItem,
     PreviewItem,
     RenameExecuteResponse,
+    RenameProgress,
 )
 from app.services.preview_service import PreviewService
 from app.services.preview_store import PreviewSnapshot, PreviewStore
@@ -43,14 +45,44 @@ class ExecuteService:
         self.previews = previews
         self.preview_service = preview_service
         self._lock = asyncio.Lock()
+        self._progress: dict[str, tuple[float, RenameProgress]] = {}
+
+    def progress(self, preview_id: str) -> RenameProgress:
+        self._purge_progress()
+        if preview_id in self._progress:
+            return self._progress[preview_id][1].model_copy(deep=True)
+        snapshot = self.previews.get(preview_id)
+        return RenameProgress(preview_id=preview_id, total=sum(item.changed for item in snapshot.response.items))
+
+    def _purge_progress(self) -> None:
+        now = monotonic()
+        for preview_id in [key for key, (expires, _) in self._progress.items() if expires <= now]:
+            self._progress.pop(preview_id, None)
 
     async def execute(self, preview_id: str) -> RenameExecuteResponse:
         # 单进程内串行执行，避免两个批次同时争用相同目录中的目标名称。
         async with self._lock:
             snapshot = self.previews.get(preview_id)
-            siblings = await self._revalidate(snapshot)
-            self.previews.consume(preview_id)
-            response = await self._execute_snapshot(snapshot, siblings)
+            self._purge_progress()
+            progress = RenameProgress(
+                preview_id=preview_id,
+                total=sum(item.changed for item in snapshot.response.items),
+                phase="validating",
+            )
+            # 活跃批次不超时清除；完成后保留十分钟供界面读取最终状态。
+            self._progress[preview_id] = (float("inf"), progress)
+            try:
+                siblings = await self._revalidate(snapshot)
+                self.previews.consume(preview_id)
+                response = await self._execute_snapshot(snapshot, siblings, progress)
+                progress.processed = progress.total
+                progress.phase = "finished"
+            except BaseException as exc:
+                progress.phase = "failed"
+                progress.error = exc.message if isinstance(exc, AppError) else "Rename execution interrupted"
+                raise
+            finally:
+                self._progress[preview_id] = (monotonic() + 600, progress)
             for item in response.items:
                 logger.info(
                     "rename execution provider=%s file_id=%s status=%s error=%s",
@@ -96,6 +128,22 @@ class ExecuteService:
         return siblings
 
     @staticmethod
+    async def _rename_in_batches(
+        provider: StorageProvider,
+        requests: list[RenameRequest],
+        progress: RenameProgress | None = None,
+    ) -> dict[str, FileItem | AppError]:
+        outcomes: dict[str, FileItem | AppError] = {}
+        # 保留 Provider 的批处理能力；每批完成后发布真实计数并让出事件循环。
+        for offset in range(0, len(requests), 20):
+            batch = requests[offset:offset + 20]
+            outcomes.update(await provider.rename_many(batch))
+            if progress is not None:
+                progress.processed += len(batch)
+            await asyncio.sleep(0)
+        return outcomes
+
+    @staticmethod
     def _source_changed(before: FileItem, current: FileItem) -> bool:
         identity_changed = (
             before.id != current.id
@@ -114,6 +162,7 @@ class ExecuteService:
         self,
         snapshot: PreviewSnapshot,
         siblings: list[FileItem],
+        progress: RenameProgress,
     ) -> RenameExecuteResponse:
         provider = self.providers.get(snapshot.request.provider)
         results = {
@@ -149,7 +198,8 @@ class ExecuteService:
             RenameRequest(item.file_id, temp_name)
             for item, temp_name in zip(staged_items, temp_names, strict=True)
         ]
-        staging_results = await provider.rename_many(staging_requests)
+        progress.phase = "staging"
+        staging_results = await self._rename_in_batches(provider, staging_requests)
         for item in staged_items:
             outcome = staging_results[item.file_id]
             if isinstance(outcome, AppError):
@@ -157,6 +207,7 @@ class ExecuteService:
             else:
                 staged.append(StagedRename(preview=item, temporary=outcome))
         if len(staged) != len(staged_items):
+            progress.phase = "rollback"
             await self._rollback_staging(
                 provider,
                 staged,
@@ -168,7 +219,8 @@ class ExecuteService:
         direct_requests = [
             RenameRequest(item.file_id, item.new_name) for item in direct_items
         ]
-        direct_results = await provider.rename_many(direct_requests)
+        progress.phase = "renaming"
+        direct_results = await self._rename_in_batches(provider, direct_requests, progress if not staged_items else None)
         renamed_direct: list[DirectRename] = []
         for item in direct_items:
             outcome = direct_results[item.file_id]
@@ -178,6 +230,7 @@ class ExecuteService:
                 renamed_direct.append(DirectRename(preview=item, current=outcome))
         if len(renamed_direct) != len(direct_items):
             if staged:
+                progress.phase = "rollback"
                 await self._rollback_direct(provider, renamed_direct, results)
                 await self._rollback_staging(
                     provider,
@@ -195,19 +248,28 @@ class ExecuteService:
             results[renamed.preview.file_id].status = "renamed"
             results[renamed.preview.file_id].error = None
 
-        final_requests = [
-            RenameRequest(item.temporary.id, item.preview.new_name) for item in staged
-        ]
-        final_results = await provider.rename_many(final_requests)
-        for staged_item in staged:
-            item = staged_item.preview
-            outcome = final_results[staged_item.temporary.id]
-            if not isinstance(outcome, AppError):
-                results[item.file_id].status = "renamed"
-                results[item.file_id].error = None
-            else:
-                results[item.file_id].error = outcome.message
-                await self._rollback_one(provider, staged_item, results[item.file_id])
+        if staged_items:
+            # 有依赖的直接重命名可能回滚，只有整个直接阶段成功才计入。
+            progress.processed += len(direct_items)
+
+        for offset in range(0, len(staged), 20):
+            batch = staged[offset:offset + 20]
+            final_results = await provider.rename_many([
+                RenameRequest(item.temporary.id, item.preview.new_name) for item in batch
+            ])
+            for staged_item in batch:
+                item = staged_item.preview
+                outcome = final_results[staged_item.temporary.id]
+                if not isinstance(outcome, AppError):
+                    results[item.file_id].status = "renamed"
+                    results[item.file_id].error = None
+                else:
+                    progress.phase = "rollback"
+                    results[item.file_id].error = outcome.message
+                    await self._rollback_one(provider, staged_item, results[item.file_id])
+                    progress.phase = "renaming"
+                progress.processed += 1
+            await asyncio.sleep(0)
 
         return self._response(snapshot.preview_id, results)
 

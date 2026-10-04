@@ -1,10 +1,17 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { ApiError, clearOneDriveSettings, fetchProviders } from "./client";
+import { ApiError, clearOneDriveSettings, fetchProviders, fetchRenameProgress } from "./client";
 
 afterEach(() => vi.unstubAllGlobals());
 
 describe("API client", () => {
+  it("fetches server execution counts with an encoded preview ID", async () => {
+    const progress = { preview_id: "preview/id", total: 20, processed: 10, phase: "renaming", error: null };
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify(progress)));
+    vi.stubGlobal("fetch", fetchMock);
+    expect(await fetchRenameProgress("preview/id")).toEqual(progress);
+    expect(fetchMock).toHaveBeenCalledWith("/api/rename/progress/preview%2Fid", undefined);
+  });
   it("preserves structured errors and remains compatible with Error.message", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify({
       error: {

@@ -5,14 +5,16 @@ import {
   Button,
   CircularProgress,
   Dialog,
+  Typography,
   DialogActions,
   DialogContent,
   DialogContentText,
   DialogTitle,
   Stack,
+  LinearProgress,
 } from "@mui/material";
 
-import type { PreviewResponse } from "../../types";
+import type { PreviewResponse, RenameProgress } from "../../types";
 
 interface RenameActionsProps {
   preview?: PreviewResponse;
@@ -21,6 +23,9 @@ interface RenameActionsProps {
   isPreviewing: boolean;
   isExecuting: boolean;
   hasExecuted: boolean;
+  progress?: RenameProgress;
+  progressError?: string;
+  executeError?: string;
   onPreview: () => void;
   onExecute: (previewId: string) => void;
 }
@@ -32,15 +37,36 @@ export function RenameActions({
   isPreviewing,
   isExecuting,
   hasExecuted,
+  progress,
+  progressError,
+  executeError,
   onPreview,
   onExecute,
 }: RenameActionsProps) {
   const [confirming, setConfirming] = useState(false);
+  const [applied, setApplied] = useState(false);
   const changedCount = preview?.items.filter((item) => item.changed).length ?? 0;
+  const currentProgress = progress?.preview_id === preview?.preview_id ? progress : undefined;
+  const total = currentProgress?.total ?? changedCount;
+  const processed = hasExecuted ? total : currentProgress?.processed ?? 0;
+  const percent = total > 0 ? Math.min(100, Math.floor(processed / total * 100)) : 0;
+  const phaseLabels = {
+    waiting: "等待确认", validating: "正在复核", staging: "正在准备临时名称",
+    renaming: "正在修改", rollback: "正在回滚", finished: "处理结束", failed: "执行中断",
+  };
+  const started = applied || isExecuting || hasExecuted || Boolean(executeError);
+  const executionError = executeError ?? currentProgress?.error;
+  const phase = hasExecuted ? "finished" : executionError ? "failed" : currentProgress?.phase ?? "waiting";
 
-  useEffect(() => setConfirming(false), [preview?.preview_id]);
   useEffect(() => {
-    if (hasExecuted) setConfirming(false);
+    setConfirming(false);
+    setApplied(false);
+  }, [preview?.preview_id]);
+  useEffect(() => {
+    if (!hasExecuted) return;
+    // 收到真实执行结果后短暂展示 100%，再关闭确认卡片。
+    const timer = window.setTimeout(() => setConfirming(false), 600);
+    return () => window.clearTimeout(timer);
   }, [hasExecuted]);
 
   return (
@@ -58,32 +84,44 @@ export function RenameActions({
         <Button
           fullWidth
           variant="contained"
-          startIcon={isExecuting ? <CircularProgress size={16} color="inherit" /> : <PlayArrowRoundedIcon />}
+          startIcon={<PlayArrowRoundedIcon />}
           disabled={!preview?.valid || changedCount === 0 || isExecuting || hasExecuted}
-          onClick={() => setConfirming(true)}
+          onClick={() => { setApplied(false); setConfirming(true); }}
         >
-          {isExecuting ? "正在修改…" : "开始修改"}
+          开始修改
         </Button>
       </Stack>
 
       <Dialog open={confirming} onClose={() => !isExecuting && setConfirming(false)}>
-        <DialogTitle>确认修改</DialogTitle>
+        <DialogTitle>{phaseLabels[phase]}</DialogTitle>
         <DialogContent>
-          <DialogContentText>
-            将根据当前预览值修改 {providerName} 中的 {changedCount} 个项目。此操作不可恢复！
-          </DialogContentText>
+          {started ? (
+            <DialogContentText role="status" sx={{ color: executionError || (isExecuting && progressError) ? "error.main" : "text.secondary" }}>
+              {executionError ? `执行失败：${executionError}` : isExecuting && progressError
+                ? `暂时无法读取进度：${progressError}；执行请求仍在进行，请勿重复提交。`
+                : `当前任务已处理 ${processed} 项，共 ${total} 项。稍等片刻，请勿刷新页面。`}
+            </DialogContentText>
+          ) : (
+            <DialogContentText>
+              将根据当前预览区新文件名修改 {providerName} 中的 {changedCount} 个项目。请注意，
+              <Typography component="span" variant="inherit" sx={{ color: "error.main" }}>此操作不可恢复！</Typography>
+            </DialogContentText>
+          )}
         </DialogContent>
         <DialogActions>
           <Button disabled={isExecuting} onClick={() => setConfirming(false)}>取消</Button>
           <Button
-            variant="contained"
-            startIcon={isExecuting ? <CircularProgress size={16} color="inherit" /> : undefined}
-            disabled={isExecuting || !preview}
-            onClick={() => preview && onExecute(preview.preview_id)}
+            disabled={isExecuting || hasExecuted || !preview}
+            onClick={() => {
+              if (!preview) return;
+              setApplied(true);
+              onExecute(preview.preview_id);
+            }}
           >
-            {isExecuting ? "正在修改…" : "确认修改"}
+            应用
           </Button>
         </DialogActions>
+        <LinearProgress variant="determinate" color="primary" value={percent} aria-label="修改进度" sx={{ height: 4, flexShrink: 0, bgcolor: "transparent" }} />
       </Dialog>
     </>
   );

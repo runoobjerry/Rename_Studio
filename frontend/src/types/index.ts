@@ -60,6 +60,14 @@ export interface RuleDefinition {
   config_schema: Record<string, unknown>;
 }
 
+export interface RenameProgress {
+  preview_id: string;
+  total: number;
+  processed: number;
+  phase: "waiting" | "validating" | "staging" | "renaming" | "rollback" | "finished" | "failed";
+  error: string | null;
+}
+
 export interface PreviewItem {
   file_id: string;
   original_name: string;

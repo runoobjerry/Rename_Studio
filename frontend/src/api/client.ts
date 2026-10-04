@@ -4,6 +4,7 @@ import type {
   LocalFolderPick,
   LocalSettings,
   PreviewResponse,
+  RenameProgress,
   ProviderInfo,
   RuleDefinition,
   RuleSpec,
@@ -132,4 +133,8 @@ export function executePreview(previewId: string): Promise<ExecuteResponse> {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ preview_id: previewId }),
   });
+}
+
+export function fetchRenameProgress(previewId: string): Promise<RenameProgress> {
+  return request(`/rename/progress/${encodeURIComponent(previewId)}`);
 }

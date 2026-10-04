@@ -1,15 +1,18 @@
+import asyncio
 from pathlib import Path
 
 import pytest
 from pydantic import BaseModel
 
 from app.core.errors import (
+    AppError,
     PreviewExpiredError,
     PreviewNotFoundError,
     ProviderError,
     ValidationError,
 )
 from app.providers.local import LocalProvider
+from app.providers.base import RenameRequest
 from app.providers.registry import ProviderRegistry
 from app.rules.base import RenameRule, RuleContext
 from app.rules.registry import RuleRegistry
@@ -76,6 +79,49 @@ def request_for(names: dict[str, str]) -> RenamePreviewRequest:
 
 
 @pytest.mark.asyncio
+async def test_progress_tracks_completed_batches_and_survives_consumption(tmp_path: Path) -> None:
+    class PausingProvider(LocalProvider):
+        def __init__(self, root: Path) -> None:
+            super().__init__(root)
+            self.calls = 0
+            self.paused = asyncio.Event()
+            self.resume = asyncio.Event()
+
+        async def rename_many(self, requests: list[RenameRequest]) -> dict[str, FileItem | AppError]:
+            self.calls += 1
+            if self.calls == 2:
+                self.paused.set()
+                await self.resume.wait()
+            return await super().rename_many(requests)
+
+    names = {f"old-{index}.txt": f"new-{index}.txt" for index in range(41)}
+    for name in names:
+        (tmp_path / name).write_text("data", encoding="utf-8")
+    provider = PausingProvider(tmp_path)
+    preview_service, execute_service = build_services(tmp_path, provider)
+    preview = await preview_service.preview(request_for(names))
+    assert execute_service.progress(preview.preview_id).phase == "waiting"
+    task = asyncio.create_task(execute_service.execute(preview.preview_id))
+    try:
+        await asyncio.wait_for(provider.paused.wait(), timeout=5)
+        progress = execute_service.progress(preview.preview_id)
+        assert progress.total == 41
+        assert progress.processed == 20
+        assert progress.phase == "renaming"
+        progress.processed = 0
+        assert execute_service.progress(preview.preview_id).processed == 20
+    finally:
+        provider.resume.set()
+        result = await asyncio.wait_for(task, timeout=5)
+    assert result.status == "completed"
+    progress = execute_service.progress(preview.preview_id)
+    assert progress.processed == progress.total == 41
+    assert progress.phase == "finished"
+    with pytest.raises(PreviewNotFoundError):
+        await execute_service.execute(preview.preview_id)
+
+
+@pytest.mark.asyncio
 async def test_executes_valid_preview_once(tmp_path: Path) -> None:
     (tmp_path / "one.txt").write_text("one", encoding="utf-8")
     provider = TrackingLocalProvider(tmp_path)
@@ -111,6 +157,8 @@ async def test_executes_swap_with_temporary_names(tmp_path: Path) -> None:
         name.startswith("onedriver-renamer-") for name in provider.rename_targets
     )
     assert temporary_count == 2
+    progress = execute_service.progress(preview.preview_id)
+    assert progress.total == progress.processed == 2
     assert not list(tmp_path.glob("onedriver-renamer-*"))
 
 
@@ -136,6 +184,9 @@ async def test_rejects_invalid_preview(tmp_path: Path) -> None:
 
     with pytest.raises(ValidationError):
         await execute_service.execute(preview.preview_id)
+    progress = execute_service.progress(preview.preview_id)
+    assert progress.phase == "failed"
+    assert progress.processed == 0
 
 
 @pytest.mark.asyncio
@@ -151,6 +202,8 @@ async def test_reports_partial_provider_failure(tmp_path: Path) -> None:
     result = await execute_service.execute(preview.preview_id)
 
     assert result.status == "partial"
+    progress = execute_service.progress(preview.preview_id)
+    assert progress.processed == progress.total == 2
     assert [item.status for item in result.items] == ["renamed", "failed"]
     assert (tmp_path / "one-new.txt").exists()
     assert (tmp_path / "two.txt").exists()

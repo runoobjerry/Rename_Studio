@@ -46,3 +46,11 @@ class RenameExecuteResponse(BaseModel):
     preview_id: str
     status: Literal["completed", "partial", "failed"]
     items: list[ExecuteItem]
+
+
+class RenameProgress(BaseModel):
+    preview_id: str
+    total: int = Field(ge=0)
+    processed: int = Field(default=0, ge=0)
+    phase: Literal["waiting", "validating", "staging", "renaming", "rollback", "finished", "failed"] = "waiting"
+    error: str | None = None

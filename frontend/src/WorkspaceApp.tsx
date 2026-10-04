@@ -31,6 +31,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   createPreview,
   executePreview,
+  fetchRenameProgress,
   fetchFiles,
   fetchLocalSettings,
   fetchOneDriveStatus,
@@ -155,6 +156,13 @@ function Workspace({ mode, setMode }: { mode: PaletteMode; setMode: (mode: Palet
       void queryClient.invalidateQueries({ queryKey: ["files"] });
     },
     onError: (error) => notify(`执行失败：${errorMessage(error)}`, "error"),
+  });
+  const executionProgress = useQuery({
+    queryKey: ["rename-progress", execution.variables],
+    queryFn: () => fetchRenameProgress(execution.variables!),
+    enabled: execution.isPending && Boolean(execution.variables),
+    refetchInterval: execution.isPending ? 500 : false,
+    retry: false,
   });
   const updateLocalRoot = useMutation({
     mutationFn: () => updateLocalSettings(localRoot.trim()),
@@ -551,6 +559,9 @@ function Workspace({ mode, setMode }: { mode: PaletteMode; setMode: (mode: Palet
                       isPreviewing={preview.isPending}
                       isExecuting={execution.isPending}
                       hasExecuted={Boolean(execution.data)}
+                      progress={executionProgress.data}
+                      progressError={executionProgress.error?.message}
+                      executeError={execution.error?.message}
                       onPreview={() => {
                         execution.reset();
                         preview.mutate();

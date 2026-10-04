@@ -25,6 +25,7 @@ from app.schemas.local import (
 from app.schemas.rename import (
     RenameExecuteRequest,
     RenameExecuteResponse,
+    RenameProgress,
     RenamePreviewRequest,
     RenamePreviewResponse,
 )
@@ -224,3 +225,11 @@ async def execute_rename(
     service: Annotated[ExecuteService, Depends(get_execute_service)],
 ) -> RenameExecuteResponse:
     return await service.execute(request.preview_id)
+
+
+@router.get("/rename/progress/{preview_id}", response_model=RenameProgress, tags=["rename"])
+async def get_rename_progress(
+    preview_id: str,
+    service: Annotated[ExecuteService, Depends(get_execute_service)],
+) -> RenameProgress:
+    return service.progress(preview_id)

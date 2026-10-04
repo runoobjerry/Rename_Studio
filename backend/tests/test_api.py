@@ -93,6 +93,28 @@ def test_execute_requires_a_server_generated_preview(tmp_path: Path) -> None:
     assert response.json()["error"]["code"] == "PREVIEW_NOT_FOUND"
 
 
+def test_execution_progress_api(tmp_path: Path) -> None:
+    (tmp_path / "demo.txt").write_text("demo", encoding="utf-8")
+    providers = ProviderRegistry([LocalProvider(tmp_path)])
+    store = PreviewStore()
+    preview = PreviewService(providers, RenameEngine(RuleRegistry()), store)
+    execute = ExecuteService(providers, store, preview)
+    app = create_app()
+    app.dependency_overrides[get_preview_service] = lambda: preview
+    app.dependency_overrides[get_execute_service] = lambda: execute
+    with TestClient(app) as client:
+        response = client.post("/rename/preview", json={"file_ids": ["demo.txt"]})
+        preview_id = response.json()["preview_id"]
+        progress = client.get(f"/rename/progress/{preview_id}")
+        assert progress.status_code == 200
+        assert progress.json()["phase"] == "waiting"
+        assert progress.json()["processed"] == progress.json()["total"] == 0
+        result = client.post("/rename/execute", json={"preview_id": preview_id})
+        assert result.status_code == 200
+        assert client.get(f"/rename/progress/{preview_id}").json()["phase"] == "finished"
+        assert client.get("/rename/progress/unknown").status_code == 404
+
+
 def test_updates_local_root_directory(tmp_path: Path) -> None:
     initial = tmp_path / "initial"
     selected = tmp_path / "selected"
