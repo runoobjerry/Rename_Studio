@@ -128,8 +128,13 @@ function Workspace({ mode, setMode }: { mode: PaletteMode; setMode: (mode: Palet
       (providerId === "local" && localSettings.isSuccess) ||
       cloudReady,
   });
+  // 提交前以当前目录校验选中 ID，避免刷新后仍提交已删除的项目。
+  const currentSelectedIds = useMemo(() => {
+    const availableIds = new Set(files.data?.items.map((item) => item.id));
+    return selectedIds.filter((id) => availableIds.has(id));
+  }, [files.data, selectedIds]);
   const preview = useMutation({
-    mutationFn: () => createPreview(providerId, path, selectedIds, rules),
+    mutationFn: () => createPreview(providerId, path, currentSelectedIds, rules),
     onSuccess: (result) => {
       if (!result.valid) {
         notify("预览包含无效名称或冲突，请检查预览结果。", "warning");
@@ -207,6 +212,19 @@ function Workspace({ mode, setMode }: { mode: PaletteMode; setMode: (mode: Palet
     preview.reset();
     execution.reset();
   }, [path, providerId, cloudSession]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    // 刷新失败时保留选择；成功读取后仅移除不存在的项，不自动选择新增项。
+    if (!files.isSuccess || (providerId === "onedrive" && !cloudReady)) return;
+    if (currentSelectedIds.length === selectedIds.length) return;
+    setSelectedIds(currentSelectedIds);
+    // 不因目录后台变化丢失正在执行的请求和进度。
+    if (!execution.isPending) {
+      preview.reset();
+      execution.reset();
+    }
+  }, [files.isSuccess, cloudReady, providerId, currentSelectedIds, selectedIds.length,
+    setSelectedIds, preview.reset, execution.reset, execution.isPending]);
 
   useEffect(() => {
     if (providerId !== "onedrive" || restoredCloudSession === cloudSession) return;
@@ -555,7 +573,7 @@ function Workspace({ mode, setMode }: { mode: PaletteMode; setMode: (mode: Palet
                     <RenameActions
                       preview={preview.data}
                       providerName={providerName}
-                      selectedCount={selectedIds.length}
+                      selectedCount={currentSelectedIds.length}
                       isPreviewing={preview.isPending}
                       isExecuting={execution.isPending}
                       hasExecuted={Boolean(execution.data)}

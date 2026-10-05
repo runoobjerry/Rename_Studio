@@ -12,7 +12,7 @@ vi.mock("./api/client", async (importOriginal) => {
   return {
     ...original,
     fetchProviders: vi.fn(), fetchRules: vi.fn(), fetchLocalSettings: vi.fn(),
-    fetchOneDriveStatus: vi.fn(), fetchFiles: vi.fn(),
+    fetchOneDriveStatus: vi.fn(), fetchFiles: vi.fn(), createPreview: vi.fn(),
   };
 });
 
@@ -56,6 +56,74 @@ async function openCloud() {
   fireEvent.click(await screen.findByRole("button", { name: "OneDrive" }));
   await waitFor(() => expect(screen.getByRole("button", { name: "设为默认路径" })).toBeEnabled());
 }
+
+describe("directory refresh selection", () => {
+  const listing = (ids: string[]) => ({
+    provider: "local", path: "", parent_path: null,
+    items: ids.map((id) => ({
+      id, name: `${id}.txt`, path: `${id}.txt`, parent_path: "",
+      is_directory: false, size: 1, modified_at: null,
+    })),
+  });
+
+  it("drops removed selections, invalidates the old preview and submits only remaining IDs", async () => {
+    vi.mocked(api.fetchFiles).mockResolvedValue(listing(["A", "B", "C"]));
+    vi.mocked(api.createPreview).mockImplementation(async (_provider, _path, ids) => ({
+      preview_id: `preview-${ids.join("-")}`, expires_at: "2099-01-01T00:00:00Z", valid: true,
+      items: ids.map((id) => ({
+        file_id: id, original_name: `${id}.txt`, new_name: `new-${id}.txt`,
+        changed: true, valid: true, conflict: false, error: null,
+      })),
+    }));
+    render(<QueryClientProvider client={client}><WorkspaceApp /></QueryClientProvider>);
+    fireEvent.click(await screen.findByRole("checkbox", { name: "选择当前显示的全部项目" }));
+    fireEvent.click(screen.getByRole("button", { name: "刷新预览" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "开始修改" })).toBeEnabled());
+
+    vi.mocked(api.fetchFiles).mockResolvedValue(listing(["B", "C", "D"]));
+    fireEvent.click(screen.getByRole("button", { name: "刷新" }));
+    await waitFor(() => expect(useRenameStore.getState().selectedIds).toEqual(["B", "C"]));
+    expect(screen.getByRole("button", { name: "开始修改" })).toBeDisabled();
+    expect(screen.queryByText("new-A.txt")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "刷新预览" }));
+    await waitFor(() => expect(api.createPreview).toHaveBeenLastCalledWith("local", "", ["B", "C"], []));
+
+    vi.mocked(api.fetchFiles).mockResolvedValue(listing([]));
+    fireEvent.click(screen.getByRole("button", { name: "刷新" }));
+    await waitFor(() => expect(useRenameStore.getState().selectedIds).toEqual([]));
+    expect(screen.getByRole("button", { name: "刷新预览" })).toBeDisabled();
+  });
+
+  it("preserves selection when the directory refresh fails", async () => {
+    vi.mocked(api.fetchFiles).mockResolvedValue(listing(["A", "B", "C"]));
+    render(<QueryClientProvider client={client}><WorkspaceApp /></QueryClientProvider>);
+    fireEvent.click(await screen.findByRole("checkbox", { name: "选择当前显示的全部项目" }));
+    vi.mocked(api.fetchFiles).mockRejectedValueOnce(new Error("Refresh unavailable"));
+    fireEvent.click(screen.getByRole("button", { name: "刷新" }));
+    await screen.findByText(/目录刷新失败/);
+    expect(useRenameStore.getState().selectedIds).toEqual(["A", "B", "C"]);
+  });
+
+  it("clears hidden selections and does not restore them after refresh or removing the filter", async () => {
+    vi.mocked(api.fetchFiles).mockResolvedValue(listing(["A", "B"]));
+    render(<QueryClientProvider client={client}><WorkspaceApp /></QueryClientProvider>);
+    fireEvent.click(await screen.findByRole("checkbox", { name: "选择当前显示的全部项目" }));
+    fireEvent.click(screen.getByRole("button", { name: "筛选项目" }));
+    fireEvent.click(screen.getByRole("menuitemcheckbox", { name: "文件夹" }));
+    fireEvent.keyDown(screen.getByRole("menu"), { key: "Escape" });
+    await waitFor(() => expect(screen.queryByRole("menu")).not.toBeInTheDocument());
+    expect(useRenameStore.getState().selectedIds).toEqual([]);
+
+    vi.mocked(api.fetchFiles).mockResolvedValue(listing(["B"]));
+    fireEvent.click(screen.getByRole("button", { name: "刷新" }));
+    await screen.findByText("目录已刷新。");
+    expect(useRenameStore.getState().selectedIds).toEqual([]);
+    expect(screen.getByRole("button", { name: "刷新预览" })).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: "筛选项目" }));
+    fireEvent.click(screen.getByRole("menuitemcheckbox", { name: "文件夹" }));
+    expect(useRenameStore.getState().selectedIds).toEqual([]);
+  });
+});
 
 describe("inline rule menu integration", () => {
   it("adds a rule without leaving the workspace", async () => {
