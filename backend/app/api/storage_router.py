@@ -13,7 +13,7 @@ from app.api.dependencies import get_preview_service, get_storage_manager
 from app.core.config import get_settings
 from app.core.errors import AppError, AuthenticationError, StorageConnectionChangedError, ValidationError
 from app.schemas.files import DirectoryListing
-from app.schemas.local import LocalFolderPickResponse
+from app.schemas.storage import LocalFolderPickResponse
 from app.schemas.rename import RenamePreviewRequest, RenamePreviewResponse
 from app.schemas.storage import AuthorizationStatus, StorageAuthStartResponse, StorageCreate, StorageInfo, StorageListRequest, StoragePreviewRequest, StorageProviderInfo, StorageUpdate
 from app.services.connection_auth import ConnectionAuth
@@ -98,8 +98,6 @@ async def auth_status(storage_id: str, manager: Manager) -> AuthorizationStatus:
 async def auth_start(storage_id: str, manager: Manager) -> StorageAuthStartResponse:
     manager.ensure_mutable(storage_id)
     record = manager.record(storage_id)
-    if not record.enabled:
-        raise ValidationError("Storage connection is disabled")
     auth = cast(ConnectionAuth, manager.auth(storage_id))
     result = auth.start_authorization(get_settings().storage_redirect_uri)
     provider_state = parse_qs(urlsplit(result.authorization_url).query)["state"][0]
@@ -143,5 +141,5 @@ async def callback(manager: Manager, code: str | None = Query(default=None), sta
 async def preview(storage_id: str, request: StoragePreviewRequest, manager: Manager,
                   service: Annotated[PreviewService, Depends(get_preview_service)]) -> RenamePreviewResponse:
     manager.record(storage_id)
-    return await service.preview(RenamePreviewRequest(provider=storage_id, location=request.location,
+    return await service.preview(RenamePreviewRequest(storage_id=storage_id, location=request.location,
                                                       file_ids=request.file_ids, rules=request.rules))

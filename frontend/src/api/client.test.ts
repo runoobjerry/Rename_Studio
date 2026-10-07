@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { ApiError, clearOneDriveSettings, fetchProviders, fetchRenameProgress } from "./client";
+import { ApiError, disconnectStorage, fetchStorages, fetchRenameProgress } from "./client";
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -21,7 +21,7 @@ describe("API client", () => {
       },
     }), { status: 409 })));
 
-    const error: unknown = await fetchProviders().catch((reason: unknown) => reason);
+    const error: unknown = await fetchStorages().catch((reason: unknown) => reason);
     expect(error).toBeInstanceOf(Error);
     expect(error).toBeInstanceOf(ApiError);
     expect(error).toMatchObject({
@@ -43,7 +43,7 @@ describe("API client", () => {
   ])("falls back safely for a non-standard response: %s", async (body) => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(body, { status: 502 })));
 
-    await expect(fetchProviders()).rejects.toMatchObject({
+    await expect(fetchStorages()).rejects.toMatchObject({
       name: "ApiError",
       status: 502,
       code: null,
@@ -57,7 +57,7 @@ describe("API client", () => {
       error: { message: "Authorization required" },
     }), { status: 401 })));
 
-    await expect(fetchProviders()).rejects.toMatchObject({
+    await expect(fetchStorages()).rejects.toMatchObject({
       status: 401,
       message: "Authorization required",
       code: null,
@@ -66,24 +66,24 @@ describe("API client", () => {
   });
 
   it("keeps successful JSON responses unchanged", async () => {
-    const providers = [{ id: "local", name: "Local Files", writable: true }];
+    const providers = [{ storage_id: "default-local", provider_type: "local", name: "Local Files" }];
     const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify(providers)));
     vi.stubGlobal("fetch", fetchMock);
 
-    await expect(fetchProviders()).resolves.toEqual(providers);
-    expect(fetchMock).toHaveBeenCalledWith("/api/providers", undefined);
+    await expect(fetchStorages()).resolves.toEqual(providers);
+    expect(fetchMock).toHaveBeenCalledWith("/api/storages", undefined);
   });
 
   it("does not parse an empty 204 response", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(null, { status: 204 })));
 
-    await expect(clearOneDriveSettings()).resolves.toBeUndefined();
+    await expect(disconnectStorage("account-connection")).resolves.toBeUndefined();
   });
 
   it("keeps network failures distinct from HTTP API errors", async () => {
     const networkError = new TypeError("Failed to fetch");
     vi.stubGlobal("fetch", vi.fn().mockRejectedValue(networkError));
 
-    await expect(fetchProviders()).rejects.toBe(networkError);
+    await expect(fetchStorages()).rejects.toBe(networkError);
   });
 });

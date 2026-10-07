@@ -1,23 +1,17 @@
 import asyncio
 import base64
 import hashlib
-import json
 import logging
 import secrets
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
-from pathlib import Path
 from urllib.parse import urlencode
 
 import httpx
 
 from app.core.errors import AuthenticationError, ProviderError, StorageConnectionChangedError, ValidationError
-from app.schemas.onedrive import (
-    OneDriveAuthStartResponse,
-    OneDriveAuthStatus,
-    OneDriveSettingsResponse,
-)
+from app.schemas.storage import AuthorizationStart, AuthorizationStatus
 
 
 AUTHORIZE_URL = "https://login.microsoftonline.com/consumers/oauth2/v2.0/authorize"
@@ -50,14 +44,12 @@ class OneDriveAuthService:
         self,
         redirect_uri: str,
         *,
-        credentials_file: Path | None = None,
         timeout: float = 20.0,
-        initial_state: dict[str, str] | None = None,
-        persist: Callable[[dict[str, str]], None] | None = None,
+        initial_state: dict[str, str],
+        persist: Callable[[dict[str, str]], None],
         before_change: Callable[[], None] | None = None,
     ) -> None:
         self.redirect_uri = redirect_uri
-        self.credentials_file = credentials_file
         self.timeout = timeout
         self._initial_state = initial_state
         self._persist = persist
@@ -73,15 +65,8 @@ class OneDriveAuthService:
         self._refresh_lock = asyncio.Lock()
         self._load_credentials()
 
-    def settings(self) -> OneDriveSettingsResponse:
-        return OneDriveSettingsResponse(
-            configured=self.configured,
-            client_id=self._client_id,
-            redirect_uri=self.redirect_uri,
-        )
-
-    def status(self) -> OneDriveAuthStatus:
-        return OneDriveAuthStatus(
+    def status(self) -> AuthorizationStatus:
+        return AuthorizationStatus(
             configured=self.configured,
             connected=self._tokens is not None and not self._finishing,
             account_id=self._account_id,
@@ -92,38 +77,6 @@ class OneDriveAuthService:
     @property
     def configured(self) -> bool:
         return bool(self._client_id)
-
-    def configure(self, client_id: str) -> OneDriveSettingsResponse:
-        if self._before_change is not None:
-            self._before_change()
-        client_id = client_id.strip()
-        if not client_id:
-            raise ValidationError("OneDrive App ID is required")
-        if self._client_id != client_id:
-            self._generation += 1
-            # App ID 变化后，旧应用签发的刷新令牌不可继续使用。
-            self._tokens = None
-            self._account_id = None
-            self._account_display_name = None
-            self._account_email = None
-            self._pending.clear()
-        self._client_id = client_id
-        self._save_state()
-        return self.settings()
-
-    def clear(self) -> None:
-        if self._before_change is not None:
-            self._before_change()
-        self._delete_credentials()
-        self._generation += 1
-        self._client_id = None
-        self._tokens = None
-        self._account_id = None
-        self._account_display_name = None
-        self._account_email = None
-        self._pending.clear()
-        if self._persist is not None:
-            self._persist_payload({})
 
     def disconnect(self) -> None:
         """Remove persisted account authorization while retaining the App ID."""
@@ -137,7 +90,7 @@ class OneDriveAuthService:
         self._pending.clear()
         self._save_state()
 
-    def start_authorization(self, redirect_uri: str | None = None) -> OneDriveAuthStartResponse:
+    def start_authorization(self, redirect_uri: str | None = None) -> AuthorizationStart:
         client_id = self._require_client_id()
         # 每次发起登录都先清除旧账号令牌，确保切换账号不会回退到旧会话。
         self.disconnect()
@@ -167,7 +120,7 @@ class OneDriveAuthService:
                 "prompt": "select_account",
             }
         )
-        return OneDriveAuthStartResponse(authorization_url=f"{AUTHORIZE_URL}?{query}")
+        return AuthorizationStart(authorization_url=f"{AUTHORIZE_URL}?{query}")
 
     async def finish_authorization(self, code: str, state: str) -> None:
         if self._before_change is not None:
@@ -378,18 +331,7 @@ class OneDriveAuthService:
         }
 
     def _load_credentials(self) -> None:
-        if self._initial_state is not None:
-            payload = self._initial_state
-        else:
-            if self.credentials_file is None or not self.credentials_file.exists():
-                return
-            try:
-                payload = json.loads(self.credentials_file.read_text(encoding="utf-8"))
-            except (OSError, json.JSONDecodeError):
-                logger.warning("could not load OneDrive credentials file path=%s", self.credentials_file)
-                return
-        if not isinstance(payload, dict):
-            return
+        payload = self._initial_state
         client_id = payload.get("client_id")
         if isinstance(client_id, str) and client_id:
             self._client_id = client_id
@@ -401,7 +343,7 @@ class OneDriveAuthService:
                 refresh_token=refresh_token,
                 expires_at=datetime.now(UTC),
             )
-            # 旧凭据可能没有账号 ID；保持授权兼容，待重新登录获取。
+            # 账号资料读取可能失败；缺少 ID 时仍保留授权。
             account_id = payload.get("account_id")
             self._account_id = (
                 account_id if isinstance(account_id, str) and account_id else None
@@ -412,9 +354,6 @@ class OneDriveAuthService:
                 display_name if isinstance(display_name, str) else None
             )
             self._account_email = email if isinstance(email, str) else None
-        if "client_secret" in payload and self._client_id:
-            # 自动迁移旧配置，确保已废弃的客户端密钥不继续留在磁盘。
-            self._save_state()
 
     def _save_state(self) -> None:
         if self._client_id is None:
@@ -428,33 +367,9 @@ class OneDriveAuthService:
             payload["account_display_name"] = self._account_display_name
         if self._account_email:
             payload["account_email"] = self._account_email
-        if self._persist is not None:
-            self._persist_payload(payload)
-            return
-        if self.credentials_file is None:
-            return
-        temporary = self.credentials_file.with_name(f"{self.credentials_file.name}.tmp")
-        try:
-            self.credentials_file.parent.mkdir(parents=True, exist_ok=True)
-            temporary.write_text(
-                json.dumps(payload, ensure_ascii=False),
-                encoding="utf-8",
-            )
-            temporary.chmod(0o600)
-            # 同目录替换可避免进程中断时留下半写入的正式凭据文件。
-            temporary.replace(self.credentials_file)
-        except OSError as exc:
-            try:
-                temporary.unlink(missing_ok=True)
-            except OSError:
-                logger.warning(
-                    "could not remove temporary OneDrive credentials file path=%s",
-                    temporary,
-                )
-            raise ProviderError("Could not save OneDrive authorization locally") from exc
+        self._persist_payload(payload)
 
     def _persist_payload(self, payload: dict[str, str]) -> None:
-        assert self._persist is not None
         try:
             self._persist(payload)
         except ProviderError:
@@ -469,14 +384,3 @@ class OneDriveAuthService:
             self._load_credentials()
             raise
         self._initial_state = payload.copy()
-
-    def _delete_credentials(self) -> None:
-        if self.credentials_file is None:
-            return
-        try:
-            self.credentials_file.unlink(missing_ok=True)
-            self.credentials_file.with_name(
-                f"{self.credentials_file.name}.tmp"
-            ).unlink(missing_ok=True)
-        except OSError as exc:
-            raise ProviderError("Could not delete local OneDrive credentials") from exc

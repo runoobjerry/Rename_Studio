@@ -1,6 +1,6 @@
 # OneDriver Renamer
 
-一个本地优先、规则驱动的批量文件重命名 WebUI。目前已实现 Local/OneDrive 多存储连接基础，最新重构待运行验收。
+一个本地优先、规则驱动的批量文件重命名 WebUI。Local/OneDrive 多存储基础已由用户构建测试并确认可用；本轮接口精简与状态展示优化仅完成静态检查。
 
 ## 当前能力
 
@@ -20,7 +20,7 @@
 - OneDrive 个人账号 OAuth 2.0 授权、目录浏览和 Graph 批量重命名
 - 当前目录文件及子文件夹名称的全选、反选
 - App ID、刷新令牌本地持久化、连接状态和一键清理
-- 多个 Local/OneDrive 独立连接、配置/授权隔离、目录 ID 导航和旧 API 兼容
+- 多个 Local/OneDrive 独立连接、配置/授权隔离、目录 ID 导航和连接级 API
 
 当前已注册填充、替换、移除和插入规则；空规则链仍会保持原文件名。历史和撤销尚未实现。只有用户确认有效预览后，`POST /rename/execute` 才会修改本地文件或 OneDrive 项目。
 
@@ -55,7 +55,6 @@ frontend/
 ```dotenv
 LOCAL_STORAGE_ROOT=D:/rename-test
 FRONTEND_ORIGIN=http://localhost:5173
-ONEDRIVE_REDIRECT_URI=http://localhost:8000/auth/onedrive/callback
 STORAGE_REDIRECT_URI=http://localhost:8000/auth/storage/callback
 ```
 
@@ -91,16 +90,16 @@ npm run dev
 ## OneDrive 个人版设置
 
 1. 在 Microsoft Entra 管理中心注册应用，支持的账户类型选择包含“个人 Microsoft 账户”的选项。
-2. 在“身份验证”的公共客户端配置中保留旧回调 `http://localhost:8000/auth/onedrive/callback`，并添加新连接回调 `http://localhost:8000/auth/storage/callback`，启用“允许公共客户端流”。自定义地址时同步设置对应环境变量。
+2. 在“身份验证”的公共客户端配置中添加连接回调 `http://localhost:8000/auth/storage/callback`，启用“允许公共客户端流”。自定义地址时同步设置对应环境变量。
 3. 在 Microsoft Graph 的委托权限中确认已添加 `Files.ReadWrite` 和 `User.Read`。
 4. 在设置页创建或编辑 OneDrive 连接，保存 App ID 后点击“网页登录”，并选择要操作的账号；每个连接独立授权。
 5. 在侧栏选择连接，通过文件夹 ID 导航；也可输入相对路径，例如 `照片/待整理`，留空表示根目录。同名目录导致路径歧义时使用文件夹导航。
 
 OAuth 使用个人账户的 consumers 租户、公共客户端授权码流程和 PKCE，无需客户端密钥，请求 Files.ReadWrite、User.Read 和 offline_access。切换账号先删除该连接旧令牌，断开保留 App ID；将 App ID 清空并保存可清理授权配置。配置和刷新令牌保存在被 Git 忽略的 `backend/.storage_connections.json`，访问令牌仅在内存中；重启后按连接刷新。
 
-首次启动迁移旧 `.local_settings.json` / `.onedrive_credentials.json`，先保留 `.pre-storage-v1.bak` 备份。新文件存在后不再读取旧文件；默认连接不可删除。迁移、接口和验收记录见 [多存储重构说明](docs/MULTI_STORAGE_REFACTOR.md)。Google Drive 尚未实现。
+首次启动只创建 `default-local`（Local Files），云连接由用户添加。版本 1 的连接状态文件升级为版本 2 前保留 `.pre-storage-v2.bak` 备份：移除启停字段和未配置的自动 OneDrive，保留已有账号连接。仅默认 Local 不可删除；不再读取旧 Local/OneDrive 独立设置文件。迁移、接口和验收记录见 [多存储重构说明](docs/MULTI_STORAGE_REFACTOR.md)。Google Drive 尚未实现。
 
-刷新令牌等同于长期登录凭据，应保护该本地文件，不要复制、提交到 Git 或写入日志。旧版本配置中的客户端密钥会在后端读取后自动移除。
+刷新令牌等同于长期登录凭据，应保护该本地文件，不要复制、提交到 Git 或写入日志。连接状态文件不存储客户端密钥。
 
 Graph 支持完整分页、字段裁剪和连接复用，Provider 管理批量请求及有限并发。预览和执行分别读取完整目录，快照绑定连接版本；执行期间拒绝该连接的配置/授权变更。交换、循环和占用链使用临时名称。401 尝试刷新，429 遵循 Retry-After；写入超时或不确定的服务端错误先核对元数据，不盲目重放已可能成功的写入。真实账号授权与改名验收由用户执行。
 
@@ -128,23 +127,25 @@ npm run build
 | Method | Path | 状态 | 说明 |
 | --- | --- | --- | --- |
 | `GET` | `/health` | 可用 | 健康检查 |
-| `GET` | `/providers` | 可用 | Provider 列表 |
-| `GET` | `/files` | 可用 | 浏览本地或 OneDrive 目录 |
+| `GET` | `/storage-providers` | 可用 | Provider 定义、配置 Schema 与能力 |
+| `GET/POST` | `/storages` | 可用 | 查询、创建连接 |
+| `GET/PUT/DELETE` | `/storages/{storage_id}` | 可用 | 查询、编辑、删除连接 |
+| `POST` | `/storages/{storage_id}/files/list` | 可用 | 按目录位置浏览 |
+| `POST` | `/storages/{storage_id}/local/pick` | 可用 | 为 Local 连接选择根目录 |
 | `GET` | `/rules` | 可用 | 已注册规则定义 |
-| `POST` | `/rename/preview` | 可用 | 生成只读预览 |
-| `POST` | `/rename/execute` | 可用 | 执行服务端生成的有效预览 |
-| `GET/PUT/DELETE` | `/onedrive/settings` | 可用 | 读取、更新或清理本地 App ID 与授权状态 |
-| `GET` | `/onedrive/auth/status` | 可用 | 查询配置与连接状态 |
-| `POST` | `/onedrive/auth/start` | 可用 | 创建浏览器授权地址 |
-| `DELETE` | `/onedrive/auth/session` | 可用 | 断开当前账号并保留应用设置 |
-| `GET` | `/auth/onedrive/callback` | 可用 | Microsoft OAuth 回调 |
+| `POST` | `/storages/{storage_id}/rename/preview` | 可用 | 生成只读预览 |
+| `POST` | `/rename/execute` | 可用 | 执行服务端预览 |
+| `GET` | `/rename/progress/{preview_id}` | 可用 | 查询真实执行进度 |
+| `GET` | `/storages/{storage_id}/auth/status` | 可用 | 查询账号连接状态 |
+| `POST` | `/storages/{storage_id}/auth/start` | 可用 | 创建浏览器授权地址 |
+| `DELETE` | `/storages/{storage_id}/auth/session` | 可用 | 断开账号并保留连接配置 |
+| `GET` | `/auth/storage/callback` | 可用 | 连接级 OAuth 回调 |
 
-预览请求示例：
+向 `/storages/default-local/rename/preview` 发送预览请求：
 
 ```json
 {
-  "provider": "local",
-  "path": "",
+  "location": { "kind": "root" },
   "file_ids": ["example.txt"],
   "rules": [
     {

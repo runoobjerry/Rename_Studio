@@ -25,7 +25,6 @@ class StorageManager:
         registry.manager = self
 
     def record(self, storage_id: str) -> StorageRecord:
-        storage_id = {"local": "default-local", "onedrive": "default-onedrive"}.get(storage_id, storage_id)
         if storage_id not in self.state.connections:
             raise NotFoundError("Storage connection was not found")
         return self.state.connections[storage_id]
@@ -56,7 +55,7 @@ class StorageManager:
     def create(self, request: StorageCreate) -> StorageInfo:
         config = self.validate_config(request.provider_type, request.config)
         record = StorageRecord(storage_id=uuid4().hex, provider_type=request.provider_type,
-                               name=request.name, enabled=request.enabled, config=config)
+                               name=request.name, config=config)
         self._commit(record, record.storage_id)
         return self.info(record.storage_id)
 
@@ -64,12 +63,10 @@ class StorageManager:
         self.ensure_mutable(storage_id)
         before = self.record(storage_id)
         config = before.config if request.config is None else self.validate_config(before.provider_type, request.config)
-        changed = config != before.config or (request.enabled is not None and request.enabled != before.enabled)
+        changed = config != before.config
         record = before.model_copy(deep=True)
         if request.name is not None:
             record.name = request.name
-        if request.enabled is not None:
-            record.enabled = request.enabled
         record.config = config
         if changed:
             record.revision += 1
@@ -83,15 +80,13 @@ class StorageManager:
     async def delete(self, storage_id: str) -> None:
         self.ensure_mutable(storage_id)
         record = self.record(storage_id)
-        if record.storage_id in {"default-local", "default-onedrive"}:
-            raise ValidationError("Default storage connections cannot be deleted")
+        if record.storage_id == "default-local":
+            raise ValidationError("The default Local connection cannot be deleted")
         self._commit(None, record.storage_id)
         await self._invalidate(record.storage_id)
 
     def provider(self, storage_id: str) -> StorageProvider:
         record = self.record(storage_id)
-        if not record.enabled:
-            raise ValidationError("Storage connection is disabled")
         cached = self._clients.get(record.storage_id)
         if cached is not None and cached[0] == record.revision:
             return cached[1]
@@ -153,7 +148,7 @@ class StorageManager:
             record = self.record(storage_id)
         except NotFoundError as exc:
             raise StorageConnectionChangedError("Storage connection was deleted; create a new preview") from exc
-        if record.revision != revision or not record.enabled:
+        if record.revision != revision:
             raise StorageConnectionChangedError("Storage connection changed; create a new preview")
         self.ensure_mutable(record.storage_id)
         self._busy.add(record.storage_id)

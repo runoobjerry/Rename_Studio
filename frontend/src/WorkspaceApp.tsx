@@ -40,7 +40,7 @@ import {
   updateStorage,
 } from "./api/client";
 import { FileBrowser } from "./features/files/FileBrowser";
-import { readDefaultCloudLocation, saveDefaultCloudLocation } from "./features/files/defaultCloudPath";
+import { readDefaultCloudLocation, saveDefaultCloudLocation } from "./features/files/defaultCloudLocation";
 import { PreviewPanel } from "./features/rename/PreviewPanel";
 import { RenameActions } from "./features/rename/RenameActions";
 import { RuleEditor } from "./features/rules/RuleEditor";
@@ -111,7 +111,7 @@ function Workspace({ mode, setMode }: { mode: PaletteMode; setMode: (mode: Palet
   const oneDriveStatus = useQuery({
     queryKey: ["storage-auth", storageId, activeStorage?.revision],
     queryFn: () => fetchStorageAuthStatus(storageId),
-    enabled: providerId === "onedrive" && activeStorage?.enabled === true,
+    enabled: providerId === "onedrive" && Boolean(activeStorage),
   });
   const localSettings = {
     data: activeStorage?.config.root_path ? { root_path: activeStorage.config.root_path } : undefined,
@@ -126,7 +126,7 @@ function Workspace({ mode, setMode }: { mode: PaletteMode; setMode: (mode: Palet
   const files = useQuery({
     queryKey: ["files", storageId, activeStorage?.revision, location],
     queryFn: () => fetchStorageFiles(storageId, location),
-    enabled: activeStorage?.enabled === true && ((providerId === "local" && localSettings.isSuccess) || cloudReady),
+    enabled: Boolean(activeStorage) && ((providerId === "local" && localSettings.isSuccess) || cloudReady),
   });
   const workspaceKey = JSON.stringify([storageId, activeStorage?.revision, location]);
   // 提交前以当前目录校验选中 ID，避免刷新后仍提交已删除的项目。
@@ -241,7 +241,7 @@ function Workspace({ mode, setMode }: { mode: PaletteMode; setMode: (mode: Palet
     if (execution.isPending || providerId !== "onedrive" || restoredCloudSession === cloudSession) return;
     let defaultLocation: StorageLocation = { kind: "root" };
     try {
-      if (cloudConnected && cloudAccountId) defaultLocation = readDefaultCloudLocation(storageId, providerId, cloudAccountId);
+      if (cloudConnected && cloudAccountId) defaultLocation = readDefaultCloudLocation(storageId, cloudAccountId);
     } catch {
       notify("无法读取默认路径，将打开云盘根目录。请检查浏览器存储权限。", "warning");
     }
@@ -318,7 +318,7 @@ function Workspace({ mode, setMode }: { mode: PaletteMode; setMode: (mode: Palet
         {providers.isPending && <Skeleton variant="rounded" height={80} aria-label="正在加载存储位置" />}
         {(providers.data ?? []).map((provider) => (
           <ListItemButton
-            disabled={execution.isPending || updateLocalRoot.isPending || pickLocalRoot.isPending || !provider.enabled}
+            disabled={execution.isPending || updateLocalRoot.isPending || pickLocalRoot.isPending}
             key={provider.storage_id}
             selected={view === "workspace" && provider.storage_id === storageId}
             onClick={() => selectProvider(provider.storage_id)}
@@ -486,7 +486,7 @@ function Workspace({ mode, setMode }: { mode: PaletteMode; setMode: (mode: Palet
                     )}
                   </div>
                   <div className="location-feedback">
-                    {!activeStorage?.enabled && !providers.isPending && <Alert severity="warning">当前存储已停用或删除，请选择其他连接。</Alert>}
+                    {!activeStorage && !providers.isPending && <Alert severity="warning">当前存储已删除，请选择其他连接。</Alert>}
                     {files.data && <Typography variant="body2" color="text.secondary">当前目录：{files.data.path || "根目录"}</Typography>}
                     {cloudConnected && !cloudAccountId && (
                       <Alert severity="info">当前账号缺少账号 ID，仍可浏览文件；请重新登录后设置默认路径。</Alert>
@@ -597,7 +597,7 @@ function Workspace({ mode, setMode }: { mode: PaletteMode; setMode: (mode: Palet
                       selectedCount={currentSelectedIds.length}
                       isPreviewing={preview.isPending}
                       isExecuting={execution.isPending}
-                      isBlocked={updateLocalRoot.isPending || pickLocalRoot.isPending || !activeStorage?.enabled || activeStorage.busy}
+                      isBlocked={updateLocalRoot.isPending || pickLocalRoot.isPending || !activeStorage || activeStorage.busy}
                       hasExecuted={Boolean(execution.data)}
                       progress={executionProgress.data}
                       progressError={executionProgress.error?.message}

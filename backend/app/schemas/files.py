@@ -5,12 +5,6 @@ from pydantic import BaseModel, Field
 from app.schemas.storage import StorageLocation
 
 
-class ProviderInfo(BaseModel):
-    id: str
-    name: str
-    writable: bool
-
-
 class FileItem(BaseModel):
     id: str
     name: str

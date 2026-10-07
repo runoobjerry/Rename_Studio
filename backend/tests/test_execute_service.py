@@ -1,3 +1,4 @@
+from provider_fixtures import registry_for
 import asyncio
 from pathlib import Path
 
@@ -13,7 +14,6 @@ from app.core.errors import (
 )
 from app.providers.local import LocalProvider
 from app.providers.base import RenameRequest
-from app.providers.registry import ProviderRegistry
 from app.rules.base import RenameRule, RuleContext
 from app.rules.registry import RuleRegistry
 from app.schemas.files import FileItem
@@ -61,7 +61,7 @@ class TrackingLocalProvider(LocalProvider):
 def build_services(
     root: Path, provider: LocalProvider | None = None
 ) -> tuple[PreviewService, ExecuteService]:
-    providers = ProviderRegistry([provider or LocalProvider(root)])
+    providers = registry_for([provider or LocalProvider(root)])
     rules = RuleRegistry()
     rules.register(MappingRule())
     store = PreviewStore()
@@ -72,7 +72,7 @@ def build_services(
 
 def request_for(names: dict[str, str]) -> RenamePreviewRequest:
     return RenamePreviewRequest(
-        provider="local",
+        storage_id="local",
         file_ids=list(names),
         rules=[RuleSpec(type="test_mapping", config={"names": names})],
     )

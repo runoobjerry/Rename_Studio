@@ -12,7 +12,7 @@ def folder(key: str, name: str, parent: str = "root-id"):
 
 class DirectoryProvider(OneDriveProvider):
     def __init__(self, responses):
-        super().__init__(OneDriveAuthService("http://localhost/callback"))
+        super().__init__(OneDriveAuthService("http://localhost/callback", initial_state={}, persist=lambda payload: None))
         self.responses = responses
         self.urls: list[str] = []
 

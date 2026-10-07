@@ -1,4 +1,3 @@
-import asyncio
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
@@ -28,10 +27,9 @@ class ProviderDefinition:
 
 
 class ProviderRegistry:
-    def __init__(self, providers: list[StorageProvider] | None = None) -> None:
-        self._providers = {provider.id: provider for provider in (providers or [])}
+    def __init__(self) -> None:
         self.definitions: dict[str, ProviderDefinition] = {}
-        self.manager: StorageManager | None = None
+        self.manager: StorageManager
 
     def register(self, definition: ProviderDefinition) -> None:
         if definition.provider_type in self.definitions:
@@ -50,35 +48,15 @@ class ProviderRegistry:
             raise ValidationError("Invalid storage configuration", details={"provider": provider_type}) from exc
 
     def revision(self, provider_id: str) -> int:
-        return self.manager.record(provider_id).revision if self.manager else 0
+        return self.manager.record(provider_id).revision
 
     @contextmanager
     def execution(self, provider_id: str, revision: int) -> Iterator[None]:
-        if self.manager is None:
+        with self.manager.execution(provider_id, revision):
             yield
-        else:
-            with self.manager.execution(provider_id, revision):
-                yield
 
     def get(self, provider_id: str) -> StorageProvider:
-        if self.manager is not None:
-            return self.manager.provider(provider_id)
-        provider = self._providers.get(provider_id)
-        if provider is None:
-            raise ValidationError(
-                "Unknown storage provider", details={"provider": provider_id}
-            )
-        return provider
-
-    def all(self) -> list[StorageProvider]:
-        if self.manager is not None:
-            return [self.get(key) for key in ("local", "onedrive")]
-        return list(self._providers.values())
+        return self.manager.provider(provider_id)
 
     async def aclose(self) -> None:
-        if self.manager is not None:
-            await self.manager.aclose()
-            return
-        await asyncio.gather(
-            *(provider.aclose() for provider in self._providers.values())
-        )
+        await self.manager.aclose()

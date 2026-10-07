@@ -1,24 +1,9 @@
-export interface ProviderInfo {
-  id: string;
-  name: string;
-  writable: boolean;
-}
-
-export interface LocalSettings {
+export interface LocalFolderPick {
   root_path: string;
-}
-
-export interface LocalFolderPick extends LocalSettings {
   selected: boolean;
 }
 
-export interface OneDriveSettings {
-  configured: boolean;
-  client_id: string | null;
-  redirect_uri: string;
-}
-
-export interface OneDriveAuthStatus {
+export interface AuthorizationStatus {
   configured: boolean;
   connected: boolean;
   account_id: string | null;
@@ -26,7 +11,7 @@ export interface OneDriveAuthStatus {
   account_email: string | null;
 }
 
-export interface OneDriveAuthStart {
+export interface AuthorizationStart {
   authorization_url: string;
 }
 
@@ -114,7 +99,6 @@ export interface StorageInfo {
   storage_id: string;
   provider_type: string;
   name: string;
-  enabled: boolean;
   revision: number;
   busy: boolean;
   config: { root_path?: string; client_id?: string | null };
@@ -136,12 +120,10 @@ export interface StorageProviderDefinition {
 export interface StorageCreate {
   provider_type: string;
   name: string;
-  enabled?: boolean;
   config: StorageInfo["config"];
 }
 
 export interface StorageUpdate {
   name?: string;
-  enabled?: boolean;
   config?: StorageInfo["config"];
 }

@@ -1,3 +1,5 @@
+from app.schemas.storage import RootLocation
+from provider_fixtures import registry_for
 from pathlib import Path
 
 import pytest
@@ -5,7 +7,6 @@ from pydantic import BaseModel
 
 from app.core.errors import ValidationError
 from app.providers.local import LocalProvider
-from app.providers.registry import ProviderRegistry
 from app.rules.base import RenameRule, RuleContext
 from app.rules.registry import RuleRegistry
 from app.schemas.files import FileItem
@@ -47,7 +48,7 @@ class CountingLocalProvider(LocalProvider):
 
 
 def build_service(root: Path, *, with_test_rule: bool = False) -> PreviewService:
-    providers = ProviderRegistry([LocalProvider(root)])
+    providers = registry_for([LocalProvider(root)])
     rules = RuleRegistry()
     if with_test_rule:
         rules.register(ConstantRule())
@@ -61,7 +62,7 @@ async def test_empty_rules_produce_read_only_unchanged_preview(tmp_path: Path) -
     service = build_service(tmp_path)
 
     preview = await service.preview(
-        RenamePreviewRequest(provider="local", file_ids=["one.txt"], rules=[])
+        RenamePreviewRequest(storage_id="local", file_ids=["one.txt"], rules=[])
     )
 
     assert preview.valid is True
@@ -76,12 +77,12 @@ async def test_known_directory_preview_uses_one_listing(tmp_path: Path) -> None:
     (tmp_path / "one.txt").write_text("one", encoding="utf-8")
     provider = CountingLocalProvider(tmp_path)
     service = PreviewService(
-        ProviderRegistry([provider]), RenameEngine(RuleRegistry())
+        registry_for([provider]), RenameEngine(RuleRegistry())
     )
 
     preview = await service.preview(
         RenamePreviewRequest(
-            provider="local", path="", file_ids=["one.txt"], rules=[]
+            storage_id="local", location=RootLocation(), file_ids=["one.txt"], rules=[]
         )
     )
 
@@ -98,7 +99,7 @@ async def test_rejects_duplicate_file_ids(tmp_path: Path) -> None:
     with pytest.raises(ValidationError):
         await service.preview(
             RenamePreviewRequest(
-                provider="local", file_ids=["one.txt", "one.txt"], rules=[]
+                storage_id="local", file_ids=["one.txt", "one.txt"], rules=[]
             )
         )
 
@@ -111,7 +112,7 @@ async def test_detects_duplicate_targets(tmp_path: Path) -> None:
 
     preview = await service.preview(
         RenamePreviewRequest(
-            provider="local",
+            storage_id="local",
             file_ids=["one.txt", "two.txt"],
             rules=[RuleSpec(type="test_constant", config={"value": "same.txt"})],
         )
@@ -129,7 +130,7 @@ async def test_detects_existing_file_conflict(tmp_path: Path) -> None:
 
     preview = await service.preview(
         RenamePreviewRequest(
-            provider="local",
+            storage_id="local",
             file_ids=["one.txt"],
             rules=[RuleSpec(type="test_constant", config={"value": "occupied.txt"})],
         )
@@ -145,7 +146,7 @@ async def test_allows_directory_name_in_preview(tmp_path: Path) -> None:
     service = build_service(tmp_path)
 
     preview = await service.preview(
-        RenamePreviewRequest(provider="local", file_ids=["folder"], rules=[])
+        RenamePreviewRequest(storage_id="local", file_ids=["folder"], rules=[])
     )
 
     assert preview.valid is True
@@ -162,7 +163,7 @@ async def test_rejects_items_from_different_parent_directories(tmp_path: Path) -
     with pytest.raises(ValidationError):
         await service.preview(
             RenamePreviewRequest(
-                provider="local",
+                storage_id="local",
                 file_ids=["root.txt", "folder/child.txt"],
                 rules=[],
             )
@@ -175,5 +176,5 @@ async def test_rejects_configured_storage_root(tmp_path: Path) -> None:
 
     with pytest.raises(ValidationError):
         await service.preview(
-            RenamePreviewRequest(provider="local", file_ids=["/"], rules=[])
+            RenamePreviewRequest(storage_id="local", file_ids=["/"], rules=[])
         )

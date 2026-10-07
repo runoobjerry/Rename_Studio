@@ -1,9 +1,9 @@
+from provider_fixtures import registry_for
 from pydantic import BaseModel
 import pytest
 
 from app.core.errors import NotFoundError, ProviderError, RenameOutcomeUnknownError
 from app.providers.base import RenameRequest, StorageProvider
-from app.providers.registry import ProviderRegistry
 from app.rules.base import RenameRule, RuleContext
 from app.rules.registry import RuleRegistry
 from app.schemas.files import DirectoryListing, FileItem
@@ -80,7 +80,7 @@ class StableIdProvider(StorageProvider):
 
 
 def services(provider: StableIdProvider):
-    registry = ProviderRegistry([provider])
+    registry = registry_for([provider])
     rules = RuleRegistry()
     rules.register(MappingRule())
     store = PreviewStore()
@@ -89,7 +89,7 @@ def services(provider: StableIdProvider):
 
 
 def request(ids: list[str], names: dict[str, str]) -> RenamePreviewRequest:
-    return RenamePreviewRequest(provider="stable", location=RootLocation(), file_ids=ids, rules=[RuleSpec(type="mapping", config={"names": names})])
+    return RenamePreviewRequest(storage_id="stable", location=RootLocation(), file_ids=ids, rules=[RuleSpec(type="mapping", config={"names": names})])
 
 
 @pytest.mark.asyncio

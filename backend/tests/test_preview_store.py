@@ -20,7 +20,7 @@ def test_expired_preview_cannot_be_loaded() -> None:
         modified_at=datetime.now(timezone.utc),
     )
     response = store.save(
-        RenamePreviewRequest(file_ids=["one.txt"]),
+        RenamePreviewRequest(storage_id="local", file_ids=["one.txt"]),
         items=[],
         valid=True,
         sources=[source],

@@ -1,8 +1,7 @@
 from collections import Counter, defaultdict
 
 from app.core.errors import StorageConnectionChangedError, ValidationError
-from app.schemas.storage import PathLocation, RootLocation
-from app.core.paths import normalize_storage_path
+from app.schemas.storage import RootLocation
 from app.providers.registry import ProviderRegistry
 from app.rules.base import RuleContext
 from app.schemas.files import FileItem
@@ -23,12 +22,10 @@ class PreviewService:
         self.store = store or PreviewStore()
 
     async def preview(self, request: RenamePreviewRequest) -> RenamePreviewResponse:
-        revision = self.providers.revision(request.provider)
+        revision = self.providers.revision(request.storage_id)
         request = request.model_copy(deep=True)
-        if self.providers.manager:
-            request.provider = self.providers.manager.record(request.provider).storage_id
         items, files, valid = await self.evaluate(request)
-        if self.providers.revision(request.provider) != revision:
+        if self.providers.revision(request.storage_id) != revision:
             raise StorageConnectionChangedError("Storage changed while creating the preview")
         return self.store.save(request, items, valid, files, revision)
 
@@ -39,18 +36,16 @@ class PreviewService:
         files: list[FileItem] | None = None,
         siblings_by_parent: dict[str, list[FileItem]] | None = None,
     ) -> tuple[list[PreviewItem], list[FileItem], bool]:
-        provider = self.providers.get(request.provider)
-        supports_rename = True
-        if self.providers.manager is not None:
-            record = self.providers.manager.record(request.provider)
-            supports_rename = self.providers.definition(record.provider_type).can_rename
+        provider = self.providers.get(request.storage_id)
+        record = self.providers.manager.record(request.storage_id)
+        supports_rename = self.providers.definition(record.provider_type).can_rename
         if len(request.file_ids) != len(set(request.file_ids)):
             raise ValidationError("Duplicate file IDs are not allowed")
 
         prefetched_siblings: list[FileItem] | None = None
-        if files is None and (request.location is not None or request.path is not None):
+        if files is None and request.location is not None:
             # 浏览器已知父目录时，一次目录读取即可同时提供源元数据和冲突集合。
-            listing = await provider.list_directory(request.location or PathLocation(value=request.path or ""))
+            listing = await provider.list_directory(request.location)
             prefetched_siblings = listing.items
             request.location = listing.location
             by_id = {item.id: item for item in prefetched_siblings}

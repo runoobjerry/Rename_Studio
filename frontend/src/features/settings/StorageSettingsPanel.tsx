@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Alert, Button, Card, CardContent, Dialog, DialogActions, DialogContent, DialogTitle, MenuItem, Stack, Switch, TextField, Typography } from "@mui/material";
+import { Alert, Button, Card, CardContent, Dialog, DialogActions, DialogContent, DialogTitle, MenuItem, Stack, Chip, TextField, Typography } from "@mui/material";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createStorage, deleteStorage, disconnectStorage, fetchStorageAuthStatus, fetchStorageProviders, fetchStorages, pickStorageFolder, startStorageAuth, updateStorage } from "../../api/client";
 import type { StorageInfo } from "../../types";
@@ -20,7 +20,7 @@ function ConnectionCard({ storage, executing }: { storage: StorageInfo; executin
   const status = useQuery({
     queryKey: ["storage-auth", storage.storage_id, storage.revision],
     queryFn: () => fetchStorageAuthStatus(storage.storage_id),
-    enabled: !local && storage.enabled,
+    enabled: !local,
   });
   useEffect(() => {
     setName(storage.name);
@@ -92,7 +92,7 @@ function ConnectionCard({ storage, executing }: { storage: StorageInfo; executin
     return () => window.clearInterval(timer);
   }, [awaitingAuth]);
   const busy = executing || storage.busy || operation.isPending || pick.isPending || connect.isPending || awaitingAuth;
-  const isDefault = storage.storage_id === "default-local" || storage.storage_id === "default-onedrive";
+  const isDefault = storage.storage_id === "default-local";
   const requestError = operation.error ?? pick.error ?? connect.error ?? status.error;
   const save = () => operation.mutate(() => updateStorage(storage.storage_id, {
     name: name.trim(),
@@ -111,22 +111,23 @@ function ConnectionCard({ storage, executing }: { storage: StorageInfo; executin
     <CardContent><Stack spacing={1.5}>
     <Stack direction="row" sx={{ justifyContent: "space-between", alignItems: "center" }}>
       <Typography variant="h6">{storage.name}</Typography>
-      <Switch checked={storage.enabled} disabled={busy}
-        onChange={(_, enabled) => operation.mutate(() => updateStorage(storage.storage_id, { enabled }))}
-        slotProps={{ input: { "aria-label": `启用 ${storage.name}` } }} />
+      <Chip size="small" color={local || status.data?.connected ? "success" : "default"}
+        label={local ? "已连接" : status.isPending ? "正在读取连接状态…" : status.error ? "状态读取失败" : status.data?.connected ? "已连接" : "未连接"} />
     </Stack>
     <TextField label="连接名称" size="small" value={name} disabled={busy} onChange={(event) => setName(event.target.value)} />
     {local ? <TextField label="本地根目录" size="small" value={root} disabled={busy} onChange={(event) => setRoot(event.target.value)} /> : <TextField label="OneDrive App ID" size="small" value={clientId} disabled={busy} onChange={(event) => setClientId(event.target.value)} />}
     <Stack direction="row" sx={{ gap: 1, flexWrap: "wrap" }}>
       <Button variant="contained" disabled={busy || !name.trim() || (local && !root.trim())} onClick={save}>保存连接</Button>
       {local && <Button variant="outlined" disabled={busy} onClick={() => pick.mutate()}>选择文件夹</Button>}
-      {!local && <Button variant="outlined" disabled={busy || !storage.enabled || !status.data?.configured} onClick={beginAuthorization}>
+      {!local && <Button variant="outlined" disabled={busy || !status.data?.configured} onClick={beginAuthorization}>
         {awaitingAuth ? "等待授权…" : status.data?.connected ? "切换账号" : "网页登录"}
       </Button>}
       {!local && status.data?.connected && <Button variant="outlined" disabled={busy} onClick={() => operation.mutate(() => disconnectStorage(storage.storage_id))}>断开账号</Button>}
       {!isDefault && <Button variant="outlined" color="error" disabled={busy} onClick={() => setConfirmDelete(true)}>删除连接</Button>}
     </Stack>
-    {!local && <Typography variant="body2" color="text.secondary">{!storage.enabled ? "存储已停用，已有账号授权保留。" : status.isPending ? "正在读取授权状态…" : status.data?.connected ? `已连接：${status.data.account_display_name ?? "Microsoft 用户"}` : "尚未连接账号"}</Typography>}
+    {!local && status.data?.connected && <Typography variant="body2" color="text.secondary">
+      {status.data.account_display_name ?? "Microsoft 用户"}{status.data.account_email ? `(${status.data.account_email})` : ""}
+    </Typography>}
     {(requestError || authError) && <Alert severity="error">{authError ?? (requestError ? errorMessage(requestError) : "")}</Alert>}
     {(executing || storage.busy) && <Alert severity="info">正在执行重命名，完成后可修改此连接。</Alert>}
     <Dialog open={confirmDelete} onClose={() => { if (!busy) setConfirmDelete(false); }}>

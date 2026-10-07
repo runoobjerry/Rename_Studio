@@ -8,8 +8,7 @@ from app.schemas.storage import StorageLocation
 
 
 class RenamePreviewRequest(BaseModel):
-    provider: str = "local"
-    path: str | None = None
+    storage_id: str
     file_ids: list[str] = Field(min_length=1)
     rules: list[RuleSpec] = Field(default_factory=list)
     location: StorageLocation | None = None

@@ -11,6 +11,7 @@ secrets.json
 .storage_connections.json
 .storage_connections.json.*.tmp
 *.pre-storage-v1.bak
+*.pre-storage-v2.bak
 AGENTS.md
 __pycache__/
 *.py[cod]

@@ -22,7 +22,7 @@ def drive_item(item_id: str, name: str, *, folder: bool = False) -> dict[str, An
 
 class StubOneDriveProvider(OneDriveProvider):
     def __init__(self, responses: list[dict[str, object]]) -> None:
-        super().__init__(OneDriveAuthService("http://localhost/callback"))
+        super().__init__(OneDriveAuthService("http://localhost/callback", initial_state={}, persist=lambda payload: None))
         self.responses = responses
         self.calls: list[tuple[str, str, dict[str, object] | None]] = []
 

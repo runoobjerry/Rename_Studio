@@ -15,15 +15,10 @@ from app.rules.padding import PaddingRule
 from app.rules.registry import RuleRegistry
 from app.rules.text_operations import RemoveRule, ReplaceRule
 from app.services.execute_service import ExecuteService
-from app.services.file_service import FileService
 from app.services.preview_service import PreviewService
 from app.services.preview_store import PreviewStore
 from app.services.rename_engine import RenameEngine
 from app.services.onedrive_auth import OneDriveAuthService
-
-
-def get_onedrive_auth_service() -> OneDriveAuthService:
-    return cast(OneDriveAuthService, get_storage_manager().auth("default-onedrive"))
 
 
 @lru_cache
@@ -44,14 +39,14 @@ def get_storage_manager() -> StorageManager:
         "onedrive", "OneDrive", OneDriveConfig, ("root", "id", "path"),
         lambda record, auth: OneDriveProvider(cast(ConnectionAuth, auth)),
         auth_factory=lambda record, persist, guard: OneDriveAuthService(
-            settings.onedrive_redirect_uri,
+            settings.storage_redirect_uri,
             initial_state={**record.credentials, **({"client_id": str(record.config["client_id"])} if record.config["client_id"] else {})},
             persist=lambda payload: persist({"client_id": payload.get("client_id")}, {key: value for key, value in payload.items() if key != "client_id"}),
             before_change=guard,
         ),
     ))
     repository = JsonStorageRepository(settings.storage_state_file)
-    state = repository.load_or_migrate(settings.local_storage_root, settings.local_settings_file, settings.onedrive_credentials_file, registry.validate_config)
+    state = repository.load_or_initialize(settings.local_storage_root, registry.validate_config)
     return StorageManager(registry, repository, state)
 
 
@@ -63,10 +58,6 @@ def get_rule_registry() -> RuleRegistry:
     registry.register(RemoveRule())
     registry.register(InsertRule())
     return registry
-
-
-def get_file_service() -> FileService:
-    return FileService(get_provider_registry())
 
 
 @lru_cache

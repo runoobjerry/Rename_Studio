@@ -25,9 +25,9 @@
 
 - 响应式 Drawer 按存储连接导航，支持多个本地目录/OneDrive 个人版账号连接和设置；明暗模式选择可持久化并支持系统偏好。
 - 本地根路径输入与后端承载的文件夹选择器。选择器运行在后端机器上，必须保留手动路径输入。
-- 设置页支持连接新增、编辑、启停和删除；默认连接不可删除。OneDrive App ID 可配置/清理，OAuth 弹窗登录、账号切换和断开均关联连接；回调验证来源、弹窗和消息结构，前端不保存令牌。
+- 设置页支持连接新增、编辑和删除；仅默认 Local 不可删除。连接状态只读显示，已连接账号显示名称(邮箱)，云连接由用户添加。OneDrive App ID 可配置/清理，OAuth 弹窗登录、账号切换和断开均关联连接；回调验证来源、弹窗和消息结构，前端不保存令牌。
 - 目录浏览、返回上级、手动刷新、图标、文件名工具提示、修改时间、复选框选择和内部滚动。
-- OneDrive 路径栏旁提供“设为默认路径”，保存当前成功打开的目录位置（含根目录），按 storage_id 与稳定 account_id 在浏览器 localStorage 中隔离。仅 default-onedrive 可读取旧 Provider/账号路径作为迁移来源。重新进入连接或切换账号时恢复；不保存未提交输入，不跨浏览器同步，默认启动仍为 default-local。
+- OneDrive 路径栏旁提供“设为默认路径”，保存当前成功打开的目录位置（含根目录），按 storage_id 与稳定 account_id 在浏览器 localStorage 中隔离。不再读取旧 Provider/账号路径；云连接由用户创建，唯一默认连接为 Local Files。重新进入连接或切换账号时恢复；不保存未提交输入，不跨浏览器同步，默认启动仍为 default-local。
 - 四种规则 `padding`、`replace`、`remove`、`insert` 的字段配置，以及启用/禁用、上移/下移、复制、删除和清空规则链。
 - 规则标题栏左侧“一键清除”、右侧“添加规则”；添加按钮打开紧凑 MUI 菜单，每项 34px/13px，最多同时显示八项，超出滚动显示，Tooltip 展示描述。选择后追加独立配置到规则链末尾、关闭菜单并恢复按钮焦点，不切换页面；使用现有 `onChange` 重置旧预览/执行结果，仅展示前端已适配的规则。
 - 服务端预览、冲突/无效名称展示、MUI 执行确认 Dialog、防重复提交、逐项执行结果合并与目录后台刷新。
@@ -72,10 +72,10 @@
 - `frontend/src/components/NotificationProvider.tsx`、`CheckboxFilterMenu.tsx`：共享通知与筛选菜单。
 - `frontend/src/components/PanelIconButton.tsx`：文件/预览面板图标按钮的共享外观；有状态控件可局部覆盖状态颜色，不重复定义尺寸和间距。
 - `frontend/src/features/files/FileBrowser.tsx`：导航、文件表格、类型筛选与可见项选择。
-- `frontend/src/features/files/defaultCloudPath.ts`：按连接/账号隔离的默认目录位置及旧路径读取兼容；不宣称已支持其他云盘。
+- `frontend/src/features/files/defaultCloudLocation.ts`：按连接/账号隔离的默认目录位置；不宣称已支持其他云盘。
 - `frontend/src/features/rules/RuleEditor.tsx`、`RuleFields.tsx`：规则链、主页添加菜单、字段与内置 NumberStepper；旧 `RulePickerPage.tsx` 已删除，不重新引入。
 - `frontend/src/features/rename/PreviewPanel.tsx`、`RenameActions.tsx`：预览/执行结果、状态筛选与确认操作。
-- `frontend/src/features/settings/SettingsPage.tsx`、`StorageSettingsPanel.tsx`：外观、多连接配置和授权；OneDriveSettingsPanel 保留旧接口组件，当前设置页使用新连接面板。
+- `frontend/src/features/settings/SettingsPage.tsx`、`StorageSettingsPanel.tsx`：外观、多连接配置和授权；仅使用连接级 API，旧 OneDriveSettingsPanel 已删除。
 - `frontend/src/api/client.ts`、`types/index.ts`、`stores/useRenameStore.ts`、`theme.ts`、`styles.css`：共享边界。
 
 ## 安全边界与已知限制
@@ -83,12 +83,12 @@
 - 必须先预览，再确认执行；使用服务端生成的一次性 `preview_id`，不能由 UI 绕过执行前重校验。预览存活 10 分钟，后端重启会失效；过期时间尚未展示。
 - 查询键包含 storage_id、revision 和 location；目录/上级导航使用后端返回位置。连接、目录、账号、根目录、选择或规则变化使旧预览失效，规则链保留；过时目录/预览响应不能覆盖当前上下文。执行响应后清除选择并刷新目录，执行期间保留请求与进度并禁用冲突操作。
 - 云盘查询在默认目录恢复前暂停；连接版本/账号切换后隔离缓存与旧预览。account_id 缺失不表示授权失败，仍可浏览但禁用默认目录保存，不以邮箱/显示名回退；失效默认目录保留设置并显示读取错误，用户可手动打开根目录后覆盖。
-- 新连接面板跟踪弹窗关闭并使用 MUI Dialog 确认删除；旧 OneDriveSettingsPanel 的原生确认仅保留兼容代码，不用于当前设置页。
+- 连接面板跟踪弹窗关闭并使用 MUI Dialog 确认删除；仅 default-local 禁止删除，云连接均可删除。连接状态使用只读标记，已连接账号显示名称(邮箱)，不提供启停。
 - 四种规则字段为手写配置 UI；新增后端规则不会自动产生前端字段，不应擅自实现通用表单引擎。
-- 没有搜索、排序或虚拟化；`/files` 没有分页/查询 API，OneDrive Graph 分页由后端聚合。
+- 没有搜索、排序或虚拟化；连接级目录接口没有分页/查询 API，OneDrive Graph 分页由后端聚合。
 - 已有测试文件：`api/client.test.ts`、`components/NotificationProvider.test.tsx`、`features/files/FileBrowser.test.tsx`、`features/rules/RuleEditor.test.tsx`、`RuleFields.test.tsx`、`features/rename/PreviewPanel.test.tsx`、`RenameActions.test.tsx`（均相对 `frontend/src/`）。测试文件存在不代表已运行通过；工作区编排、设置/OAuth 和主题切换等覆盖仍待扩充。添加规则用例已改为主页菜单，并补充按钮顺序、Tooltip、八项滚动上限、焦点恢复和独立配置检查。
 - `frontend/src/theme.test.tsx` 检查明暗主题下标准 Menu、Select、筛选和规则添加菜单继承一致的间距；不以样式用例替代实际视觉验收。
-- 默认路径回归用例位于 `frontend/src/WorkspaceApp.test.tsx` 与 `frontend/src/features/files/defaultCloudPath.test.ts`，覆盖恢复、覆盖保存、账号/云盘隔离、缺失 ID 和存储失败；运行验收状态见 STATE。
+- 默认路径回归用例位于 `frontend/src/WorkspaceApp.test.tsx` 与 `frontend/src/features/files/defaultCloudLocation.test.ts`，覆盖恢复、覆盖保存、账号/云盘隔离、缺失 ID 和存储失败；运行验收状态见 STATE。
 
 ## 开发与文档维护规则
 

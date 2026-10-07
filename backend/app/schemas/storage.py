@@ -63,14 +63,12 @@ class StorageCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
     provider_type: str
     name: str = Field(min_length=1, max_length=200)
-    enabled: bool = True
     config: dict[str, object]
 
 
 class StorageUpdate(BaseModel):
     model_config = ConfigDict(extra="forbid")
     name: str | None = Field(default=None, min_length=1, max_length=200)
-    enabled: bool | None = None
     config: dict[str, object] | None = None
 
 
@@ -87,17 +85,18 @@ class AuthorizationStart(BaseModel):
 
 
 class StorageRecord(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     storage_id: str
     provider_type: str
     name: str
-    enabled: bool = True
     config: dict[str, object]
     revision: int = Field(default=1, ge=1)
     credentials: dict[str, str] = Field(default_factory=dict)
 
 
 class StorageState(BaseModel):
-    schema_version: Literal[1] = 1
+    model_config = ConfigDict(extra="forbid")
+    schema_version: Literal[2] = 2
     connections: dict[str, StorageRecord]
 
 
@@ -105,7 +104,6 @@ class StorageInfo(BaseModel):
     storage_id: str
     provider_type: str
     name: str
-    enabled: bool
     config: dict[str, object]
     revision: int
     busy: bool = False
@@ -136,3 +134,8 @@ class StorageProviderInfo(BaseModel):
     can_rename: bool
     browser_auth: bool
     local_picker: bool
+
+
+class LocalFolderPickResponse(BaseModel):
+    root_path: str
+    selected: bool

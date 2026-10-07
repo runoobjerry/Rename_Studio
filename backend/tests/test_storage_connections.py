@@ -6,7 +6,7 @@ from typing import cast
 import pytest
 from fastapi.testclient import TestClient
 
-from app.api.dependencies import get_storage_manager, get_preview_service, get_execute_service, get_file_service, get_onedrive_auth_service
+from app.api.dependencies import get_storage_manager, get_preview_service, get_execute_service
 from app.core.errors import ProviderError, StorageBusyError, StorageConnectionChangedError, ValidationError
 from app.main import create_app
 from app.providers.local import LocalProvider
@@ -18,7 +18,6 @@ from app.schemas.rules import RuleSpec
 from app.schemas.storage import LocalConfig, OneDriveConfig, RootLocation, StorageCreate, StorageUpdate
 from app.services.connection_auth import ConnectionAuth
 from app.services.execute_service import ExecuteService
-from app.services.file_service import FileService
 from app.services.onedrive_auth import OneDriveAuthService
 from app.services.preview_service import PreviewService
 from app.services.preview_store import PreviewStore
@@ -35,10 +34,10 @@ def make_manager(tmp_path: Path) -> StorageManager:
     registry = ProviderRegistry()
     registry.register(ProviderDefinition("local", "Local", LocalConfig, ("root", "path", "id"), lambda record, auth: LocalProvider(Path(str(record.config["root_path"]))), local_picker=True))
     registry.register(ProviderDefinition("onedrive", "OneDrive", OneDriveConfig, ("root", "id", "path"), lambda record, auth: OneDriveProvider(cast(ConnectionAuth, auth)),
-        auth_factory=lambda record, persist, guard: OneDriveAuthService("http://localhost/auth/onedrive/callback",
+        auth_factory=lambda record, persist, guard: OneDriveAuthService("http://localhost/auth/storage/callback",
             initial_state={**record.credentials, **({"client_id": str(record.config["client_id"])} if record.config["client_id"] else {})},
             persist=lambda payload: persist({"client_id": payload.get("client_id")}, {key: value for key, value in payload.items() if key != "client_id"}), before_change=guard)))
-    state = repository.load_or_migrate(root, tmp_path / "local.json", tmp_path / "auth.json", registry.validate_config)
+    state = repository.load_or_initialize(root, registry.validate_config)
     return StorageManager(registry, repository, state)
 
 
@@ -50,16 +49,56 @@ def services(manager: StorageManager) -> tuple[PreviewService, ExecuteService]:
     return preview, ExecuteService(manager.registry, store, preview)
 
 
-def test_migration_is_atomic_and_not_repeated(tmp_path: Path) -> None:
-    (tmp_path / "local.json").write_text(json.dumps({"root_path": str(tmp_path)}), encoding="utf-8")
-    (tmp_path / "auth.json").write_text(json.dumps({"client_id": "app", "refresh_token": "fixture-token", "account_id": "account-a"}), encoding="utf-8")
+def test_new_install_only_creates_local_and_restores_it(tmp_path: Path) -> None:
     manager = make_manager(tmp_path)
-    assert manager.record("onedrive").credentials["account_id"] == "account-a"
-    assert (tmp_path / "auth.json.pre-storage-v1.bak").exists()
-    (tmp_path / "auth.json").write_text("{}", encoding="utf-8")
+    assert list(manager.state.connections) == ["default-local"]
+    assert manager.record("default-local").name == "Local Files"
+    assert manager.state.schema_version == 2
+    assert make_manager(tmp_path).state == manager.state
+
+
+def test_v1_upgrade_preserves_accounts_and_removes_empty_default_cloud(tmp_path: Path) -> None:
+    manager = make_manager(tmp_path)
+    cloud = manager.create(StorageCreate(provider_type="onedrive", name="Account", config={"client_id": "app"}))
+    payload = manager.state.model_dump()
+    payload["schema_version"] = 1
+    for record in payload["connections"].values():
+        record["enabled"] = False
+    payload["connections"][cloud.storage_id]["credentials"] = {
+        "refresh_token": "fixture-token", "account_id": "account-a",
+    }
+    payload["connections"]["default-onedrive"] = {
+        "storage_id": "default-onedrive", "provider_type": "onedrive", "name": "OneDrive",
+        "enabled": True, "config": {"client_id": None}, "revision": 1, "credentials": {},
+    }
+    path = tmp_path / "storages.json"
+    path.write_text(json.dumps(payload), encoding="utf-8")
     restored = make_manager(tmp_path)
-    assert restored.record("onedrive").credentials["refresh_token"] == "fixture-token"
-    assert "credentials" not in restored.info("onedrive").model_dump()
+    assert "default-onedrive" not in restored.state.connections
+    assert restored.record(cloud.storage_id).credentials["account_id"] == "account-a"
+    assert "enabled" not in restored.info(cloud.storage_id).model_dump()
+    assert "credentials" not in restored.info(cloud.storage_id).model_dump()
+    assert path.with_name("storages.json.pre-storage-v2.bak").exists()
+    assert make_manager(tmp_path).state == restored.state
+
+
+@pytest.mark.asyncio
+async def test_configured_former_default_cloud_is_deletable(tmp_path: Path) -> None:
+    manager = make_manager(tmp_path)
+    payload = manager.state.model_dump()
+    payload["schema_version"] = 1
+    payload["connections"]["default-local"]["enabled"] = True
+    payload["connections"]["default-onedrive"] = {
+        "storage_id": "default-onedrive", "provider_type": "onedrive", "name": "OneDrive",
+        "enabled": True, "config": {"client_id": "app"}, "revision": 1,
+        "credentials": {"refresh_token": "fixture-token"},
+    }
+    (tmp_path / "storages.json").write_text(json.dumps(payload), encoding="utf-8")
+    restored = make_manager(tmp_path)
+    assert restored.record("default-onedrive").credentials["refresh_token"] == "fixture-token"
+    await restored.delete("default-onedrive")
+    assert list(restored.state.connections) == ["default-local"]
+    await restored.aclose()
 
 
 def test_corrupt_state_does_not_reset_connections(tmp_path: Path) -> None:
@@ -69,25 +108,18 @@ def test_corrupt_state_does_not_reset_connections(tmp_path: Path) -> None:
         make_manager(tmp_path)
 
 
-def test_invalid_migration_does_not_commit_a_new_state(tmp_path: Path) -> None:
-    (tmp_path / "local.json").write_text(json.dumps({"root_path": str(tmp_path / "missing")}), encoding="utf-8")
-    with pytest.raises(ValidationError):
-        make_manager(tmp_path)
-    assert not (tmp_path / "storages.json").exists()
-
-
 @pytest.mark.asyncio
 async def test_connections_versions_busy_guard_and_delete(tmp_path: Path) -> None:
     manager = make_manager(tmp_path)
     other = manager.create(StorageCreate(provider_type="local", name="Other", config={"root_path": str(tmp_path)}))
-    original = manager.record("local").revision
-    with manager.execution("local", original):
+    original = manager.record("default-local").revision
+    with manager.execution("default-local", original):
         with pytest.raises(StorageBusyError):
-            await manager.update("local", StorageUpdate(enabled=False))
+            await manager.update("default-local", StorageUpdate(name="Busy edit"))
         await manager.update(other.storage_id, StorageUpdate(name="Renamed"))
-    await manager.update("local", StorageUpdate(config={"root_path": str(tmp_path)}))
+    await manager.update("default-local", StorageUpdate(config={"root_path": str(tmp_path)}))
     with pytest.raises(StorageConnectionChangedError):
-        with manager.execution("local", original):
+        with manager.execution("default-local", original):
             pass
     with pytest.raises(ValidationError):
         await manager.delete("default-local")
@@ -125,34 +157,32 @@ async def test_account_credentials_and_old_auth_objects_are_isolated(tmp_path: P
     assert manager.record(second.storage_id).credentials["refresh_token"] == "fixture-second"
     await manager.update(first.storage_id, StorageUpdate(config={"client_id": "replacement"}))
     with pytest.raises(StorageConnectionChangedError):
-        first_auth.configure("obsolete")
+        first_auth.disconnect()
     await manager.aclose()
 
 
 @pytest.mark.asyncio
 async def test_preview_rejects_changed_connection_even_with_matching_files(tmp_path: Path) -> None:
     manager = make_manager(tmp_path)
-    root = Path(str(manager.record("local").config["root_path"]))
+    root = Path(str(manager.record("default-local").config["root_path"]))
     (root / "a.txt").write_text("a", encoding="utf-8")
     (tmp_path / "a.txt").write_text("a", encoding="utf-8")
     preview, execute = services(manager)
-    response = await preview.preview(RenamePreviewRequest(provider="local", location=RootLocation(), file_ids=["a.txt"], rules=[RuleSpec(type="replace", config={"search": "a", "replacement": "b"})]))
-    await manager.update("local", StorageUpdate(config={"root_path": str(tmp_path)}))
+    response = await preview.preview(RenamePreviewRequest(storage_id="default-local", location=RootLocation(), file_ids=["a.txt"], rules=[RuleSpec(type="replace", config={"search": "a", "replacement": "b"})]))
+    await manager.update("default-local", StorageUpdate(config={"root_path": str(tmp_path)}))
     with pytest.raises(StorageConnectionChangedError):
         await execute.execute(response.preview_id)
     assert (root / "a.txt").exists() and (tmp_path / "a.txt").exists()
     await manager.aclose()
 
 
-def test_storage_api_legacy_defaults_and_secret_redaction(tmp_path: Path) -> None:
+def test_storage_api_and_secret_redaction(tmp_path: Path) -> None:
     manager = make_manager(tmp_path)
     preview, execute = services(manager)
     app = create_app()
     app.dependency_overrides[get_storage_manager] = lambda: manager
     app.dependency_overrides[get_preview_service] = lambda: preview
     app.dependency_overrides[get_execute_service] = lambda: execute
-    app.dependency_overrides[get_file_service] = lambda: FileService(manager.registry)
-    app.dependency_overrides[get_onedrive_auth_service] = lambda: manager.auth("onedrive")
     with TestClient(app) as client:
         response = client.post("/storages", json={"provider_type": "local", "name": "Other", "config": {"root_path": str(tmp_path)}})
         assert response.status_code == 201
@@ -162,10 +192,9 @@ def test_storage_api_legacy_defaults_and_secret_redaction(tmp_path: Path) -> Non
         assert client.put(f"/storages/{storage_id}", json={"provider_type": "onedrive"}).status_code == 422
         assert client.delete("/storages/default-local").status_code == 422
         assert client.get("/storage-providers").json()[0]["provider_type"] == "local"
-        assert client.get("/files", params={"provider": "local"}).status_code == 200
-        assert client.get("/onedrive/auth/status").status_code == 200
-        assert client.get("/files", params={"provider": "unknown"}).status_code == 422
-        assert client.post("/rename/preview", json={"provider": "unknown", "file_ids": ["source.txt"]}).status_code == 422
+        assert client.get("/storages/local").status_code == 404
+        assert client.put(f"/storages/{storage_id}", json={"enabled": False}).status_code == 422
+        assert client.post("/storages", json={"provider_type": "local", "name": "Old field", "config": {"root_path": str(tmp_path)}, "enabled": True}).status_code == 422
         (tmp_path / "source.txt").write_text("unchanged", encoding="utf-8")
         snapshot = client.post(f"/storages/{storage_id}/rename/preview", json={"location": {"kind": "root"}, "file_ids": ["source.txt"], "rules": []}).json()
         response = client.post("/rename/execute", json={"preview_id": snapshot["preview_id"], "file_ids": ["untrusted"], "rules": [{"type": "untrusted"}], "new_name": "tampered.txt"})

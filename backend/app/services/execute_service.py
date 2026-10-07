@@ -63,7 +63,7 @@ class ExecuteService:
         # 单进程内串行执行，避免两个批次同时争用相同目录中的目标名称。
         async with self._lock:
             snapshot = self.previews.get(preview_id)
-            with self.providers.execution(snapshot.request.provider, snapshot.connection_revision):
+            with self.providers.execution(snapshot.request.storage_id, snapshot.connection_revision):
                 self._purge_progress()
                 progress = RenameProgress(
                     preview_id=preview_id,
@@ -87,7 +87,7 @@ class ExecuteService:
                 for item in response.items:
                     logger.info(
                         "rename execution provider=%s file_id=%s status=%s error=%s",
-                        snapshot.request.provider,
+                        snapshot.request.storage_id,
                         item.file_id,
                         item.status,
                         item.error,
@@ -98,7 +98,7 @@ class ExecuteService:
         if not snapshot.response.valid:
             raise ValidationError("Rename preview contains invalid items")
 
-        provider = self.providers.get(snapshot.request.provider)
+        provider = self.providers.get(snapshot.request.storage_id)
         parent_paths = {provider.parent_key(source) for source in snapshot.sources}
         if len(parent_paths) != 1:
             raise PreviewExpiredError("Rename preview source directory changed")
@@ -194,7 +194,7 @@ class ExecuteService:
         siblings: list[FileItem],
         progress: RenameProgress,
     ) -> RenameExecuteResponse:
-        provider = self.providers.get(snapshot.request.provider)
+        provider = self.providers.get(snapshot.request.storage_id)
         results = {
             item.file_id: ExecuteItem(
                 file_id=item.file_id,
