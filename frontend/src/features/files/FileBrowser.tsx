@@ -18,7 +18,7 @@ import {
   Tooltip,
 } from "@mui/material";
 
-import type { DirectoryListing } from "../../types";
+import type { DirectoryListing, StorageLocation } from "../../types";
 import { CheckboxFilterMenu } from "../../components/CheckboxFilterMenu";
 import { PanelIconButton } from "../../components/PanelIconButton";
 import selectInverseIcon from "../../assets/icon/select-inverse.svg";
@@ -36,6 +36,7 @@ interface FileBrowserProps {
   isRefreshing?: boolean;
   refreshError?: string;
   onNavigate: (path: string) => void;
+  onNavigateLocation?: (location: StorageLocation) => void;
   onRefresh?: () => void;
   onToggle: (fileId: string) => void;
   onSelectAll: (visibleIds: string[]) => void;
@@ -70,6 +71,7 @@ export function FileBrowser({
   isRefreshing = false,
   refreshError,
   onNavigate,
+  onNavigateLocation,
   onRefresh,
   onToggle,
   onSelectAll,
@@ -94,12 +96,12 @@ export function FileBrowser({
           </p>
         </div>
         <div className="browser-heading-actions">
-          {listing.parent_path !== null && (
+          {(listing.parent_location !== undefined ? listing.parent_location !== null : listing.parent_path !== null) && (
             <Tooltip title="返回上级" arrow>
               <PanelIconButton
                 size="small"
                 aria-label="返回上级"
-                onClick={() => onNavigate(listing.parent_path ?? "")}
+                onClick={() => listing.parent_location && onNavigateLocation ? onNavigateLocation(listing.parent_location) : onNavigate(listing.parent_path ?? "")}
               >
                 <ArrowBackRoundedIcon fontSize="small" />
               </PanelIconButton>
@@ -203,7 +205,7 @@ export function FileBrowser({
                       {item.is_directory ? (
                         <ButtonBase
                           className="directory-name"
-                          onClick={() => onNavigate(item.path)}
+                          onClick={() => item.location && onNavigateLocation ? onNavigateLocation(item.location) : onNavigate(item.path)}
                         >
                           <FolderRoundedIcon className="file-icon" fontSize="small" />
                           <span className="file-name">{item.name}</span>

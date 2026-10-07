@@ -1,6 +1,7 @@
 from collections import Counter, defaultdict
 
-from app.core.errors import ValidationError
+from app.core.errors import StorageConnectionChangedError, ValidationError
+from app.schemas.storage import PathLocation, RootLocation
 from app.core.paths import normalize_storage_path
 from app.providers.registry import ProviderRegistry
 from app.rules.base import RuleContext
@@ -22,8 +23,14 @@ class PreviewService:
         self.store = store or PreviewStore()
 
     async def preview(self, request: RenamePreviewRequest) -> RenamePreviewResponse:
+        revision = self.providers.revision(request.provider)
+        request = request.model_copy(deep=True)
+        if self.providers.manager:
+            request.provider = self.providers.manager.record(request.provider).storage_id
         items, files, valid = await self.evaluate(request)
-        return self.store.save(request, items, valid, files)
+        if self.providers.revision(request.provider) != revision:
+            raise StorageConnectionChangedError("Storage changed while creating the preview")
+        return self.store.save(request, items, valid, files, revision)
 
     async def evaluate(
         self,
@@ -33,15 +40,19 @@ class PreviewService:
         siblings_by_parent: dict[str, list[FileItem]] | None = None,
     ) -> tuple[list[PreviewItem], list[FileItem], bool]:
         provider = self.providers.get(request.provider)
+        supports_rename = True
+        if self.providers.manager is not None:
+            record = self.providers.manager.record(request.provider)
+            supports_rename = self.providers.definition(record.provider_type).can_rename
         if len(request.file_ids) != len(set(request.file_ids)):
             raise ValidationError("Duplicate file IDs are not allowed")
 
         prefetched_siblings: list[FileItem] | None = None
-        if files is None and request.path is not None:
+        if files is None and (request.location is not None or request.path is not None):
             # 浏览器已知父目录时，一次目录读取即可同时提供源元数据和冲突集合。
-            prefetched_siblings = await provider.list_files(
-                normalize_storage_path(request.path)
-            )
+            listing = await provider.list_directory(request.location or PathLocation(value=request.path or ""))
+            prefetched_siblings = listing.items
+            request.location = listing.location
             by_id = {item.id: item for item in prefetched_siblings}
             missing_ids = [
                 file_id for file_id in request.file_ids if file_id not in by_id
@@ -54,9 +65,9 @@ class PreviewService:
             files = [by_id[file_id] for file_id in request.file_ids]
         elif files is None:
             files = await provider.get_metadata_many(request.file_ids)
-        if any(item.id == "" for item in files):
+        if any(item.id == "" or isinstance(item.location, RootLocation) for item in files):
             raise ValidationError("Configured storage root cannot be selected")
-        if len({item.parent_path for item in files}) != 1:
+        if len({provider.parent_key(item) for item in files}) != 1:
             raise ValidationError("All selected items must be in the same directory")
 
         candidates = [
@@ -79,19 +90,20 @@ class PreviewService:
 
         by_parent: dict[str, list[FileItem]] = defaultdict(list)
         for item in files:
-            by_parent[item.parent_path].append(item)
+            by_parent[provider.parent_key(item)].append(item)
 
-        existing_by_parent: dict[str, dict[str, FileItem]] = {}
+        existing_by_parent: dict[str, dict[str, list[FileItem]]] = {}
         for parent_path in by_parent:
             if siblings_by_parent is not None and parent_path in siblings_by_parent:
                 siblings = siblings_by_parent[parent_path]
             elif prefetched_siblings is not None:
                 siblings = prefetched_siblings
             else:
-                siblings = await provider.list_files(parent_path)
-            existing_by_parent[parent_path] = {
-                provider.normalize_name(sibling.name): sibling for sibling in siblings
-            }
+                siblings = await provider.list_siblings(by_parent[parent_path][0])
+            names: dict[str, list[FileItem]] = defaultdict(list)
+            for sibling in siblings:
+                names[provider.normalize_name(sibling.name)].append(sibling)
+            existing_by_parent[parent_path] = names
 
         selected_ids = {item.id for item in files}
         results: list[PreviewItem] = []
@@ -99,11 +111,13 @@ class PreviewService:
             files, candidates, normalized_targets, strict=True
         ):
             error = provider.validate_target_name(item, new_name)
+            if (not supports_rename or item.can_rename is False) and item.name != new_name:
+                error = "This item cannot be renamed with the current permissions"
             conflict = normalized_target in duplicate_targets
-            existing = existing_by_parent[item.parent_path].get(normalized_target)
-            if existing is not None and existing.id != item.id:
+            existing = existing_by_parent[provider.parent_key(item)].get(normalized_target, [])
+            if any(sibling.id != item.id for sibling in existing):
                 # 选中且会移走的源名称由执行规划器处理交换和循环依赖。
-                conflict = conflict or existing.id not in selected_ids
+                conflict = conflict or any(sibling.id not in selected_ids for sibling in existing)
             if conflict and error is None:
                 error = "目标名称出现重复"
             results.append(

@@ -2,7 +2,9 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 
 from app.core.errors import AppError
-from app.schemas.files import FileItem
+from app.schemas.files import DirectoryListing, FileItem
+from app.schemas.storage import PathLocation, RootLocation, StorageLocation
+from app.core.paths import normalize_storage_path
 
 
 @dataclass(frozen=True, slots=True)
@@ -14,6 +16,25 @@ class RenameRequest:
 class StorageProvider(ABC):
     id: str
     display_name: str
+    execution_batch_size: int = 20
+
+    async def list_directory(self, location: StorageLocation) -> DirectoryListing:
+        """Path providers keep identity relative to their configured root."""
+        path = "" if isinstance(location, RootLocation) else normalize_storage_path(location.value)
+        items = await self.list_files(path)
+        parent = path.rpartition("/")[0] if path else None
+        canonical = PathLocation(value=path) if path else RootLocation()
+        parent_location = (PathLocation(value=parent) if parent else RootLocation()) if parent is not None else None
+        return DirectoryListing(provider=self.id, path=path, parent_path=parent, items=items,
+                                location=canonical, parent_location=parent_location)
+
+    async def list_siblings(self, item: FileItem) -> list[FileItem]:
+        location = item.parent_location or PathLocation(value=item.parent_path)
+        return (await self.list_directory(location)).items
+
+    @staticmethod
+    def parent_key(item: FileItem) -> str:
+        return item.parent_location.model_dump_json() if item.parent_location else item.parent_path
 
     @abstractmethod
     async def list_files(self, path: str) -> list[FileItem]:

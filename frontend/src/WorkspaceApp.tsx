@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useMemo, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useState, useRef } from "react";
 import AutoFixHighRoundedIcon from "@mui/icons-material/AutoFixHighRounded";
 import CloudQueueRoundedIcon from "@mui/icons-material/CloudQueueRounded";
 import ComputerRoundedIcon from "@mui/icons-material/ComputerRounded";
@@ -29,19 +29,18 @@ import type { PaletteMode } from "@mui/material";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import {
-  createPreview,
+  createStoragePreview,
   executePreview,
   fetchRenameProgress,
-  fetchFiles,
-  fetchLocalSettings,
-  fetchOneDriveStatus,
-  fetchProviders,
+  fetchStorageFiles,
+  fetchStorageAuthStatus,
+  fetchStorages,
   fetchRules,
-  pickLocalFolder,
-  updateLocalSettings,
+  pickStorageFolder,
+  updateStorage,
 } from "./api/client";
 import { FileBrowser } from "./features/files/FileBrowser";
-import { readDefaultCloudPath, saveDefaultCloudPath } from "./features/files/defaultCloudPath";
+import { readDefaultCloudLocation, saveDefaultCloudLocation } from "./features/files/defaultCloudPath";
 import { PreviewPanel } from "./features/rename/PreviewPanel";
 import { RenameActions } from "./features/rename/RenameActions";
 import { RuleEditor } from "./features/rules/RuleEditor";
@@ -54,6 +53,8 @@ const SettingsPage = lazy(() =>
     default: module.SettingsPage,
   })),
 );
+
+import type { RuleSpec, StorageLocation } from "./types";
 
 type AppView = "workspace" | "settings";
 
@@ -90,8 +91,9 @@ function Workspace({ mode, setMode }: { mode: PaletteMode; setMode: (mode: Palet
   const compactNavigation = useMediaQuery(theme.breakpoints.down("md"));
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [view, setView] = useState<AppView>("workspace");
-  const [providerId, setProviderId] = useState("local");
-  const [path, setPath] = useState("");
+  const [storageId, setStorageId] = useState("default-local");
+  const [location, setLocation] = useState<StorageLocation>({ kind: "root" });
+  const setPath = (value: string) => setLocation(value ? { kind: "path", value } : { kind: "root" });
   const [localRoot, setLocalRoot] = useState("");
   const [cloudPath, setCloudPath] = useState("");
   const [restoredCloudSession, setRestoredCloudSession] = useState<string | null>(null);
@@ -102,45 +104,52 @@ function Workspace({ mode, setMode }: { mode: PaletteMode; setMode: (mode: Palet
   const setSelectedIds = useRenameStore((state) => state.setSelectedIds);
   const clearSelection = useRenameStore((state) => state.clearSelection);
 
-  const providers = useQuery({ queryKey: ["providers"], queryFn: fetchProviders });
+  const providers = useQuery({ queryKey: ["storages"], queryFn: fetchStorages, refetchInterval: 3000 });
+  const activeStorage = providers.data?.find((storage) => storage.storage_id === storageId);
+  const providerId = activeStorage?.provider_type ?? "local";
   const definitions = useQuery({ queryKey: ["rules"], queryFn: fetchRules });
   const oneDriveStatus = useQuery({
-    queryKey: ["onedrive", "status"],
-    queryFn: fetchOneDriveStatus,
+    queryKey: ["storage-auth", storageId, activeStorage?.revision],
+    queryFn: () => fetchStorageAuthStatus(storageId),
+    enabled: providerId === "onedrive" && activeStorage?.enabled === true,
   });
-  const localSettings = useQuery({
-    queryKey: ["local", "settings"],
-    queryFn: fetchLocalSettings,
-  });
+  const localSettings = {
+    data: activeStorage?.config.root_path ? { root_path: activeStorage.config.root_path } : undefined,
+    isSuccess: providerId === "local" && Boolean(activeStorage),
+    isPending: providers.isPending,
+    error: providers.error,
+  };
   const cloudAccountId = providerId === "onedrive" ? oneDriveStatus.data?.account_id : null;
   const cloudConnected = providerId === "onedrive" && oneDriveStatus.data?.connected === true;
-  const cloudSession = cloudConnected ? JSON.stringify([providerId, cloudAccountId ?? null]) : null;
+  const cloudSession = cloudConnected ? JSON.stringify([storageId, activeStorage?.revision, cloudAccountId ?? null]) : null;
   const cloudReady = cloudConnected && restoredCloudSession === cloudSession;
   const files = useQuery({
-    queryKey: [
-      "files",
-      providerId,
-      providerId === "local" ? localSettings.data?.root_path ?? "" : cloudSession,
-      path,
-    ],
-    queryFn: () => fetchFiles(providerId, path),
-    enabled:
-      (providerId === "local" && localSettings.isSuccess) ||
-      cloudReady,
+    queryKey: ["files", storageId, activeStorage?.revision, location],
+    queryFn: () => fetchStorageFiles(storageId, location),
+    enabled: activeStorage?.enabled === true && ((providerId === "local" && localSettings.isSuccess) || cloudReady),
   });
+  const workspaceKey = JSON.stringify([storageId, activeStorage?.revision, location]);
   // 提交前以当前目录校验选中 ID，避免刷新后仍提交已删除的项目。
   const currentSelectedIds = useMemo(() => {
     const availableIds = new Set(files.data?.items.map((item) => item.id));
     return selectedIds.filter((id) => availableIds.has(id));
   }, [files.data, selectedIds]);
+  const previewContext = JSON.stringify([workspaceKey, currentSelectedIds, rules]);
+  const currentWorkspace = useRef(previewContext);
+  currentWorkspace.current = previewContext;
   const preview = useMutation({
-    mutationFn: () => createPreview(providerId, path, currentSelectedIds, rules),
+    mutationFn: async (input: { contextKey: string; storageId: string; location: StorageLocation; fileIds: string[]; rules: RuleSpec[] }) => {
+      return { ...await createStoragePreview(input.storageId, input.location, input.fileIds, input.rules), contextKey: input.contextKey };
+    },
     onSuccess: (result) => {
+      if (result.contextKey !== currentWorkspace.current) return;
       if (!result.valid) {
         notify("预览包含无效名称或冲突，请检查预览结果。", "warning");
       }
     },
-    onError: (error) => notify(`预览失败：${errorMessage(error)}`, "error"),
+    onError: (error, input) => {
+      if (input.contextKey === currentWorkspace.current) notify(`预览失败：${errorMessage(error)}`, "error");
+    },
   });
   const execution = useMutation({
     mutationFn: executePreview,
@@ -169,32 +178,33 @@ function Workspace({ mode, setMode }: { mode: PaletteMode; setMode: (mode: Palet
     refetchInterval: execution.isPending ? 500 : false,
     retry: false,
   });
+  const previewData = preview.data && (preview.data.contextKey === previewContext || (execution.variables === preview.data.preview_id && (execution.isPending || execution.data))) ? preview.data : undefined;
   const updateLocalRoot = useMutation({
-    mutationFn: () => updateLocalSettings(localRoot.trim()),
+    mutationFn: async () => { const saved = await updateStorage(storageId, { config: { root_path: localRoot.trim() } }); return { root_path: saved.config.root_path! }; },
     onSuccess: async (settings) => {
       setLocalRoot(settings.root_path);
-      queryClient.setQueryData(["local", "settings"], settings);
+      await queryClient.invalidateQueries({ queryKey: ["storages"] });
       setPath("");
       clearSelection();
       preview.reset();
       execution.reset();
       notify("已切换本地根文件夹。");
-      await queryClient.invalidateQueries({ queryKey: ["files", "local"] });
+      await queryClient.invalidateQueries({ queryKey: ["files", storageId] });
     },
     onError: (error) => notify(`切换失败：${errorMessage(error)}`, "error"),
   });
   const pickLocalRoot = useMutation({
-    mutationFn: pickLocalFolder,
+    mutationFn: () => pickStorageFolder(storageId),
     onSuccess: async (settings) => {
       if (!settings.selected) return;
       setLocalRoot(settings.root_path);
-      queryClient.setQueryData(["local", "settings"], { root_path: settings.root_path });
+      await queryClient.invalidateQueries({ queryKey: ["storages"] });
       setPath("");
       clearSelection();
       preview.reset();
       execution.reset();
       notify("已选择本地根文件夹。");
-      await queryClient.invalidateQueries({ queryKey: ["files", "local"] });
+      await queryClient.invalidateQueries({ queryKey: ["files", storageId] });
     },
     onError: (error) => notify(`选择文件夹失败：${errorMessage(error)}`, "error"),
   });
@@ -209,9 +219,10 @@ function Workspace({ mode, setMode }: { mode: PaletteMode; setMode: (mode: Palet
 
   useEffect(() => {
     clearSelection();
+    if (execution.isPending) return;
     preview.reset();
     execution.reset();
-  }, [path, providerId, cloudSession]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [workspaceKey, cloudSession]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     // 刷新失败时保留选择；成功读取后仅移除不存在的项，不自动选择新增项。
@@ -227,16 +238,16 @@ function Workspace({ mode, setMode }: { mode: PaletteMode; setMode: (mode: Palet
     setSelectedIds, preview.reset, execution.reset, execution.isPending]);
 
   useEffect(() => {
-    if (providerId !== "onedrive" || restoredCloudSession === cloudSession) return;
-    let defaultPath = "";
+    if (execution.isPending || providerId !== "onedrive" || restoredCloudSession === cloudSession) return;
+    let defaultLocation: StorageLocation = { kind: "root" };
     try {
-      if (cloudConnected && cloudAccountId) defaultPath = readDefaultCloudPath(providerId, cloudAccountId);
+      if (cloudConnected && cloudAccountId) defaultLocation = readDefaultCloudLocation(storageId, providerId, cloudAccountId);
     } catch {
       notify("无法读取默认路径，将打开云盘根目录。请检查浏览器存储权限。", "warning");
     }
     // 恢复完成前不请求目录，避免以旧账号路径读取新账号或混用缓存。
-    setPath(defaultPath);
-    setCloudPath(defaultPath);
+    setLocation(defaultLocation);
+    setCloudPath(defaultLocation.kind === "path" ? defaultLocation.value : "");
     setRestoredCloudSession(cloudSession);
     clearSelection();
     preview.reset();
@@ -244,17 +255,18 @@ function Workspace({ mode, setMode }: { mode: PaletteMode; setMode: (mode: Palet
   }, [providerId, cloudSession, restoredCloudSession]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const loadError = providers.error ?? definitions.error ?? oneDriveStatus.error ?? localSettings.error;
-  const activeProvider = providers.data?.find((provider) => provider.id === providerId);
-  const providerName = activeProvider?.name ?? providerId;
+  const providerName = activeStorage?.name ?? storageId;
   const settingsLoading = providerId === "local" ? localSettings.isPending : oneDriveStatus.isPending;
 
   const navigate = (nextPath: string) => {
+    if (execution.isPending || updateLocalRoot.isPending || pickLocalRoot.isPending) return;
     setPath(nextPath);
     if (providerId === "onedrive") setCloudPath(nextPath);
   };
 
   const selectProvider = (nextProviderId: string) => {
-    setProviderId(nextProviderId);
+    if (execution.isPending || updateLocalRoot.isPending || pickLocalRoot.isPending) return;
+    setStorageId(nextProviderId);
     setPath("");
     setCloudPath("");
     setRestoredCloudSession(null);
@@ -265,7 +277,7 @@ function Workspace({ mode, setMode }: { mode: PaletteMode; setMode: (mode: Palet
   const setDefaultCloudPath = () => {
     if (!cloudAccountId || !cloudReady || !files.isSuccess || files.isFetching || files.error) return;
     try {
-      saveDefaultCloudPath(providerId, cloudAccountId, files.data.path);
+      saveDefaultCloudLocation(storageId, cloudAccountId, files.data.location!);
       notify(`已将“${files.data.path || "根目录"}”设为当前账号的默认路径。`);
     } catch {
       notify("默认路径保存失败，请检查浏览器存储权限或可用空间。", "error");
@@ -306,12 +318,13 @@ function Workspace({ mode, setMode }: { mode: PaletteMode; setMode: (mode: Palet
         {providers.isPending && <Skeleton variant="rounded" height={80} aria-label="正在加载存储位置" />}
         {(providers.data ?? []).map((provider) => (
           <ListItemButton
-            key={provider.id}
-            selected={view === "workspace" && provider.id === providerId}
-            onClick={() => selectProvider(provider.id)}
+            disabled={execution.isPending || updateLocalRoot.isPending || pickLocalRoot.isPending || !provider.enabled}
+            key={provider.storage_id}
+            selected={view === "workspace" && provider.storage_id === storageId}
+            onClick={() => selectProvider(provider.storage_id)}
           >
             <ListItemIcon>
-              {provider.id === "onedrive" ? <CloudQueueRoundedIcon /> : <ComputerRoundedIcon />}
+              {provider.provider_type === "onedrive" ? <CloudQueueRoundedIcon /> : <ComputerRoundedIcon />}
             </ListItemIcon>
             <ListItemText primary={provider.name} />
           </ListItemButton>
@@ -380,7 +393,7 @@ function Workspace({ mode, setMode }: { mode: PaletteMode; setMode: (mode: Palet
 
             {view === "settings" && (
               <Suspense fallback={<SecondaryPageFallback />}>
-                <SettingsPage mode={mode} onModeChange={setMode} onBack={() => setView("workspace")} />
+                <SettingsPage executingStorageId={execution.isPending ? storageId : undefined} mode={mode} onModeChange={setMode} onBack={() => setView("workspace")} />
               </Suspense>
             )}
 
@@ -418,7 +431,7 @@ function Workspace({ mode, setMode }: { mode: PaletteMode; setMode: (mode: Palet
                         <Button
                           type="submit"
                           variant="contained"
-                          disabled={!oneDriveStatus.data?.connected}
+                          disabled={!oneDriveStatus.data?.connected || execution.isPending}
                           sx={{ minHeight: 36, px: 1.5, py: 1, whiteSpace: "nowrap" }}
                         >
                           打开文件夹
@@ -456,7 +469,7 @@ function Workspace({ mode, setMode }: { mode: PaletteMode; setMode: (mode: Palet
                           type="button"
                           variant="outlined"
                           onClick={() => pickLocalRoot.mutate()}
-                          disabled={pickLocalRoot.isPending}
+                          disabled={pickLocalRoot.isPending || execution.isPending || activeStorage?.busy}
                           sx={{ minHeight: 36, px: 1.5, py: 1, whiteSpace: "nowrap" }}
                         >
                           {pickLocalRoot.isPending ? "等待选择…" : "浏览…"}
@@ -464,7 +477,7 @@ function Workspace({ mode, setMode }: { mode: PaletteMode; setMode: (mode: Palet
                         <Button
                           type="submit"
                           variant="contained"
-                          disabled={!localRoot.trim() || updateLocalRoot.isPending}
+                          disabled={!localRoot.trim() || updateLocalRoot.isPending || execution.isPending || activeStorage?.busy}
                           sx={{ minHeight: 36, px: 1.5, py: 1, whiteSpace: "nowrap" }}
                         >
                           {updateLocalRoot.isPending ? "切换中…" : "使用此文件夹"}
@@ -473,6 +486,8 @@ function Workspace({ mode, setMode }: { mode: PaletteMode; setMode: (mode: Palet
                     )}
                   </div>
                   <div className="location-feedback">
+                    {!activeStorage?.enabled && !providers.isPending && <Alert severity="warning">当前存储已停用或删除，请选择其他连接。</Alert>}
+                    {files.data && <Typography variant="body2" color="text.secondary">当前目录：{files.data.path || "根目录"}</Typography>}
                     {cloudConnected && !cloudAccountId && (
                       <Alert severity="info">当前账号缺少账号 ID，仍可浏览文件；请重新登录后设置默认路径。</Alert>
                     )}
@@ -492,6 +507,7 @@ function Workspace({ mode, setMode }: { mode: PaletteMode; setMode: (mode: Palet
                   <div className="workspace-primary">
                     {files.data && (providerId === "local" || cloudReady) ? (
                       <FileBrowser
+                        onNavigateLocation={(next) => { if (!execution.isPending) { setLocation(next); setCloudPath(""); } }}
                         listing={files.data}
                         providerName={providerName}
                         selectedIds={selectedIds}
@@ -505,21 +521,25 @@ function Workspace({ mode, setMode }: { mode: PaletteMode; setMode: (mode: Palet
                           });
                         }}
                         onToggle={(fileId) => {
+                          if (execution.isPending) return;
                           toggleSelected(fileId);
                           preview.reset();
                           execution.reset();
                         }}
                         onSelectAll={(visibleIds) => {
+                          if (execution.isPending) return;
                           setSelectedIds(visibleIds);
                           preview.reset();
                           execution.reset();
                         }}
                         onClearSelection={() => {
+                          if (execution.isPending) return;
                           clearSelection();
                           preview.reset();
                           execution.reset();
                         }}
                         onInvertSelection={(visibleIds) => {
+                          if (execution.isPending) return;
                           const selected = new Set(selectedIds);
                           setSelectedIds(visibleIds.filter((id) => !selected.has(id)));
                           preview.reset();
@@ -551,10 +571,10 @@ function Workspace({ mode, setMode }: { mode: PaletteMode; setMode: (mode: Palet
                       </section>
                     )}
                     <PreviewPanel
-                      preview={preview.data}
+                      preview={previewData}
                       execution={execution.data}
                       providerName={providerName}
-                      error={preview.error?.message}
+                      error={preview.variables?.contextKey === previewContext ? preview.error?.message : undefined}
                       executeError={execution.error?.message}
                     />
                   </div>
@@ -564,6 +584,7 @@ function Workspace({ mode, setMode }: { mode: PaletteMode; setMode: (mode: Palet
                       isLoading={definitions.isPending}
                       rules={rules}
                       onChange={(nextRules) => {
+                        if (execution.isPending) return;
                         // 规则变化后旧预览立即失效，避免用户误读过期结果。
                         setRules(nextRules);
                         preview.reset();
@@ -571,18 +592,19 @@ function Workspace({ mode, setMode }: { mode: PaletteMode; setMode: (mode: Palet
                       }}
                     />
                     <RenameActions
-                      preview={preview.data}
+                      preview={previewData}
                       providerName={providerName}
                       selectedCount={currentSelectedIds.length}
                       isPreviewing={preview.isPending}
                       isExecuting={execution.isPending}
+                      isBlocked={updateLocalRoot.isPending || pickLocalRoot.isPending || !activeStorage?.enabled || activeStorage.busy}
                       hasExecuted={Boolean(execution.data)}
                       progress={executionProgress.data}
                       progressError={executionProgress.error?.message}
                       executeError={execution.error?.message}
                       onPreview={() => {
                         execution.reset();
-                        preview.mutate();
+                        preview.mutate({ contextKey: previewContext, storageId, location, fileIds: currentSelectedIds, rules });
                       }}
                       onExecute={(previewId) => execution.mutate(previewId)}
                     />

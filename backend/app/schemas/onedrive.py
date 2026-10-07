@@ -1,4 +1,5 @@
 from pydantic import BaseModel, Field, field_validator
+from app.schemas.storage import AuthorizationStart, AuthorizationStatus
 
 
 class OneDriveSettingsUpdate(BaseModel):
@@ -16,13 +17,9 @@ class OneDriveSettingsResponse(BaseModel):
     redirect_uri: str
 
 
-class OneDriveAuthStatus(BaseModel):
-    configured: bool
-    connected: bool
-    account_id: str | None = None
-    account_display_name: str | None = None
-    account_email: str | None = None
+class OneDriveAuthStatus(AuthorizationStatus):
+    pass
 
 
-class OneDriveAuthStartResponse(BaseModel):
-    authorization_url: str
+class OneDriveAuthStartResponse(AuthorizationStart):
+    pass

@@ -4,6 +4,7 @@ import hashlib
 import json
 import logging
 import secrets
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -11,7 +12,7 @@ from urllib.parse import urlencode
 
 import httpx
 
-from app.core.errors import AuthenticationError, ProviderError, ValidationError
+from app.core.errors import AuthenticationError, ProviderError, StorageConnectionChangedError, ValidationError
 from app.schemas.onedrive import (
     OneDriveAuthStartResponse,
     OneDriveAuthStatus,
@@ -33,6 +34,8 @@ logger = logging.getLogger("onedriver_renamer.onedrive_auth")
 class PendingAuthorization:
     code_verifier: str
     expires_at: datetime
+    redirect_uri: str
+    generation: int
 
 
 @dataclass(slots=True)
@@ -49,10 +52,18 @@ class OneDriveAuthService:
         *,
         credentials_file: Path | None = None,
         timeout: float = 20.0,
+        initial_state: dict[str, str] | None = None,
+        persist: Callable[[dict[str, str]], None] | None = None,
+        before_change: Callable[[], None] | None = None,
     ) -> None:
         self.redirect_uri = redirect_uri
         self.credentials_file = credentials_file
         self.timeout = timeout
+        self._initial_state = initial_state
+        self._persist = persist
+        self._before_change = before_change
+        self._generation = 0
+        self._finishing = False
         self._client_id: str | None = None
         self._tokens: TokenSet | None = None
         self._account_id: str | None = None
@@ -72,7 +83,7 @@ class OneDriveAuthService:
     def status(self) -> OneDriveAuthStatus:
         return OneDriveAuthStatus(
             configured=self.configured,
-            connected=self._tokens is not None,
+            connected=self._tokens is not None and not self._finishing,
             account_id=self._account_id,
             account_display_name=self._account_display_name,
             account_email=self._account_email,
@@ -83,10 +94,13 @@ class OneDriveAuthService:
         return bool(self._client_id)
 
     def configure(self, client_id: str) -> OneDriveSettingsResponse:
+        if self._before_change is not None:
+            self._before_change()
         client_id = client_id.strip()
         if not client_id:
             raise ValidationError("OneDrive App ID is required")
         if self._client_id != client_id:
+            self._generation += 1
             # App ID 变化后，旧应用签发的刷新令牌不可继续使用。
             self._tokens = None
             self._account_id = None
@@ -98,16 +112,24 @@ class OneDriveAuthService:
         return self.settings()
 
     def clear(self) -> None:
+        if self._before_change is not None:
+            self._before_change()
         self._delete_credentials()
+        self._generation += 1
         self._client_id = None
         self._tokens = None
         self._account_id = None
         self._account_display_name = None
         self._account_email = None
         self._pending.clear()
+        if self._persist is not None:
+            self._persist_payload({})
 
     def disconnect(self) -> None:
         """Remove persisted account authorization while retaining the App ID."""
+        if self._before_change is not None:
+            self._before_change()
+        self._generation += 1
         self._tokens = None
         self._account_id = None
         self._account_display_name = None
@@ -115,7 +137,7 @@ class OneDriveAuthService:
         self._pending.clear()
         self._save_state()
 
-    def start_authorization(self) -> OneDriveAuthStartResponse:
+    def start_authorization(self, redirect_uri: str | None = None) -> OneDriveAuthStartResponse:
         client_id = self._require_client_id()
         # 每次发起登录都先清除旧账号令牌，确保切换账号不会回退到旧会话。
         self.disconnect()
@@ -128,12 +150,14 @@ class OneDriveAuthService:
         self._pending[state] = PendingAuthorization(
             code_verifier=verifier,
             expires_at=datetime.now(UTC) + timedelta(minutes=10),
+            redirect_uri=redirect_uri or self.redirect_uri,
+            generation=self._generation,
         )
         query = urlencode(
             {
                 "client_id": client_id,
                 "response_type": "code",
-                "redirect_uri": self.redirect_uri,
+                "redirect_uri": redirect_uri or self.redirect_uri,
                 "response_mode": "query",
                 "scope": SCOPES,
                 "state": state,
@@ -146,30 +170,58 @@ class OneDriveAuthService:
         return OneDriveAuthStartResponse(authorization_url=f"{AUTHORIZE_URL}?{query}")
 
     async def finish_authorization(self, code: str, state: str) -> None:
+        if self._before_change is not None:
+            self._before_change()
         self._purge_expired_states()
         pending = self._pending.pop(state, None)
         if pending is None:
             raise AuthenticationError("OneDrive authorization state is invalid or expired")
         client_id = self._require_client_id()
-        payload = await self._token_request(
-            {
-                "client_id": client_id,
-                "code": code,
-                "redirect_uri": self.redirect_uri,
-                "grant_type": "authorization_code",
-                "code_verifier": pending.code_verifier,
-                "scope": SCOPES,
-            }
+        previous_session = (
+            self._tokens, self._account_id, self._account_display_name, self._account_email
         )
-        self._store_tokens(payload)
+        committed = False
+        self._finishing = True
         try:
-            await self._load_account_profile()
-        except (AuthenticationError, ProviderError):
-            # 账号资料只用于显示，读取失败不能让有效的 OneDrive 授权失效。
-            logger.warning("could not load connected OneDrive account profile")
-        self._save_state()
+            payload = await self._token_request(
+                {
+                    "client_id": client_id,
+                    "code": code,
+                    "redirect_uri": pending.redirect_uri,
+                    "grant_type": "authorization_code",
+                    "code_verifier": pending.code_verifier,
+                    "scope": SCOPES,
+                }
+            )
+            if pending.generation != self._generation:
+                raise StorageConnectionChangedError("Storage changed during authorization")
+            if self._before_change is not None:
+                self._before_change()
+            self._store_tokens(payload, persist=False)
+            try:
+                await self._load_account_profile()
+            except (AuthenticationError, ProviderError):
+                # 账号资料只用于显示，读取失败不能让有效的 OneDrive 授权失效。
+                logger.warning("could not load connected OneDrive account profile")
+            if pending.generation != self._generation:
+                raise StorageConnectionChangedError("Storage changed during authorization")
+            if self._before_change is not None:
+                self._before_change()
+            self._save_state()
+            committed = True
+        finally:
+            # A rejected callback must not expose tokens that were never committed.
+            # A newer configure/disconnect operation owns its own session instead.
+            if not committed and pending.generation == self._generation:
+                (
+                    self._tokens, self._account_id,
+                    self._account_display_name, self._account_email,
+                ) = previous_session
+            self._finishing = False
 
     async def access_token(self, *, force_refresh: bool = False) -> str:
+        if self._finishing:
+            raise AuthenticationError("OneDrive authorization is still being completed")
         if self._tokens is None:
             raise AuthenticationError("OneDrive account is not connected")
         token_before_refresh = self._tokens.access_token
@@ -196,10 +248,11 @@ class OneDriveAuthService:
 
     async def _refresh_access_token(self) -> None:
         if self._tokens is None or not self._tokens.refresh_token:
-            self.disconnect()
+            self._expire_session()
             raise AuthenticationError("OneDrive authorization expired; connect again")
         client_id = self._require_client_id()
         previous_refresh_token = self._tokens.refresh_token
+        generation = self._generation
         try:
             payload = await self._token_request(
                 {
@@ -210,11 +263,24 @@ class OneDriveAuthService:
                 }
             )
         except AuthenticationError:
-            self.disconnect()
+            self._expire_session()
             raise
+        if generation != self._generation:
+            raise StorageConnectionChangedError("Storage changed during token refresh")
         self._store_tokens(payload, fallback_refresh_token=previous_refresh_token)
 
+    def _expire_session(self) -> None:
+        # Provider-detected revocation can occur during execution; user edits remain blocked.
+        self._generation += 1
+        self._tokens = None
+        self._account_id = None
+        self._account_display_name = None
+        self._account_email = None
+        self._pending.clear()
+        self._save_state()
+
     async def _load_account_profile(self) -> None:
+        generation = self._generation
         if self._tokens is None:
             raise AuthenticationError("OneDrive account is not connected")
         try:
@@ -231,6 +297,8 @@ class OneDriveAuthService:
             raise ProviderError("Microsoft Graph returned invalid account data") from exc
         if response.is_error or not isinstance(payload, dict):
             raise AuthenticationError("Could not verify the connected Microsoft account")
+        if generation != self._generation:
+            raise StorageConnectionChangedError("Storage changed while reading the account profile")
         # Graph 用户 ID 是账号标识，不是应用 client_id 或云盘 drive ID。
         account_id = payload.get("id")
         self._account_id = (
@@ -274,6 +342,7 @@ class OneDriveAuthService:
         payload: dict[str, object],
         *,
         fallback_refresh_token: str | None = None,
+        persist: bool = True,
     ) -> None:
         access_token = payload.get("access_token")
         refresh_token = payload.get("refresh_token", fallback_refresh_token)
@@ -292,7 +361,8 @@ class OneDriveAuthService:
             expires_at=datetime.now(UTC) + timedelta(seconds=max(0, int(expires_in))),
         )
         # 刷新令牌可能在每次刷新时轮换，必须立即替换磁盘中的旧值。
-        self._save_state()
+        if persist:
+            self._save_state()
 
     def _require_client_id(self) -> str:
         if not self.configured or self._client_id is None:
@@ -308,16 +378,16 @@ class OneDriveAuthService:
         }
 
     def _load_credentials(self) -> None:
-        if self.credentials_file is None or not self.credentials_file.exists():
-            return
-        try:
-            payload = json.loads(self.credentials_file.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
-            logger.warning(
-                "could not load OneDrive credentials file path=%s",
-                self.credentials_file,
-            )
-            return
+        if self._initial_state is not None:
+            payload = self._initial_state
+        else:
+            if self.credentials_file is None or not self.credentials_file.exists():
+                return
+            try:
+                payload = json.loads(self.credentials_file.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                logger.warning("could not load OneDrive credentials file path=%s", self.credentials_file)
+                return
         if not isinstance(payload, dict):
             return
         client_id = payload.get("client_id")
@@ -347,11 +417,8 @@ class OneDriveAuthService:
             self._save_state()
 
     def _save_state(self) -> None:
-        if self.credentials_file is None or self._client_id is None:
+        if self._client_id is None:
             return
-        temporary = self.credentials_file.with_name(
-            f"{self.credentials_file.name}.tmp"
-        )
         payload = {"client_id": self._client_id}
         if self._tokens is not None and self._tokens.refresh_token:
             payload["refresh_token"] = self._tokens.refresh_token
@@ -361,6 +428,12 @@ class OneDriveAuthService:
             payload["account_display_name"] = self._account_display_name
         if self._account_email:
             payload["account_email"] = self._account_email
+        if self._persist is not None:
+            self._persist_payload(payload)
+            return
+        if self.credentials_file is None:
+            return
+        temporary = self.credentials_file.with_name(f"{self.credentials_file.name}.tmp")
         try:
             self.credentials_file.parent.mkdir(parents=True, exist_ok=True)
             temporary.write_text(
@@ -379,6 +452,23 @@ class OneDriveAuthService:
                     temporary,
                 )
             raise ProviderError("Could not save OneDrive authorization locally") from exc
+
+    def _persist_payload(self, payload: dict[str, str]) -> None:
+        assert self._persist is not None
+        try:
+            self._persist(payload)
+        except ProviderError:
+            # Restore the last committed authorization after an atomic persistence failure.
+            self._tokens = None
+            self._client_id = None
+            self._account_id = None
+            self._account_display_name = None
+            self._account_email = None
+            self._pending.clear()
+            self._generation += 1
+            self._load_credentials()
+            raise
+        self._initial_state = payload.copy()
 
     def _delete_credentials(self) -> None:
         if self.credentials_file is None:

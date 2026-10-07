@@ -11,6 +11,7 @@ import type {
   OneDriveAuthStart,
   OneDriveAuthStatus,
   OneDriveSettings,
+  StorageInfo, StorageLocation, StorageCreate, StorageUpdate, StorageProviderDefinition,
 } from "../types";
 
 export class ApiError extends Error {
@@ -138,3 +139,19 @@ export function executePreview(previewId: string): Promise<ExecuteResponse> {
 export function fetchRenameProgress(previewId: string): Promise<RenameProgress> {
   return request(`/rename/progress/${encodeURIComponent(previewId)}`);
 }
+
+const storageUrl = (id: string) => `/storages/${encodeURIComponent(id)}`;
+const jsonPost = (body: unknown): RequestInit => ({ method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+
+export const fetchStorageProviders = (): Promise<StorageProviderDefinition[]> => request("/storage-providers");
+export const fetchStorages = (): Promise<StorageInfo[]> => request("/storages");
+export const fetchStorage = (id: string): Promise<StorageInfo> => request(storageUrl(id));
+export const createStorage = (body: StorageCreate): Promise<StorageInfo> => request("/storages", jsonPost(body));
+export const updateStorage = (id: string, body: StorageUpdate): Promise<StorageInfo> => request(storageUrl(id), { ...jsonPost(body), method: "PUT" });
+export const deleteStorage = (id: string): Promise<void> => request(storageUrl(id), { method: "DELETE" });
+export const fetchStorageFiles = (id: string, location: StorageLocation): Promise<DirectoryListing> => request(`${storageUrl(id)}/files/list`, jsonPost({ location }));
+export const createStoragePreview = (id: string, location: StorageLocation, fileIds: string[], rules: RuleSpec[]): Promise<PreviewResponse> => request(`${storageUrl(id)}/rename/preview`, jsonPost({ location, file_ids: fileIds, rules }));
+export const fetchStorageAuthStatus = (id: string): Promise<OneDriveAuthStatus> => request(`${storageUrl(id)}/auth/status`);
+export const startStorageAuth = (id: string): Promise<OneDriveAuthStart & { redirect_uri: string }> => request(`${storageUrl(id)}/auth/start`, { method: "POST" });
+export const disconnectStorage = (id: string): Promise<void> => request(`${storageUrl(id)}/auth/session`, { method: "DELETE" });
+export const pickStorageFolder = (id: string): Promise<LocalFolderPick> => request(`${storageUrl(id)}/local/pick`, { method: "POST" });

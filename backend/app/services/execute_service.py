@@ -5,7 +5,7 @@ from typing import Literal
 from time import monotonic
 from uuid import uuid4
 
-from app.core.errors import AppError, NotFoundError, PreviewExpiredError, ValidationError
+from app.core.errors import AppError, NotFoundError, PreviewExpiredError, ValidationError, RenameOutcomeUnknownError, ProviderError
 from app.providers.base import RenameRequest, StorageProvider
 from app.providers.registry import ProviderRegistry
 from app.schemas.files import FileItem
@@ -63,47 +63,48 @@ class ExecuteService:
         # 单进程内串行执行，避免两个批次同时争用相同目录中的目标名称。
         async with self._lock:
             snapshot = self.previews.get(preview_id)
-            self._purge_progress()
-            progress = RenameProgress(
-                preview_id=preview_id,
-                total=sum(item.changed for item in snapshot.response.items),
-                phase="validating",
-            )
-            # 活跃批次不超时清除；完成后保留十分钟供界面读取最终状态。
-            self._progress[preview_id] = (float("inf"), progress)
-            try:
-                siblings = await self._revalidate(snapshot)
-                self.previews.consume(preview_id)
-                response = await self._execute_snapshot(snapshot, siblings, progress)
-                progress.processed = progress.total
-                progress.phase = "finished"
-            except BaseException as exc:
-                progress.phase = "failed"
-                progress.error = exc.message if isinstance(exc, AppError) else "Rename execution interrupted"
-                raise
-            finally:
-                self._progress[preview_id] = (monotonic() + 600, progress)
-            for item in response.items:
-                logger.info(
-                    "rename execution provider=%s file_id=%s status=%s error=%s",
-                    snapshot.request.provider,
-                    item.file_id,
-                    item.status,
-                    item.error,
+            with self.providers.execution(snapshot.request.provider, snapshot.connection_revision):
+                self._purge_progress()
+                progress = RenameProgress(
+                    preview_id=preview_id,
+                    total=sum(item.changed for item in snapshot.response.items),
+                    phase="validating",
                 )
-            return response
+                # 活跃批次不超时清除；完成后保留十分钟供界面读取最终状态。
+                self._progress[preview_id] = (float("inf"), progress)
+                try:
+                    siblings = await self._revalidate(snapshot)
+                    self.previews.consume(preview_id)
+                    response = await self._execute_snapshot(snapshot, siblings, progress)
+                    progress.processed = progress.total
+                    progress.phase = "finished"
+                except BaseException as exc:
+                    progress.phase = "failed"
+                    progress.error = exc.message if isinstance(exc, AppError) else "Rename execution interrupted"
+                    raise
+                finally:
+                    self._progress[preview_id] = (monotonic() + 600, progress)
+                for item in response.items:
+                    logger.info(
+                        "rename execution provider=%s file_id=%s status=%s error=%s",
+                        snapshot.request.provider,
+                        item.file_id,
+                        item.status,
+                        item.error,
+                    )
+                return response
 
     async def _revalidate(self, snapshot: PreviewSnapshot) -> list[FileItem]:
         if not snapshot.response.valid:
             raise ValidationError("Rename preview contains invalid items")
 
         provider = self.providers.get(snapshot.request.provider)
-        parent_paths = {source.parent_path for source in snapshot.sources}
+        parent_paths = {provider.parent_key(source) for source in snapshot.sources}
         if len(parent_paths) != 1:
             raise PreviewExpiredError("Rename preview source directory changed")
         parent_path = next(iter(parent_paths))
         try:
-            siblings = await provider.list_files(parent_path)
+            siblings = await provider.list_siblings(snapshot.sources[0])
             by_id = {item.id: item for item in siblings}
             sources = [by_id[file_id] for file_id in snapshot.request.file_ids]
             items, sources, valid = await self.preview_service.evaluate(
@@ -128,6 +129,30 @@ class ExecuteService:
         return siblings
 
     @staticmethod
+    async def _safe_rename_many(provider: StorageProvider, requests: list[RenameRequest]) -> dict[str, FileItem | AppError]:
+        try:
+            outcomes = await provider.rename_many(requests)
+        except AppError as exc:
+            outcomes = {request.file_id: exc for request in requests}
+        # Never replay a write whose response was lost. Reconcile each opaque ID instead.
+        for request in requests:
+            outcome = outcomes[request.file_id]
+            if not isinstance(outcome, RenameOutcomeUnknownError):
+                continue
+            try:
+                current = await provider.get_metadata(request.file_id)
+            except AppError:
+                continue
+            if current.name == request.new_name:
+                outcomes[request.file_id] = current
+            else:
+                outcomes[request.file_id] = ProviderError(
+                    "Rename target was not reached; current name was verified",
+                    details={"actual_name": current.name},
+                )
+        return outcomes
+
+    @staticmethod
     async def _rename_in_batches(
         provider: StorageProvider,
         requests: list[RenameRequest],
@@ -135,11 +160,16 @@ class ExecuteService:
     ) -> dict[str, FileItem | AppError]:
         outcomes: dict[str, FileItem | AppError] = {}
         # 保留 Provider 的批处理能力；每批完成后发布真实计数并让出事件循环。
-        for offset in range(0, len(requests), 20):
-            batch = requests[offset:offset + 20]
-            outcomes.update(await provider.rename_many(batch))
+        for offset in range(0, len(requests), provider.execution_batch_size):
+            batch = requests[offset:offset + provider.execution_batch_size]
+            batch_outcomes = await ExecuteService._safe_rename_many(provider, batch)
+            outcomes.update(batch_outcomes)
             if progress is not None:
                 progress.processed += len(batch)
+            if any(isinstance(outcome, RenameOutcomeUnknownError) for outcome in batch_outcomes.values()):
+                for request in requests[offset + len(batch):]:
+                    outcomes[request.file_id] = ProviderError("Rename was not attempted after an unknown write outcome")
+                break
             await asyncio.sleep(0)
         return outcomes
 
@@ -148,7 +178,7 @@ class ExecuteService:
         identity_changed = (
             before.id != current.id
             or before.name != current.name
-            or before.parent_path != current.parent_path
+            or StorageProvider.parent_key(before) != StorageProvider.parent_key(current)
             or before.is_directory != current.is_directory
         )
         if identity_changed:
@@ -179,15 +209,14 @@ class ExecuteService:
         if not changed:
             return self._response(snapshot.preview_id, results)
 
-        original_owners = {
-            provider.normalize_name(item.original_name): item.file_id
-            for item in snapshot.response.items
-        }
+        original_owners: dict[str, set[str]] = {}
+        for item in snapshot.response.items:
+            original_owners.setdefault(provider.normalize_name(item.original_name), set()).add(item.file_id)
         staged_items: list[PreviewItem] = []
         direct_items: list[PreviewItem] = []
         for item in changed:
-            owner = original_owners.get(provider.normalize_name(item.new_name))
-            if owner is not None and owner != item.file_id:
+            owners = original_owners.get(provider.normalize_name(item.new_name), set())
+            if owners - {item.file_id}:
                 staged_items.append(item)
             else:
                 direct_items.append(item)
@@ -204,6 +233,8 @@ class ExecuteService:
             outcome = staging_results[item.file_id]
             if isinstance(outcome, AppError):
                 results[item.file_id].error = outcome.message
+                results[item.file_id].error_code = outcome.code
+                results[item.file_id].actual_name = outcome.details.get("actual_name")
             else:
                 staged.append(StagedRename(preview=item, temporary=outcome))
         if len(staged) != len(staged_items):
@@ -226,6 +257,8 @@ class ExecuteService:
             outcome = direct_results[item.file_id]
             if isinstance(outcome, AppError):
                 results[item.file_id].error = outcome.message
+                results[item.file_id].error_code = outcome.code
+                results[item.file_id].actual_name = outcome.details.get("actual_name")
             else:
                 renamed_direct.append(DirectRename(preview=item, current=outcome))
         if len(renamed_direct) != len(direct_items):
@@ -252,9 +285,9 @@ class ExecuteService:
             # 有依赖的直接重命名可能回滚，只有整个直接阶段成功才计入。
             progress.processed += len(direct_items)
 
-        for offset in range(0, len(staged), 20):
-            batch = staged[offset:offset + 20]
-            final_results = await provider.rename_many([
+        for offset in range(0, len(staged), provider.execution_batch_size):
+            batch = staged[offset:offset + provider.execution_batch_size]
+            final_results = await self._safe_rename_many(provider, [
                 RenameRequest(item.temporary.id, item.preview.new_name) for item in batch
             ])
             for staged_item in batch:
@@ -266,9 +299,15 @@ class ExecuteService:
                 else:
                     progress.phase = "rollback"
                     results[item.file_id].error = outcome.message
+                    results[item.file_id].error_code = outcome.code
+                    results[item.file_id].actual_name = outcome.details.get("actual_name")
                     await self._rollback_one(provider, staged_item, results[item.file_id])
                     progress.phase = "renaming"
                 progress.processed += 1
+            if any(isinstance(outcome, RenameOutcomeUnknownError) for outcome in final_results.values()):
+                remaining = staged[offset + len(batch):]
+                await self._rollback_staging(provider, remaining, results, "Stopped after an unknown write outcome")
+                return self._response(snapshot.preview_id, results)
             await asyncio.sleep(0)
 
         return self._response(snapshot.preview_id, results)
@@ -281,14 +320,18 @@ class ExecuteService:
     ) -> list[str]:
         occupied = {provider.normalize_name(sibling.name) for sibling in siblings}
         names: list[str] = []
-        for _item in items:
-            while True:
-                candidate = f"onedriver-renamer-{uuid4().hex}"
+        sources = {item.id: item for item in siblings}
+        for item in items:
+            # Shorten only when provider path limits reject the usual temporary name.
+            candidates = [f"onedriver-renamer-{uuid4().hex}"] + [uuid4().hex[:width] for width in (32, 16, 8, 4, 2, 1) for _ in range(8)]
+            for candidate in candidates:
                 normalized = provider.normalize_name(candidate)
-                if normalized not in occupied and provider.validate_name(candidate) is None:
+                if normalized not in occupied and provider.validate_target_name(sources[item.file_id], candidate) is None:
                     occupied.add(normalized)
                     names.append(candidate)
                     break
+            else:
+                raise ValidationError("Could not allocate a valid temporary name in this directory")
         return names
 
     async def _rollback_staging(
@@ -302,13 +345,17 @@ class ExecuteService:
             RenameRequest(item.temporary.id, item.preview.original_name)
             for item in reversed(staged)
         ]
-        outcomes = await provider.rename_many(requests)
+        outcomes = await ExecuteService._safe_rename_many(provider, requests)
         for staged_item in staged:
             result = results[staged_item.preview.file_id]
             result.error = reason
             outcome = outcomes[staged_item.temporary.id]
             if isinstance(outcome, AppError):
                 result.error = f"{result.error}; rollback failed: {outcome.message}"
+                result.error_code = outcome.code
+                result.actual_name = None if isinstance(outcome, RenameOutcomeUnknownError) else outcome.details.get("actual_name", staged_item.temporary.name)
+            else:
+                result.actual_name = outcome.name
 
     @staticmethod
     async def _rollback_direct(
@@ -320,7 +367,7 @@ class ExecuteService:
             RenameRequest(item.current.id, item.preview.original_name)
             for item in reversed(renamed)
         ]
-        outcomes = await provider.rename_many(requests)
+        outcomes = await ExecuteService._safe_rename_many(provider, requests)
         for item in renamed:
             result = results[item.preview.file_id]
             result.status = "failed"
@@ -328,6 +375,10 @@ class ExecuteService:
             outcome = outcomes[item.current.id]
             if isinstance(outcome, AppError):
                 result.error = f"{result.error}; rollback failed: {outcome.message}"
+                result.error_code = outcome.code
+                result.actual_name = None if isinstance(outcome, RenameOutcomeUnknownError) else outcome.details.get("actual_name", item.current.name)
+            else:
+                result.actual_name = outcome.name
 
     @staticmethod
     async def _rollback_one(
@@ -335,17 +386,32 @@ class ExecuteService:
         staged: StagedRename,
         result: ExecuteItem,
     ) -> None:
-        try:
-            await provider.rename(staged.temporary.id, staged.preview.original_name)
-        except AppError as rollback_error:
+        if result.error_code == "RENAME_OUTCOME_UNKNOWN":
+            return
+        if result.actual_name is not None and result.actual_name != staged.temporary.name:
+            result.error = f"{result.error}; rollback skipped because the item changed externally"
+            return
+        outcomes = await ExecuteService._safe_rename_many(provider, [RenameRequest(staged.temporary.id, staged.preview.original_name)])
+        outcome = outcomes[staged.temporary.id]
+        if isinstance(outcome, AppError):
             # 明确报告恢复失败，避免把遗留临时文件误报为已恢复。
-            result.error = f"{result.error}; rollback failed: {rollback_error.message}"
+            result.error = f"{result.error}; rollback failed: {outcome.message}"
+            result.error_code = outcome.code
+            result.actual_name = None if isinstance(outcome, RenameOutcomeUnknownError) else outcome.details.get("actual_name", staged.temporary.name)
+        else:
+            result.actual_name = outcome.name
 
     @staticmethod
     def _response(
         preview_id: str, results: dict[str, ExecuteItem]
     ) -> RenameExecuteResponse:
         items = list(results.values())
+        for item in items:
+            if item.status == "renamed":
+                item.actual_name = item.new_name
+                item.error_code = None
+            elif item.status == "skipped":
+                item.actual_name = item.original_name
         renamed = sum(item.status == "renamed" for item in items)
         failed = sum(item.status == "failed" for item in items)
         if failed == 0:

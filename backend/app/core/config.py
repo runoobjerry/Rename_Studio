@@ -15,6 +15,8 @@ class Settings(BaseSettings):
     frontend_origin: str = "http://localhost:5173"
     onedrive_redirect_uri: str = "http://localhost:8000/auth/onedrive/callback"
     onedrive_credentials_file: Path = _BACKEND_ROOT / ".onedrive_credentials.json"
+    storage_state_file: Path = _BACKEND_ROOT / ".storage_connections.json"
+    storage_redirect_uri: str = "http://localhost:8000/auth/storage/callback"
 
     model_config = SettingsConfigDict(
         env_file=("../.env", ".env"),

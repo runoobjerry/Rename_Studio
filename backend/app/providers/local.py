@@ -12,6 +12,7 @@ from app.core.errors import (
 from app.providers.base import StorageProvider
 from app.providers.name_validation import validate_portable_name
 from app.schemas.files import FileItem
+from app.schemas.storage import PathLocation, RootLocation
 
 
 logger = logging.getLogger("onedriver_renamer.local_provider")
@@ -64,6 +65,9 @@ class LocalProvider(StorageProvider):
             is_directory=path.is_dir(),
             size=None if path.is_dir() else stat.st_size,
             modified_at=datetime.fromtimestamp(stat.st_mtime, timezone.utc),
+            location=PathLocation(value=relative) if relative else RootLocation(),
+            parent_location=PathLocation(value=parent) if parent else RootLocation(),
+            can_rename=path != self.root,
         )
 
     async def list_files(self, path: str) -> list[FileItem]:

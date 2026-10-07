@@ -2,7 +2,7 @@ import asyncio
 from collections.abc import Awaitable, Callable
 from datetime import datetime
 from email.utils import parsedate_to_datetime
-from urllib.parse import quote
+from urllib.parse import quote, urlsplit
 
 import httpx
 
@@ -14,11 +14,13 @@ from app.core.errors import (
     RateLimitError,
     RenameConflictError,
     ValidationError,
+    RenameOutcomeUnknownError,
 )
 from app.providers.base import RenameRequest, StorageProvider
 from app.providers.name_validation import validate_onedrive_name
-from app.schemas.files import FileItem
-from app.services.onedrive_auth import OneDriveAuthService
+from app.schemas.files import DirectoryListing, FileItem
+from app.schemas.storage import IdLocation, PathLocation, RootLocation, StorageLocation
+from app.services.connection_auth import ConnectionAuth
 
 
 GRAPH_ROOT = "https://graph.microsoft.com/v1.0"
@@ -26,7 +28,7 @@ MAX_BATCH_SIZE = 20
 MAX_RETRIES = 3
 READ_BATCH_CONCURRENCY = 3
 WRITE_BATCH_CONCURRENCY = 2
-DRIVE_ITEM_SELECT = "id,name,parentReference,folder,size,lastModifiedDateTime"
+DRIVE_ITEM_SELECT = "id,name,parentReference,folder,root,size,lastModifiedDateTime"
 
 
 class OneDriveProvider(StorageProvider):
@@ -35,7 +37,7 @@ class OneDriveProvider(StorageProvider):
 
     def __init__(
         self,
-        auth: OneDriveAuthService,
+        auth: ConnectionAuth,
         *,
         timeout: float = 30.0,
         client: httpx.AsyncClient | None = None,
@@ -44,6 +46,45 @@ class OneDriveProvider(StorageProvider):
         self.timeout = timeout
         self._client = client
         self._owns_client = client is None
+        self._root_id: str | None = None
+        self._root_item: FileItem | None = None
+
+    async def list_directory(self, location: StorageLocation) -> DirectoryListing:
+        if self._root_id is None:
+            root = await self._request_json("GET", f"{GRAPH_ROOT}/me/drive/root")
+            self._root_item = self._to_item(root)
+            self._root_id = self._root_item.id
+        directory_id = self._root_id
+        if isinstance(location, IdLocation):
+            directory_id = location.value
+        elif isinstance(location, PathLocation):
+            # Resolve every segment explicitly: remote duplicate names must not pick an arbitrary object.
+            for segment in location.value.split("/") if location.value else []:
+                listing = await self._list_url(f"{GRAPH_ROOT}/me/drive/items/{quote(directory_id, safe='')}/children")
+                matches = [item for item in listing if item.is_directory and self.normalize_name(item.name) == self.normalize_name(segment)]
+                if not matches:
+                    raise NotFoundError("Directory not found")
+                if len(matches) != 1:
+                    raise ValidationError("Directory path is ambiguous; navigate using its ID")
+                directory_id = matches[0].id
+        directory = self._root_item if directory_id == self._root_id else await self.get_metadata(directory_id)
+        assert directory is not None
+        if not directory.is_directory:
+            raise ValidationError("Selected location is not a directory")
+        canonical = RootLocation() if directory_id == self._root_id else IdLocation(value=directory_id)
+        parent = None if directory_id == self._root_id else directory.parent_location
+        if parent is None and directory_id != self._root_id:
+            raise ProviderError("Microsoft Graph omitted the parent directory ID")
+        if isinstance(parent, IdLocation) and parent.value == self._root_id:
+            parent = RootLocation()
+        items = await self._list_url(f"{GRAPH_ROOT}/me/drive/items/{quote(directory_id, safe='')}/children")
+        for item in items:
+            if item.parent_location is not None and item.parent_location != IdLocation(value=directory_id):
+                raise ProviderError("Microsoft Graph returned an item outside the requested directory")
+            item.parent_location = IdLocation(value=directory_id)
+        path = "" if isinstance(canonical, RootLocation) else directory.path
+        return DirectoryListing(provider=self.id, path=path, parent_path=None if parent is None else directory.parent_path,
+                                location=canonical, parent_location=parent, items=items)
 
     async def list_files(self, path: str) -> list[FileItem]:
         normalized = path.replace("\\", "/").strip("/")
@@ -52,23 +93,33 @@ class OneDriveProvider(StorageProvider):
             url = f"{GRAPH_ROOT}/me/drive/root:/{encoded}:/children"
         else:
             url = f"{GRAPH_ROOT}/me/drive/root/children"
+        return await self._list_url(url)
+
+    async def _list_url(self, url: str) -> list[FileItem]:
         url = f"{url}?$select={DRIVE_ITEM_SELECT}&$top=200"
 
         items: list[FileItem] = []
+        visited: set[str] = set()
         while url:
+            parsed = urlsplit(url)
+            if parsed.scheme != "https" or parsed.netloc != "graph.microsoft.com" or not parsed.path.startswith("/v1.0/") or url in visited:
+                raise ProviderError("Microsoft Graph returned an invalid pagination link")
+            visited.add(url)
             payload = await self._request_json("GET", url)
             raw_items = payload.get("value")
             if not isinstance(raw_items, list):
                 raise ProviderError(
                     "Microsoft Graph returned an invalid directory listing"
                 )
-            items.extend(
-                self._to_item(item)
-                for item in raw_items
-                if isinstance(item, dict)
-            )
+            if any(not isinstance(item, dict) for item in raw_items):
+                raise ProviderError("Microsoft Graph returned an invalid directory item")
+            items.extend(self._to_item(item) for item in raw_items)
             next_link = payload.get("@odata.nextLink")
+            if next_link is not None and (not isinstance(next_link, str) or not next_link):
+                raise ProviderError("Microsoft Graph returned an invalid pagination link")
             url = next_link if isinstance(next_link, str) else ""
+        if len({item.id for item in items}) != len(items):
+            raise ProviderError("Microsoft Graph returned duplicate directory IDs; refresh the directory")
         return sorted(
             items,
             key=lambda item: (not item.is_directory, item.name.casefold()),
@@ -229,10 +280,13 @@ class OneDriveProvider(StorageProvider):
                 for index, request in enumerate(valid)
             ]
         }
-        payload = await self._request_json("POST", f"{GRAPH_ROOT}/$batch", json=body)
+        try:
+            payload = await self._request_json("POST", f"{GRAPH_ROOT}/$batch", json=body)
+        except AppError as exc:
+            return {**invalid, **{request.file_id: exc for request in valid}}
         raw_responses = payload.get("responses")
         if not isinstance(raw_responses, list):
-            raise ProviderError("Microsoft Graph returned an invalid batch response")
+            return {**invalid, **{request.file_id: RenameOutcomeUnknownError("Microsoft Graph returned an invalid write batch response") for request in valid}}
 
         by_index = {
             str(response.get("id")): response
@@ -246,18 +300,25 @@ class OneDriveProvider(StorageProvider):
         for index, request in enumerate(valid):
             response = by_index.get(str(index))
             if response is None:
-                results[request.file_id] = ProviderError(
-                    "Microsoft Graph omitted a batch response"
+                results[request.file_id] = RenameOutcomeUnknownError(
+                    "Microsoft Graph omitted a write response"
                 )
                 continue
             status = response.get("status")
             response_body = response.get("body")
             if not isinstance(status, int):
-                results[request.file_id] = ProviderError(
-                    "Microsoft Graph returned an invalid batch item"
+                results[request.file_id] = RenameOutcomeUnknownError(
+                    "Microsoft Graph returned an invalid write response"
                 )
-            elif 200 <= status < 300 and isinstance(response_body, dict):
-                results[request.file_id] = self._to_item(response_body)
+            elif 200 <= status < 300:
+                try:
+                    if not isinstance(response_body, dict):
+                        raise ProviderError("Missing write metadata")
+                    results[request.file_id] = self._to_item(response_body)
+                except ProviderError:
+                    results[request.file_id] = RenameOutcomeUnknownError("Microsoft Graph returned incomplete write metadata")
+            elif status >= 500:
+                results[request.file_id] = RenameOutcomeUnknownError("Remote write outcome is unknown")
             elif self._is_retryable(status) and attempt < MAX_RETRIES:
                 retry.append(request)
                 headers = response.get("headers")
@@ -276,9 +337,12 @@ class OneDriveProvider(StorageProvider):
         if retry:
             # Graph 批处理需单独重试被限流的子请求，而不是重放已成功的项目。
             await asyncio.sleep(retry_after or min(2**attempt, 8))
-            if retry_auth:
-                await self.auth.access_token(force_refresh=True)
-            results.update(await self._rename_batch(retry, attempt=attempt + 1))
+            try:
+                if retry_auth:
+                    await self.auth.access_token(force_refresh=True)
+                results.update(await self._rename_batch(retry, attempt=attempt + 1))
+            except AppError as exc:
+                results.update({request.file_id: exc for request in retry})
         return results
 
     def validate_name(self, name: str) -> str | None:
@@ -306,6 +370,9 @@ class OneDriveProvider(StorageProvider):
         json: dict[str, object] | None = None,
     ) -> dict[str, object]:
         force_refresh = False
+        writing = method == "PATCH" or (method == "POST" and json is not None and any(
+            request["method"] == "PATCH" for request in json["requests"]
+        ))
         for attempt in range(MAX_RETRIES + 1):
             token = await self.auth.access_token(force_refresh=force_refresh)
             force_refresh = False
@@ -317,6 +384,8 @@ class OneDriveProvider(StorageProvider):
                     json=json,
                 )
             except httpx.HTTPError as exc:
+                if writing:
+                    raise RenameOutcomeUnknownError("Remote write outcome is unknown; metadata must be checked") from exc
                 if attempt < MAX_RETRIES:
                     await asyncio.sleep(min(2**attempt, 8))
                     continue
@@ -325,6 +394,8 @@ class OneDriveProvider(StorageProvider):
             if response.status_code == 401 and attempt < MAX_RETRIES:
                 force_refresh = True
                 continue
+            if response.status_code >= 500 and writing:
+                raise RenameOutcomeUnknownError("Remote write outcome is unknown; metadata must be checked")
             if self._is_retryable(response.status_code) and attempt < MAX_RETRIES:
                 await asyncio.sleep(
                     self._retry_delay(response.headers.get("Retry-After"), attempt)
@@ -333,8 +404,12 @@ class OneDriveProvider(StorageProvider):
             try:
                 payload = response.json()
             except ValueError as exc:
+                if writing:
+                    raise RenameOutcomeUnknownError("Microsoft Graph returned an unreadable write response") from exc
                 raise ProviderError("Microsoft Graph returned invalid data") from exc
             if not isinstance(payload, dict):
+                if writing:
+                    raise RenameOutcomeUnknownError("Microsoft Graph returned an unreadable write response")
                 raise ProviderError("Microsoft Graph returned invalid data")
             if response.is_error:
                 raise self._graph_error(response.status_code, payload)
@@ -376,6 +451,8 @@ class OneDriveProvider(StorageProvider):
         if not isinstance(item_id, str) or not isinstance(name, str):
             raise ProviderError("Microsoft Graph returned incomplete file metadata")
         parent = OneDriveProvider._parent_path(payload.get("parentReference"))
+        parent_reference = payload.get("parentReference")
+        parent_id = parent_reference.get("id") if isinstance(parent_reference, dict) else None
         modified = payload.get("lastModifiedDateTime")
         try:
             modified_at = (
@@ -395,6 +472,9 @@ class OneDriveProvider(StorageProvider):
             is_directory=is_directory,
             size=None if is_directory or not isinstance(size, int) else size,
             modified_at=modified_at,
+            location=RootLocation() if "root" in payload else IdLocation(value=item_id),
+            parent_location=IdLocation(value=parent_id) if isinstance(parent_id, str) and parent_id else None,
+            can_rename=False if "root" in payload else None,
         )
 
     @staticmethod

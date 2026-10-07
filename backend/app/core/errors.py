@@ -53,3 +53,17 @@ class PreviewExpiredError(AppError):
 class PreviewNotFoundError(AppError):
     code = "PREVIEW_NOT_FOUND"
     status_code = 404
+
+
+class StorageBusyError(AppError):
+    code = "STORAGE_BUSY"
+    status_code = 409
+
+
+class StorageConnectionChangedError(AppError):
+    code = "STORAGE_CONNECTION_CHANGED"
+    status_code = 409
+
+
+class RenameOutcomeUnknownError(ProviderError):
+    code = "RENAME_OUTCOME_UNKNOWN"

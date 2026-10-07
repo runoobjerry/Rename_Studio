@@ -4,6 +4,7 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 from app.schemas.rules import RuleSpec
+from app.schemas.storage import StorageLocation
 
 
 class RenamePreviewRequest(BaseModel):
@@ -11,6 +12,7 @@ class RenamePreviewRequest(BaseModel):
     path: str | None = None
     file_ids: list[str] = Field(min_length=1)
     rules: list[RuleSpec] = Field(default_factory=list)
+    location: StorageLocation | None = None
 
 
 class PreviewItem(BaseModel):
@@ -40,6 +42,8 @@ class ExecuteItem(BaseModel):
     new_name: str
     status: Literal["renamed", "skipped", "failed"]
     error: str | None = None
+    error_code: str | None = None
+    actual_name: str | None = None
 
 
 class RenameExecuteResponse(BaseModel):

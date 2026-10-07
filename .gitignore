@@ -8,8 +8,10 @@ secrets.json
 .onedrive_credentials.json.tmp
 .local_settings.json
 .local_settings.json.tmp
+.storage_connections.json
+.storage_connections.json.*.tmp
+*.pre-storage-v1.bak
 AGENTS.md
-docs/
 __pycache__/
 *.py[cod]
 .pytest_cache/

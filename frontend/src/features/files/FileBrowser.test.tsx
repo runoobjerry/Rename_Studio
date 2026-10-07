@@ -35,6 +35,19 @@ const listing = {
 };
 
 describe("FileBrowser", () => {
+  it("navigates same-named folders and parents by opaque location", () => {
+    const navigate = vi.fn();
+    const navigateLocation = vi.fn();
+    render(<FileBrowser listing={{ ...listing, parent_location: { kind: "id", value: "parent-id" }, items: [
+      { ...listing.items[0], id: "first", name: "same", location: { kind: "id", value: "first" } },
+      { ...listing.items[0], id: "second", name: "same", location: { kind: "id", value: "second" } },
+    ] }} providerName="Cloud" selectedIds={[]} onNavigate={navigate} onNavigateLocation={navigateLocation} onToggle={vi.fn()} onSelectAll={vi.fn()} onInvertSelection={vi.fn()} />);
+    fireEvent.click(screen.getAllByRole("button", { name: "same" })[1]);
+    expect(navigateLocation).toHaveBeenCalledWith({ kind: "id", value: "second" });
+    fireEvent.click(screen.getByRole("button", { name: "返回上级" }));
+    expect(navigateLocation).toHaveBeenLastCalledWith({ kind: "id", value: "parent-id" });
+    expect(navigate).not.toHaveBeenCalled();
+  });
   it.each(["light", "dark"] as const)("uses shared icon-only toolbar controls in %s mode without changing the filter", (mode) => {
     const theme = createAppTheme(mode);
     render(<ThemeProvider theme={theme}>

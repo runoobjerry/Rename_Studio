@@ -4,15 +4,16 @@ import LightModeRoundedIcon from "@mui/icons-material/LightModeRounded";
 import { Box, Button, Card, CardContent, Stack, Switch, Typography } from "@mui/material";
 import type { PaletteMode } from "@mui/material";
 
-import { OneDriveSettingsPanel } from "./OneDriveSettingsPanel";
+import { StorageSettingsPanel } from "./StorageSettingsPanel";
 
 interface SettingsPageProps {
   mode: PaletteMode;
   onModeChange: (mode: PaletteMode) => void;
   onBack: () => void;
+  executingStorageId?: string;
 }
 
-export function SettingsPage({ mode, onModeChange, onBack }: SettingsPageProps) {
+export function SettingsPage({ mode, onModeChange, onBack, executingStorageId }: SettingsPageProps) {
   const darkMode = mode === "dark";
 
   return (
@@ -65,7 +66,7 @@ export function SettingsPage({ mode, onModeChange, onBack }: SettingsPageProps) 
           </CardContent>
         </Card>
 
-        <OneDriveSettingsPanel />
+        <StorageSettingsPanel executingStorageId={executingStorageId} />
       </Box>
     </Box>
   );

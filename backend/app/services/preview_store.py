@@ -14,6 +14,7 @@ class PreviewSnapshot:
     request: RenamePreviewRequest
     response: RenamePreviewResponse
     sources: tuple[FileItem, ...]
+    connection_revision: int = 0
 
 
 class PreviewStore:
@@ -27,6 +28,7 @@ class PreviewStore:
         items: list[PreviewItem],
         valid: bool,
         sources: list[FileItem],
+        connection_revision: int = 0,
     ) -> RenamePreviewResponse:
         now = datetime.now(timezone.utc)
         preview_id = str(uuid4())
@@ -43,6 +45,7 @@ class PreviewStore:
             request=request.model_copy(deep=True),
             response=response.model_copy(deep=True),
             sources=tuple(item.model_copy(deep=True) for item in sources),
+            connection_revision=connection_revision,
         )
         return response
 

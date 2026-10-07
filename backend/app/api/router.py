@@ -13,7 +13,7 @@ from app.api.dependencies import (
     get_rule_registry,
 )
 from app.core.config import get_settings
-from app.core.errors import AppError, AuthenticationError
+from app.core.errors import AppError, AuthenticationError, ValidationError
 from app.rules.registry import RuleRegistry
 from app.schemas.common import HealthResponse
 from app.schemas.files import DirectoryListing, ProviderInfo
@@ -86,7 +86,7 @@ async def update_local_settings(
     request: LocalSettingsUpdate,
     service: Annotated[FileService, Depends(get_file_service)],
 ) -> LocalSettingsResponse:
-    return service.configure_local_root(request.root_path)
+    return await service.configure_local_root(request.root_path)
 
 
 @router.post(
@@ -185,7 +185,7 @@ async def finish_onedrive_auth(
     # 只向已配置的前端源通知结果，不把授权码或错误详情写入页面。
     target_origin = json.dumps(get_settings().frontend_origin)
     status = json.dumps("connected" if success else "failed")
-    result_message = json.dumps(message)
+    result_message = json.dumps(message).replace("<", "\\u003c")
     page_message = escape(message)
     html = f"""<!doctype html>
 <html lang=\"en\"><head><meta charset=\"utf-8\"><title>OneDrive authorization</title></head>
@@ -212,6 +212,8 @@ async def preview_rename(
     request: RenamePreviewRequest,
     service: Annotated[PreviewService, Depends(get_preview_service)],
 ) -> RenamePreviewResponse:
+    if service.providers.manager is not None and request.provider not in {"local", "onedrive"}:
+        raise ValidationError("Unknown storage provider", details={"provider": request.provider})
     return await service.preview(request)
 
 

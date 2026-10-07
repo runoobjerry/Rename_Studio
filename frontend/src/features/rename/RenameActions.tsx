@@ -22,6 +22,7 @@ interface RenameActionsProps {
   selectedCount: number;
   isPreviewing: boolean;
   isExecuting: boolean;
+  isBlocked?: boolean;
   hasExecuted: boolean;
   progress?: RenameProgress;
   progressError?: string;
@@ -36,6 +37,7 @@ export function RenameActions({
   selectedCount,
   isPreviewing,
   isExecuting,
+  isBlocked = false,
   hasExecuted,
   progress,
   progressError,
@@ -77,7 +79,7 @@ export function RenameActions({
           fullWidth
           variant="outlined"
           startIcon={isPreviewing ? <CircularProgress size={16} color="inherit" /> : <PreviewRoundedIcon />}
-          disabled={selectedCount === 0 || isPreviewing || isExecuting}
+          disabled={selectedCount === 0 || isPreviewing || isExecuting || isBlocked}
           onClick={onPreview}
         >
           {isPreviewing ? "正在刷新…" : "刷新预览"}
@@ -86,7 +88,7 @@ export function RenameActions({
           fullWidth
           variant="contained"
           startIcon={<PlayArrowRoundedIcon />}
-          disabled={!preview?.valid || changedCount === 0 || isExecuting || hasExecuted}
+          disabled={!preview?.valid || changedCount === 0 || isExecuting || hasExecuted || isBlocked}
           onClick={() => { setApplied(false); setConfirming(true); }}
         >
           开始修改
@@ -115,7 +117,7 @@ export function RenameActions({
           </Button>
           {!isFailed && (
             <Button
-              disabled={isExecuting || hasExecuted || !preview}
+              disabled={isExecuting || hasExecuted || !preview || isBlocked}
               onClick={() => {
                 if (!preview) return;
                 setApplied(true);

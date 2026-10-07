@@ -11,7 +11,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from app.api.router import router
-from app.api.dependencies import get_provider_registry
+from app.api.storage_router import router as storage_router
+from app.api.dependencies import get_storage_manager
 from app.core.config import get_settings
 from app.core.errors import AppError
 
@@ -25,7 +26,8 @@ def create_app() -> FastAPI:
     @asynccontextmanager
     async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
         yield
-        await get_provider_registry().aclose()
+        if get_storage_manager.cache_info().currsize:
+            await get_storage_manager().aclose()
 
     app = FastAPI(title=settings.app_name, version="0.1.0", lifespan=lifespan)
     app.add_middleware(
@@ -104,6 +106,7 @@ def create_app() -> FastAPI:
         )
 
     app.include_router(router)
+    app.include_router(storage_router)
     return app
 
 
