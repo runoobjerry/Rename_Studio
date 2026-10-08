@@ -176,7 +176,7 @@ describe("FileBrowser", () => {
     expect(onNavigate).toHaveBeenCalledWith("folder");
   });
 
-  it("exposes select-all and invert-selection actions", () => {
+  it("exposes visible select-all checkbox and invert-selection actions", () => {
     const onSelectAll = vi.fn();
     const onInvertSelection = vi.fn();
     render(
@@ -191,10 +191,10 @@ describe("FileBrowser", () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "全选" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "选择当前显示的全部项目" }));
     fireEvent.click(screen.getByRole("button", { name: "反选" }));
 
-    expect(onSelectAll).toHaveBeenCalledOnce();
+    expect(onSelectAll).toHaveBeenCalledWith(["folder", "file.txt"]);
     expect(onInvertSelection).toHaveBeenCalledOnce();
   });
 });

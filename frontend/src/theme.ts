@@ -155,7 +155,8 @@ export function createAppTheme(mode: PaletteMode) {
           },
           list: {
             boxSizing: "border-box",
-            padding: MENU_METRICS.inset,
+            // MuiList-padding 的默认纵向留白优先级较高，显式覆盖后保证各类菜单一致。
+            "&.MuiList-padding": { padding: MENU_METRICS.inset },
             display: "flex",
             flexDirection: "column",
             gap: MENU_METRICS.gap,

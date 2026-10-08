@@ -50,7 +50,9 @@ describe("RuleEditor", () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: /添加规则/ }));
+    const addButton = screen.getByRole("button", { name: /添加规则/ });
+    addButton.focus();
+    fireEvent.click(addButton);
     expect(screen.getByRole("menu")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("menuitem", { name: "填充" }));
     expect(onChange).toHaveBeenCalledWith([textRule, DEFAULT_RULES.padding]);
@@ -131,9 +133,8 @@ describe("RuleEditor", () => {
       />,
     );
 
-    fireEvent.change(screen.getByLabelText("操作序数"), {
-      target: { value: "last" },
-    });
+    fireEvent.mouseDown(screen.getByRole("combobox", { name: "操作序数" }));
+    fireEvent.click(screen.getByRole("option", { name: "末个" }));
 
     expect(onChange).toHaveBeenCalledWith([
       expect.objectContaining({
