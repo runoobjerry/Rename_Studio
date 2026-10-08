@@ -1,6 +1,7 @@
 import asyncio
 import logging
 from dataclasses import dataclass
+from itertools import chain
 from typing import Literal
 from time import monotonic
 from uuid import uuid4
@@ -322,8 +323,11 @@ class ExecuteService:
         names: list[str] = []
         sources = {item.id: item for item in siblings}
         for item in items:
-            # Shorten only when provider path limits reject the usual temporary name.
-            candidates = [f"onedriver-renamer-{uuid4().hex}"] + [uuid4().hex[:width] for width in (32, 16, 8, 4, 2, 1) for _ in range(8)]
+            # 按需生成较短候选，首选名称可用时不生成后续 UUID。
+            candidates = chain(
+                (f"onedriver-renamer-{uuid4().hex}",),
+                (uuid4().hex[:width] for width in (32, 16, 8, 4, 2, 1) for _ in range(8)),
+            )
             for candidate in candidates:
                 normalized = provider.normalize_name(candidate)
                 if normalized not in occupied and provider.validate_target_name(sources[item.file_id], candidate) is None:
