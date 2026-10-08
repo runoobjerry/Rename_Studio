@@ -80,40 +80,21 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  min-height: 72px;
-  gap: 16px;
-  padding: 10px 14px;
+  min-height: 44px;
+  gap: 8px;
+  padding: 8px 12px;
 }
 
-.location-identity {
+.location-navigation {
   display: flex;
-  flex: 0 0 auto;
-  align-items: center;
-  min-width: 130px;
-  gap: 10px;
-}
-
-.location-identity h2 {
-  margin: 0;
-  font-size: 20px;
-  white-space: nowrap;
-}
-
-.cloud-path-form {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: center;
-  width: min(760px, 68%);
-  gap: 10px;
-}
-
-.local-path-form,
-.cloud-default-path-form {
-  grid-template-columns: minmax(0, 1fr) auto auto;
-}
-
-.path-input-wrap {
+  flex: 1 1 0;
   min-width: 0;
+  align-items: center;
+  gap: 8px;
+}
+
+.location-navigation > .MuiButton-root {
+  flex-shrink: 0;
 }
 
 .location-feedback:empty {
@@ -432,11 +413,6 @@
     grid-template-columns: 1fr;
   }
 
-  .location-toolbar .cloud-path-form,
-  .location-toolbar .local-path-form {
-    width: 100%;
-  }
-
   .workspace-primary,
   .workspace-rules {
     height: auto;
@@ -454,15 +430,14 @@
     padding-bottom: 32px;
   }
 
-  .location-toolbar,
   .panel-heading {
     align-items: flex-start;
     flex-direction: column;
   }
 
-  .location-toolbar .cloud-path-form,
-  .location-toolbar .local-path-form {
-    grid-template-columns: 1fr;
+  .location-navigation {
+    flex: auto;
+    width: 100%;
   }
 
   .panel-title-line {

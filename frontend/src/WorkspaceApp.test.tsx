@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import * as api from "./api/client";
@@ -30,6 +30,11 @@ beforeEach(() => {
     addListener: vi.fn(), removeListener: vi.fn(),
     addEventListener: vi.fn(), removeEventListener: vi.fn(), dispatchEvent: vi.fn(),
   })));
+  vi.stubGlobal("ResizeObserver", class { observe() {} disconnect() {} });
+  vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (this: HTMLElement) {
+    return { x: 0, y: 0, top: 0, left: 0, bottom: 30, right: 1000,
+      width: this.tagName === "BUTTON" ? 80 : 1000, height: 30, toJSON: () => ({}) };
+  });
   vi.mocked(api.fetchStorages).mockResolvedValue([
     { storage_id: "default-local", provider_type: "local", name: "本地文件", revision: 1, busy: false, config: { root_path: "C:\\files" }, account_id: null, account_display_name: null, account_email: null },
     { storage_id: "user-onedrive", provider_type: "onedrive", name: "OneDrive", revision: 1, busy: false, config: { client_id: "app" }, account_id: "account-a", account_display_name: null, account_email: null },
@@ -147,32 +152,44 @@ describe("inline rule menu integration", () => {
     expect(useRenameStore.getState().rules).toEqual([
       expect.objectContaining({ type: "padding", enabled: true }),
     ]);
-    expect(screen.getByRole("textbox", { name: "本地根文件夹路径" })).toBeInTheDocument();
+    expect(screen.getByRole("navigation", { name: "文件路径" })).toBeInTheDocument();
+    expect(within(screen.getByRole("navigation", { name: "文件路径" })).getByRole("button", { name: "本地文件" })).toBeInTheDocument();
+    expect(document.getElementById("location-title")).toBeNull();
+    expect(screen.queryByRole("textbox", { name: "本地根文件夹路径" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "使用此文件夹" })).not.toBeInTheDocument();
     expect(screen.getByText("1. 填充")).toBeInTheDocument();
     expect(screen.queryByText("返回工作台")).not.toBeInTheDocument();
   });
 });
 
 describe("cloud default path integration", () => {
-  it("restores on provider entry and re-entry, saves the opened path rather than unsent text", async () => {
+  it("restores on entry and re-entry and saves the directory opened through folder navigation", async () => {
+    vi.mocked(api.fetchStorageFiles).mockImplementation(async (provider, location) => ({
+      provider, location, path: location.kind === "root" ? "" : location.value === "document-id" ? "照片/文档" : location.value,
+      parent_path: location.kind === "root" ? null : "", items: [{
+        id: "document-id", name: "文档", path: "照片/文档", parent_path: "照片",
+        location: { kind: "id", value: "document-id" }, is_directory: true, size: null, modified_at: null,
+      }],
+    }));
     saveDefaultCloudLocation("user-onedrive", "account-a", { kind: "path", value: "照片" });
     await openCloud();
-    expect(screen.getByRole("textbox", { name: "云端文件夹路径" })).toHaveValue("照片");
+    expect(screen.getByRole("button", { name: "照片" })).toHaveAttribute("aria-current", "page");
     expect(api.fetchStorageFiles).toHaveBeenCalledWith("user-onedrive", { kind: "path", value: "照片" });
     expect(api.fetchStorageFiles).not.toHaveBeenCalledWith("user-onedrive", { kind: "root" });
-    fireEvent.change(screen.getByRole("textbox", { name: "云端文件夹路径" }), { target: { value: "未打开" } });
+    expect(screen.queryByRole("textbox", { name: "云端文件夹路径" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "打开文件夹" })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "设为默认路径" }));
     expect(readDefaultCloudLocation("user-onedrive", "account-a")).toEqual({ kind: "path", value: "照片" });
     expect(await screen.findByText("已将“照片”设为当前账号的默认路径。")).toBeInTheDocument();
 
-    fireEvent.change(screen.getByRole("textbox", { name: "云端文件夹路径" }), { target: { value: "文档" } });
-    fireEvent.click(screen.getByRole("button", { name: "打开文件夹" }));
+    fireEvent.click(screen.getByRole("button", { name: "文档" }));
+    await waitFor(() => expect(api.fetchStorageFiles).toHaveBeenCalledWith("user-onedrive", { kind: "id", value: "document-id" }));
     await waitFor(() => expect(screen.getByRole("button", { name: "设为默认路径" })).toBeEnabled());
     fireEvent.click(screen.getByRole("button", { name: "设为默认路径" }));
-    expect(readDefaultCloudLocation("user-onedrive", "account-a")).toEqual({ kind: "path", value: "文档" });
+    expect(readDefaultCloudLocation("user-onedrive", "account-a")).toEqual({ kind: "id", value: "document-id" });
     fireEvent.click(screen.getByRole("button", { name: "本地文件" }));
     fireEvent.click(screen.getByRole("button", { name: "OneDrive" }));
-    await waitFor(() => expect(screen.getByRole("textbox", { name: "云端文件夹路径" })).toHaveValue("文档"));
+    await waitFor(() => expect(api.fetchStorageFiles).toHaveBeenLastCalledWith("user-onedrive", { kind: "id", value: "document-id" }));
   });
 
   it("switches accounts without reusing the previous directory or selection", async () => {
@@ -182,15 +199,15 @@ describe("cloud default path integration", () => {
     useRenameStore.setState({ selectedIds: ["old-file"] });
     vi.mocked(api.fetchStorageFiles).mockClear();
     client.setQueryData(["storage-auth", "user-onedrive", 1], status("account-b"));
-    await waitFor(() => expect(screen.getByRole("textbox", { name: "云端文件夹路径" })).toHaveValue("b-folder"));
+    await screen.findByRole("button", { name: "b-folder" });
     await waitFor(() => expect(api.fetchStorageFiles).toHaveBeenCalledWith("user-onedrive", { kind: "path", value: "b-folder" }));
     expect(api.fetchStorageFiles).not.toHaveBeenCalledWith("user-onedrive", { kind: "path", value: "a-folder" });
     expect(useRenameStore.getState().selectedIds).toEqual([]);
     client.setQueryData(["storage-auth", "user-onedrive", 1], status(null, false));
-    await waitFor(() => expect(screen.getByRole("textbox", { name: "云端文件夹路径" })).toHaveValue(""));
+    await waitFor(() => expect(screen.queryByRole("button", { name: "b-folder" })).not.toBeInTheDocument());
     expect(readDefaultCloudLocation("user-onedrive", "account-a")).toEqual({ kind: "path", value: "a-folder" });
     client.setQueryData(["storage-auth", "user-onedrive", 1], status("account-a"));
-    await waitFor(() => expect(screen.getByRole("textbox", { name: "云端文件夹路径" })).toHaveValue("a-folder"));
+    await screen.findByRole("button", { name: "a-folder" });
   });
 
   it("keeps browsing available without an account ID but does not save a shared default", async () => {
@@ -198,7 +215,7 @@ describe("cloud default path integration", () => {
     render(<QueryClientProvider client={client}><WorkspaceApp /></QueryClientProvider>);
     fireEvent.click(await screen.findByRole("button", { name: "OneDrive" }));
     await waitFor(() => expect(api.fetchStorageFiles).toHaveBeenCalledWith("user-onedrive", { kind: "root" }));
-    expect(screen.getByRole("button", { name: "打开文件夹" })).toBeEnabled();
+    expect(within(screen.getByRole("navigation", { name: "文件路径" })).getByRole("button", { name: "OneDrive" })).toBeEnabled();
     expect(screen.getByRole("button", { name: "设为默认路径" })).toBeDisabled();
     expect(screen.getByText(/当前账号缺少账号 ID/)).toBeInTheDocument();
   });
@@ -219,7 +236,7 @@ describe("cloud default path integration", () => {
       return getItem.call(this, key);
     });
     await openCloud();
-    expect(screen.getByRole("textbox", { name: "云端文件夹路径" })).toHaveValue("");
+    expect(within(screen.getByRole("navigation", { name: "文件路径" })).getByRole("button", { name: "OneDrive" })).toHaveAttribute("aria-current", "page");
     expect(await screen.findByText(/无法读取默认路径/)).toBeInTheDocument();
     expect(api.fetchStorageFiles).toHaveBeenCalledWith("user-onedrive", { kind: "root" });
   });
@@ -228,8 +245,7 @@ describe("cloud default path integration", () => {
     saveDefaultCloudLocation("user-onedrive", "account-a", { kind: "path", value: "照片" });
     await openCloud();
     vi.mocked(api.fetchStorageFiles).mockRejectedValueOnce(new Error("Directory not found"));
-    fireEvent.change(screen.getByRole("textbox", { name: "云端文件夹路径" }), { target: { value: "不存在" } });
-    fireEvent.click(screen.getByRole("button", { name: "打开文件夹" }));
+    fireEvent.click(within(screen.getByRole("navigation", { name: "文件路径" })).getByRole("button", { name: "OneDrive" }));
     await screen.findByText(/目录读取失败/);
     expect(screen.getByRole("button", { name: "设为默认路径" })).toBeDisabled();
     expect(readDefaultCloudLocation("user-onedrive", "account-a")).toEqual({ kind: "path", value: "照片" });

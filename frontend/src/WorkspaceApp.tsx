@@ -19,7 +19,6 @@ import {
   LinearProgress,
   Skeleton,
   Stack,
-  TextField,
   ThemeProvider,
   Typography,
   useMediaQuery,
@@ -37,9 +36,9 @@ import {
   fetchStorages,
   fetchRules,
   pickStorageFolder,
-  updateStorage,
 } from "./api/client";
 import { FileBrowser } from "./features/files/FileBrowser";
+import { LocationBreadcrumbs, locationButtonSx } from "./features/files/LocationBreadcrumbs";
 import { readDefaultCloudLocation, saveDefaultCloudLocation } from "./features/files/defaultCloudLocation";
 import { PreviewPanel } from "./features/rename/PreviewPanel";
 import { RenameActions } from "./features/rename/RenameActions";
@@ -94,8 +93,6 @@ function Workspace({ mode, setMode }: { mode: PaletteMode; setMode: (mode: Palet
   const [storageId, setStorageId] = useState("default-local");
   const [location, setLocation] = useState<StorageLocation>({ kind: "root" });
   const setPath = (value: string) => setLocation(value ? { kind: "path", value } : { kind: "root" });
-  const [localRoot, setLocalRoot] = useState("");
-  const [cloudPath, setCloudPath] = useState("");
   const [restoredCloudSession, setRestoredCloudSession] = useState<string | null>(null);
   const selectedIds = useRenameStore((state) => state.selectedIds);
   const rules = useRenameStore((state) => state.rules);
@@ -179,25 +176,10 @@ function Workspace({ mode, setMode }: { mode: PaletteMode; setMode: (mode: Palet
     retry: false,
   });
   const previewData = preview.data && (preview.data.contextKey === previewContext || (execution.variables === preview.data.preview_id && (execution.isPending || execution.data))) ? preview.data : undefined;
-  const updateLocalRoot = useMutation({
-    mutationFn: async () => { const saved = await updateStorage(storageId, { config: { root_path: localRoot.trim() } }); return { root_path: saved.config.root_path! }; },
-    onSuccess: async (settings) => {
-      setLocalRoot(settings.root_path);
-      await queryClient.invalidateQueries({ queryKey: ["storages"] });
-      setPath("");
-      clearSelection();
-      preview.reset();
-      execution.reset();
-      notify("已切换本地根文件夹。");
-      await queryClient.invalidateQueries({ queryKey: ["files", storageId] });
-    },
-    onError: (error) => notify(`切换失败：${errorMessage(error)}`, "error"),
-  });
   const pickLocalRoot = useMutation({
     mutationFn: () => pickStorageFolder(storageId),
     onSuccess: async (settings) => {
       if (!settings.selected) return;
-      setLocalRoot(settings.root_path);
       await queryClient.invalidateQueries({ queryKey: ["storages"] });
       setPath("");
       clearSelection();
@@ -212,10 +194,6 @@ function Workspace({ mode, setMode }: { mode: PaletteMode; setMode: (mode: Palet
   useEffect(() => {
     window.localStorage.setItem("renamer-color-mode", mode);
   }, [mode]);
-
-  useEffect(() => {
-    if (localSettings.data?.root_path) setLocalRoot(localSettings.data.root_path);
-  }, [localSettings.data?.root_path]);
 
   useEffect(() => {
     clearSelection();
@@ -247,7 +225,6 @@ function Workspace({ mode, setMode }: { mode: PaletteMode; setMode: (mode: Palet
     }
     // 恢复完成前不请求目录，避免以旧账号路径读取新账号或混用缓存。
     setLocation(defaultLocation);
-    setCloudPath(defaultLocation.kind === "path" ? defaultLocation.value : "");
     setRestoredCloudSession(cloudSession);
     clearSelection();
     preview.reset();
@@ -259,16 +236,19 @@ function Workspace({ mode, setMode }: { mode: PaletteMode; setMode: (mode: Palet
   const settingsLoading = providerId === "local" ? localSettings.isPending : oneDriveStatus.isPending;
 
   const navigate = (nextPath: string) => {
-    if (execution.isPending || updateLocalRoot.isPending || pickLocalRoot.isPending) return;
+    if (execution.isPending || pickLocalRoot.isPending || activeStorage?.busy) return;
     setPath(nextPath);
-    if (providerId === "onedrive") setCloudPath(nextPath);
+  };
+
+  const navigateLocation = (next: StorageLocation) => {
+    if (execution.isPending || pickLocalRoot.isPending || activeStorage?.busy) return;
+    setLocation(next);
   };
 
   const selectProvider = (nextProviderId: string) => {
-    if (execution.isPending || updateLocalRoot.isPending || pickLocalRoot.isPending) return;
+    if (execution.isPending || pickLocalRoot.isPending) return;
     setStorageId(nextProviderId);
     setPath("");
-    setCloudPath("");
     setRestoredCloudSession(null);
     setView("workspace");
     setMobileNavOpen(false);
@@ -318,7 +298,7 @@ function Workspace({ mode, setMode }: { mode: PaletteMode; setMode: (mode: Palet
         {providers.isPending && <Skeleton variant="rounded" height={80} aria-label="正在加载存储位置" />}
         {(providers.data ?? []).map((provider) => (
           <ListItemButton
-            disabled={execution.isPending || updateLocalRoot.isPending || pickLocalRoot.isPending}
+            disabled={execution.isPending || pickLocalRoot.isPending}
             key={provider.storage_id}
             selected={view === "workspace" && provider.storage_id === storageId}
             onClick={() => selectProvider(provider.storage_id)}
@@ -399,100 +379,47 @@ function Workspace({ mode, setMode }: { mode: PaletteMode; setMode: (mode: Palet
 
             {view === "workspace" && (
               <>
-                <section className="panel location-panel" aria-labelledby="location-title">
+                <section className="panel location-panel" aria-label="目录位置">
                   <div className="location-toolbar">
                     {compactNavigation && (
-                      <IconButton onClick={() => setMobileNavOpen(true)} aria-label="打开导航">
-                        <MenuRoundedIcon />
+                      <IconButton onClick={() => setMobileNavOpen(true)} aria-label="打开导航" sx={{ p: "4px" }}>
+                        <MenuRoundedIcon sx={{ fontSize: 20 }} />
                       </IconButton>
                     )}
-                    <div className="location-identity">
-                      <h2 id="location-title">{providerName}</h2>
-                    </div>
-                    {providerId === "onedrive" ? (
-                      <form
-                        className="cloud-path-form cloud-default-path-form"
-                        onSubmit={(event) => {
-                          event.preventDefault();
-                          navigate(cloudPath.replace(/\\/g, "/").replace(/^\/+|\/+$/g, ""));
-                        }}
-                      >
-                        <div className="path-input-wrap">
-                          <TextField
-                            fullWidth
-                            hiddenLabel
-                            size="small"
-                            value={cloudPath}
-                            onChange={(event) => setCloudPath(event.target.value)}
-                            placeholder="例如：照片/待整理（留空表示根目录）"
-                            slotProps={{ htmlInput: { "aria-label": "云端文件夹路径" } }}
-                          />
-                        </div>
-                        <Button
-                          type="submit"
-                          variant="contained"
-                          disabled={!oneDriveStatus.data?.connected || execution.isPending}
-                          sx={{ minHeight: 36, px: 1.5, py: 1, whiteSpace: "nowrap" }}
-                        >
-                          打开文件夹
-                        </Button>
+                    <div className="location-navigation">
+                      <LocationBreadcrumbs
+                        listing={providerId === "local" || cloudReady ? files.data : undefined}
+                        rootLabel={providerName}
+                        disabled={!activeStorage || execution.isPending || pickLocalRoot.isPending || activeStorage.busy || (providerId === "onedrive" && !cloudReady)}
+                        onNavigate={navigateLocation}
+                      />
+                      {providerId === "onedrive" ? (
                         <Button
                           type="button"
                           variant="outlined"
                           onClick={setDefaultCloudPath}
                           disabled={!cloudAccountId || !cloudReady || !files.isSuccess || files.isFetching || Boolean(files.error) || oneDriveStatus.isError}
-                          sx={{ minHeight: 36, px: 1.5, py: 1, whiteSpace: "nowrap" }}
+                          sx={{ ...locationButtonSx, px: "10px" }}
                         >
                           设为默认路径
                         </Button>
-                      </form>
-                    ) : (
-                      <form
-                        className="cloud-path-form local-path-form"
-                        onSubmit={(event) => {
-                          event.preventDefault();
-                          updateLocalRoot.mutate();
-                        }}
-                      >
-                        <div className="path-input-wrap">
-                          <TextField
-                            fullWidth
-                            hiddenLabel
-                            size="small"
-                            value={localRoot}
-                            onChange={(event) => setLocalRoot(event.target.value)}
-                            placeholder="例如：D:\\待整理文件"
-                            slotProps={{ htmlInput: { "aria-label": "本地根文件夹路径" } }}
-                          />
-                        </div>
+                      ) : (
                         <Button
                           type="button"
                           variant="outlined"
                           onClick={() => pickLocalRoot.mutate()}
-                          disabled={pickLocalRoot.isPending || execution.isPending || activeStorage?.busy}
-                          sx={{ minHeight: 36, px: 1.5, py: 1, whiteSpace: "nowrap" }}
+                          disabled={!activeStorage || pickLocalRoot.isPending || execution.isPending || activeStorage.busy}
+                          sx={{ ...locationButtonSx, px: "10px" }}
                         >
                           {pickLocalRoot.isPending ? "等待选择…" : "浏览…"}
                         </Button>
-                        <Button
-                          type="submit"
-                          variant="contained"
-                          disabled={!localRoot.trim() || updateLocalRoot.isPending || execution.isPending || activeStorage?.busy}
-                          sx={{ minHeight: 36, px: 1.5, py: 1, whiteSpace: "nowrap" }}
-                        >
-                          {updateLocalRoot.isPending ? "切换中…" : "使用此文件夹"}
-                        </Button>
-                      </form>
-                    )}
+                      )}
+                    </div>
                   </div>
                   <div className="location-feedback">
                     {!activeStorage && !providers.isPending && <Alert severity="warning">当前存储已删除，请选择其他连接。</Alert>}
-                    {files.data && <Typography variant="body2" color="text.secondary">当前目录：{files.data.path || "根目录"}</Typography>}
                     {cloudConnected && !cloudAccountId && (
                       <Alert severity="info">当前账号缺少账号 ID，仍可浏览文件；请重新登录后设置默认路径。</Alert>
-                    )}
-                    {providerId === "local" && updateLocalRoot.error && (
-                      <Alert severity="error">切换失败：{updateLocalRoot.error.message}</Alert>
                     )}
                     {providerId === "local" && pickLocalRoot.error && (
                       <Alert severity="error">无法打开文件夹选择器：{pickLocalRoot.error.message}</Alert>
@@ -507,7 +434,7 @@ function Workspace({ mode, setMode }: { mode: PaletteMode; setMode: (mode: Palet
                   <div className="workspace-primary">
                     {files.data && (providerId === "local" || cloudReady) ? (
                       <FileBrowser
-                        onNavigateLocation={(next) => { if (!execution.isPending) { setLocation(next); setCloudPath(""); } }}
+                        onNavigateLocation={navigateLocation}
                         listing={files.data}
                         providerName={providerName}
                         selectedIds={selectedIds}
@@ -597,7 +524,7 @@ function Workspace({ mode, setMode }: { mode: PaletteMode; setMode: (mode: Palet
                       selectedCount={currentSelectedIds.length}
                       isPreviewing={preview.isPending}
                       isExecuting={execution.isPending}
-                      isBlocked={updateLocalRoot.isPending || pickLocalRoot.isPending || !activeStorage || activeStorage.busy}
+                      isBlocked={pickLocalRoot.isPending || !activeStorage || activeStorage.busy}
                       hasExecuted={Boolean(execution.data)}
                       progress={executionProgress.data}
                       progressError={executionProgress.error?.message}
