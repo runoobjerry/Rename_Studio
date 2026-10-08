@@ -120,7 +120,7 @@ npm ci
 npm run check
 ```
 
-提交前 Codex 应运行受影响测试与完整检查；GitHub Actions 将对 PR 自动复核。详见 [前端自动化测试](docs/FRONTEND_TESTING.md)。
+半自动流程：Codex 完成开发后由用户在本地手动运行 `npm run check` 和 UI 验收；Git Commit 与 Git Push 必须分别获得用户明确批准，Push 仅针对开发分支。GitHub Actions 在 PR 上自动复核，PR 合并由用户手动完成。详见 [前端测试与 CI](docs/FRONTEND_TESTING.md) 和 [操作指南](docs/CODEX_CI_GUIDE.md)。
 
 测试覆盖本地目录排序与路径隔离、名称验证、规则链、预览不可变性、冲突检测、短期预览、普通执行、循环交换、状态失效、部分失败，以及 OneDrive 授权 URL、密钥隐藏、分页映射和批处理适配。
 
