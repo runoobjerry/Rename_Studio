@@ -1,34 +1,37 @@
-# 前端自动化测试
+# 前端测试与 GitHub CI（半自动流程）
 
-## 流程
+## 职责与流程
 
-Codex 修改前端 → 运行受影响测试 → `npm run check` → 提交 PR → GitHub Actions 重新运行 `npm test` 和 `npm run build`。
+1. **Codex 开发**：只修改相关代码、补充有价值的回归测试，列明待验证功能；不自行构建、测试、提交或推送。
+2. **人工本地验收**：用户在 `frontend/` 下执行 `npm run check`，必要时运行 `npm run dev` 检查实际界面；失败则提供结果给 Codex 修复，修复后人工复测。
+3. **人工批准 Git 操作**：用户确认测试结果后，明确批准本次 Commit；检查提交内容后，再明确批准 Push 到指定开发分支。两个动作均不得默认授权，绝不直接推送 `main`。
+4. **PR 与 CI**：Push 获批准后，可让 Codex 创建/更新 PR；GitHub Actions 自动复核。用户人工审查 PR 和 Checks，决定是否合并。
+5. **CI 失败**：Codex 读取失败 Job 日志并修复；回到步骤 2 人工复测，新的 Commit/Push 必须再次获得批准。建议最多 3 轮后停止并说明原因。
 
-- **Vitest + React Testing Library（JSDOM）**：验证 API 客户端、文件选择与导航、规则编辑、预览、执行确认、连接设置等业务交互。
-- **TypeScript + Vite**：`npm run build` 执行类型检查和生产打包，发现类型或构建问题。
-- **GitHub Actions**：前端或工作流文件变更的 PR、`main` Push、手动触发时自动执行。仅用本地模拟数据，不启动后端、不访问真实云盘、不需要 OAuth 凭据。
+## 人工本地检查命令
 
-## 命令
-
-在 `frontend/` 目录下运行：
+在项目根目录进入 `frontend/`：
 
 ```bash
-npm ci                 # 按锁文件安装依赖（首次/依赖变化时）
-npm test               # 全量自动测试：一次运行后退出
-npm test -- src/features/files/FileBrowser.test.tsx  # 仅运行受影响测试
-npm run test:watch     # 本地监听模式
-npm run build          # TypeScript 类型检查 + Vite 构建
-npm run check          # 全量测试 + 类型检查 + 构建
+cd frontend
+npm ci
+npm run check
+npm run dev
 ```
 
-GitHub Actions 工作流位于 `/.github/workflows/frontend-ci.yml`。进入 PR 的 **Checks** 或仓库 **Actions → Frontend CI** 查看日志。CI 失败时，先查看失败的测试或构建步骤，修复后重新 Push。
+`npm run check` 包含 Vitest 全量测试、TypeScript 类型检查和 Vite 生产构建。需要时也可单独运行 `npm test`、`npm test -- src/features/files/FileBrowser.test.tsx`、`npm run test:watch` 或 `npm run build`。
 
-## Codex 的测试范围
+## GitHub Actions
 
-1. **必须覆盖**：新增业务行为、已复现 Bug，以及涉及选择、规则顺序、旧预览失效、执行确认/防重、账号/目录隔离的修改。
-2. **按需覆盖**：组件事件、表单、错误状态与 API 参数；复用现有测试，不重复创建同样的用例。
-3. **无需自动补测**：纯 CSS、微小视觉调整、静态文案或与产品无关的理论极端场景。
+工作流位于 `.github/workflows/frontend-ci.yml`，会在涉及前端的 PR、涉及前端的 `main` Push 或人工从 Actions 页面触发时执行；单纯 Push 开发分支不自动触发。远程 CI 使用模拟数据，不访问真实 OneDrive 或执行实际云端重命名。
 
-**边界**：JSDOM 测试不能证明真实浏览器的宽度、焦点、滚动或视觉正确性；这些改动需要手动进行移动端、桌面端和明暗模式检查。真实 OneDrive 授权与重命名始终由用户在专用测试目录中验收。当前不引入浏览器 E2E 工具，避免在已有测试基础上增加不必要的依赖和维护成本。
+在 PR 的 **Checks** 或 **Actions → Frontend CI** 查看运行结果。失败时让 Codex 分析相关 Job 日志和修复建议，但所有新增提交/推送仍需要人工分别批准。
 
-如需阻止未通过测试的 PR 合并，在 GitHub 仓库规则中把 `Frontend tests and build` 配置为必需状态检查；创建工作流本身不会自动修改仓库保护规则。
+## 测试范围和边界
+
+- 新增业务逻辑和真实 Bug 应补充必要回归测试，特别是文件选择、规则、旧预览失效、执行确认和账号/目录隔离。
+- 纯样式、微小视觉或文案修改无需为了覆盖率增加低价值测试。
+- JSDOM 不能代替浏览器响应式、视觉、焦点和真实云盘验收；由用户手动验证。
+- 不允许删除有效测试、跳过断言或降低质量门槛来使 CI 通过。
+
+详见 [半自动流程操作指南](CODEX_CI_GUIDE.md)。如需阻止 CI 未通过的 PR 合并，用户可在 GitHub Rulesets 中手动设置必需检查 `Frontend tests and build`。

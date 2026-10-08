@@ -97,6 +97,6 @@
 
 - 默认只修改 `frontend/` 和任务要求的 `docs/` 文档。不因视觉问题修改 backend、API Contract、Rename Engine、Rules、Providers、数据库或 OAuth 协议流程。
 - 优先小范围局部修改，复用现有 MUI 组件和语义主题令牌，保持设计系统一致，不破坏现有响应式行为。保留复杂布局 CSS，不重新引入已完成的迁移计划。
-- 前端代码变更按 `frontend/AGENTS.md` 执行受影响测试与 `npm run check`，GitHub Actions 在 PR 上复核，详见 `FRONTEND_TESTING.md`。真实浏览器与云盘操作仍由用户验收。记录“已实现”“静态检查”“运行通过”时必须区分证据。
+- 前端采用半自动验证：Codex 编写代码和必要测试后停止，用户手动运行本地测试、`npm run check`、浏览器与真实云盘验收。Commit 和 Push 分别由用户明确批准，禁止未经批准推送或直接推送 `main`；GitHub Actions 在 PR 上自动复核，PR 合并仅由用户执行。具体流程见 `frontend/AGENTS.md`、`FRONTEND_TESTING.md` 与 `CODEX_CI_GUIDE.md`。记录“已实现”“静态检查”“运行通过”时必须区分证据。
 - 每完成明显阶段，更新 `UI_STATE.md` 的当前快照，并在 `UI_TODO.md` 移除已完成任务、补充真实发现的后续任务；长期交互约定或架构变化同步到本文件。
 - STATE 只引用 TODO 任务编号及本轮接力信息；已完成基线只在本文件维护，不在三份文档重复累积历史。
