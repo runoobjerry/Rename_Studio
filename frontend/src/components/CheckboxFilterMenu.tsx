@@ -30,7 +30,7 @@ export function CheckboxFilterMenu<T extends string>({
           onClick={(event) => setAnchor(event.currentTarget)}
           sx={active ? { color: "primary.main" } : undefined}
         >
-          {active ? <FilterList /> : <FilterListOff />}
+          {active ? <FilterList sx={{ fontSize: 20 }} /> : <FilterListOff sx={{ fontSize: 20 }} />}
         </PanelIconButton>
       </Tooltip>
       <Menu

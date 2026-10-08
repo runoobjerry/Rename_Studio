@@ -26,7 +26,7 @@ describe("shared notifications", () => {
     expect(screen.getByRole("alert")).toHaveTextContent("部分修改失败");
     expect(screen.getByText("保存完成")).toBeInTheDocument();
     expect(screen.getByText("保存完成").closest(".MuiSnackbar-root")).toHaveAttribute("aria-hidden", "true");
-    expect(screen.getByText("保存完成").closest(".MuiAlert-root")).toHaveStyle({ transform: "none" });
+    expect(screen.getByText("保存完成").closest(".MuiSnackbar-root")).toHaveStyle({ pointerEvents: "none" });
     await waitFor(() => expect(screen.queryByText("保存完成")).not.toBeInTheDocument());
     expect(screen.getByRole("alert")).toHaveTextContent("部分修改失败");
   });

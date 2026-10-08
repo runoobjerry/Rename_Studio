@@ -6,7 +6,9 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "check": "npm run test && npm run build"
   },
   "dependencies": {
     "@emotion/react": "^11.14.0",
