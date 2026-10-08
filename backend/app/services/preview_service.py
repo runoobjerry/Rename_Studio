@@ -65,10 +65,12 @@ class PreviewService:
         if len({provider.parent_key(item) for item in files}) != 1:
             raise ValidationError("All selected items must be in the same directory")
 
+        # 配置仅在本轮评估中解析一次；执行前重新评估时仍会重新校验。
+        prepared_rules = self.engine.prepare_rules(request.rules)
         candidates = [
-            self.engine.apply(
+            self.engine.apply_prepared(
                 item.name,
-                request.rules,
+                prepared_rules,
                 RuleContext(
                     file_id=item.id,
                     index=index,
