@@ -61,7 +61,7 @@ describe("RenameActions", () => {
     expect(onExecute).toHaveBeenCalledWith("preview-1");
     expect(screen.getByRole("status")).toHaveTextContent("当前任务已处理 0 项，共 1 项");
     expect(screen.queryByText("此操作不可恢复！")).not.toBeInTheDocument();
-    expect(screen.getByRole("progressbar")).toHaveStyle({ backgroundColor: "transparent" });
+    expect(screen.getByRole("progressbar", { name: "修改进度" })).toHaveAttribute("aria-valuenow", "0");
   });
 
   it("renders server counts and briefly shows completion before closing", () => {

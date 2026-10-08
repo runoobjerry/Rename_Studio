@@ -170,7 +170,8 @@ export function createAppTheme(mode: PaletteMode) {
             height: MENU_METRICS.itemHeight,
             minHeight: MENU_METRICS.itemHeight,
             margin: 0,
-            padding: "4px 12px",
+            // 覆盖 MenuItem 的默认 6px/16px 留白，确保紧凑菜单的预期尺寸。
+            "&.MuiMenuItem-root": { padding: "4px 12px", minHeight: MENU_METRICS.itemHeight },
             gap: 6,
             borderRadius: 8,
             fontSize: 13,
