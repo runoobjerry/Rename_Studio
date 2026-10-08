@@ -13,6 +13,7 @@ secrets.json
 *.pre-storage-v1.bak
 *.pre-storage-v2.bak
 AGENTS.md
+!frontend/AGENTS.md
 __pycache__/
 *.py[cod]
 .pytest_cache/
