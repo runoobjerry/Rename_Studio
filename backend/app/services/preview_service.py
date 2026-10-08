@@ -1,4 +1,4 @@
-from collections import Counter, defaultdict
+from collections import Counter
 
 from app.core.errors import StorageConnectionChangedError, ValidationError
 from app.schemas.storage import RootLocation
@@ -34,7 +34,7 @@ class PreviewService:
         request: RenamePreviewRequest,
         *,
         files: list[FileItem] | None = None,
-        siblings_by_parent: dict[str, list[FileItem]] | None = None,
+        siblings: list[FileItem] | None = None,
     ) -> tuple[list[PreviewItem], list[FileItem], bool]:
         provider = self.providers.get(request.storage_id)
         record = self.providers.manager.record(request.storage_id)
@@ -85,24 +85,19 @@ class PreviewService:
             name for name, count in Counter(normalized_targets).items() if count > 1
         }
 
-        by_parent: dict[str, list[FileItem]] = defaultdict(list)
-        for item in files:
-            by_parent[provider.parent_key(item)].append(item)
-
-        existing_by_parent: dict[str, dict[str, list[FileItem]]] = {}
-        for parent_path in by_parent:
-            if siblings_by_parent is not None and parent_path in siblings_by_parent:
-                siblings = siblings_by_parent[parent_path]
-            elif prefetched_siblings is not None:
-                siblings = prefetched_siblings
-            else:
-                siblings = await provider.list_siblings(by_parent[parent_path][0])
-            names: dict[str, list[FileItem]] = defaultdict(list)
-            for sibling in siblings:
-                names[provider.normalize_name(sibling.name)].append(sibling)
-            existing_by_parent[parent_path] = names
-
+        if siblings is None:
+            siblings = (
+                prefetched_siblings
+                if prefetched_siblings is not None
+                else await provider.list_siblings(files[0])
+            )
         selected_ids = {item.id for item in files}
+        # 选中项的名称依赖由重复目标检查和执行规划器处理；未选中项仍占用名称。
+        occupied_names = {
+            provider.normalize_name(sibling.name)
+            for sibling in siblings
+            if sibling.id not in selected_ids
+        }
         results: list[PreviewItem] = []
         for item, new_name, normalized_target in zip(
             files, candidates, normalized_targets, strict=True
@@ -110,11 +105,10 @@ class PreviewService:
             error = provider.validate_target_name(item, new_name)
             if (not supports_rename or item.can_rename is False) and item.name != new_name:
                 error = "This item cannot be renamed with the current permissions"
-            conflict = normalized_target in duplicate_targets
-            existing = existing_by_parent[provider.parent_key(item)].get(normalized_target, [])
-            if any(sibling.id != item.id for sibling in existing):
-                # 选中且会移走的源名称由执行规划器处理交换和循环依赖。
-                conflict = conflict or any(sibling.id not in selected_ids for sibling in existing)
+            conflict = (
+                normalized_target in duplicate_targets
+                or normalized_target in occupied_names
+            )
             if conflict and error is None:
                 error = "目标名称出现重复"
             results.append(

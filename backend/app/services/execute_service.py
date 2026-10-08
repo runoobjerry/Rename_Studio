@@ -103,7 +103,6 @@ class ExecuteService:
         parent_paths = {provider.parent_key(source) for source in snapshot.sources}
         if len(parent_paths) != 1:
             raise PreviewExpiredError("Rename preview source directory changed")
-        parent_path = next(iter(parent_paths))
         try:
             siblings = await provider.list_siblings(snapshot.sources[0])
             by_id = {item.id: item for item in siblings}
@@ -111,7 +110,7 @@ class ExecuteService:
             items, sources, valid = await self.preview_service.evaluate(
                 snapshot.request,
                 files=sources,
-                siblings_by_parent={parent_path: siblings},
+                siblings=siblings,
             )
         except (KeyError, NotFoundError) as exc:
             raise PreviewExpiredError(
