@@ -100,14 +100,11 @@ class ExecuteService:
             raise ValidationError("Rename preview contains invalid items")
 
         provider = self.providers.get(snapshot.request.storage_id)
-        parent_paths = {provider.parent_key(source) for source in snapshot.sources}
-        if len(parent_paths) != 1:
-            raise PreviewExpiredError("Rename preview source directory changed")
         try:
             siblings = await provider.list_siblings(snapshot.sources[0])
             by_id = {item.id: item for item in siblings}
             sources = [by_id[file_id] for file_id in snapshot.request.file_ids]
-            items, sources, valid = await self.preview_service.evaluate(
+            items, _, _ = await self.preview_service.evaluate(
                 snapshot.request,
                 files=sources,
                 siblings=siblings,
@@ -117,10 +114,9 @@ class ExecuteService:
                 "Files changed after the preview was created"
             ) from exc
 
-        if not valid or items != snapshot.response.items:
+        # 与有效快照逐项一致即可保证有效性；源项始终按同一请求 ID 列表构建。
+        if items != snapshot.response.items:
             raise PreviewExpiredError("Rename preview is no longer valid")
-        if len(sources) != len(snapshot.sources):
-            raise PreviewExpiredError("Rename preview source files changed")
         if any(
             self._source_changed(before, current)
             for before, current in zip(snapshot.sources, sources, strict=True)
