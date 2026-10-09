@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import * as api from "./api/client";
@@ -12,7 +12,7 @@ vi.mock("./api/client", async (importOriginal) => {
   return {
     ...original,
     fetchStorages: vi.fn(), fetchRules: vi.fn(),
-    fetchStorageAuthStatus: vi.fn(), fetchStorageFiles: vi.fn(), createStoragePreview: vi.fn(),
+    fetchStorageAuthStatus: vi.fn(), fetchStorageFiles: vi.fn(), createStoragePreview: vi.fn(), executePreview: vi.fn(), fetchRenameProgress: vi.fn(),
   };
 });
 
@@ -335,5 +335,88 @@ describe("session rename batches", () => {
     expect(useRenameStore.getState().task!.taskId).not.toBe(oldTask.taskId);
     expect(oldTask.rules[0].config.text).toBe("first");
     expect(useRenameStore.getState().task!.batches).toHaveLength(1);
+  });
+});
+
+
+describe("task refresh and batch hint interaction", () => {
+  const entries = (count: number) => Array.from({ length: count }, (_, index) => ({
+    id: `file-${index}.txt`, name: `file-${index}.txt`, path: `file-${index}.txt`, parent_path: "",
+    is_directory: false, size: 1, modified_at: null,
+  }));
+  const setup = async (count: number) => {
+    const items = entries(count);
+    vi.mocked(api.fetchStorageFiles).mockResolvedValue({ provider: "local", path: "", parent_path: null, location: { kind: "root" }, items });
+    vi.mocked(api.createStoragePreview).mockImplementation(async (_storage, _location, ids) => ({
+      preview_id: "task-preview", expires_at: "2099-01-01T00:00:00Z", valid: true,
+      items: ids.map((id) => ({ file_id: id, original_name: id, new_name: `renamed-${id}`, changed: true, valid: true, conflict: false, error: null })),
+    }));
+    vi.mocked(api.fetchRenameProgress).mockResolvedValue({ preview_id: "task-preview", total: count, processed: 0, phase: "renaming", error: null });
+    render(<QueryClientProvider client={client}><WorkspaceApp /></QueryClientProvider>);
+    fireEvent.click(await screen.findByRole("checkbox", { name: "选择当前显示的全部项目" }));
+    return items;
+  };
+
+  it("opens the hint only on preview click and cancels without creating a task", async () => {
+    await setup(1001);
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(screen.queryByText(/当前任务文件项目超过1000项最大限制/)).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "刷新预览" }));
+    const dialog = screen.getByRole("dialog");
+    expect(within(dialog).getByText(/当前任务文件项目超过1000项最大限制/)).toBeInTheDocument();
+    expect(api.createStoragePreview).not.toHaveBeenCalled();
+    expect(useRenameStore.getState().task).toBeNull();
+    fireEvent.click(within(dialog).getByRole("button", { name: "取消" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    expect(useRenameStore.getState().selectedIds).toHaveLength(1001);
+    expect(api.createStoragePreview).not.toHaveBeenCalled();
+  });
+
+  it("remembers the hint preference and submits only 1000 after continuing", async () => {
+    const items = await setup(1001);
+    fireEvent.click(screen.getByRole("button", { name: "刷新预览" }));
+    const dialog = screen.getByRole("dialog");
+    fireEvent.click(within(dialog).getByRole("checkbox", { name: "下次不再提示" }));
+    expect(window.localStorage.getItem("renamer-hide-batch-limit-hint")).toBe("true");
+    fireEvent.click(within(dialog).getByRole("button", { name: "继续预览" }));
+    await waitFor(() => expect(api.createStoragePreview).toHaveBeenCalledWith("default-local", { kind: "root" }, items.slice(0, 1000).map((file) => file.id), []));
+    await waitFor(() => expect(screen.getByRole("button", { name: "开始修改" })).toBeEnabled());
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: "刷新预览" }));
+    await waitFor(() => expect(api.createStoragePreview).toHaveBeenCalledTimes(2));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
+  it.each(["success", "lost-response"])("does not refresh automatically after %s, but allows manual refresh", async (outcome) => {
+    const items = await setup(2);
+    if (outcome === "success") {
+      vi.mocked(api.executePreview).mockResolvedValue({ preview_id: "task-preview", status: "completed", items: items.map((file) => ({
+        file_id: file.id, original_name: file.name, new_name: `renamed-${file.name}`, status: "renamed", error: null,
+        current_file: { ...file, id: `renamed-${file.id}`, name: `renamed-${file.name}`, path: `renamed-${file.path}` },
+      })) });
+    } else {
+      vi.mocked(api.executePreview).mockRejectedValue(new Error("Execution response lost"));
+    }
+    fireEvent.click(screen.getByRole("button", { name: "刷新预览" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "开始修改" })).toBeEnabled());
+    // 活跃任务的目录缓存即使被其他组件标记失效，也不得自动读取目录。
+    await act(async () => { await client.invalidateQueries({ queryKey: ["files"] }); });
+    expect(api.fetchStorageFiles).toHaveBeenCalledTimes(1);
+    fireEvent.click(screen.getByRole("button", { name: "开始修改" }));
+    fireEvent.click(screen.getByRole("button", { name: "应用" }));
+    await waitFor(() => expect(useRenameStore.getState().task!.items.every((item) => item.status === (outcome === "success" ? "completed" : "unknown"))).toBe(true));
+    expect(api.fetchStorageFiles).toHaveBeenCalledTimes(1);
+    if (outcome === "success") {
+      const cached = client.getQueryData<{ items: { id: string }[] }>(["files", "default-local", 1, { kind: "root" }]);
+      expect(cached!.items.map((file) => file.id)).toEqual(items.map((file) => `renamed-${file.id}`));
+      vi.mocked(api.fetchStorageFiles).mockResolvedValue({ provider: "local", path: "", parent_path: null, items: items.map((file) => ({
+        ...file, id: `renamed-${file.id}`, name: `renamed-${file.name}`, path: `renamed-${file.path}`,
+      })) });
+    } else {
+      fireEvent.click(screen.getByRole("button", { name: "关闭" }));
+    }
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: "刷新" }));
+    await waitFor(() => expect(api.fetchStorageFiles).toHaveBeenCalledTimes(2));
   });
 });
