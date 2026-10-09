@@ -141,7 +141,7 @@ export interface RenameTaskItem {
   before: FileSnapshot;
   currentFileId: string;
   status: TaskItemStatus;
-  after?: ExecuteItem;
+  after?: Readonly<ExecuteItem>;
   reconciliation?: { file: FileSnapshot; completed: boolean; verifiedAt: string };
 }
 export interface RenameTask {
@@ -151,5 +151,5 @@ export interface RenameTask {
   location: StorageLocation;
   rules: RuleSpec[];
   items: RenameTaskItem[];
-  batches: { batchId: string; taskItemIds: string[]; previewId?: string; outcome?: "reported" | "unknown"; results?: ExecuteItem[] }[];
+  batches: { batchId: string; taskItemIds: string[]; previewId?: string; outcome?: "reported" | "unknown"; results?: readonly Readonly<ExecuteItem>[] }[];
 }

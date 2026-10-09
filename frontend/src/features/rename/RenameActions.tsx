@@ -16,7 +16,7 @@ import {
 
 import type { PreviewResponse, RenameProgress } from "../../types";
 
-interface RenameActionsProps {
+export interface RenameActionsProps {
   preview?: PreviewResponse;
   providerName: string;
   selectedCount: number;

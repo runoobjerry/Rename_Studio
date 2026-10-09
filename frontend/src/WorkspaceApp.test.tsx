@@ -360,10 +360,10 @@ describe("task refresh and batch hint interaction", () => {
   it("opens the hint only on preview click and cancels without creating a task", async () => {
     await setup(1001);
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
-    expect(screen.queryByText(/当前任务文件项目超过1000项最大限制/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/超过\s*1000\s*项的上限/)).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "刷新预览" }));
     const dialog = screen.getByRole("dialog");
-    expect(within(dialog).getByText(/当前任务文件项目超过1000项最大限制/)).toBeInTheDocument();
+    expect(within(dialog).getByText(/超过\s*1000\s*项的上限/)).toBeInTheDocument();
     expect(api.createStoragePreview).not.toHaveBeenCalled();
     expect(useRenameStore.getState().task).toBeNull();
     fireEvent.click(within(dialog).getByRole("button", { name: "取消" }));
