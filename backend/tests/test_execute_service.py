@@ -174,6 +174,25 @@ async def test_rejects_preview_after_source_changes(tmp_path: Path) -> None:
 
 
 @pytest.mark.asyncio
+async def test_rejects_source_replaced_by_link_after_preview(tmp_path: Path) -> None:
+    source = tmp_path / "source.txt"
+    source.write_text("source", encoding="utf-8")
+    target = tmp_path / "target.txt"
+    target.write_text("target", encoding="utf-8")
+    preview_service, execute_service = build_services(tmp_path)
+    preview = await preview_service.preview(request_for({"source.txt": "renamed.txt"}))
+    source.unlink()
+    source.symlink_to(target)
+
+    with pytest.raises(PreviewExpiredError):
+        await execute_service.execute(preview.preview_id)
+
+    assert target.read_text(encoding="utf-8") == "target"
+    assert source.is_symlink()
+    assert not (tmp_path / "renamed.txt").exists()
+
+
+@pytest.mark.asyncio
 async def test_rejects_invalid_preview(tmp_path: Path) -> None:
     (tmp_path / "one.txt").write_text("one", encoding="utf-8")
     (tmp_path / "occupied.txt").write_text("occupied", encoding="utf-8")

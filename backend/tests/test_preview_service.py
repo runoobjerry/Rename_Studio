@@ -178,3 +178,35 @@ async def test_rejects_configured_storage_root(tmp_path: Path) -> None:
         await service.preview(
             RenamePreviewRequest(storage_id="local", file_ids=["/"], rules=[])
         )
+
+
+@pytest.mark.asyncio
+async def test_known_directory_preview_cannot_rename_link(tmp_path: Path) -> None:
+    (tmp_path / "target.txt").write_text("unchanged", encoding="utf-8")
+    (tmp_path / "link.txt").symlink_to(tmp_path / "target.txt")
+    service = build_service(tmp_path, with_test_rule=True)
+
+    preview = await service.preview(RenamePreviewRequest(
+        storage_id="local", location=RootLocation(), file_ids=["link.txt"],
+        rules=[RuleSpec(type="test_constant", config={"value": "renamed.txt"})],
+    ))
+
+    assert preview.valid is False
+    assert preview.items[0].valid is False
+    assert preview.items[0].error == "This item cannot be renamed with the current permissions"
+    assert (tmp_path / "target.txt").read_text(encoding="utf-8") == "unchanged"
+
+
+@pytest.mark.asyncio
+async def test_known_directory_preview_detects_dangling_link_conflict(tmp_path: Path) -> None:
+    (tmp_path / "source.txt").write_text("unchanged", encoding="utf-8")
+    (tmp_path / "occupied.txt").symlink_to(tmp_path / "missing.txt")
+    service = build_service(tmp_path, with_test_rule=True)
+
+    preview = await service.preview(RenamePreviewRequest(
+        storage_id="local", location=RootLocation(), file_ids=["source.txt"],
+        rules=[RuleSpec(type="test_constant", config={"value": "occupied.txt"})],
+    ))
+
+    assert preview.valid is False
+    assert preview.items[0].conflict is True
