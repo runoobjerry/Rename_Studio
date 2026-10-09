@@ -198,3 +198,29 @@ describe("FileBrowser", () => {
     expect(onInvertSelection).toHaveBeenCalledOnce();
   });
 });
+
+
+it("locates remaining items and prevents continuing a task after context changes", () => {
+  const onContinue = vi.fn();
+  const onSelectRemaining = vi.fn();
+  const task = {
+    taskId: "task", contextKey: "old-context", storageId: "local", location: { kind: "root" as const }, rules: [], batches: [],
+    items: listing.items.map((file, order) => ({ taskItemId: `item-${order}`, order, before: { ...file, storageId: "local" },
+      currentFileId: file.id, status: order === 0 ? "completed" as const : "pending" as const })),
+  };
+  const props = { listing, providerName: "本地文件", selectedIds: ["file.txt"], task, onContinue, onSelectRemaining,
+    onNavigate: vi.fn(), onToggle: vi.fn(), onSelectAll: vi.fn(), onInvertSelection: vi.fn() };
+  const { rerender } = render(<FileBrowser {...props} taskCurrent />);
+  expect(screen.getByRole("checkbox", { name: "选择文件夹 folder" })).toBeDisabled();
+  fireEvent.click(screen.getByRole("button", { name: "选择剩余文件" }));
+  expect(onSelectRemaining).toHaveBeenCalledOnce();
+  expect(screen.queryByRole("checkbox", { name: "选择文件夹 folder" })).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "继续下一批" }));
+  expect(onContinue).toHaveBeenCalledOnce();
+  rerender(<FileBrowser {...props} taskCurrent={false} />);
+  expect(screen.getByRole("button", { name: "继续下一批" })).toBeDisabled();
+  expect(screen.getByRole("button", { name: "选择剩余文件" })).toBeDisabled();
+  // 新任务或目录会清除旧状态筛选，不能留下一个空文件列表。
+  rerender(<FileBrowser {...props} task={null} />);
+  expect(screen.getByRole("checkbox", { name: "选择文件夹 folder" })).toBeInTheDocument();
+});

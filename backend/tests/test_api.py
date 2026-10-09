@@ -99,3 +99,18 @@ def test_execution_progress_api(tmp_path: Path) -> None:
         assert result.status_code == 200
         assert client.get(f"/rename/progress/{preview_id}").json()["phase"] == "finished"
         assert client.get("/rename/progress/unknown").status_code == 404
+
+
+@pytest.mark.parametrize(("file_count", "rule_count"), [(1001, 0), (1, 21)])
+def test_preview_batch_limits_are_http_validation_errors(tmp_path: Path, file_count: int, rule_count: int) -> None:
+    providers = registry_for([LocalProvider(tmp_path)])
+    app = create_app()
+    app.dependency_overrides[get_storage_manager] = lambda: providers.manager
+    app.dependency_overrides[get_preview_service] = lambda: PreviewService(providers, RenameEngine(RuleRegistry()))
+    with TestClient(app) as client:
+        response = client.post("/storages/local/rename/preview", json={
+            "file_ids": [f"file-{index}" for index in range(file_count)],
+            "rules": [{"type": "padding", "config": {}} for _ in range(rule_count)],
+        })
+    assert response.status_code == 422
+    assert response.json()["error"]["code"] == "REQUEST_VALIDATION_ERROR"

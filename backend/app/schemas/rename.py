@@ -3,14 +3,15 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
+from app.schemas.files import FileItem
 from app.schemas.rules import RuleSpec
 from app.schemas.storage import StorageLocation
 
 
 class RenamePreviewRequest(BaseModel):
     storage_id: str
-    file_ids: list[str] = Field(min_length=1)
-    rules: list[RuleSpec] = Field(default_factory=list)
+    file_ids: list[str] = Field(min_length=1, max_length=1000)
+    rules: list[RuleSpec] = Field(default_factory=list, max_length=20)
     location: StorageLocation | None = None
 
 
@@ -43,6 +44,7 @@ class ExecuteItem(BaseModel):
     error: str | None = None
     error_code: str | None = None
     actual_name: str | None = None
+    current_file: FileItem | None = None
 
 
 class RenameExecuteResponse(BaseModel):

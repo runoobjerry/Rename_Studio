@@ -85,6 +85,7 @@ export interface ExecuteItem {
   error: string | null;
   error_code?: string | null;
   actual_name?: string | null;
+  current_file?: FileItem | null;
 }
 
 export interface ExecuteResponse {
@@ -126,4 +127,29 @@ export interface StorageCreate {
 export interface StorageUpdate {
   name?: string;
   config?: StorageInfo["config"];
+}
+
+// 展示快照与任务记录独立；before 在创建后不再修改，版本标识留待 Provider 支持。
+export interface FileSnapshot extends Readonly<FileItem> {
+  readonly storageId: string;
+  readonly version?: string;
+}
+export type TaskItemStatus = "pending" | "completed" | "failed" | "unknown";
+export interface RenameTaskItem {
+  taskItemId: string;
+  order: number;
+  before: FileSnapshot;
+  currentFileId: string;
+  status: TaskItemStatus;
+  after?: ExecuteItem;
+  reconciliation?: { file: FileSnapshot; completed: boolean; verifiedAt: string };
+}
+export interface RenameTask {
+  taskId: string;
+  contextKey: string;
+  storageId: string;
+  location: StorageLocation;
+  rules: RuleSpec[];
+  items: RenameTaskItem[];
+  batches: { batchId: string; taskItemIds: string[]; previewId?: string; outcome?: "reported" | "unknown"; results?: ExecuteItem[] }[];
 }
