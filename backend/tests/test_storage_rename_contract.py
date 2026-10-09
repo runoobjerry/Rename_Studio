@@ -173,3 +173,23 @@ async def test_provider_case_rules_and_permissions_are_used() -> None:
     response = await preview.preview(request(["1"], {"A": "renamed"}))
     assert not response.valid
     assert "permissions" in response.items[0].error
+
+
+@pytest.mark.asyncio
+async def test_two_thousand_stable_ids_use_two_independent_preview_execute_batches() -> None:
+    provider = StableIdProvider({str(index): f"old-{index}" for index in range(2000)})
+    provider.execution_batch_size = 20
+    preview, execute = services(provider)
+    completed_ids: set[str] = set()
+    for offset in (0, 1000):
+        ids = [str(index) for index in range(offset, offset + 1000)]
+        snapshot = await preview.preview(request(ids, {f"old-{index}": f"new-{index}" for index in range(offset, offset + 1000)}))
+        assert snapshot.valid
+        assert len(snapshot.items) == 1000
+        result = await execute.execute(snapshot.preview_id)
+        assert result.status == "completed"
+        assert not completed_ids.intersection(item.file_id for item in result.items)
+        assert all(item.current_file.id == item.file_id for item in result.items)
+        completed_ids.update(item.file_id for item in result.items)
+    assert len(completed_ids) == 2000
+    assert all(item.name == f"new-{item.id}" for item in provider.items.values())

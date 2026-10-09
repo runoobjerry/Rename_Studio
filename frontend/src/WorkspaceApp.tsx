@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useMemo, useState, useRef } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useState, useRef } from "react";
 import AutoFixHighRoundedIcon from "@mui/icons-material/AutoFixHighRounded";
 import CloudQueueRoundedIcon from "@mui/icons-material/CloudQueueRounded";
 import ComputerRoundedIcon from "@mui/icons-material/ComputerRounded";
@@ -10,6 +10,13 @@ import {
   Button,
   CircularProgress,
   CssBaseline,
+  Checkbox,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogContentText,
+  DialogTitle,
+  FormControlLabel,
   Drawer,
   IconButton,
   List,
@@ -30,7 +37,6 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   createStoragePreview,
   executePreview,
-  fetchRenameProgress,
   fetchStorageFiles,
   fetchStorageAuthStatus,
   fetchStorages,
@@ -41,9 +47,9 @@ import { FileBrowser } from "./features/files/FileBrowser";
 import { LocationBreadcrumbs, locationButtonSx } from "./features/files/LocationBreadcrumbs";
 import { readDefaultCloudLocation, saveDefaultCloudLocation } from "./features/files/defaultCloudLocation";
 import { PreviewPanel } from "./features/rename/PreviewPanel";
-import { RenameActions } from "./features/rename/RenameActions";
+import { RenameActionsWithProgress } from "./features/rename/RenameActionsWithProgress";
 import { RuleEditor } from "./features/rules/RuleEditor";
-import { useRenameStore } from "./stores/useRenameStore";
+import { RENAME_BATCH_SIZE, useRenameStore } from "./stores/useRenameStore";
 import { createAppTheme } from "./theme";
 import { errorMessage, NotificationProvider, useNotification } from "./components/NotificationProvider";
 
@@ -53,11 +59,21 @@ const SettingsPage = lazy(() =>
   })),
 );
 
-import type { RuleSpec, StorageLocation } from "./types";
+import type { DirectoryListing, RuleSpec, StorageLocation } from "./types";
 
 type AppView = "workspace" | "settings";
 
 const drawerWidth = 244;
+const batchHintPreference = "renamer-hide-batch-limit-hint";
+
+function readBatchHintPreference(): boolean {
+  try {
+    return window.localStorage.getItem(batchHintPreference) === "true";
+  } catch {
+    // 浏览器存储受限时仍允许用户处理文件，提示偏好保留在当前页面。
+    return false;
+  }
+}
 
 function SecondaryPageFallback() {
   return (
@@ -89,12 +105,16 @@ function Workspace({ mode, setMode }: { mode: PaletteMode; setMode: (mode: Palet
   const theme = useTheme();
   const compactNavigation = useMediaQuery(theme.breakpoints.down("md"));
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  const [skipBatchHint, setSkipBatchHint] = useState(readBatchHintPreference);
+  const [batchHintContext, setBatchHintContext] = useState<string | null>(null);
   const [view, setView] = useState<AppView>("workspace");
   const [storageId, setStorageId] = useState("default-local");
   const [location, setLocation] = useState<StorageLocation>({ kind: "root" });
-  const setPath = (value: string) => setLocation(value ? { kind: "path", value } : { kind: "root" });
+  const setPath = useCallback((value: string) => setLocation(value ? { kind: "path", value } : { kind: "root" }), []);
   const [restoredCloudSession, setRestoredCloudSession] = useState<string | null>(null);
   const selectedIds = useRenameStore((state) => state.selectedIds);
+  const task = useRenameStore((state) => state.task);
+  const resetTask = useRenameStore((state) => state.resetTask);
   const rules = useRenameStore((state) => state.rules);
   const setRules = useRenameStore((state) => state.setRules);
   const toggleSelected = useRenameStore((state) => state.toggleSelected);
@@ -123,25 +143,35 @@ function Workspace({ mode, setMode }: { mode: PaletteMode; setMode: (mode: Palet
   const files = useQuery({
     queryKey: ["files", storageId, activeStorage?.revision, location],
     queryFn: () => fetchStorageFiles(storageId, location),
-    enabled: Boolean(activeStorage) && ((providerId === "local" && localSettings.isSuccess) || cloudReady),
+    enabled: !task && Boolean(activeStorage) && ((providerId === "local" && localSettings.isSuccess) || cloudReady),
   });
-  const workspaceKey = JSON.stringify([storageId, activeStorage?.revision, location]);
+  const workspaceKey = useMemo(() => JSON.stringify([storageId, activeStorage?.revision, location]), [storageId, activeStorage?.revision, location]);
   // 提交前以当前目录校验选中 ID，避免刷新后仍提交已删除的项目。
   const currentSelectedIds = useMemo(() => {
     const availableIds = new Set(files.data?.items.map((item) => item.id));
     return selectedIds.filter((id) => availableIds.has(id));
   }, [files.data, selectedIds]);
-  const previewContext = JSON.stringify([workspaceKey, currentSelectedIds, rules]);
+  const taskContext = useMemo(() => JSON.stringify([workspaceKey, cloudSession, rules]), [workspaceKey, cloudSession, rules]);
+  const browserTask = useMemo(() => task ? { taskId: task.taskId, items: task.items } : null, [task?.taskId, task?.items]);
+  const taskCurrent = task?.contextKey === taskContext;
+  const previewContext = useMemo(() => JSON.stringify([workspaceKey, currentSelectedIds, rules]), [workspaceKey, currentSelectedIds, rules]);
+  useEffect(() => {
+    // Dialog 仅确认点击时的选择；上下文改变后必须由用户再次点击预览。
+    if (batchHintContext && batchHintContext !== previewContext) setBatchHintContext(null);
+  }, [batchHintContext, previewContext]);
   const currentWorkspace = useRef(previewContext);
   currentWorkspace.current = previewContext;
   const preview = useMutation({
-    mutationFn: async (input: { contextKey: string; storageId: string; location: StorageLocation; fileIds: string[]; rules: RuleSpec[] }) => {
-      return { ...await createStoragePreview(input.storageId, input.location, input.fileIds, input.rules), contextKey: input.contextKey };
+    mutationKey: ["rename-preview"],
+    gcTime: 0,
+    mutationFn: async (input: { contextKey: string; batchId: string; storageId: string; location: StorageLocation; fileIds: string[]; rules: RuleSpec[] }) => {
+      return { ...await createStoragePreview(input.storageId, input.location, input.fileIds, input.rules), contextKey: input.contextKey, batchId: input.batchId };
     },
     onSuccess: (result) => {
       if (result.contextKey !== currentWorkspace.current) return;
+      useRenameStore.getState().bindPreview(result.batchId, result.preview_id);
       if (!result.valid) {
-        notify("预览包含无效名称或冲突，请检查预览结果。", "warning");
+        notify("预览包含无效名称或冲突，请检查结果；其他批次尚未处理的文件仍占用名称，不能跳过冲突检查。", "warning");
       }
     },
     onError: (error, input) => {
@@ -149,6 +179,7 @@ function Workspace({ mode, setMode }: { mode: PaletteMode; setMode: (mode: Palet
     },
   });
   const execution = useMutation({
+    gcTime: 0,
     mutationFn: executePreview,
     onSuccess: (result) => {
       if (result.status === "completed") {
@@ -162,20 +193,20 @@ function Workspace({ mode, setMode }: { mode: PaletteMode; setMode: (mode: Palet
           result.status === "partial" ? "warning" : "error",
         );
       }
-      clearSelection();
-      // 先展示执行结果，目录刷新在后台完成，避免把读取延迟算入执行等待时间。
-      void queryClient.invalidateQueries({ queryKey: ["files"] });
+      useRenameStore.getState().applyResults(result);
+      // 只合并 Provider 已确认的结果，不请求目录；兼容 Local 重命名后的路径 ID。
+      const confirmed = new Map(result.items.filter((item) => item.current_file)
+        .map((item) => [item.file_id, item.current_file!]));
+      queryClient.setQueryData<DirectoryListing>(["files", storageId, activeStorage?.revision, location], (listing) =>
+        listing && { ...listing, items: listing.items.map((item) => confirmed.get(item.id) ?? item) });
     },
-    onError: (error) => notify(`执行失败：${errorMessage(error)}`, "error"),
+    onError: (error, previewId) => {
+      // 请求失败可能发生在写入之后；没有逐项结果时先锁定本批，避免盲目重放。
+      useRenameStore.getState().markUnknown(previewId);
+      notify(`执行未返回完整结果：${errorMessage(error)}；请刷新目录并核对本批文件。`, "error");
+    },
   });
-  const executionProgress = useQuery({
-    queryKey: ["rename-progress", execution.variables],
-    queryFn: () => fetchRenameProgress(execution.variables!),
-    enabled: execution.isPending && Boolean(execution.variables),
-    refetchInterval: execution.isPending ? 500 : false,
-    retry: false,
-  });
-  const previewData = preview.data && (preview.data.contextKey === previewContext || (execution.variables === preview.data.preview_id && (execution.isPending || execution.data))) ? preview.data : undefined;
+  const previewData = preview.data && (preview.data.contextKey === previewContext || (execution.variables === preview.data.preview_id && (execution.isPending || execution.data || execution.error))) ? preview.data : undefined;
   const pickLocalRoot = useMutation({
     mutationFn: () => pickStorageFolder(storageId),
     onSuccess: async (settings) => {
@@ -196,8 +227,9 @@ function Workspace({ mode, setMode }: { mode: PaletteMode; setMode: (mode: Palet
   }, [mode]);
 
   useEffect(() => {
-    clearSelection();
     if (execution.isPending) return;
+    clearSelection();
+    resetTask();
     preview.reset();
     execution.reset();
   }, [workspaceKey, cloudSession]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -212,7 +244,7 @@ function Workspace({ mode, setMode }: { mode: PaletteMode; setMode: (mode: Palet
       preview.reset();
       execution.reset();
     }
-  }, [files.isSuccess, cloudReady, providerId, currentSelectedIds, selectedIds.length,
+  }, [files.isSuccess, files.dataUpdatedAt, cloudReady, providerId, currentSelectedIds, selectedIds.length,
     setSelectedIds, preview.reset, execution.reset, execution.isPending]);
 
   useEffect(() => {
@@ -231,19 +263,46 @@ function Workspace({ mode, setMode }: { mode: PaletteMode; setMode: (mode: Palet
     execution.reset();
   }, [providerId, cloudSession, restoredCloudSession]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  const requestBatchPreview = () => {
+    if (!files.data || files.isFetching || files.error || execution.isPending || preview.isPending || activeStorage?.busy) return;
+    if (task && !taskCurrent && task.items.some((item) => item.status === "unknown")) {
+      notify("旧任务仍有待核对项，请先恢复原规则并核对执行结果。", "warning");
+      return;
+    }
+    if (taskCurrent && task) {
+      const members = new Set(task.items.map((item) => item.currentFileId));
+      if (currentSelectedIds.some((id) => !members.has(id))) {
+        notify("本次任务的文件集合已固定；请先结束当前任务，再选择文件开始新任务。", "warning");
+        return;
+      }
+    }
+    const batch = useRenameStore.getState().prepareBatch(taskContext, storageId, location, files.data.items);
+    if (!batch.fileIds.length) {
+      notify("没有可处理的任务文件；失败项可单独选择重试，待核对项须先核对。", "warning");
+      return;
+    }
+    execution.reset();
+    // 使用当前目录中的实际选择生成上下文，避免过时预览覆盖当前任务。
+    const selected = useRenameStore.getState().selectedIds;
+    const available = new Set(files.data.items.map((file) => file.id));
+    const contextKey = JSON.stringify([workspaceKey, selected.filter((id) => available.has(id)), rules]);
+    currentWorkspace.current = contextKey;
+    preview.mutate({ contextKey, batchId: batch.batchId, storageId, location, fileIds: batch.fileIds, rules });
+  };
+
   const loadError = providers.error ?? definitions.error ?? oneDriveStatus.error ?? localSettings.error;
   const providerName = activeStorage?.name ?? storageId;
   const settingsLoading = providerId === "local" ? localSettings.isPending : oneDriveStatus.isPending;
 
-  const navigate = (nextPath: string) => {
+  const navigate = useCallback((nextPath: string) => {
     if (execution.isPending || pickLocalRoot.isPending || activeStorage?.busy) return;
     setPath(nextPath);
-  };
+  }, [execution.isPending, pickLocalRoot.isPending, activeStorage?.busy, setPath]);
 
-  const navigateLocation = (next: StorageLocation) => {
+  const navigateLocation = useCallback((next: StorageLocation) => {
     if (execution.isPending || pickLocalRoot.isPending || activeStorage?.busy) return;
     setLocation(next);
-  };
+  }, [execution.isPending, pickLocalRoot.isPending, activeStorage?.busy]);
 
   const selectProvider = (nextProviderId: string) => {
     if (execution.isPending || pickLocalRoot.isPending) return;
@@ -263,6 +322,40 @@ function Workspace({ mode, setMode }: { mode: PaletteMode; setMode: (mode: Palet
       notify("默认路径保存失败，请检查浏览器存储权限或可用空间。", "error");
     }
   };
+
+  const reconcileSelection = useCallback((ids: string[]) => {
+    setSelectedIds(ids);
+    // 结果导致默认筛选隐藏项目时，保留执行结果和确认卡片。
+    if (!execution.isPending && !execution.data) { preview.reset(); execution.reset(); }
+  }, [setSelectedIds, execution.isPending, execution.data, preview.reset, execution.reset]);
+  const endTask = useCallback(() => {
+    if (execution.isPending || preview.isPending) return;
+    resetTask(); clearSelection(); preview.reset(); execution.reset();
+  }, [execution.isPending, preview.isPending, resetTask, clearSelection, preview.reset, execution.reset]);
+  const refreshFiles = useCallback(() => {
+    void files.refetch().then((result) => {
+      if (result.error) notify(`刷新失败：${errorMessage(result.error)}`, "error");
+      else notify("目录已刷新。");
+    });
+  }, [files.refetch, notify]);
+  const toggleFile = useCallback((fileId: string) => {
+    if (execution.isPending) return;
+    toggleSelected(fileId); preview.reset(); execution.reset();
+  }, [execution.isPending, toggleSelected, preview.reset, execution.reset]);
+  const selectAllFiles = useCallback((ids: string[]) => {
+    if (execution.isPending) return;
+    setSelectedIds(ids); preview.reset(); execution.reset();
+  }, [execution.isPending, setSelectedIds, preview.reset, execution.reset]);
+  const clearFiles = useCallback(() => {
+    if (execution.isPending) return;
+    clearSelection(); preview.reset(); execution.reset();
+  }, [execution.isPending, clearSelection, preview.reset, execution.reset]);
+  const invertFiles = useCallback((ids: string[]) => {
+    if (execution.isPending) return;
+    const selected = new Set(useRenameStore.getState().selectedIds);
+    setSelectedIds(ids.filter((id) => !selected.has(id)));
+    preview.reset(); execution.reset();
+  }, [execution.isPending, setSelectedIds, preview.reset, execution.reset]);
 
   const navigation = (
     <Box
@@ -333,6 +426,27 @@ function Workspace({ mode, setMode }: { mode: PaletteMode; setMode: (mode: Palet
   return (
     <>
       <CssBaseline />
+      <Dialog open={batchHintContext === previewContext} onClose={() => setBatchHintContext(null)}>
+        <DialogTitle>分批处理提示</DialogTitle>
+        <DialogContent>
+          <DialogContentText>
+            您当前选择的文件已超过 1000 项的上限。为避免影响性能，本次只会修改前 1000 项。本次执行结束后，您可以在“筛选”中选择“待处理项目”，继续选择并处理剩余项目。
+          </DialogContentText>
+          <FormControlLabel label="下次不再提示" control={<Checkbox checked={skipBatchHint} onChange={(event) => {
+            const checked = event.target.checked;
+            setSkipBatchHint(checked);
+            try {
+              window.localStorage.setItem(batchHintPreference, String(checked));
+            } catch {
+              notify("无法保存提示偏好，本次页面会话内仍然生效。", "warning");
+            }
+          }} />} />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setBatchHintContext(null)}>取消</Button>
+          <Button onClick={() => { setBatchHintContext(null); requestBatchPreview(); }}>继续预览</Button>
+        </DialogActions>
+      </Dialog>
       <Box sx={{ minHeight: "100vh", bgcolor: "background.default" }}>
         <Drawer
           variant={compactNavigation ? "temporary" : "permanent"}
@@ -438,40 +552,19 @@ function Workspace({ mode, setMode }: { mode: PaletteMode; setMode: (mode: Palet
                         listing={files.data}
                         providerName={providerName}
                         selectedIds={selectedIds}
+                        task={browserTask}
+                        taskCurrent={taskCurrent}
+                        disabled={execution.isPending || preview.isPending || files.isFetching || Boolean(activeStorage?.busy)}
+                        onReconcileSelection={reconcileSelection}
+                        onEndTask={endTask}
                         isRefreshing={files.isFetching}
                         refreshError={files.error?.message}
                         onNavigate={navigate}
-                        onRefresh={() => {
-                          void files.refetch().then((result) => {
-                            if (result.error) notify(`刷新失败：${errorMessage(result.error)}`, "error");
-                            else notify("目录已刷新。");
-                          });
-                        }}
-                        onToggle={(fileId) => {
-                          if (execution.isPending) return;
-                          toggleSelected(fileId);
-                          preview.reset();
-                          execution.reset();
-                        }}
-                        onSelectAll={(visibleIds) => {
-                          if (execution.isPending) return;
-                          setSelectedIds(visibleIds);
-                          preview.reset();
-                          execution.reset();
-                        }}
-                        onClearSelection={() => {
-                          if (execution.isPending) return;
-                          clearSelection();
-                          preview.reset();
-                          execution.reset();
-                        }}
-                        onInvertSelection={(visibleIds) => {
-                          if (execution.isPending) return;
-                          const selected = new Set(selectedIds);
-                          setSelectedIds(visibleIds.filter((id) => !selected.has(id)));
-                          preview.reset();
-                          execution.reset();
-                        }}
+                        onRefresh={refreshFiles}
+                        onToggle={toggleFile}
+                        onSelectAll={selectAllFiles}
+                        onClearSelection={clearFiles}
+                        onInvertSelection={invertFiles}
                       />
                     ) : (
                       <section className="panel">
@@ -512,26 +605,30 @@ function Workspace({ mode, setMode }: { mode: PaletteMode; setMode: (mode: Palet
                       rules={rules}
                       onChange={(nextRules) => {
                         if (execution.isPending) return;
+                        if (task?.items.some((item) => item.status === "unknown")) {
+                          notify("本批存在待核对结果，请先核对实际文件，结束当前任务后再修改规则。", "warning");
+                          return;
+                        }
                         // 规则变化后旧预览立即失效，避免用户误读过期结果。
                         setRules(nextRules);
                         preview.reset();
                         execution.reset();
                       }}
                     />
-                    <RenameActions
+                    <RenameActionsWithProgress
                       preview={previewData}
                       providerName={providerName}
-                      selectedCount={currentSelectedIds.length}
+                      selectedCount={Math.min(RENAME_BATCH_SIZE, currentSelectedIds.length)}
                       isPreviewing={preview.isPending}
                       isExecuting={execution.isPending}
-                      isBlocked={pickLocalRoot.isPending || !activeStorage || activeStorage.busy}
+                      isBlocked={pickLocalRoot.isPending || !activeStorage || activeStorage.busy || files.isFetching || Boolean(files.error)}
                       hasExecuted={Boolean(execution.data)}
-                      progress={executionProgress.data}
-                      progressError={executionProgress.error?.message}
+                      allowUnchangedBatch={taskCurrent}
+                      executionPreviewId={execution.variables}
                       executeError={execution.error?.message}
                       onPreview={() => {
-                        execution.reset();
-                        preview.mutate({ contextKey: previewContext, storageId, location, fileIds: currentSelectedIds, rules });
+                        if (currentSelectedIds.length > RENAME_BATCH_SIZE && !skipBatchHint) setBatchHintContext(previewContext);
+                        else requestBatchPreview();
                       }}
                       onExecute={(previewId) => execution.mutate(previewId)}
                     />

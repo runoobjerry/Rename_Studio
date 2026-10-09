@@ -112,8 +112,8 @@ Empty means exactly `""`; whitespace remains meaningful text. Skipped rules pres
 ```ts
 {
   location?: StorageLocation; // default root; use backend-returned locations for navigation
-  file_ids: string[];      // at least one, no duplicates
-  rules?: RuleSpec[];      // default []
+  file_ids: string[];      // 1..1000 items, no duplicates
+  rules?: RuleSpec[];      // default [], at most 20 rules
 }
 ```
 
@@ -129,7 +129,7 @@ Empty means exactly `""`; whitespace remains meaningful text. Skipped rules pres
 ```
 
 - No files are modified. Unchanged items remain in `items`; `valid` is true only when every item is valid.
-- Errors: 422 empty/duplicate/cross-directory/out-of-path/root selection, invalid path, or rule config; 404 missing item/directory; provider errors as above.
+- Errors: 422 more than 1000 files/more than 20 rules/empty/duplicate/cross-directory/out-of-path/root selection, invalid path, or rule config; 404 missing item/directory; provider errors as above.
 - Preview snapshots live in the current backend process for 10 minutes. A backend restart invalidates them.
 
 ## Rename Execute
@@ -151,6 +151,7 @@ Empty means exactly `""`; whitespace remains meaningful text. Skipped rules pres
     error: string | null;
     error_code?: string | null;
     actual_name?: string | null;
+    current_file?: FileItem | null; // Provider-confirmed metadata after success or successful rollback
   }>;
 }
 ```
@@ -236,7 +237,7 @@ Config/account changes invalidate old previews with `STORAGE_CONNECTION_CHANGED`
 
 The frontend validates the callback origin from redirect_uri, popup window source, message shape and storage_id.
 
-Execute still accepts only preview_id and progress polling remains read-only. Result items optionally include error_code/actual_name. `RENAME_OUTCOME_UNKNOWN` means a write could have happened but its current state could not be verified; actual_name is null. Known successful writes are not replayed after a missing response. Rollback errors report remaining names when they can be confirmed. Existing completed/partial/failed and renamed/skipped/failed enums retain their meaning.
+Execute still accepts only preview_id and progress polling remains read-only. Result items optionally include error_code/actual_name/current_file. current_file preserves Provider-confirmed identity after successful rename or rollback, including changed Local path IDs; file_id remains the original request ID. Null does not mean a write succeeded or failed. Preview requests are limited to 1000 files and 20 rules (including disabled rules); execute also checks the snapshot size. Directory loading and overall UI selection remain unlimited. `RENAME_OUTCOME_UNKNOWN` means a write could have happened but its current state could not be verified; actual_name is null. Known successful writes are not replayed after a missing response. Rollback errors report remaining names when they can be confirmed. Existing completed/partial/failed and renamed/skipped/failed enums retain their meaning.
 
 ## Known API inconsistency
 

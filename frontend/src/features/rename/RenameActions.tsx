@@ -16,7 +16,7 @@ import {
 
 import type { PreviewResponse, RenameProgress } from "../../types";
 
-interface RenameActionsProps {
+export interface RenameActionsProps {
   preview?: PreviewResponse;
   providerName: string;
   selectedCount: number;
@@ -24,6 +24,7 @@ interface RenameActionsProps {
   isExecuting: boolean;
   isBlocked?: boolean;
   hasExecuted: boolean;
+  allowUnchangedBatch?: boolean;
   progress?: RenameProgress;
   progressError?: string;
   executeError?: string;
@@ -39,6 +40,7 @@ export function RenameActions({
   isExecuting,
   isBlocked = false,
   hasExecuted,
+  allowUnchangedBatch = false,
   progress,
   progressError,
   executeError,
@@ -88,7 +90,7 @@ export function RenameActions({
           fullWidth
           variant="contained"
           startIcon={<PlayArrowRoundedIcon />}
-          disabled={!preview?.valid || changedCount === 0 || isExecuting || hasExecuted || isBlocked}
+          disabled={!preview?.valid || (changedCount === 0 && !allowUnchangedBatch) || isExecuting || hasExecuted || isBlocked}
           onClick={() => { setApplied(false); setConfirming(true); }}
         >
           开始修改
@@ -106,6 +108,7 @@ export function RenameActions({
             </DialogContentText>
           ) : (
             <DialogContentText>
+              {changedCount === 0 && allowUnchangedBatch && "本批没有名称变化，确认后将记录为已完成。"}
               将根据当前预览区新文件名修改 {providerName} 中的 {changedCount} 个项目。请注意，
               <Typography component="span" variant="inherit" sx={{ color: "error.main" }}>此操作不可恢复！</Typography>
             </DialogContentText>

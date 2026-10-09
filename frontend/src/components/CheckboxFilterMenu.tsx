@@ -1,18 +1,19 @@
 import { useId, useState } from "react";
 import FilterList from "@mui/icons-material/FilterList";
 import FilterListOff from "@mui/icons-material/FilterListOff";
-import { Checkbox, ListItemText, Menu, MenuItem, Tooltip } from "@mui/material";
+import { Checkbox, Divider, ListItemText, Menu, MenuItem, Tooltip } from "@mui/material";
 import { PanelIconButton } from "./PanelIconButton";
 
 interface CheckboxFilterMenuProps<T extends string> {
   label: string;
-  options: ReadonlyArray<{ value: T; label: string }>;
+  disabled?: boolean;
+  options: ReadonlyArray<{ value: T; label: string; dividerBefore?: boolean; disabled?: boolean }>;
   selected: readonly T[];
   onChange: (selected: T[]) => void;
 }
 
 export function CheckboxFilterMenu<T extends string>({
-  label, options, selected, onChange,
+  label, options, selected, onChange, disabled = false,
 }: CheckboxFilterMenuProps<T>) {
   const id = useId();
   const [anchor, setAnchor] = useState<HTMLElement | null>(null);
@@ -23,6 +24,7 @@ export function CheckboxFilterMenu<T extends string>({
         <PanelIconButton
           id={`${id}-button`}
           size="small"
+          disabled={disabled}
           aria-label={label}
           aria-haspopup="menu"
           aria-expanded={Boolean(anchor)}
@@ -45,11 +47,12 @@ export function CheckboxFilterMenu<T extends string>({
           list: { "aria-labelledby": `${id}-button`, dense: true },
         }}
       >
-        {options.map((option) => {
+        {options.flatMap((option) => {
           const checked = selected.includes(option.value);
-          return (
+          const item = (
             <MenuItem
               key={option.value}
+              disabled={option.disabled}
               dense
               role="menuitemcheckbox"
               aria-checked={checked}
@@ -72,6 +75,8 @@ export function CheckboxFilterMenu<T extends string>({
               <ListItemText primary={option.label} disableTypography sx={{ my: 0 }} />
             </MenuItem>
           );
+          // Menu 的直接子节点保持为菜单项/分隔线，保留键盘遍历和焦点管理。
+          return option.dividerBefore ? [<Divider key={`${option.value}-divider`} />, item] : [item];
         })}
       </Menu>
     </>

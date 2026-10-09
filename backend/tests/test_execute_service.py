@@ -134,6 +134,9 @@ async def test_executes_valid_preview_once(tmp_path: Path) -> None:
     assert result.items[0].status == "renamed"
     assert (tmp_path / "renamed.txt").exists()
     assert provider.rename_targets == ["renamed.txt"]
+    assert result.items[0].file_id == "one.txt"
+    assert result.items[0].current_file.id == "renamed.txt"
+    assert result.items[0].current_file.path == "renamed.txt"
     with pytest.raises(PreviewNotFoundError):
         await execute_service.execute(preview.preview_id)
 
@@ -245,3 +248,31 @@ async def test_renames_selected_directory_without_renaming_children(
     assert result.status == "completed"
     assert (tmp_path / "season-01" / "episode-one.txt").exists()
     assert not (tmp_path / "season-01" / "episode-01.txt").exists()
+
+
+@pytest.mark.asyncio
+async def test_execute_rejects_oversized_legacy_snapshot_before_writing(tmp_path: Path) -> None:
+    (tmp_path / "one.txt").write_text("one", encoding="utf-8")
+    provider = TrackingLocalProvider(tmp_path)
+    preview_service, execute_service = build_services(tmp_path, provider)
+    preview = await preview_service.preview(request_for({"one.txt": "renamed.txt"}))
+    snapshot = preview_service.store.get(preview.preview_id)
+    # 模拟上限上线前已存在的服务端快照；客户端仍只能提交 preview_id。
+    snapshot.request.file_ids = [f"old-{index}.txt" for index in range(1001)]
+    with pytest.raises(ValidationError, match="1000"):
+        await execute_service.execute(preview.preview_id)
+    assert provider.rename_targets == []
+
+
+@pytest.mark.asyncio
+async def test_cross_batch_name_dependency_is_rejected_without_writes(tmp_path: Path) -> None:
+    (tmp_path / "a.txt").write_text("A", encoding="utf-8")
+    (tmp_path / "b.txt").write_text("B", encoding="utf-8")
+    provider = TrackingLocalProvider(tmp_path)
+    preview_service, execute_service = build_services(tmp_path, provider)
+    preview = await preview_service.preview(request_for({"a.txt": "b.txt"}))
+    assert not preview.valid
+    assert preview.items[0].conflict
+    with pytest.raises(ValidationError):
+        await execute_service.execute(preview.preview_id)
+    assert provider.rename_targets == []

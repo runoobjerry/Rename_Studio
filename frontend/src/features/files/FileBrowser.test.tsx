@@ -5,7 +5,7 @@ import { createAppTheme } from "../../theme";
 
 import { FileBrowser } from "./FileBrowser";
 
-afterEach(cleanup);
+afterEach(() => { cleanup(); window.localStorage.clear(); });
 
 
 const listing = {
@@ -197,4 +197,61 @@ describe("FileBrowser", () => {
     expect(onSelectAll).toHaveBeenCalledWith(["folder", "file.txt"]);
     expect(onInvertSelection).toHaveBeenCalledOnce();
   });
+});
+
+
+const sessionTask = () => ({
+  taskId: "task", contextKey: "context", storageId: "local", location: { kind: "root" as const }, rules: [], batches: [],
+  items: listing.items.map((file, order) => ({ taskItemId: `item-${order}`, order, before: { ...file, storageId: "local" },
+    currentFileId: file.id, status: order === 0 ? "completed" as const : "pending" as const })),
+});
+const taskProps = () => ({ listing, providerName: "本地文件", selectedIds: [], task: sessionTask(), taskCurrent: true,
+  onNavigate: vi.fn(), onToggle: vi.fn(), onSelectAll: vi.fn(), onInvertSelection: vi.fn(), onEndTask: vi.fn() });
+
+it("shows only task members, defaults to pending and groups status filters in the original menu", async () => {
+  const props = taskProps();
+  render(<FileBrowser {...props} listing={{ ...listing, items: [...listing.items, { ...listing.items[1], id: "unselected", name: "unselected.txt" }] }} />);
+  expect(screen.getByRole("heading", { name: "当前任务" })).toBeInTheDocument();
+  expect(screen.getByText(/共 2 项/)).toBeInTheDocument();
+  expect(screen.queryByText("unselected.txt")).not.toBeInTheDocument();
+  expect(screen.queryByRole("checkbox", { name: "选择文件夹 folder" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "返回上级" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "继续下一批" })).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "筛选项目" }));
+  expect(screen.getByRole("separator")).toBeInTheDocument();
+  expect(screen.getByRole("menuitemcheckbox", { name: "待处理" })).toHaveAttribute("aria-checked", "true");
+  fireEvent.click(screen.getByRole("menuitemcheckbox", { name: "已完成" }));
+  fireEvent.keyDown(screen.getByRole("menu"), { key: "Escape" });
+  await waitFor(() => expect(screen.getByRole("checkbox", { name: "选择文件夹 folder" })).toBeDisabled());
+  expect(screen.queryByText("unselected.txt")).not.toBeInTheDocument();
+});
+
+it("disables task status filters before a task starts and restores file selection on task exit", () => {
+  const props = taskProps();
+  const { rerender } = render(<FileBrowser {...props} />);
+  fireEvent.click(screen.getByRole("button", { name: "结束当前任务" }));
+  expect(props.onEndTask).toHaveBeenCalledOnce();
+  rerender(<FileBrowser {...props} task={null} />);
+  expect(screen.getByRole("heading", { name: "文件选择" })).toBeInTheDocument();
+  expect(screen.getByRole("checkbox", { name: "选择文件夹 folder" })).toBeEnabled();
+  fireEvent.click(screen.getByRole("button", { name: "筛选项目" }));
+  expect(screen.getByRole("menuitemcheckbox", { name: "待处理" })).toHaveAttribute("aria-disabled", "true");
+  expect(screen.getByRole("menuitemcheckbox", { name: "已完成" })).toHaveAttribute("aria-disabled", "true");
+});
+
+it("retains missing task snapshots and locks unknown identities", async () => {
+  const props = taskProps();
+  const task = { ...props.task, items: props.task.items.map((item) => ({ ...item, status: "unknown" as const })) };
+  render(<FileBrowser {...props} task={task} listing={{ ...listing, items: [] }} />);
+  fireEvent.click(screen.getByRole("button", { name: "筛选项目" }));
+  fireEvent.click(screen.getByRole("menuitemcheckbox", { name: "失败/待核对" }));
+  fireEvent.keyDown(screen.getByRole("menu"), { key: "Escape" });
+  await waitFor(() => expect(screen.getByRole("checkbox", { name: "选择文件夹 folder" })).toBeDisabled());
+  expect(screen.getByRole("checkbox", { name: "选择文件 file.txt" })).toBeDisabled();
+});
+
+it("does not automatically show a batch hint when the selection exceeds 1000 items", () => {
+  render(<FileBrowser {...taskProps()} task={null} selectedIds={Array.from({ length: 1001 }, (_, index) => String(index))} />);
+  expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
 });

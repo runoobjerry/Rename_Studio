@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { memo, useMemo, useState } from "react";
 import Alert from "@mui/material/Alert";
 import Table from "@mui/material/Table";
 import TableBody from "@mui/material/TableBody";
@@ -8,6 +8,8 @@ import TableHead from "@mui/material/TableHead";
 import TableRow from "@mui/material/TableRow";
 
 import type { ExecuteResponse, PreviewResponse } from "../../types";
+import { useVirtualTable } from "../../hooks/useVirtualTable";
+import { VirtualTableSpacer } from "../../components/VirtualTableSpacer";
 import { CheckboxFilterMenu } from "../../components/CheckboxFilterMenu";
 
 const statusFilters = [
@@ -30,7 +32,7 @@ interface PreviewPanelProps {
   onExecute?: (previewId: string) => void;
 }
 
-export function PreviewPanel({
+export const PreviewPanel = memo(function PreviewPanel({
   preview,
   execution,
   providerName = "当前存储",
@@ -38,27 +40,15 @@ export function PreviewPanel({
   executeError,
 }: PreviewPanelProps) {
   const [filters, setFilters] = useState<StatusFilter[]>([]);
-  const executionById = new Map(execution?.items.map((item) => [item.file_id, item]));
-  const pendingCount = preview?.items.filter(
+  const executionById = useMemo(() => new Map(execution?.items.map((item) => [item.file_id, item])), [execution?.items]);
+  const pendingCount = useMemo(() => preview?.items.filter(
     (item) => item.changed && item.valid && !executionById.has(item.file_id),
-  ).length ?? 0;
-  const unchangedCount = preview?.items.filter(
+  ).length ?? 0, [preview?.items, executionById]);
+  const unchangedCount = useMemo(() => preview?.items.filter(
     (item) => !item.changed || executionById.get(item.file_id)?.status === "skipped",
-  ).length ?? 0;
+  ).length ?? 0, [preview?.items, executionById]);
 
-  function statusFor(item: PreviewResponse["items"][number]) {
-    const result = executionById.get(item.file_id);
-    if (result?.status === "renamed") return { label: "已修改", className: "valid" };
-    if (result?.status === "failed") {
-      return { label: result.error ?? "修改失败", className: "invalid" };
-    }
-    if (result?.status === "skipped") return { label: "无变化", className: "neutral" };
-    if (item.error) return { label: item.error, className: "invalid" };
-    if (!item.valid) return { label: item.conflict ? "名称冲突" : "不可修改", className: "invalid" };
-    return { label: item.changed ? "待修改" : "无变化", className: item.changed ? "pending" : "neutral" };
-  }
-
-  const visibleItems = preview?.items.filter((item) => {
+  const visibleItems = useMemo(() => preview?.items.filter((item) => {
     if (filters.length === 0) return true;
     const result = executionById.get(item.file_id);
     // 已执行项目仍按原预览分类，执行失败覆盖原分类，避免隐藏失败信息。
@@ -67,7 +57,11 @@ export function PreviewPanel({
       : item.error || !item.valid || item.conflict ? "error"
       : item.changed ? "pending" : "unchanged";
     return filters.includes(category);
-  }) ?? [];
+  }) ?? [], [preview?.items, executionById, filters]);
+  const scrollKey = useMemo(() => [preview?.preview_id, filters], [preview?.preview_id, filters]);
+  const columnValues = useMemo(() => [visibleItems.map((item) => item.original_name), visibleItems.map((item) => item.new_name),
+    visibleItems.map((item) => statusFor(item, executionById.get(item.file_id)).label)], [visibleItems, executionById]);
+  const virtual = useVirtualTable(visibleItems.length, scrollKey, columnValues);
 
   return (
     <section className="panel preview" aria-labelledby="preview-title">
@@ -89,9 +83,10 @@ export function PreviewPanel({
         <p className="empty-state">点击预览按钮以查看修改名称；预览不会修改 {providerName} 中的内容。</p>
       )}
       {preview && (
-        <TableContainer className="preview-table-wrap" sx={{ minWidth: 0, maxWidth: "100%" }}>
+        <TableContainer ref={virtual.containerRef} onScroll={virtual.onScroll} onKeyDown={virtual.onKeyDown} tabIndex={0} className="preview-table-wrap" sx={{ minWidth: 0, maxWidth: "100%" }}>
           <Table
             stickyHeader
+            aria-rowcount={visibleItems.length + 1}
             size="small"
             aria-label="修改预览"
             sx={{
@@ -102,29 +97,21 @@ export function PreviewPanel({
               "& th:nth-of-type(-n+2), & td:nth-of-type(-n+2)": { width: "1%" },
             }}
           >
+            {virtual.columnWidths && <colgroup>{virtual.columnWidths.map((width, index) =>
+              <col key={index} style={index < 2 ? { width } : undefined} />)}</colgroup>}
             <TableHead>
               <TableRow>
                 <TableCell>原文件名</TableCell>
                 <TableCell>新文件名</TableCell>
-                <TableCell>状态</TableCell>
+                <TableCell sx={{ minWidth: virtual.columnWidths?.[2] }}>状态</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
-              {visibleItems.map((item) => {
-                const status = statusFor(item);
-                const renamed = executionById.get(item.file_id)?.status === "renamed";
-                return (
-                  <TableRow key={item.file_id}>
-                    <TableCell>{item.original_name}</TableCell>
-                    <TableCell className={renamed ? "renamed-name" : undefined}>
-                      {item.new_name}
-                    </TableCell>
-                    <TableCell>
-                      <span className={`status ${status.className}`}>{status.label}</span>
-                    </TableCell>
-                  </TableRow>
-                );
-              })}
+              <VirtualTableSpacer height={virtual.top} columns={3} />
+              {visibleItems.slice(virtual.start, virtual.end).map((item, offset) => (
+                <PreviewRow key={item.file_id} item={item} result={executionById.get(item.file_id)} rowIndex={virtual.start + offset} />
+              ))}
+              <VirtualTableSpacer height={virtual.bottom} columns={3} />
               {visibleItems.length === 0 && (
                 <TableRow>
                   <TableCell colSpan={3} align="center">没有符合筛选条件的项目。</TableCell>
@@ -140,4 +127,27 @@ export function PreviewPanel({
       )}
     </section>
   );
+});
+
+const PreviewRow = memo(function PreviewRow({ item, result, rowIndex }: {
+  item: PreviewResponse["items"][number]; result?: ExecuteResponse["items"][number]; rowIndex: number;
+}) {
+  const status = statusFor(item, result);
+  return <TableRow data-row-index={rowIndex} aria-rowindex={rowIndex + 2} tabIndex={0}>
+    <TableCell>{item.original_name}</TableCell>
+    <TableCell className={result?.status === "renamed" ? "renamed-name" : undefined}>{item.new_name}</TableCell>
+    <TableCell><span className={`status ${status.className}`}>{status.label}</span></TableCell>
+  </TableRow>;
+});
+
+function statusFor(item: PreviewResponse["items"][number], result?: ExecuteResponse["items"][number]) {
+  if (result?.status === "renamed") return { label: "已修改", className: "valid" };
+  if (result?.status === "failed") {
+    return { label: result.error ?? "修改失败", className: "invalid" };
+  }
+  if (result?.status === "skipped") return { label: "无变化", className: "neutral" };
+  if (item.error) return { label: item.error, className: "invalid" };
+  if (!item.valid) return { label: item.conflict ? "名称冲突" : "不可修改", className: "invalid" };
+  return { label: item.changed ? "待修改" : "无变化", className: item.changed ? "pending" : "neutral" };
 }
+

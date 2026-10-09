@@ -117,8 +117,8 @@ class StorageListRequest(BaseModel):
 
 
 class StoragePreviewRequest(StorageListRequest):
-    file_ids: list[str] = Field(min_length=1)
-    rules: list[RuleSpec] = Field(default_factory=list)
+    file_ids: list[str] = Field(min_length=1, max_length=1000)
+    rules: list[RuleSpec] = Field(default_factory=list, max_length=20)
 
 
 class StorageAuthStartResponse(BaseModel):

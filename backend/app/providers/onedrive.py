@@ -1,4 +1,6 @@
 import asyncio
+import logging
+from time import perf_counter
 from collections.abc import Awaitable, Callable
 from datetime import datetime
 from email.utils import parsedate_to_datetime
@@ -6,6 +8,7 @@ from urllib.parse import quote, urlsplit
 
 import httpx
 
+from app.core.log_context import request_id_context
 from app.core.errors import (
     AppError,
     AuthenticationError,
@@ -21,6 +24,9 @@ from app.providers.name_validation import validate_onedrive_name
 from app.schemas.files import DirectoryListing, FileItem
 from app.schemas.storage import IdLocation, PathLocation, RootLocation, StorageLocation
 from app.services.connection_auth import ConnectionAuth
+
+
+logger = logging.getLogger("onedriver_renamer.onedrive_performance")
 
 
 GRAPH_ROOT = "https://graph.microsoft.com/v1.0"
@@ -100,11 +106,14 @@ class OneDriveProvider(StorageProvider):
 
         items: list[FileItem] = []
         visited: set[str] = set()
+        page = 0
         while url:
             parsed = urlsplit(url)
             if parsed.scheme != "https" or parsed.netloc != "graph.microsoft.com" or not parsed.path.startswith("/v1.0/") or url in visited:
                 raise ProviderError("Microsoft Graph returned an invalid pagination link")
             visited.add(url)
+            page += 1
+            page_started = perf_counter()
             payload = await self._request_json("GET", url)
             raw_items = payload.get("value")
             if not isinstance(raw_items, list):
@@ -114,6 +123,10 @@ class OneDriveProvider(StorageProvider):
             if any(not isinstance(item, dict) for item in raw_items):
                 raise ProviderError("Microsoft Graph returned an invalid directory item")
             items.extend(self._to_item(item) for item in raw_items)
+            logger.info(
+                "directory_page provider=onedrive request_id=%s page=%s item_count=%s duration_ms=%.2f",
+                request_id_context.get(), page, len(raw_items), (perf_counter() - page_started) * 1000,
+            )
             next_link = payload.get("@odata.nextLink")
             if next_link is not None and (not isinstance(next_link, str) or not next_link):
                 raise ProviderError("Microsoft Graph returned an invalid pagination link")
@@ -374,6 +387,7 @@ class OneDriveProvider(StorageProvider):
             request["method"] == "PATCH" for request in json["requests"]
         ))
         for attempt in range(MAX_RETRIES + 1):
+            attempt_started = perf_counter()
             token = await self.auth.access_token(force_refresh=force_refresh)
             force_refresh = False
             try:
@@ -384,6 +398,10 @@ class OneDriveProvider(StorageProvider):
                     json=json,
                 )
             except httpx.HTTPError as exc:
+                logger.info(
+                    "graph_request provider=onedrive request_id=%s method=%s attempt=%s status=transport_error duration_ms=%.2f",
+                    request_id_context.get(), method, attempt + 1, (perf_counter() - attempt_started) * 1000,
+                )
                 if writing:
                     raise RenameOutcomeUnknownError("Remote write outcome is unknown; metadata must be checked") from exc
                 if attempt < MAX_RETRIES:
@@ -391,6 +409,10 @@ class OneDriveProvider(StorageProvider):
                     continue
                 raise ProviderError("Microsoft Graph request failed") from exc
 
+            logger.info(
+                "graph_request provider=onedrive request_id=%s method=%s attempt=%s status=%s duration_ms=%.2f",
+                request_id_context.get(), method, attempt + 1, response.status_code, (perf_counter() - attempt_started) * 1000,
+            )
             if response.status_code == 401 and attempt < MAX_RETRIES:
                 force_refresh = True
                 continue

@@ -96,6 +96,9 @@ class ExecuteService:
                 return response
 
     async def _revalidate(self, snapshot: PreviewSnapshot) -> list[FileItem]:
+        # 执行只使用服务端快照，仍限制实际执行范围，不能通过旧快照绕过上限。
+        if len(snapshot.sources) > 1000 or len(snapshot.request.file_ids) > 1000:
+            raise ValidationError("A rename batch cannot contain more than 1000 files")
         if not snapshot.response.valid:
             raise ValidationError("Rename preview contains invalid items")
 
@@ -272,10 +275,12 @@ class ExecuteService:
                 for renamed in renamed_direct:
                     results[renamed.preview.file_id].status = "renamed"
                     results[renamed.preview.file_id].error = None
+                    results[renamed.preview.file_id].current_file = renamed.current
             return self._response(snapshot.preview_id, results)
         for renamed in renamed_direct:
             results[renamed.preview.file_id].status = "renamed"
             results[renamed.preview.file_id].error = None
+            results[renamed.preview.file_id].current_file = renamed.current
 
         if staged_items:
             # 有依赖的直接重命名可能回滚，只有整个直接阶段成功才计入。
@@ -292,6 +297,7 @@ class ExecuteService:
                 if not isinstance(outcome, AppError):
                     results[item.file_id].status = "renamed"
                     results[item.file_id].error = None
+                    results[item.file_id].current_file = outcome
                 else:
                     progress.phase = "rollback"
                     results[item.file_id].error = outcome.message
@@ -355,6 +361,7 @@ class ExecuteService:
                 result.actual_name = None if isinstance(outcome, RenameOutcomeUnknownError) else outcome.details.get("actual_name", staged_item.temporary.name)
             else:
                 result.actual_name = outcome.name
+                result.current_file = outcome
 
     @staticmethod
     async def _rollback_direct(
@@ -378,6 +385,7 @@ class ExecuteService:
                 result.actual_name = None if isinstance(outcome, RenameOutcomeUnknownError) else outcome.details.get("actual_name", item.current.name)
             else:
                 result.actual_name = outcome.name
+                result.current_file = outcome
 
     @staticmethod
     async def _rollback_one(
@@ -399,6 +407,7 @@ class ExecuteService:
             result.actual_name = None if isinstance(outcome, RenameOutcomeUnknownError) else outcome.details.get("actual_name", staged.temporary.name)
         else:
             result.actual_name = outcome.name
+            result.current_file = outcome
 
     @staticmethod
     def _response(

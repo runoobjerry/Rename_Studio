@@ -15,6 +15,7 @@ from app.api.storage_router import router as storage_router
 from app.api.dependencies import get_storage_manager
 from app.core.config import get_settings
 from app.core.errors import AppError
+from app.core.log_context import request_id_context
 
 
 logger = logging.getLogger("onedriver_renamer.api")
@@ -43,7 +44,11 @@ def create_app() -> FastAPI:
         request_id = request.headers.get("x-request-id") or str(uuid4())
         request.state.request_id = request_id
         started_at = perf_counter()
-        response = await call_next(request)
+        context_token = request_id_context.set(request_id)
+        try:
+            response = await call_next(request)
+        finally:
+            request_id_context.reset(context_token)
         duration_ms = round((perf_counter() - started_at) * 1000, 2)
         response.headers["x-request-id"] = request_id
         logger.info(
