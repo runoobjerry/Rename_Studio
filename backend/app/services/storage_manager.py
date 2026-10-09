@@ -64,14 +64,15 @@ class StorageManager:
         before = self.record(storage_id)
         config = before.config if request.config is None else self.validate_config(before.provider_type, request.config)
         changed = config != before.config
+        name = before.name if request.name is None else request.name
+        if not changed and name == before.name:
+            return self.info(storage_id)
         record = before.model_copy(deep=True)
-        if request.name is not None:
-            record.name = request.name
+        record.name = name
         record.config = config
         if changed:
             record.revision += 1
-            if config != before.config:
-                record.credentials = {}
+            record.credentials = {}
         self._commit(record, record.storage_id)
         if changed:
             await self._invalidate(record.storage_id)

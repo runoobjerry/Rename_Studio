@@ -130,6 +130,53 @@ async def test_connections_versions_busy_guard_and_delete(tmp_path: Path) -> Non
     await manager.aclose()
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize("update_request", [
+    StorageUpdate(),
+    StorageUpdate(name="Account"),
+    StorageUpdate(config={"client_id": "app"}),
+    StorageUpdate(name="Account", config={"client_id": " app "}),
+])
+async def test_unchanged_update_does_not_write(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, update_request: StorageUpdate,
+) -> None:
+    manager = make_manager(tmp_path)
+    info = manager.create(StorageCreate(provider_type="onedrive", name="Account", config={"client_id": "app"}))
+    auth = cast(OneDriveAuthService, manager.auth(info.storage_id))
+    auth._store_tokens({"access_token": "fixture-access", "refresh_token": "fixture-refresh"})
+    before = manager.info(info.storage_id)
+    state = manager.state.model_copy(deep=True)
+
+    def fail(state):
+        raise ProviderError("Disk unavailable")
+
+    monkeypatch.setattr(manager.repository, "save", fail)
+    assert await manager.update(info.storage_id, update_request) == before
+    assert manager.state == state
+    assert manager.auth(info.storage_id) is auth
+    await manager.aclose()
+
+
+@pytest.mark.asyncio
+async def test_name_only_update_persists_without_invalidating_authorization(tmp_path: Path) -> None:
+    manager = make_manager(tmp_path)
+    info = manager.create(StorageCreate(provider_type="onedrive", name="Account", config={"client_id": "app"}))
+    auth = cast(OneDriveAuthService, manager.auth(info.storage_id))
+    auth._store_tokens({"access_token": "fixture-access", "refresh_token": "fixture-refresh"})
+    before = manager.record(info.storage_id).model_copy(deep=True)
+
+    result = await manager.update(info.storage_id, StorageUpdate(name="Renamed"))
+
+    assert result.name == "Renamed"
+    assert result.revision == before.revision
+    assert manager.record(info.storage_id).credentials == before.credentials
+    assert manager.auth(info.storage_id) is auth
+    restored = make_manager(tmp_path)
+    assert restored.record(info.storage_id) == manager.record(info.storage_id)
+    await restored.aclose()
+    await manager.aclose()
+
+
 def test_failed_save_keeps_previous_configuration(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     manager = make_manager(tmp_path)
     before = manager.state.model_dump()
