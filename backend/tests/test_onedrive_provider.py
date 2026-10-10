@@ -1,10 +1,13 @@
 from typing import Any
+import asyncio
 
 import pytest
 
 from app.providers.base import RenameRequest
 from app.providers.onedrive import GRAPH_ROOT, OneDriveProvider
+from app.schemas.files import FileItem
 from app.services.onedrive_auth import OneDriveAuthService
+from app.services.execute_service import ExecuteService
 
 
 def drive_item(item_id: str, name: str, *, folder: bool = False) -> dict[str, Any]:
@@ -87,3 +90,64 @@ def test_rejects_onedrive_reserved_names() -> None:
     assert provider.validate_name("desktop.ini") is not None
     assert provider.validate_name("~$draft.docx") is not None
     assert provider.validate_name("valid file.txt") is None
+
+
+@pytest.mark.asyncio
+async def test_service_two_group_window_does_not_multiply_graph_concurrency() -> None:
+    class GatedGraphProvider(StubOneDriveProvider):
+        def __init__(self) -> None:
+            super().__init__([])
+            self.started: asyncio.Queue[int] = asyncio.Queue()
+            self.gates: list[asyncio.Event] = []
+            self.active = 0
+            self.peak = 0
+            self.release_all = False
+
+        async def _request_json(
+            self, method: str, url: str, *, json: dict[str, Any] | None = None,
+        ) -> dict[str, object]:
+            assert method == "POST" and url == f"{GRAPH_ROOT}/$batch"
+            assert json is not None
+            index = len(self.calls)
+            self.calls.append((method, url, json))
+            gate = asyncio.Event()
+            self.gates.append(gate)
+            if self.release_all:
+                gate.set()
+            self.active += 1
+            self.peak = max(self.peak, self.active)
+            self.started.put_nowait(index)
+            try:
+                await gate.wait()
+                return {"responses": [
+                    {"id": entry["id"], "status": 200,
+                     "body": drive_item(entry["url"].rsplit("/", 1)[-1], entry["body"]["name"])}
+                    for entry in json["requests"]
+                ]}
+            finally:
+                self.active -= 1
+
+    provider = GatedGraphProvider()
+    requests = [RenameRequest(f"file-{index}", f"new-{index}.txt") for index in range(41)]
+    task = asyncio.create_task(ExecuteService._rename_in_batches(provider, requests, allow_concurrent=True))
+    try:
+        assert [await asyncio.wait_for(provider.started.get(), 5),
+                await asyncio.wait_for(provider.started.get(), 5)] == [0, 1]
+        assert provider.active == provider.peak == 2
+        provider.gates[1].set()
+        assert await asyncio.wait_for(provider.started.get(), 5) == 2
+        assert not provider.gates[0].is_set()
+        assert provider.active == 2
+    finally:
+        provider.release_all = True
+        for gate in provider.gates:
+            gate.set()
+        outcomes = await asyncio.wait_for(task, 5)
+    assert [len(body["requests"]) for _, _, body in provider.calls] == [20, 20, 1]
+    assert provider.peak == 2
+    assert provider.active == 0
+    assert set(outcomes) == {entry.file_id for entry in requests}
+    for entry in requests:
+        outcome = outcomes[entry.file_id]
+        assert isinstance(outcome, FileItem)
+        assert outcome.name == entry.new_name

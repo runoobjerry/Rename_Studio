@@ -1,5 +1,6 @@
 import asyncio
 import logging
+from collections.abc import Callable
 from dataclasses import dataclass
 from itertools import chain
 from typing import Literal
@@ -7,6 +8,7 @@ from time import monotonic
 from uuid import uuid4
 
 from app.core.errors import AppError, NotFoundError, PreviewExpiredError, ValidationError, RenameOutcomeUnknownError, ProviderError
+from app.core.log_context import request_id_context
 from app.providers.base import RenameRequest, StorageProvider
 from app.providers.registry import ProviderRegistry
 from app.schemas.files import FileItem
@@ -128,11 +130,19 @@ class ExecuteService:
         return siblings
 
     @staticmethod
-    async def _safe_rename_many(provider: StorageProvider, requests: list[RenameRequest]) -> dict[str, FileItem | AppError]:
+    async def _safe_rename_many(
+        provider: StorageProvider,
+        requests: list[RenameRequest],
+        *,
+        on_unknown: Callable[[], None] | None = None,
+    ) -> dict[str, FileItem | AppError]:
         try:
             outcomes = await provider.rename_many(requests)
         except AppError as exc:
             outcomes = {request.file_id: exc for request in requests}
+        if on_unknown is not None and any(isinstance(outcome, RenameOutcomeUnknownError) for outcome in outcomes.values()):
+            # 核查之前暂停补组，不能等元数据读取结束后才通知调度器。
+            on_unknown()
         # Never replay a write whose response was lost. Reconcile each opaque ID instead.
         for request in requests:
             outcome = outcomes[request.file_id]
@@ -156,20 +166,69 @@ class ExecuteService:
         provider: StorageProvider,
         requests: list[RenameRequest],
         progress: RenameProgress | None = None,
+        *,
+        allow_concurrent: bool = False,
     ) -> dict[str, FileItem | AppError]:
         outcomes: dict[str, FileItem | AppError] = {}
-        # 保留 Provider 的批处理能力；每批完成后发布真实计数并让出事件循环。
-        for offset in range(0, len(requests), provider.execution_batch_size):
-            batch = requests[offset:offset + provider.execution_batch_size]
-            batch_outcomes = await ExecuteService._safe_rename_many(provider, batch)
-            outcomes.update(batch_outcomes)
-            if progress is not None:
-                progress.processed += len(batch)
-            if any(isinstance(outcome, RenameOutcomeUnknownError) for outcome in batch_outcomes.values()):
-                for request in requests[offset + len(batch):]:
-                    outcomes[request.file_id] = ProviderError("Rename was not attempted after an unknown write outcome")
-                break
-            await asyncio.sleep(0)
+        concurrency = provider.execution_batch_concurrency if allow_concurrent else 1
+        pending: dict[asyncio.Task[dict[str, FileItem | AppError]], tuple[int, list[RenameRequest]]] = {}
+        reconciling: set[int] = set()
+        offset = 0
+        stopped = False
+        active = 0
+
+        async def run_batch(index: int, batch: list[RenameRequest]) -> dict[str, FileItem | AppError]:
+            nonlocal active
+            active += 1
+            started = monotonic()
+            logger.info(
+                "write_batch event=start provider=%s request_id=%s group=%s item_count=%s in_flight=%s",
+                provider.id, request_id_context.get(), index, len(batch), active,
+            )
+            try:
+                return await ExecuteService._safe_rename_many(provider, batch, on_unknown=lambda: reconciling.add(index))
+            finally:
+                active -= 1
+                logger.info(
+                    "write_batch event=finish provider=%s request_id=%s group=%s item_count=%s in_flight=%s duration_ms=%.2f",
+                    provider.id, request_id_context.get(), index, len(batch), active, (monotonic() - started) * 1000,
+                )
+
+        def start_batches() -> None:
+            nonlocal offset
+            while not stopped and not reconciling and len(pending) < concurrency and offset < len(requests):
+                index = offset // provider.execution_batch_size + 1
+                batch = requests[offset:offset + provider.execution_batch_size]
+                pending[asyncio.create_task(run_batch(index, batch))] = (index, batch)
+                offset += len(batch)
+
+        try:
+            start_batches()
+            while pending:
+                completed, _ = await asyncio.wait(pending, return_when=asyncio.FIRST_COMPLETED)
+                # 同一轮先收集全部已完成组，发现未知结果后不再补入任何新组。
+                for task in sorted(completed, key=lambda entry: pending[entry][0]):
+                    index, batch = pending[task]
+                    batch_outcomes = task.result()
+                    del pending[task]
+                    reconciling.discard(index)
+                    outcomes.update(batch_outcomes)
+                    if progress is not None:
+                        progress.processed += len(batch)
+                    stopped |= any(isinstance(outcome, RenameOutcomeUnknownError) for outcome in batch_outcomes.values())
+                start_batches()
+        finally:
+            if pending:
+                # 取消/异常只停止补组；远端写入已开始，必须等待它们收尾后才能释放执行锁。
+                draining = asyncio.gather(*pending, return_exceptions=True)
+                while not draining.done():
+                    try:
+                        await asyncio.shield(draining)
+                    except asyncio.CancelledError:
+                        # 重复取消也不能使已启动的写入成为无人等待的后台任务。
+                        continue
+        for request in requests[offset:]:
+            outcomes[request.file_id] = ProviderError("Rename was not attempted after an unknown write outcome")
         return outcomes
 
     @staticmethod
@@ -250,7 +309,10 @@ class ExecuteService:
             RenameRequest(item.file_id, item.new_name) for item in direct_items
         ]
         progress.phase = "renaming"
-        direct_results = await self._rename_in_batches(provider, direct_requests, progress if not staged_items else None)
+        direct_results = await self._rename_in_batches(
+            provider, direct_requests, progress if not staged_items else None,
+            allow_concurrent=not staged_items,
+        )
         renamed_direct: list[DirectRename] = []
         for item in direct_items:
             outcome = direct_results[item.file_id]

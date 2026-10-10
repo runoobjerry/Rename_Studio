@@ -17,6 +17,7 @@ class StorageProvider(ABC):
     id: str
     display_name: str
     execution_batch_size: int = 20
+    execution_batch_concurrency: int = 1
 
     async def list_directory(self, location: StorageLocation) -> DirectoryListing:
         """Path providers keep identity relative to their configured root."""

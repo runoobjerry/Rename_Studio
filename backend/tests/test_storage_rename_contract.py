@@ -1,4 +1,5 @@
 from provider_fixtures import registry_for
+import asyncio
 from pydantic import BaseModel
 import pytest
 
@@ -77,6 +78,273 @@ class StableIdProvider(StorageProvider):
 
     def normalize_name(self, name: str) -> str:
         return name
+
+
+class ControlledBatchProvider(StableIdProvider):
+    """Use gates to observe overlapping writes without depending on network latency."""
+
+    execution_batch_size = 20
+    execution_batch_concurrency = 2
+
+    def __init__(self, count: int) -> None:
+        super().__init__({str(index): f"old-{index}" for index in range(count)})
+        self.groups: list[list[RenameRequest]] = []
+        self.gates: list[asyncio.Event] = []
+        self.started: asyncio.Queue[int] = asyncio.Queue()
+        self.finished: asyncio.Queue[int] = asyncio.Queue()
+        self.active = 0
+        self.max_active = 0
+        self.release_all = False
+        self.unknown_group: int | None = None
+        self.crash_group: int | None = None
+        self.unknown_ids: set[str] = set()
+        self.metadata_started = asyncio.Event()
+        self.metadata_release = asyncio.Event()
+
+    async def rename_many(self, requests: list[RenameRequest]):
+        index = len(self.groups)
+        self.groups.append(requests)
+        gate = asyncio.Event()
+        self.gates.append(gate)
+        if self.release_all:
+            gate.set()
+        self.active += 1
+        self.max_active = max(self.max_active, self.active)
+        self.started.put_nowait(index)
+        try:
+            await gate.wait()
+            if index == self.crash_group:
+                raise RuntimeError("Unexpected write failure")
+            outcomes = await super().rename_many(requests)
+            if index == self.unknown_group:
+                self.unknown_ids.update(request.file_id for request in requests)
+                return {request.file_id: RenameOutcomeUnknownError("Write response lost") for request in requests}
+            return outcomes
+        finally:
+            self.active -= 1
+            self.finished.put_nowait(index)
+
+    async def get_metadata(self, file_id: str) -> FileItem:
+        if file_id in self.unknown_ids:
+            self.metadata_started.set()
+            await self.metadata_release.wait()
+        return await super().get_metadata(file_id)
+
+    def release_everything(self) -> None:
+        self.release_all = True
+        self.metadata_release.set()
+        for gate in self.gates:
+            gate.set()
+
+
+async def controlled_execution(provider: ControlledBatchProvider):
+    preview, execute = services(provider)
+    names = {item.name: f"new-{key}" for key, item in provider.items.items()}
+    snapshot = await preview.preview(request(list(provider.items), names))
+    task = asyncio.create_task(execute.execute(snapshot.preview_id))
+    return execute, snapshot.preview_id, task
+
+
+async def next_group(provider: ControlledBatchProvider) -> int:
+    return await asyncio.wait_for(provider.started.get(), timeout=5)
+
+
+async def wait_processed(execute: ExecuteService, preview_id: str, count: int) -> None:
+    async with asyncio.timeout(5):
+        while execute.progress(preview_id).processed != count:
+            # Yield for result collection; this is not a timed performance assertion.
+            await asyncio.sleep(0)
+
+
+@pytest.mark.asyncio
+async def test_independent_groups_roll_forward_and_keep_progress_in_completion_order() -> None:
+    provider = ControlledBatchProvider(61)
+    execute, preview_id, task = await controlled_execution(provider)
+    try:
+        assert [await next_group(provider), await next_group(provider)] == [0, 1]
+        assert execute.progress(preview_id).processed == 0
+        assert provider.active == provider.max_active == 2
+        provider.gates[1].set()
+        assert await next_group(provider) == 2
+        assert not provider.gates[0].is_set()
+        assert execute.progress(preview_id).processed == 20
+        provider.gates[2].set()
+        assert await next_group(provider) == 3
+        assert execute.progress(preview_id).processed == 40
+        provider.gates[3].set()
+        await wait_processed(execute, preview_id, 41)
+        assert not task.done()
+    finally:
+        provider.release_everything()
+        result = await asyncio.wait_for(task, timeout=5)
+    assert result.status == "completed"
+    assert [item.file_id for item in result.items] == list(provider.items)
+    assert [len(group) for group in provider.groups] == [20, 20, 20, 1]
+    assert execute.progress(preview_id).processed == execute.progress(preview_id).total == 61
+    assert provider.active == 0
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("count", [7, 40, 41, 1000])
+async def test_concurrent_execution_keeps_batch_limits_and_submits_every_id_once(count: int) -> None:
+    provider = ControlledBatchProvider(count)
+    provider.release_everything()
+    execute, preview_id, task = await controlled_execution(provider)
+    result = await asyncio.wait_for(task, timeout=5)
+    submitted = [entry.file_id for group in provider.groups for entry in group]
+    assert submitted == list(provider.items)
+    assert len(submitted) == len(set(submitted)) == count
+    assert all(0 < len(group) <= 20 for group in provider.groups)
+    assert provider.max_active <= 2
+    assert result.status == "completed"
+    assert [item.file_id for item in result.items] == list(provider.items)
+    assert all(item.actual_name == f"new-{item.file_id}" for item in result.items)
+    assert execute.progress(preview_id).processed == count
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("unreadable", [False, True])
+async def test_unknown_group_pauses_refill_and_drains_other_in_flight_group(unreadable: bool) -> None:
+    provider = ControlledBatchProvider(60)
+    provider.unknown_group = 0
+    provider.unreadable_after_write = unreadable
+    execute, preview_id, task = await controlled_execution(provider)
+    try:
+        assert [await next_group(provider), await next_group(provider)] == [0, 1]
+        provider.gates[0].set()
+        await asyncio.wait_for(provider.metadata_started.wait(), timeout=5)
+        provider.gates[1].set()
+        await wait_processed(execute, preview_id, 20)
+        await asyncio.sleep(0)
+        assert len(provider.groups) == 2
+        assert not task.done()
+        provider.metadata_release.set()
+        if not unreadable:
+            assert await next_group(provider) == 2
+            assert execute.progress(preview_id).processed == 40
+    finally:
+        provider.release_everything()
+        result = await asyncio.wait_for(task, timeout=5)
+    assert provider.active == 0
+    submitted = [entry.file_id for group in provider.groups for entry in group]
+    assert len(submitted) == len(set(submitted))
+    if unreadable:
+        assert len(provider.groups) == 2
+        assert result.status == "partial"
+        assert all(item.error_code == "RENAME_OUTCOME_UNKNOWN" and item.actual_name is None for item in result.items[:20])
+        assert all(item.status == "renamed" for item in result.items[20:40])
+        assert all(item.status == "failed" and "not attempted" in item.error for item in result.items[40:])
+        assert all(provider.items[str(index)].name == f"old-{index}" for index in range(40, 60))
+    else:
+        assert len(provider.groups) == 3
+        assert result.status == "completed"
+
+
+@pytest.mark.asyncio
+async def test_unresolved_unknown_waits_for_other_in_flight_write_before_returning() -> None:
+    provider = ControlledBatchProvider(60)
+    provider.unknown_group = 0
+    provider.unreadable_after_write = True
+    execute, preview_id, task = await controlled_execution(provider)
+    try:
+        assert [await next_group(provider), await next_group(provider)] == [0, 1]
+        provider.gates[0].set()
+        await asyncio.wait_for(provider.metadata_started.wait(), timeout=5)
+        provider.metadata_release.set()
+        await wait_processed(execute, preview_id, 20)
+        assert not task.done()
+        assert not provider.gates[1].is_set()
+        assert execute.providers.manager.info("stable").busy
+        assert len(provider.groups) == 2
+    finally:
+        provider.release_everything()
+        result = await asyncio.wait_for(task, timeout=5)
+    assert result.status == "partial"
+    assert len(provider.groups) == 2
+    assert provider.active == 0
+    assert all(item.status == "renamed" for item in result.items[20:40])
+    assert all(item.status == "failed" for item in result.items[40:])
+
+
+@pytest.mark.asyncio
+async def test_confirmed_failure_keeps_successes_and_continues_independent_groups() -> None:
+    provider = ControlledBatchProvider(60)
+    provider.fail_targets.add("new-0")
+    execute, preview_id, task = await controlled_execution(provider)
+    try:
+        assert [await next_group(provider), await next_group(provider)] == [0, 1]
+        provider.gates[0].set()
+        assert await next_group(provider) == 2
+        assert execute.progress(preview_id).processed == 20
+    finally:
+        provider.release_everything()
+        result = await asyncio.wait_for(task, timeout=5)
+    assert result.status == "partial"
+    assert result.items[0].error_code == "PROVIDER_ERROR"
+    assert all(item.status == "renamed" for item in result.items[1:])
+    assert provider.items["0"].name == "old-0"
+    assert len(provider.groups) == 3
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("interrupt", ["cancel", "crash"])
+async def test_interrupted_execution_holds_connection_until_in_flight_writes_finish(interrupt: str) -> None:
+    provider = ControlledBatchProvider(60)
+    execute, preview_id, task = await controlled_execution(provider)
+    try:
+        assert [await next_group(provider), await next_group(provider)] == [0, 1]
+        if interrupt == "crash":
+            provider.crash_group = 0
+            provider.gates[0].set()
+            assert await asyncio.wait_for(provider.finished.get(), timeout=5) == 0
+        else:
+            task.cancel()
+        # Allow the interruption to reach the collector while the second write remains gated.
+        await asyncio.sleep(0)
+        await asyncio.sleep(0)
+        assert not task.done()
+        assert execute.providers.manager.info("stable").busy
+        assert len(provider.groups) == 2
+        if interrupt == "cancel":
+            task.cancel()
+            await asyncio.sleep(0)
+            assert not task.done()
+    finally:
+        provider.release_everything()
+        expected = asyncio.CancelledError if interrupt == "cancel" else RuntimeError
+        with pytest.raises(expected):
+            await asyncio.wait_for(task, timeout=5)
+    assert provider.active == 0
+    assert len(provider.groups) == 2
+    assert not execute.providers.manager.info("stable").busy
+    assert execute.progress(preview_id).phase == "failed"
+    assert provider.items["20"].name == "new-20"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("fail", [False, True])
+async def test_name_dependency_disables_new_concurrent_scheduler_including_rollback(fail: bool) -> None:
+    provider = ControlledBatchProvider(42)
+    names = {f"old-{index}": f"new-{index}" for index in range(42)}
+    names.update({"old-0": "old-1", "old-1": "old-0"})
+    if fail:
+        provider.fail_targets.add("new-2")
+    preview, execute = services(provider)
+    snapshot = await preview.preview(request(list(provider.items), names))
+    task = asyncio.create_task(execute.execute(snapshot.preview_id))
+    try:
+        assert await next_group(provider) == 0
+        provider.gates[0].set()  # Complete temporary names before the direct phase starts.
+        assert await next_group(provider) == 1
+        assert provider.active == 1
+        assert len(provider.groups) == 2
+    finally:
+        provider.release_everything()
+        result = await asyncio.wait_for(task, timeout=5)
+    assert provider.max_active == 1
+    assert result.status == ("failed" if fail else "completed")
+    assert provider.items["0"].name == ("old-0" if fail else "old-1")
+    assert provider.items["1"].name == ("old-1" if fail else "old-0")
 
 
 def services(provider: StableIdProvider):

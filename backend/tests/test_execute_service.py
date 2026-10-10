@@ -98,6 +98,7 @@ async def test_progress_tracks_completed_batches_and_survives_consumption(tmp_pa
     for name in names:
         (tmp_path / name).write_text("data", encoding="utf-8")
     provider = PausingProvider(tmp_path)
+    assert provider.execution_batch_concurrency == 1
     preview_service, execute_service = build_services(tmp_path, provider)
     preview = await preview_service.preview(request_for(names))
     assert execute_service.progress(preview.preview_id).phase == "waiting"
