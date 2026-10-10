@@ -91,6 +91,7 @@
 ## 代码定位
 
 - `frontend/src/WorkspaceApp.tsx`：外壳、查询/变更、通知接入、选择和状态重置。
+- `frontend/src/workspace/components/{StorageSidebar,StorageLocationPanel,BatchLimitDialog}.tsx`：侧边栏内容、目录位置与反馈、分批提示的纯展示组件；Drawer 容器、业务状态、任务操作和偏好持久化仍由 WorkspaceApp 管理。
 - `frontend/src/components/NotificationProvider.tsx`、`CheckboxFilterMenu.tsx`：共享通知与筛选菜单。
 - `frontend/src/components/PanelIconButton.tsx`：文件/预览面板图标按钮的共享外观；有状态控件可局部覆盖状态颜色，不重复定义尺寸和间距。
 - `frontend/src/features/files/FileBrowser.tsx`：导航、文件表格、类型筛选与可见项选择。

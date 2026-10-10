@@ -1,6 +1,6 @@
 # UI 当前工作快照
 
-更新日期：2026-10-09。本轮按实测瓶颈完成大目录性能优化，用户已批准并完成前端测试和构建；后端测试、浏览器及性能复测仍待批准。
+更新日期：2026-10-10。本轮完成 Workspace UI 展示组件拆分（阶段一），待用户运行前端检查和人工 UI 验收；此前大目录性能优化的测试结果不代表本轮重构已通过。
 
 ## 当前工作
 
@@ -8,6 +8,7 @@
 
 ## 最近落点
 
+- 阶段一：新增 StorageSidebar、StorageLocationPanel、BatchLimitDialog；WorkspaceApp 保留 Drawer、所有业务状态、查询/变更、effect 和偏好持久化。仅核对源码差异，未运行测试/构建或 commit/push；等待用户测试结论与下一阶段明确指令。
 - useRenameStore/types：FileSnapshot/RenameTask，任务/批次/预览关联、pending/completed/failed/unknown 状态，保留 before 与 after。
 - WorkspaceApp：每批提交上限、剩余选择、丢失响应锁定、任务中禁用目录自动刷新、直接合并确认结果、点击预览触发分批 Dialog 和上下文失效。
 - FileBrowser/CheckboxFilterMenu：任务成员视图、合并分组筛选、默认待处理、Logout 退出、超过 1000 项分批 Dialog 和浏览器记忆偏好；移除独立任务操作条、整体进度、状态列和核对弹窗。RenameActions 保留无变化批次确认。

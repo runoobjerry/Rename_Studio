@@ -1,31 +1,12 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useState, useRef } from "react";
-import AutoFixHighRoundedIcon from "@mui/icons-material/AutoFixHighRounded";
-import CloudQueueRoundedIcon from "@mui/icons-material/CloudQueueRounded";
-import ComputerRoundedIcon from "@mui/icons-material/ComputerRounded";
-import MenuRoundedIcon from "@mui/icons-material/MenuRounded";
-import SettingsRoundedIcon from "@mui/icons-material/SettingsRounded";
 import {
   Alert,
   Box,
-  Button,
   CircularProgress,
   CssBaseline,
-  Checkbox,
-  Dialog,
-  DialogActions,
-  DialogContent,
-  DialogContentText,
-  DialogTitle,
-  FormControlLabel,
   Drawer,
-  IconButton,
-  List,
-  ListItemButton,
-  ListItemIcon,
-  ListItemText,
   LinearProgress,
   Skeleton,
-  Stack,
   ThemeProvider,
   Typography,
   useMediaQuery,
@@ -44,8 +25,10 @@ import {
   fetchRules,
   pickStorageFolder,
 } from "./api/client";
+import { BatchLimitDialog } from "./workspace/components/BatchLimitDialog";
+import { StorageSidebar } from "./workspace/components/StorageSidebar";
+import { StorageLocationPanel } from "./workspace/components/StorageLocationPanel";
 import { FileBrowser } from "./features/files/FileBrowser";
-import { LocationBreadcrumbs, locationButtonSx } from "./features/files/LocationBreadcrumbs";
 import { readDefaultCloudLocation, saveDefaultCloudLocation } from "./features/files/defaultCloudLocation";
 import { PreviewPanel } from "./features/rename/PreviewPanel";
 import { RenameActionsWithProgress } from "./features/rename/RenameActionsWithProgress";
@@ -384,96 +367,23 @@ function Workspace({ mode, setMode }: { mode: PaletteMode; setMode: (mode: Palet
     });
   }, [changeSelection, setSelectedIds]);
 
-  const navigation = (
-    <Box
-      sx={{
-        display: "flex",
-        flexDirection: "column",
-        height: "100%",
-        p: 1.5,
-        "& .MuiListItemButton-root": { borderRadius: "14px" },
-      }}
-    >
-      <Stack
-        direction="row"
-        spacing={1.25}
-        sx={{ alignItems: "center", px: 1, py: 1.25, mb: 1 }}
-      >
-        <Box className="brand-mark"><AutoFixHighRoundedIcon fontSize="small" /></Box>
-        <Box>
-          <Typography variant="subtitle1" sx={{ fontWeight: 800, lineHeight: 1.1 }}>
-            Rename Studio
-          </Typography>
-          <Typography variant="caption" color="textPrimary">批量重命名工作台</Typography>
-        </Box>
-      </Stack>
-      <Typography
-        variant="overline"
-        color="textSecondary"
-        sx={{ px: 1.5, mt: 1}}
-      >
-      存储位置
-      </Typography>
-      <List disablePadding>
-        {providers.isPending && <Skeleton variant="rounded" height={80} aria-label="正在加载存储位置" />}
-        {(providers.data ?? []).map((provider) => (
-          <ListItemButton
-            disabled={execution.isPending || pickLocalRoot.isPending}
-            key={provider.storage_id}
-            selected={view === "workspace" && provider.storage_id === storageId}
-            onClick={() => selectProvider(provider.storage_id)}
-          >
-            <ListItemIcon>
-              {provider.provider_type === "onedrive" ? <CloudQueueRoundedIcon /> : <ComputerRoundedIcon />}
-            </ListItemIcon>
-            <ListItemText primary={provider.name} />
-          </ListItemButton>
-        ))}
-      </List>
-      <Box sx={{ flex: 1 }} />
-      <List disablePadding>
-        <ListItemButton
-          selected={view === "settings"}
-          onClick={() => {
-            setView("settings");
-            setMobileNavOpen(false);
-          }}
-        >
-          <ListItemIcon><SettingsRoundedIcon /></ListItemIcon>
-          <ListItemText primary="设置" />
-        </ListItemButton>
-      </List>
-      <Box className="sidebar-meta">
-        <Typography variant="caption" color="textSecondary">© 2026 JERRY </Typography>
-        <Typography variant="caption" color="textSecondary">Ver. 0.20-alpha</Typography>
-      </Box>
-    </Box>
-  );
-
   return (
     <>
       <CssBaseline />
-      <Dialog open={batchHintContext === previewContext} onClose={() => setBatchHintContext(null)}>
-        <DialogTitle>分批处理提示</DialogTitle>
-        <DialogContent>
-          <DialogContentText>
-            您当前选择的文件已超过 1000 项的上限。为避免影响性能，本次只会修改前 1000 项。本次执行结束后，您可以在“筛选”中选择“待处理项目”，继续选择并处理剩余项目。
-          </DialogContentText>
-          <FormControlLabel label="下次不再提示" control={<Checkbox checked={skipBatchHint} onChange={(event) => {
-            const checked = event.target.checked;
-            setSkipBatchHint(checked);
-            try {
-              window.localStorage.setItem(batchHintPreference, String(checked));
-            } catch {
-              notify("无法保存提示偏好，本次页面会话内仍然生效。", "warning");
-            }
-          }} />} />
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setBatchHintContext(null)}>取消</Button>
-          <Button onClick={() => { setBatchHintContext(null); requestBatchPreview(); }}>继续预览</Button>
-        </DialogActions>
-      </Dialog>
+      <BatchLimitDialog
+        open={batchHintContext === previewContext}
+        checked={skipBatchHint}
+        onClose={() => setBatchHintContext(null)}
+        onCheckedChange={(checked) => {
+          setSkipBatchHint(checked);
+          try {
+            window.localStorage.setItem(batchHintPreference, String(checked));
+          } catch {
+            notify("无法保存提示偏好，本次页面会话内仍然生效。", "warning");
+          }
+        }}
+        onContinue={() => { setBatchHintContext(null); requestBatchPreview(); }}
+      />
       <Box sx={{ minHeight: "100vh", bgcolor: "background.default" }}>
         <Drawer
           variant={compactNavigation ? "temporary" : "permanent"}
@@ -495,7 +405,18 @@ function Workspace({ mode, setMode }: { mode: PaletteMode; setMode: (mode: Palet
             },
           }}
         >
-          {navigation}
+          <StorageSidebar
+            storages={providers.data ?? []}
+            isLoading={providers.isPending}
+            disabled={execution.isPending || pickLocalRoot.isPending}
+            view={view}
+            storageId={storageId}
+            onSelectStorage={selectProvider}
+            onOpenSettings={() => {
+              setView("settings");
+              setMobileNavOpen(false);
+            }}
+          />
         </Drawer>
 
         <Box
@@ -520,56 +441,24 @@ function Workspace({ mode, setMode }: { mode: PaletteMode; setMode: (mode: Palet
 
             {view === "workspace" && (
               <>
-                <section className="panel location-panel" aria-label="目录位置">
-                  <div className="location-toolbar">
-                    {compactNavigation && (
-                      <IconButton onClick={() => setMobileNavOpen(true)} aria-label="打开导航" sx={{ p: "4px" }}>
-                        <MenuRoundedIcon sx={{ fontSize: 20 }} />
-                      </IconButton>
-                    )}
-                    <div className="location-navigation">
-                      <LocationBreadcrumbs
-                        listing={providerId === "local" || cloudReady ? files.data : undefined}
-                        rootLabel={providerName}
-                        disabled={!activeStorage || execution.isPending || pickLocalRoot.isPending || activeStorage.busy || (providerId === "onedrive" && !cloudReady)}
-                        onNavigate={navigateLocation}
-                      />
-                      {providerId === "onedrive" ? (
-                        <Button
-                          type="button"
-                          variant="outlined"
-                          onClick={setDefaultCloudPath}
-                          disabled={!cloudAccountId || !cloudReady || !files.isSuccess || files.isFetching || Boolean(files.error) || oneDriveStatus.isError}
-                          sx={{ ...locationButtonSx, px: "10px" }}
-                        >
-                          设为默认路径
-                        </Button>
-                      ) : (
-                        <Button
-                          type="button"
-                          variant="outlined"
-                          onClick={() => pickLocalRoot.mutate()}
-                          disabled={!activeStorage || pickLocalRoot.isPending || execution.isPending || activeStorage.busy}
-                          sx={{ ...locationButtonSx, px: "10px" }}
-                        >
-                          {pickLocalRoot.isPending ? "等待选择…" : "浏览…"}
-                        </Button>
-                      )}
-                    </div>
-                  </div>
-                  <div className="location-feedback">
-                    {!activeStorage && !providers.isPending && <Alert severity="warning">当前存储已删除，请选择其他连接。</Alert>}
-                    {cloudConnected && !cloudAccountId && (
-                      <Alert severity="info">当前账号缺少账号 ID，仍可浏览文件；请重新登录后设置默认路径。</Alert>
-                    )}
-                    {providerId === "local" && pickLocalRoot.error && (
-                      <Alert severity="error">无法打开文件夹选择器：{pickLocalRoot.error.message}</Alert>
-                    )}
-                    {providerId === "onedrive" && oneDriveStatus.isSuccess && !oneDriveStatus.data.connected && (
-                      <Alert severity="warning">请先前往设置页面连接 OneDrive 账号。</Alert>
-                    )}
-                  </div>
-                </section>
+                <StorageLocationPanel
+                  compactNavigation={compactNavigation}
+                  listing={providerId === "local" || cloudReady ? files.data : undefined}
+                  rootLabel={providerName}
+                  providerId={providerId}
+                  navigationDisabled={!activeStorage || execution.isPending || pickLocalRoot.isPending || activeStorage.busy || (providerId === "onedrive" && !cloudReady)}
+                  defaultPathDisabled={!cloudAccountId || !cloudReady || !files.isSuccess || files.isFetching || Boolean(files.error) || oneDriveStatus.isError}
+                  browseDisabled={!activeStorage || pickLocalRoot.isPending || execution.isPending || activeStorage.busy}
+                  isPickingFolder={pickLocalRoot.isPending}
+                  storageMissing={!activeStorage && !providers.isPending}
+                  accountIdMissing={cloudConnected && !cloudAccountId}
+                  pickerError={pickLocalRoot.error}
+                  cloudDisconnected={oneDriveStatus.isSuccess && !oneDriveStatus.data.connected}
+                  onOpenNavigation={() => setMobileNavOpen(true)}
+                  onNavigate={navigateLocation}
+                  onSetDefaultPath={setDefaultCloudPath}
+                  onBrowse={() => pickLocalRoot.mutate()}
+                />
 
                 <div className="workspace-grid">
                   <div className="workspace-primary">
