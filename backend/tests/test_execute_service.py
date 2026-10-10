@@ -217,13 +217,17 @@ async def test_rejects_source_replaced_by_link_after_preview(tmp_path: Path) -> 
 async def test_rejects_invalid_preview(tmp_path: Path) -> None:
     (tmp_path / "one.txt").write_text("one", encoding="utf-8")
     (tmp_path / "occupied.txt").write_text("occupied", encoding="utf-8")
-    preview_service, execute_service = build_services(tmp_path)
+    provider = TrackingLocalProvider(tmp_path)
+    preview_service, execute_service = build_services(tmp_path, provider)
     preview = await preview_service.preview(
         request_for({"one.txt": "occupied.txt"})
     )
+    assert not preview.valid
+    assert preview.items[0].conflict
 
     with pytest.raises(ValidationError):
         await execute_service.execute(preview.preview_id)
+    assert provider.rename_targets == []
     progress = execute_service.progress(preview.preview_id)
     assert progress.phase == "failed"
     assert progress.processed == 0
@@ -278,19 +282,5 @@ async def test_execute_rejects_oversized_legacy_snapshot_before_writing(tmp_path
     # 模拟上限上线前已存在的服务端快照；客户端仍只能提交 preview_id。
     snapshot.request.file_ids = [f"old-{index}.txt" for index in range(1001)]
     with pytest.raises(ValidationError, match="1000"):
-        await execute_service.execute(preview.preview_id)
-    assert provider.rename_targets == []
-
-
-@pytest.mark.asyncio
-async def test_cross_batch_name_dependency_is_rejected_without_writes(tmp_path: Path) -> None:
-    (tmp_path / "a.txt").write_text("A", encoding="utf-8")
-    (tmp_path / "b.txt").write_text("B", encoding="utf-8")
-    provider = TrackingLocalProvider(tmp_path)
-    preview_service, execute_service = build_services(tmp_path, provider)
-    preview = await preview_service.preview(request_for({"a.txt": "b.txt"}))
-    assert not preview.valid
-    assert preview.items[0].conflict
-    with pytest.raises(ValidationError):
         await execute_service.execute(preview.preview_id)
     assert provider.rename_targets == []

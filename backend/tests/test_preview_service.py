@@ -1,11 +1,12 @@
 from app.schemas.storage import RootLocation
 from provider_fixtures import registry_for
+from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
 from pydantic import BaseModel
 
-from app.core.errors import ValidationError
+from app.core.errors import PreviewExpiredError, ValidationError
 from app.providers.local import LocalProvider
 from app.rules.base import RenameRule, RuleContext
 from app.rules.registry import RuleRegistry
@@ -13,6 +14,7 @@ from app.schemas.files import FileItem
 from app.schemas.rename import RenamePreviewRequest
 from app.schemas.rules import RuleSpec
 from app.services.preview_service import PreviewService
+from app.services.preview_store import PreviewStore
 from app.services.rename_engine import RenameEngine
 
 
@@ -210,3 +212,25 @@ async def test_known_directory_preview_detects_dangling_link_conflict(tmp_path: 
 
     assert preview.valid is False
     assert preview.items[0].conflict is True
+
+
+def test_expired_preview_cannot_be_loaded() -> None:
+    store = PreviewStore(ttl_seconds=0)
+    source = FileItem(
+        id="one.txt",
+        name="one.txt",
+        path="one.txt",
+        parent_path="",
+        is_directory=False,
+        size=1,
+        modified_at=datetime.now(timezone.utc),
+    )
+    response = store.save(
+        RenamePreviewRequest(storage_id="local", file_ids=["one.txt"]),
+        items=[],
+        valid=True,
+        sources=[source],
+    )
+
+    with pytest.raises(PreviewExpiredError):
+        store.get(response.preview_id)

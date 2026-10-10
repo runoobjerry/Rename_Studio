@@ -23,25 +23,27 @@ def test_inserts_prefix_or_suffix_before_extension(
     assert InsertRule().apply("episode.txt", CONTEXT, config) == expected
 
 
-def test_inserts_after_nth_character_from_left() -> None:
+@pytest.mark.parametrize(
+    ("filename", "text", "index", "from_right", "expected"),
+    [
+        ("猫咪合集.mp4", "-", 2, False, "猫咪-合集.mp4"),
+        ("abcde.txt", "-", 1, True, "abcd-e.txt"),
+        ("abc.txt", "X", 20, False, "abcX.txt"),
+        ("abc.txt", "X", 20, True, "Xabc.txt"),
+    ],
+    ids=["from-left", "from-right", "clamp-left", "clamp-right"],
+)
+def test_inserts_at_character_index_and_clamps_to_edge(
+    filename: str, text: str, index: int, from_right: bool, expected: str,
+) -> None:
     config = InsertConfig(
-        text="-",
+        text=text,
         position=InsertPosition.INDEX,
-        index=2,
+        index=index,
+        from_right=from_right,
     )
 
-    assert InsertRule().apply("猫咪合集.mp4", CONTEXT, config) == "猫咪-合集.mp4"
-
-
-def test_inserts_before_nth_character_from_right() -> None:
-    config = InsertConfig(
-        text="-",
-        position=InsertPosition.INDEX,
-        index=1,
-        from_right=True,
-    )
-
-    assert InsertRule().apply("abcde.txt", CONTEXT, config) == "abcd-e.txt"
+    assert InsertRule().apply(filename, CONTEXT, config) == expected
 
 
 @pytest.mark.parametrize(
@@ -67,24 +69,6 @@ def test_missing_anchor_leaves_filename_unchanged() -> None:
     )
 
     assert InsertRule().apply("episode.txt", CONTEXT, config) == "episode.txt"
-
-
-def test_out_of_range_index_clamps_to_filename_edge() -> None:
-    from_left = InsertConfig(
-        text="X",
-        position=InsertPosition.INDEX,
-        index=20,
-    )
-    from_right = InsertConfig(
-        text="X",
-        position=InsertPosition.INDEX,
-        index=20,
-        from_right=True,
-    )
-    rule = InsertRule()
-
-    assert rule.apply("abc.txt", CONTEXT, from_left) == "abcX.txt"
-    assert rule.apply("abc.txt", CONTEXT, from_right) == "Xabc.txt"
 
 
 @pytest.mark.parametrize(
