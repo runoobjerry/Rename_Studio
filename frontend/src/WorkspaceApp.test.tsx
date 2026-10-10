@@ -12,7 +12,7 @@ vi.mock("./api/client", async (importOriginal) => {
   return {
     ...original,
     fetchStorages: vi.fn(), fetchRules: vi.fn(),
-    fetchStorageAuthStatus: vi.fn(), fetchStorageFiles: vi.fn(), createStoragePreview: vi.fn(), executePreview: vi.fn(), fetchRenameProgress: vi.fn(),
+    fetchStorageAuthStatus: vi.fn(), fetchStorageFiles: vi.fn(), createStoragePreview: vi.fn(), releaseStoragePreview: vi.fn(), executePreview: vi.fn(), fetchRenameProgress: vi.fn(),
   };
 });
 
@@ -40,6 +40,7 @@ beforeEach(() => {
     { storage_id: "user-onedrive", provider_type: "onedrive", name: "OneDrive", revision: 1, busy: false, config: { client_id: "app" }, account_id: "account-a", account_display_name: null, account_email: null },
   ]);
   vi.mocked(api.fetchRules).mockResolvedValue([]);
+  vi.mocked(api.releaseStoragePreview).mockResolvedValue(undefined);
   vi.mocked(api.fetchStorageAuthStatus).mockResolvedValue(status("account-a"));
   vi.mocked(api.fetchStorageFiles).mockImplementation(async (provider, location) => ({
     provider, location, path: location.kind === "root" ? "" : location.value, parent_path: location.kind === "root" ? null : "", items: [],
@@ -101,7 +102,7 @@ describe("directory refresh selection", () => {
     expect(screen.getByRole("button", { name: "开始修改" })).toBeDisabled();
     expect(screen.queryByText("new-A.txt")).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "刷新预览" }));
-    await waitFor(() => expect(api.createStoragePreview).toHaveBeenLastCalledWith("default-local", { kind: "root" }, ["B", "C"], []));
+    await waitFor(() => expect(api.createStoragePreview).toHaveBeenLastCalledWith("default-local", { kind: "root" }, ["B", "C"], [], "preview-A-B-C"));
 
     vi.mocked(api.fetchStorageFiles).mockResolvedValue(listing([]));
     fireEvent.click(screen.getByRole("button", { name: "刷新" }));
@@ -385,6 +386,30 @@ describe("task refresh and batch hint interaction", () => {
     fireEvent.click(screen.getByRole("button", { name: "刷新预览" }));
     await waitFor(() => expect(api.createStoragePreview).toHaveBeenCalledTimes(2));
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
+  it("retains the release ID after selection resets the preview and releases it on task end", async () => {
+    await setup(2);
+    fireEvent.click(screen.getByRole("button", { name: "刷新预览" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "开始修改" })).toBeEnabled());
+    fireEvent.click(screen.getByRole("checkbox", { name: "选择文件 file-0.txt" }));
+    expect(screen.getByRole("button", { name: "开始修改" })).toBeDisabled();
+    expect(api.releaseStoragePreview).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "结束当前任务" }));
+    await waitFor(() => expect(api.releaseStoragePreview).toHaveBeenCalledWith("default-local", "task-preview"));
+    expect(useRenameStore.getState().task).toBeNull();
+  });
+
+  it("releases a late preview response after its selection context changes", async () => {
+    await setup(2);
+    let resolvePreview!: (value: Awaited<ReturnType<typeof api.createStoragePreview>>) => void;
+    vi.mocked(api.createStoragePreview).mockImplementationOnce(() => new Promise((resolve) => { resolvePreview = resolve; }));
+    fireEvent.click(screen.getByRole("button", { name: "刷新预览" }));
+    await waitFor(() => expect(api.createStoragePreview).toHaveBeenCalledTimes(1));
+    act(() => useRenameStore.getState().setSelectedIds([]));
+    await act(async () => resolvePreview({ preview_id: "late-preview", expires_at: "2099-01-01T00:00:00Z", valid: true, items: [] }));
+    await waitFor(() => expect(api.releaseStoragePreview).toHaveBeenCalledWith("default-local", "late-preview"));
+    expect(screen.getByRole("button", { name: "开始修改" })).toBeDisabled();
   });
 
   it.each(["success", "lost-response"])("does not refresh automatically after %s, but allows manual refresh", async (outcome) => {

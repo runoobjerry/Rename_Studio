@@ -36,6 +36,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import {
   createStoragePreview,
+  releaseStoragePreview,
   executePreview,
   fetchStorageFiles,
   fetchStorageAuthStatus,
@@ -161,14 +162,36 @@ function Workspace({ mode, setMode }: { mode: PaletteMode; setMode: (mode: Palet
   }, [batchHintContext, previewContext]);
   const currentWorkspace = useRef(previewContext);
   currentWorkspace.current = previewContext;
+  // 界面 reset 不应丢失待释放 ID；规则和选择变化后仍可替代旧快照。
+  const retainedPreview = useRef<{ storageId: string; previewId: string } | null>(null);
+  const releaseRetainedPreview = useCallback(() => {
+    const retained = retainedPreview.current;
+    retainedPreview.current = null;
+    if (retained) {
+      void releaseStoragePreview(retained.storageId, retained.previewId).catch(() => {
+        // 清理失败由服务端过期回收兜底，无需打扰用户。
+      });
+    }
+  }, []);
   const preview = useMutation({
     mutationKey: ["rename-preview"],
     gcTime: 0,
     mutationFn: async (input: { contextKey: string; batchId: string; storageId: string; location: StorageLocation; fileIds: string[]; rules: RuleSpec[] }) => {
-      return { ...await createStoragePreview(input.storageId, input.location, input.fileIds, input.rules), contextKey: input.contextKey, batchId: input.batchId };
+      const retained = retainedPreview.current;
+      const previousId = retained?.storageId === input.storageId ? retained.previewId : undefined;
+      const result = previousId
+        ? await createStoragePreview(input.storageId, input.location, input.fileIds, input.rules, previousId)
+        : await createStoragePreview(input.storageId, input.location, input.fileIds, input.rules);
+      return { ...result, contextKey: input.contextKey, batchId: input.batchId, storageId: input.storageId };
     },
     onSuccess: (result) => {
-      if (result.contextKey !== currentWorkspace.current) return;
+      if (result.contextKey !== currentWorkspace.current) {
+        void releaseStoragePreview(result.storageId, result.preview_id).catch(() => {
+          // 清理失败由服务端过期回收兜底，无需打扰用户。
+        });
+        return;
+      }
+      retainedPreview.current = { storageId: result.storageId, previewId: result.preview_id };
       useRenameStore.getState().bindPreview(result.batchId, result.preview_id);
       if (!result.valid) {
         notify("预览包含无效名称或冲突，请检查结果；其他批次尚未处理的文件仍占用名称，不能跳过冲突检查。", "warning");
@@ -228,6 +251,7 @@ function Workspace({ mode, setMode }: { mode: PaletteMode; setMode: (mode: Palet
 
   useEffect(() => {
     if (execution.isPending) return;
+    releaseRetainedPreview();
     clearSelection();
     resetTask();
     preview.reset();
@@ -330,8 +354,9 @@ function Workspace({ mode, setMode }: { mode: PaletteMode; setMode: (mode: Palet
   }, [setSelectedIds, execution.isPending, execution.data, preview.reset, execution.reset]);
   const endTask = useCallback(() => {
     if (execution.isPending || preview.isPending) return;
+    releaseRetainedPreview();
     resetTask(); clearSelection(); preview.reset(); execution.reset();
-  }, [execution.isPending, preview.isPending, resetTask, clearSelection, preview.reset, execution.reset]);
+  }, [execution.isPending, preview.isPending, releaseRetainedPreview, resetTask, clearSelection, preview.reset, execution.reset]);
   const refreshFiles = useCallback(() => {
     void files.refetch().then((result) => {
       if (result.error) notify(`刷新失败：${errorMessage(result.error)}`, "error");

@@ -9,7 +9,7 @@ from urllib.parse import parse_qs, urlsplit
 from fastapi import APIRouter, Depends, Query, Response
 from fastapi.responses import HTMLResponse
 
-from app.api.dependencies import get_preview_service, get_storage_manager
+from app.api.dependencies import get_preview_service, get_preview_store, get_storage_manager
 from app.core.config import get_settings
 from app.core.errors import AppError, AuthenticationError, StorageConnectionChangedError, ValidationError
 from app.schemas.files import DirectoryListing
@@ -19,6 +19,7 @@ from app.schemas.storage import AuthorizationStatus, StorageAuthStartResponse, S
 from app.services.connection_auth import ConnectionAuth
 from app.services.local_folder_picker import choose_local_directory
 from app.services.preview_service import PreviewService
+from app.services.preview_store import PreviewStore
 from app.services.storage_manager import StorageManager
 
 
@@ -142,4 +143,15 @@ async def preview(storage_id: str, request: StoragePreviewRequest, manager: Mana
                   service: Annotated[PreviewService, Depends(get_preview_service)]) -> RenamePreviewResponse:
     manager.record(storage_id)
     return await service.preview(RenamePreviewRequest(storage_id=storage_id, location=request.location,
-                                                      file_ids=request.file_ids, rules=request.rules))
+                                                      file_ids=request.file_ids, rules=request.rules),
+                                 previous_preview_id=request.previous_preview_id)
+
+
+@router.delete("/storages/{storage_id}/rename/previews/{preview_id}", status_code=204)
+async def release_preview(
+    storage_id: str, preview_id: str,
+    store: Annotated[PreviewStore, Depends(get_preview_store)],
+) -> Response:
+    # 连接被删除后仍允许释放遗留快照，不读取 Provider，也不取消已经开始的执行。
+    store.release(preview_id, storage_id)
+    return Response(status_code=204)

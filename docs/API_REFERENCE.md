@@ -114,6 +114,7 @@ Empty means exactly `""`; whitespace remains meaningful text. Skipped rules pres
   location?: StorageLocation; // default root; use backend-returned locations for navigation
   file_ids: string[];      // 1..1000 items, no duplicates
   rules?: RuleSpec[];      // default [], at most 20 rules
+  previous_preview_id?: string; // non-empty; release this connection's old preview after saving the new one
 }
 ```
 
@@ -130,7 +131,14 @@ Empty means exactly `""`; whitespace remains meaningful text. Skipped rules pres
 
 - No files are modified. Unchanged items remain in `items`; `valid` is true only when every item is valid.
 - Errors: 422 more than 1000 files/more than 20 rules/empty/duplicate/cross-directory/out-of-path/root selection, invalid path, or rule config; 404 missing item/directory; provider errors as above.
-- Preview snapshots live in the current backend process for 10 minutes. A backend restart invalidates them.
+- Preview snapshots live in the current backend process for 10 minutes. Expired snapshots are removed on new saves, on access to an expired ID, and by a lifecycle-managed sweep every 60 seconds. A backend restart invalidates them. No global capacity limit is applied.
+- A successfully saved preview replaces only the explicitly supplied `previous_preview_id` belonging to the same storage connection; unrelated previews are retained. A failed preview request preserves the old snapshot. A saved response with `valid: false` still replaces the old snapshot. Replacement does not change execution revalidation or consume semantics.
+
+### `DELETE /storages/{storage_id}/rename/previews/{preview_id}`
+
+- Releases only the specified preview belonging to this connection; returns 204, including when missing, expired, consumed, or already released. A different connection's preview is unaffected. Cleanup remains available after connection deletion.
+- Does not access the Provider, cancel an execution already in progress, or clear execution progress. The frontend releases its retained preview on task end or workspace change, and discards late preview responses from an obsolete context. Failed cleanup requests fall back to expiry cleanup.
+- Preview display resets caused by rule/selection changes retain the cleanup ID for the next replacement or task end. Releasing execution snapshots does not clear directory metadata caches.
 
 ## Rename Execute
 
@@ -223,7 +231,8 @@ Storage connection create/update requests reject the removed `enabled` field. Th
 | `GET /storages/{storage_id}/auth/status` | none | `{configured,connected,account_id,account_display_name,account_email}`; profile fields are nullable |
 | `POST /storages/{storage_id}/auth/start` | none | `{authorization_url,redirect_uri}` |
 | `DELETE /storages/{storage_id}/auth/session` | none | 204; preserves client configuration |
-| `POST /storages/{storage_id}/rename/preview` | `{location?:StorageLocation,file_ids,rules?:RuleSpec[]}` | Existing `RenamePreviewResponse` |
+| `POST /storages/{storage_id}/rename/preview` | `{location?:StorageLocation,file_ids,rules?:RuleSpec[],previous_preview_id?:string}` | Existing `RenamePreviewResponse` |
+| `DELETE /storages/{storage_id}/rename/previews/{preview_id}` | none | 204 |
 
 Extended listings add `storage_id`, `revision`, `location`, `parent_location`; items add `location`, `parent_location`, `can_rename`. Display path fields remain available. Root listing parent_location is null. Unknown permission is null, not a guarantee that remote writes will succeed. Folder navigation uses item.location; parent navigation uses listing.parent_location.
 

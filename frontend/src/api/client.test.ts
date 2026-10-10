@@ -1,10 +1,23 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { ApiError, disconnectStorage, fetchStorages, fetchRenameProgress } from "./client";
+import { ApiError, createStoragePreview, releaseStoragePreview, disconnectStorage, fetchStorages, fetchRenameProgress } from "./client";
 
 afterEach(() => vi.unstubAllGlobals());
 
 describe("API client", () => {
+  it("passes the replacement ID and releases only the specified preview", async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ preview_id: "new" })))
+      .mockResolvedValueOnce(new Response(null, { status: 204 }));
+    vi.stubGlobal("fetch", fetchMock);
+    await createStoragePreview("connection", { kind: "root" }, ["file"], [], "old");
+    expect(fetchMock).toHaveBeenNthCalledWith(1, "/api/storages/connection/rename/preview", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ location: { kind: "root" }, file_ids: ["file"], rules: [], previous_preview_id: "old" }),
+    });
+    await releaseStoragePreview("connection", "preview/id");
+    expect(fetchMock).toHaveBeenNthCalledWith(2, "/api/storages/connection/rename/previews/preview%2Fid", { method: "DELETE" });
+  });
   it("fetches server execution counts with an encoded preview ID", async () => {
     const progress = { preview_id: "preview/id", total: 20, processed: 10, phase: "renaming", error: null };
     const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify(progress)));

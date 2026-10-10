@@ -1,6 +1,7 @@
+import asyncio
 import logging
 from collections.abc import AsyncIterator
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
 from time import perf_counter
 from uuid import uuid4
 
@@ -12,7 +13,7 @@ from fastapi.responses import JSONResponse
 
 from app.api.router import router
 from app.api.storage_router import router as storage_router
-from app.api.dependencies import get_storage_manager
+from app.api.dependencies import get_preview_store, get_storage_manager
 from app.core.config import get_settings
 from app.core.errors import AppError
 from app.core.log_context import request_id_context
@@ -26,9 +27,22 @@ def create_app() -> FastAPI:
 
     @asynccontextmanager
     async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
-        yield
-        if get_storage_manager.cache_info().currsize:
-            await get_storage_manager().aclose()
+        async def clean_previews() -> None:
+            while True:
+                await asyncio.sleep(60)
+                if get_preview_store.cache_info().currsize:
+                    get_preview_store().purge_expired()
+
+        # 无后续请求时也回收过期快照；退出时先停止清理任务。
+        cleanup_task = asyncio.create_task(clean_previews())
+        try:
+            yield
+        finally:
+            cleanup_task.cancel()
+            with suppress(asyncio.CancelledError):
+                await cleanup_task
+            if get_storage_manager.cache_info().currsize:
+                await get_storage_manager().aclose()
 
     app = FastAPI(title=settings.app_name, version="0.1.0", lifespan=lifespan)
     app.add_middleware(

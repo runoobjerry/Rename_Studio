@@ -1,17 +1,17 @@
 from app.schemas.storage import RootLocation
 from provider_fixtures import registry_for
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
 from pydantic import BaseModel
 
-from app.core.errors import PreviewExpiredError, ValidationError
+from app.core.errors import PreviewExpiredError, PreviewNotFoundError, ValidationError
 from app.providers.local import LocalProvider
 from app.rules.base import RenameRule, RuleContext
 from app.rules.registry import RuleRegistry
 from app.schemas.files import FileItem
-from app.schemas.rename import RenamePreviewRequest
+from app.schemas.rename import PreviewItem, RenamePreviewRequest
 from app.schemas.rules import RuleSpec
 from app.services.preview_service import PreviewService
 from app.services.preview_store import PreviewStore
@@ -234,3 +234,20 @@ def test_expired_preview_cannot_be_loaded() -> None:
 
     with pytest.raises(PreviewExpiredError):
         store.get(response.preview_id)
+
+
+def test_expiry_cleanup_without_new_preview_preserves_live_snapshot() -> None:
+    store = PreviewStore()
+    request = RenamePreviewRequest(storage_id="local", file_ids=["one.txt"])
+    source = FileItem(id="one.txt", name="one.txt", path="one.txt", parent_path="", is_directory=False)
+    items = [PreviewItem(file_id=source.id, original_name=source.name, new_name=source.name,
+                         changed=False, valid=True, conflict=False)]
+    live = store.save(request, items=items, valid=True, sources=[source])
+    store.ttl = timedelta(seconds=0)
+    expired = store.save(request, items=items, valid=True, sources=[source])
+
+    store.purge_expired()
+
+    with pytest.raises(PreviewNotFoundError):
+        store.get(expired.preview_id)
+    assert store.get(live.preview_id).response == live

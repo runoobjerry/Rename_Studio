@@ -5,7 +5,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from provider_fixtures import registry_for
-from app.api.dependencies import get_execute_service, get_storage_manager, get_preview_service
+from app.api.dependencies import get_execute_service, get_storage_manager, get_preview_service, get_preview_store
 from app.main import create_app
 from app.providers.local import LocalProvider
 from app.rules.registry import RuleRegistry
@@ -24,6 +24,7 @@ def api_client(tmp_path: Path) -> Iterator[TestClient]:
     app = create_app()
     app.dependency_overrides[get_storage_manager] = lambda: providers.manager
     app.dependency_overrides[get_preview_service] = lambda: preview
+    app.dependency_overrides[get_preview_store] = lambda: store
     app.dependency_overrides[get_execute_service] = lambda: execute
     with TestClient(app) as client:
         yield client
@@ -73,6 +74,34 @@ def test_execute_requires_a_server_generated_preview(api_client: TestClient) -> 
     assert response.json()["error"]["code"] == "PREVIEW_NOT_FOUND"
 
 
+def test_preview_replacement_and_release(tmp_path: Path, api_client: TestClient) -> None:
+    (tmp_path / "demo.txt").write_text("demo", encoding="utf-8")
+    url = "/storages/local/rename/preview"
+    first = api_client.post(url, json={"file_ids": ["demo.txt"]}).json()["preview_id"]
+    unrelated = api_client.post(url, json={"file_ids": ["demo.txt"]}).json()["preview_id"]
+    second_response = api_client.post(url, json={"file_ids": ["demo.txt"], "previous_preview_id": first})
+    assert second_response.status_code == 200
+    second = second_response.json()["preview_id"]
+    assert api_client.get(f"/rename/progress/{first}").status_code == 404
+    assert api_client.get(f"/rename/progress/{unrelated}").status_code == 200
+    # 不能因另一连接的清理请求删除当前连接的快照。
+    assert api_client.delete(f"/storages/other/rename/previews/{second}").status_code == 204
+    assert api_client.get(f"/rename/progress/{second}").status_code == 200
+    for _ in range(2):
+        assert api_client.delete(f"/storages/local/rename/previews/{second}").status_code == 204
+    assert api_client.get(f"/rename/progress/{second}").status_code == 404
+    assert api_client.get(f"/rename/progress/{unrelated}").status_code == 200
+
+
+def test_failed_preview_replacement_preserves_previous(tmp_path: Path, api_client: TestClient) -> None:
+    (tmp_path / "demo.txt").write_text("demo", encoding="utf-8")
+    url = "/storages/local/rename/preview"
+    first = api_client.post(url, json={"file_ids": ["demo.txt"]}).json()["preview_id"]
+    response = api_client.post(url, json={"file_ids": ["missing.txt"], "previous_preview_id": first})
+    assert response.status_code == 422
+    assert api_client.get(f"/rename/progress/{first}").status_code == 200
+
+
 def test_execution_progress_api(tmp_path: Path, api_client: TestClient) -> None:
     (tmp_path / "demo.txt").write_text("demo", encoding="utf-8")
     response = api_client.post("/storages/local/rename/preview", json={"file_ids": ["demo.txt"]})
@@ -83,6 +112,7 @@ def test_execution_progress_api(tmp_path: Path, api_client: TestClient) -> None:
     assert progress.json()["processed"] == progress.json()["total"] == 0
     result = api_client.post("/rename/execute", json={"preview_id": preview_id})
     assert result.status_code == 200
+    assert api_client.delete(f"/storages/local/rename/previews/{preview_id}").status_code == 204
     assert api_client.get(f"/rename/progress/{preview_id}").json()["phase"] == "finished"
     assert api_client.get("/rename/progress/unknown").status_code == 404
 

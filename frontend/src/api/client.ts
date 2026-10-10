@@ -81,7 +81,8 @@ export const createStorage = (body: StorageCreate): Promise<StorageInfo> => requ
 export const updateStorage = (id: string, body: StorageUpdate): Promise<StorageInfo> => request(storageUrl(id), { ...jsonPost(body), method: "PUT" });
 export const deleteStorage = (id: string): Promise<void> => request(storageUrl(id), { method: "DELETE" });
 export const fetchStorageFiles = (id: string, location: StorageLocation): Promise<DirectoryListing> => request(`${storageUrl(id)}/files/list`, jsonPost({ location }));
-export const createStoragePreview = (id: string, location: StorageLocation, fileIds: string[], rules: RuleSpec[]): Promise<PreviewResponse> => request(`${storageUrl(id)}/rename/preview`, jsonPost({ location, file_ids: fileIds, rules }));
+export const createStoragePreview = (id: string, location: StorageLocation, fileIds: string[], rules: RuleSpec[], previousPreviewId?: string): Promise<PreviewResponse> => request(`${storageUrl(id)}/rename/preview`, jsonPost({ location, file_ids: fileIds, rules, previous_preview_id: previousPreviewId }));
+export const releaseStoragePreview = (id: string, previewId: string): Promise<void> => request(`${storageUrl(id)}/rename/previews/${encodeURIComponent(previewId)}`, { method: "DELETE" });
 export const fetchStorageAuthStatus = (id: string): Promise<AuthorizationStatus> => request(`${storageUrl(id)}/auth/status`);
 export const startStorageAuth = (id: string): Promise<AuthorizationStart & { redirect_uri: string }> => request(`${storageUrl(id)}/auth/start`, { method: "POST" });
 export const disconnectStorage = (id: string): Promise<void> => request(`${storageUrl(id)}/auth/session`, { method: "DELETE" });

@@ -32,7 +32,7 @@ class PreviewStore:
     ) -> RenamePreviewResponse:
         now = datetime.now(timezone.utc)
         preview_id = str(uuid4())
-        self._purge_expired(now)
+        self.purge_expired()
         response = RenamePreviewResponse(
             preview_id=preview_id,
             expires_at=now + self.ttl,
@@ -61,7 +61,14 @@ class PreviewStore:
     def consume(self, preview_id: str) -> None:
         self._snapshots.pop(preview_id, None)
 
-    def _purge_expired(self, now: datetime) -> None:
+    def release(self, preview_id: str, storage_id: str) -> None:
+        # 仅释放调用方指定连接的快照；已消费、过期或重复释放均无需报错。
+        snapshot = self._snapshots.get(preview_id)
+        if snapshot is not None and snapshot.request.storage_id == storage_id:
+            self._snapshots.pop(preview_id)
+
+    def purge_expired(self) -> None:
+        now = datetime.now(timezone.utc)
         expired = [
             preview_id
             for preview_id, snapshot in self._snapshots.items()

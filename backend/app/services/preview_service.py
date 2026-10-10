@@ -43,7 +43,9 @@ class PreviewService:
         self.engine = engine
         self.store = store or PreviewStore()
 
-    async def preview(self, request: RenamePreviewRequest) -> RenamePreviewResponse:
+    async def preview(
+        self, request: RenamePreviewRequest, *, previous_preview_id: str | None = None,
+    ) -> RenamePreviewResponse:
         revision = self.providers.revision(request.storage_id)
         request = request.model_copy(deep=True)
         with _timed_phase(request.storage_id, "evaluate", len(request.file_ids)):
@@ -51,7 +53,11 @@ class PreviewService:
         if self.providers.revision(request.storage_id) != revision:
             raise StorageConnectionChangedError("Storage changed while creating the preview")
         with _timed_phase(request.storage_id, "snapshot", len(files)):
-            return self.store.save(request, items, valid, files, revision)
+            response = self.store.save(request, items, valid, files, revision)
+            # 新快照保存成功后才释放旧快照；替代 ID 不属于执行快照内容。
+            if previous_preview_id is not None:
+                self.store.release(previous_preview_id, request.storage_id)
+            return response
 
     async def evaluate(
         self,
