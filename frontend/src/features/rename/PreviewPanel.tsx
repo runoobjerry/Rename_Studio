@@ -35,6 +35,8 @@ export const PreviewPanel = memo(function PreviewPanel({
   executeError,
 }: PreviewPanelProps) {
   const [filters, setFilters] = useState<StatusFilter[]>([]);
+  const filterOptions = statusFilters.map((option) => option.value === "pending"
+    ? { ...option, label: execution ? "已修改" : "待修改" } : option);
   const executionById = useMemo(() => new Map(execution?.items.map((item) => [item.file_id, item])), [execution?.items]);
   const { rows, pendingCount, unchangedCount } = useMemo(() => {
     let pendingCount = 0;
@@ -66,7 +68,7 @@ export const PreviewPanel = memo(function PreviewPanel({
             {preview && filters.length > 0 && ` · 显示 ${visibleItems.length} 项`}
           </p>
         </div>
-        <CheckboxFilterMenu label="筛选状态" options={statusFilters} selected={filters} onChange={setFilters} />
+        <CheckboxFilterMenu label="筛选状态" options={filterOptions} selected={filters} onChange={setFilters} />
       </div>
 
       {error && <Alert severity="error" sx={{ m: 2 }}>{error}</Alert>}
