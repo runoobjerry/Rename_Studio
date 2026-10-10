@@ -38,6 +38,7 @@ describe("PreviewPanel", () => {
     }} />);
     const table = within(screen.getByRole("table", { name: "修改预览" }));
     expect(table.getByText("已修改")).toHaveClass("valid");
+    expect(screen.queryByText(/执行结果/)).not.toBeInTheDocument();
     expect(table.getByText("new-renamed.txt")).toHaveClass("renamed-name");
     expect(table.getByText("修改失败")).toHaveClass("invalid");
     expect(table.getAllByText("无变化")).toHaveLength(2);
@@ -101,40 +102,13 @@ describe("PreviewPanel", () => {
 
   it("shows the filtered empty state only while a nonempty filter excludes all rows", () => {
     render(<PreviewPanel preview={validPreview} />);
+    expect(screen.getByText("renamed.txt")).toBeInTheDocument();
+    expect(screen.getByText("待修改")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "筛选状态" }));
     fireEvent.click(screen.getByRole("menuitemcheckbox", { name: "错误" }));
     expect(screen.getByText("没有符合筛选条件的项目。")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("menuitemcheckbox", { name: "错误" }));
     expect(screen.getByText("renamed.txt")).toBeInTheDocument();
     expect(screen.queryByText("没有符合筛选条件的项目。")).not.toBeInTheDocument();
-  });
-
-  it("shows a pending change in the preview table", () => {
-    render(<PreviewPanel preview={validPreview} />);
-
-    expect(screen.getByText("renamed.txt")).toBeInTheDocument();
-    expect(screen.getByText("待修改")).toBeInTheDocument();
-  });
-
-  it("merges execution status into the preview row", () => {
-    render(
-      <PreviewPanel
-        preview={validPreview}
-        execution={{
-          preview_id: "preview-1",
-          status: "completed",
-          items: [{
-            file_id: "one.txt",
-            original_name: "one.txt",
-            new_name: "renamed.txt",
-            status: "renamed",
-            error: null,
-          }],
-        }}
-      />,
-    );
-
-    expect(screen.getByText("已修改")).toBeInTheDocument();
-    expect(screen.queryByText(/执行结果/)).not.toBeInTheDocument();
   });
 });

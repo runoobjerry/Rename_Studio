@@ -73,7 +73,15 @@ describe("FileBrowser", () => {
     const onClearSelection = vi.fn();
     const props = { listing, providerName: "本地文件", selectedIds: ["folder"],
       onNavigate: vi.fn(), onToggle: vi.fn(), onSelectAll, onInvertSelection, onClearSelection };
-    const { rerender } = render(<FileBrowser {...props} />);
+    const { rerender } = render(<FileBrowser {...props} selectedIds={[]} />);
+    fireEvent.click(screen.getByRole("checkbox", { name: "选择当前显示的全部项目" }));
+    fireEvent.click(screen.getByRole("button", { name: "反选" }));
+    expect(onSelectAll).toHaveBeenCalledWith(["folder", "file.txt"]);
+    expect(onInvertSelection).toHaveBeenCalledOnce();
+    onSelectAll.mockClear();
+    onInvertSelection.mockClear();
+
+    rerender(<FileBrowser {...props} />);
     fireEvent.click(screen.getByRole("button", { name: "筛选项目" }));
     fireEvent.click(screen.getByRole("menuitemcheckbox", { name: "文件" }));
     fireEvent.keyDown(screen.getByRole("menu"), { key: "Escape" });
@@ -174,28 +182,6 @@ describe("FileBrowser", () => {
     fireEvent.click(screen.getByRole("button", { name: /folder/ }));
 
     expect(onNavigate).toHaveBeenCalledWith("folder");
-  });
-
-  it("exposes visible select-all checkbox and invert-selection actions", () => {
-    const onSelectAll = vi.fn();
-    const onInvertSelection = vi.fn();
-    render(
-      <FileBrowser
-        listing={listing}
-        providerName="本地文件"
-        selectedIds={[]}
-        onNavigate={vi.fn()}
-        onToggle={vi.fn()}
-        onSelectAll={onSelectAll}
-        onInvertSelection={onInvertSelection}
-      />,
-    );
-
-    fireEvent.click(screen.getByRole("checkbox", { name: "选择当前显示的全部项目" }));
-    fireEvent.click(screen.getByRole("button", { name: "反选" }));
-
-    expect(onSelectAll).toHaveBeenCalledWith(["folder", "file.txt"]);
-    expect(onInvertSelection).toHaveBeenCalledOnce();
   });
 });
 
