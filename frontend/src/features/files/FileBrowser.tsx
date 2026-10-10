@@ -280,7 +280,7 @@ interface FileBrowserRowProps {
 
 const FileBrowserRow = memo(function FileBrowserRow({ item, rowIndex, selected, disabled, navigationDisabled,
   onToggle, onNavigate, onNavigateLocation }: FileBrowserRowProps) {
-  const modifiedAt = useMemo(() => formatModifiedAt(item.modified_at), [item.modified_at]);
+  const modifiedAt = formatModifiedAt(item.modified_at);
   return <TableRow hover selected={selected} data-row-index={rowIndex} aria-rowindex={rowIndex + 2} tabIndex={-1}>
     <TableCell padding="checkbox">
       <Checkbox size="small" sx={fileCheckboxSx} checked={selected} disabled={disabled} onChange={() => onToggle(item.id)}

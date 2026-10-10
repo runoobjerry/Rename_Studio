@@ -25,11 +25,6 @@ interface PreviewPanelProps {
   providerName?: string;
   error?: string;
   executeError?: string;
-  selectedCount?: number;
-  isPending?: boolean;
-  isExecuting?: boolean;
-  onPreview?: () => void;
-  onExecute?: (previewId: string) => void;
 }
 
 export const PreviewPanel = memo(function PreviewPanel({

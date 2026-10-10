@@ -336,28 +336,6 @@
   font-size: 13px;
 }
 
-.settings-content {
-  display: grid;
-  gap: 16px;
-  padding: 18px 20px 20px;
-}
-
-.settings-panel .panel-heading h2 {
-  color: var(--app-text-muted);
-}
-
-.settings-hint {
-  margin: 0;
-  color: var(--app-text-muted);
-  font-size: 12px;
-  line-height: 1.6;
-}
-
-.settings-hint code {
-  overflow-wrap: anywhere;
-  color: var(--accent-text);
-}
-
 .rename-action-bar {
   padding: 10px;
   border: 1px solid var(--app-border);

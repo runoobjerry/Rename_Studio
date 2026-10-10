@@ -16,6 +16,11 @@ import {
 
 import type { PreviewResponse, RenameProgress } from "../../types";
 
+const phaseLabels = {
+  waiting: "等待确认", validating: "正在复核", staging: "正在准备临时名称",
+  renaming: "正在修改", rollback: "正在回滚", finished: "处理结束", failed: "执行失败",
+};
+
 export interface RenameActionsProps {
   preview?: PreviewResponse;
   providerName: string;
@@ -54,10 +59,6 @@ export function RenameActions({
   const total = currentProgress?.total ?? changedCount;
   const processed = hasExecuted ? total : currentProgress?.processed ?? 0;
   const percent = total > 0 ? Math.min(100, Math.floor(processed / total * 100)) : 0;
-  const phaseLabels = {
-    waiting: "等待确认", validating: "正在复核", staging: "正在准备临时名称",
-    renaming: "正在修改", rollback: "正在回滚", finished: "处理结束", failed: "执行失败",
-  };
   const started = applied || isExecuting || hasExecuted || Boolean(executeError);
   const executionError = executeError ?? currentProgress?.error;
   const phase = hasExecuted ? "finished" : executionError ? "failed" : currentProgress?.phase ?? "waiting";
