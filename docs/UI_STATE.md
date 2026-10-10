@@ -1,6 +1,6 @@
 # UI 当前工作快照
 
-更新日期：2026-10-10。用户在阶段二任务中确认阶段一人工验收完成；本轮完成存储 Hook 拆分（阶段二），待用户运行前端检查和人工 UI 验收。
+更新日期：2026-10-10。用户在阶段三任务中确认阶段二人工验收完成；本轮完成重命名工作流 Hook 拆分（阶段三），待用户最终检查和人工 UI 验收。
 
 ## 当前工作
 
@@ -8,7 +8,7 @@
 
 ## 最近落点
 
-- 阶段二：新增 useWorkspaceStorage，集中连接/目录状态与查询、本地选择器、默认路径读写及刷新；WorkspaceApp 保留重命名 mutation、执行保护、上下文重置及默认路径恢复 effect。补充 revision 隔离和选择器取消/成功回归；仅核对源码差异，未运行测试/构建或 commit/push，等待用户验收及阶段三明确指令。
+- 阶段三：新增 useRenameWorkflow，迁移有效选择、预览/执行 mutation、ID 生命周期、上下文重置、选择/规则操作和分批提示偏好；WorkspaceApp 保留布局、导航保护、任务订阅及存储恢复协调。补充规则失效/预览替换和跨连接迟到预览释放回归；源码比对确认核心迁移块一致，未运行测试/构建或 commit/push，等待最终人工验收。
 - useRenameStore/types：FileSnapshot/RenameTask，任务/批次/预览关联、pending/completed/failed/unknown 状态，保留 before 与 after。
 - WorkspaceApp：每批提交上限、剩余选择、丢失响应锁定、任务中禁用目录自动刷新、直接合并确认结果、点击预览触发分批 Dialog 和上下文失效。
 - FileBrowser/CheckboxFilterMenu：任务成员视图、合并分组筛选、默认待处理、Logout 退出、超过 1000 项分批 Dialog 和浏览器记忆偏好；移除独立任务操作条、整体进度、状态列和核对弹窗。RenameActions 保留无变化批次确认。

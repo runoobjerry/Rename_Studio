@@ -548,6 +548,43 @@ describe("task refresh and batch hint interaction", () => {
     expect(screen.getByRole("button", { name: "开始修改" })).toBeDisabled();
   });
 
+  it("invalidates a preview on rule changes and retains its ID for replacement", async () => {
+    vi.mocked(api.fetchRules).mockResolvedValue([
+      { type: "insert", name: "插入", description: "插入文本", config_schema: {} },
+    ]);
+    const items = await setup(2);
+    fireEvent.click(screen.getByRole("button", { name: "刷新预览" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "开始修改" })).toBeEnabled());
+    fireEvent.click(screen.getByRole("button", { name: "添加规则" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "插入" }));
+    await waitFor(() => expect(screen.queryByRole("menu")).not.toBeInTheDocument());
+    expect(useRenameStore.getState().rules).toEqual([expect.objectContaining({ type: "insert", enabled: true })]);
+    expect(screen.getByRole("button", { name: "开始修改" })).toBeDisabled();
+    expect(api.releaseStoragePreview).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("button", { name: "刷新预览" }));
+    await waitFor(() => expect(api.createStoragePreview).toHaveBeenLastCalledWith(
+      "default-local", { kind: "root" }, items.map((file) => file.id), useRenameStore.getState().rules, "task-preview",
+    ));
+    expect(api.executePreview).not.toHaveBeenCalled();
+  });
+
+  it("releases a late preview to its original storage after switching connections", async () => {
+    await setup(2);
+    let resolvePreview!: (value: Awaited<ReturnType<typeof api.createStoragePreview>>) => void;
+    vi.mocked(api.createStoragePreview).mockImplementationOnce(() => new Promise((resolve) => { resolvePreview = resolve; }));
+    fireEvent.click(screen.getByRole("button", { name: "刷新预览" }));
+    await waitFor(() => expect(api.createStoragePreview).toHaveBeenCalledTimes(1));
+    fireEvent.click(screen.getByRole("button", { name: "OneDrive" }));
+    await waitFor(() => expect(api.fetchStorageFiles).toHaveBeenCalledWith("user-onedrive", { kind: "root" }));
+    await act(async () => resolvePreview({ preview_id: "late-storage-preview", expires_at: "2099-01-01T00:00:00Z", valid: true, items: [] }));
+    await waitFor(() => expect(api.releaseStoragePreview).toHaveBeenCalledWith("default-local", "late-storage-preview"));
+    expect(useRenameStore.getState().task).toBeNull();
+    expect(useRenameStore.getState().selectedIds).toEqual([]);
+    expect(screen.getByRole("button", { name: "开始修改" })).toBeDisabled();
+    expect(api.executePreview).not.toHaveBeenCalled();
+  });
+
   it.each(["success", "lost-response"])("does not refresh automatically after %s, but allows manual refresh", async (outcome) => {
     const items = await setup(2);
     if (outcome === "success") {
