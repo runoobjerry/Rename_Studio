@@ -15,7 +15,7 @@
 
 - React 18、TypeScript 5.6、Vite 5、MUI 9、Emotion、TanStack Query 5、Zustand 5；测试使用 Vitest、Testing Library 和 JSDOM。
 - `frontend/src/App.tsx` 仅默认导出 `WorkspaceApp`；未使用的 `LegacyApp` 及旧 CSS 已移除。
-- `WorkspaceApp.tsx` 编排连接查询、目录位置、变更和工作区/设置两个内存视图；没有 URL 路由或深层链接。规则选择已改为主页菜单，原二级页面移除。
+- `WorkspaceApp.tsx` 编排重命名变更、跨上下文重置和工作区/设置两个内存视图；`useWorkspaceStorage` 管理连接与目录查询、位置状态及存储操作。没有 URL 路由或深层链接。规则选择已改为主页菜单，原二级页面移除。
 - 设置页面懒加载，Vite 配置保留手动 vendor chunks。
 - TanStack Query 管理服务端状态与缓存失效；Zustand 保存选择 ID、规则链和当前会话的分批任务；任务快照、逐项执行结果与查询缓存分离。筛选状态在组件内部，不持久化到 Store。
 - `api/client.ts` 是共享 HTTP 层，`types/index.ts` 映射 API 数据。
@@ -91,7 +91,8 @@
 ## 代码定位
 
 - `frontend/src/WorkspaceApp.tsx`：外壳、查询/变更、通知接入、选择和状态重置。
-- `frontend/src/workspace/components/{StorageSidebar,StorageLocationPanel,BatchLimitDialog}.tsx`：侧边栏内容、目录位置与反馈、分批提示的纯展示组件；Drawer 容器、业务状态、任务操作和偏好持久化仍由 WorkspaceApp 管理。
+- `frontend/src/workspace/components/{StorageSidebar,StorageLocationPanel,BatchLimitDialog}.tsx`：侧边栏内容、目录位置与反馈、分批提示的纯展示组件；Drawer 容器、任务操作和分批提示偏好仍由 WorkspaceApp 管理。
+- `frontend/src/workspace/hooks/useWorkspaceStorage.ts`：连接/目录状态与查询、本地根目录选择、云默认位置读写和手动刷新；执行保护、默认目录恢复 effect 及选择/任务/预览重置由 WorkspaceApp 协调，保留原 effect 顺序。
 - `frontend/src/components/NotificationProvider.tsx`、`CheckboxFilterMenu.tsx`：共享通知与筛选菜单。
 - `frontend/src/components/PanelIconButton.tsx`：文件/预览面板图标按钮的共享外观；有状态控件可局部覆盖状态颜色，不重复定义尺寸和间距。
 - `frontend/src/features/files/FileBrowser.tsx`：导航、文件表格、类型筛选与可见项选择。

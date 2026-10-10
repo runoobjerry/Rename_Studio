@@ -5,13 +5,13 @@ import * as api from "./api/client";
 import WorkspaceApp from "./WorkspaceApp";
 import { readDefaultCloudLocation, saveDefaultCloudLocation } from "./features/files/defaultCloudLocation";
 import { useRenameStore } from "./stores/useRenameStore";
-import type { AuthorizationStatus } from "./types";
+import type { AuthorizationStatus, StorageInfo } from "./types";
 
 vi.mock("./api/client", async (importOriginal) => {
   const original = await importOriginal<typeof import("./api/client")>();
   return {
     ...original,
-    fetchStorages: vi.fn(), fetchRules: vi.fn(),
+    fetchStorages: vi.fn(), fetchRules: vi.fn(), pickStorageFolder: vi.fn(),
     fetchStorageAuthStatus: vi.fn(), fetchStorageFiles: vi.fn(), createStoragePreview: vi.fn(), releaseStoragePreview: vi.fn(), executePreview: vi.fn(), fetchRenameProgress: vi.fn(),
   };
 });
@@ -118,6 +118,67 @@ describe("directory refresh selection", () => {
     fireEvent.click(screen.getByRole("button", { name: "刷新" }));
     await screen.findByText(/目录刷新失败/);
     expect(useRenameStore.getState().selectedIds).toEqual(["A", "B", "C"]);
+  });
+
+  it("isolates a new connection revision and clears its previous task and preview", async () => {
+    vi.mocked(api.fetchStorageFiles).mockResolvedValue(listing(["A"]));
+    vi.mocked(api.createStoragePreview).mockResolvedValue({
+      preview_id: "revision-preview", expires_at: "2099-01-01T00:00:00Z", valid: true,
+      items: [{ file_id: "A", original_name: "A.txt", new_name: "new-A.txt", changed: true, valid: true, conflict: false, error: null }],
+    });
+    render(<QueryClientProvider client={client}><WorkspaceApp /></QueryClientProvider>);
+    fireEvent.click(await screen.findByRole("checkbox", { name: "选择当前显示的全部项目" }));
+    fireEvent.click(screen.getByRole("button", { name: "刷新预览" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "开始修改" })).toBeEnabled());
+    expect(useRenameStore.getState().task).not.toBeNull();
+
+    vi.mocked(api.fetchStorageFiles).mockResolvedValue(listing(["B"]));
+    act(() => client.setQueryData<StorageInfo[]>(["storages"], (storages) => storages!.map((storage) =>
+      storage.storage_id === "default-local" ? { ...storage, revision: 2 } : storage)));
+    await screen.findByRole("checkbox", { name: "选择文件 B.txt" });
+    expect(useRenameStore.getState().selectedIds).toEqual([]);
+    expect(useRenameStore.getState().task).toBeNull();
+    expect(screen.getByRole("button", { name: "开始修改" })).toBeDisabled();
+    expect(screen.queryByText("new-A.txt")).not.toBeInTheDocument();
+    expect(client.getQueryData(["files", "default-local", 1, { kind: "root" }])).toEqual(listing(["A"]));
+    expect(client.getQueryData(["files", "default-local", 2, { kind: "root" }])).toEqual(listing(["B"]));
+    await waitFor(() => expect(api.releaseStoragePreview).toHaveBeenCalledWith("default-local", "revision-preview"));
+  });
+
+  it.each([false, true])("preserves or resets the task when the folder picker returns selected=%s", async (selected) => {
+    vi.mocked(api.fetchStorageFiles).mockResolvedValue(listing(["A"]));
+    vi.mocked(api.createStoragePreview).mockResolvedValue({
+      preview_id: "picker-preview", expires_at: "2099-01-01T00:00:00Z", valid: true,
+      items: [{ file_id: "A", original_name: "A.txt", new_name: "new-A.txt", changed: true, valid: true, conflict: false, error: null }],
+    });
+    vi.mocked(api.pickStorageFolder).mockResolvedValue({ root_path: selected ? "C:\\new-root" : "C:\\files", selected });
+    render(<QueryClientProvider client={client}><WorkspaceApp /></QueryClientProvider>);
+    fireEvent.click(await screen.findByRole("checkbox", { name: "选择当前显示的全部项目" }));
+    fireEvent.click(screen.getByRole("button", { name: "刷新预览" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "开始修改" })).toBeEnabled());
+    const previousTask = useRenameStore.getState().task;
+    if (selected) {
+      const storages = client.getQueryData<StorageInfo[]>(["storages"])!;
+      vi.mocked(api.fetchStorages).mockResolvedValue(storages.map((storage) => storage.storage_id === "default-local"
+        ? { ...storage, revision: 2, config: { root_path: "C:\\new-root" } } : storage));
+      vi.mocked(api.fetchStorageFiles).mockResolvedValue(listing(["B"]));
+    }
+    fireEvent.click(screen.getByRole("button", { name: "浏览…" }));
+    await waitFor(() => expect(api.pickStorageFolder).toHaveBeenCalledWith("default-local"));
+    await waitFor(() => expect(screen.getByRole("button", { name: "浏览…" })).toBeEnabled());
+    if (selected) {
+      await screen.findByText("已选择本地根文件夹。");
+      await screen.findByRole("checkbox", { name: "选择文件 B.txt" });
+      expect(useRenameStore.getState().selectedIds).toEqual([]);
+      expect(useRenameStore.getState().task).toBeNull();
+      expect(screen.getByRole("button", { name: "开始修改" })).toBeDisabled();
+    } else {
+      expect(useRenameStore.getState().selectedIds).toEqual(["A"]);
+      expect(useRenameStore.getState().task).toBe(previousTask);
+      expect(screen.getByRole("button", { name: "开始修改" })).toBeEnabled();
+      expect(screen.queryByText("已选择本地根文件夹。")).not.toBeInTheDocument();
+      expect(api.fetchStorageFiles).toHaveBeenCalledTimes(1);
+    }
   });
 
   it("clears hidden selections and does not restore them after refresh or removing the filter", async () => {
