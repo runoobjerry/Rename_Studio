@@ -1,4 +1,4 @@
-import { useId, useState } from "react";
+import { useId, useRef, useState } from "react";
 import ArrowDownwardRoundedIcon from "@mui/icons-material/ArrowDownwardRounded";
 import ArrowUpwardRoundedIcon from "@mui/icons-material/ArrowUpwardRounded";
 import ContentCopyRoundedIcon from "@mui/icons-material/ContentCopyRounded";
@@ -80,11 +80,23 @@ export function cloneRule(rule: RuleSpec): RuleSpec {
 export function RuleEditor({ definitions, rules, onChange, isLoading = false }: RuleEditorProps) {
   const menuId = useId();
   const [anchor, setAnchor] = useState<HTMLElement | null>(null);
+  const identities = useRef({ keys: new WeakMap<RuleSpec, number>(), nextKey: 0 });
   const availableRules = definitions.filter(
     (definition) => DEFAULT_RULES[definition.type] !== undefined,
   );
 
+  function ruleKey(rule: RuleSpec): number {
+    let key = identities.current.keys.get(rule);
+    if (key === undefined) {
+      key = identities.current.nextKey++;
+      identities.current.keys.set(rule, key);
+    }
+    return key;
+  }
+
   function updateRule(index: number, nextRule: RuleSpec) {
+    // 编辑延续原身份；复制和父组件传入的新对象获得新身份，不按位置或内容猜测。
+    identities.current.keys.set(nextRule, ruleKey(rules[index]));
     onChange(
       rules.map((rule, ruleIndex) => (ruleIndex === index ? nextRule : rule)),
     );
@@ -189,7 +201,7 @@ export function RuleEditor({ definitions, rules, onChange, isLoading = false }: 
 
       <div className="rule-list">
         {rules.map((rule, index) => (
-          <article className="rule-card" key={`${rule.type}-${index}`}>
+          <article className="rule-card" key={ruleKey(rule)}>
             <div className="rule-card-heading">
               <label className="rule-enabled-control">
                 <Switch

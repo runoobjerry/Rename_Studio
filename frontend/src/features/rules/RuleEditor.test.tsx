@@ -1,8 +1,9 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { useState } from "react";
 
 import type { RuleDefinition, RuleSpec } from "../../types";
-import { DEFAULT_RULES, RuleEditor } from "./RuleEditor";
+import { cloneRule, DEFAULT_RULES, RuleEditor } from "./RuleEditor";
 
 afterEach(cleanup);
 
@@ -40,6 +41,63 @@ const textRule: RuleSpec = {
 };
 
 describe("RuleEditor", () => {
+  it("keeps number drafts with their rule through edits, moves, copies and deletion", () => {
+    const onChange = vi.fn();
+    function Editor() {
+      const [rules, setRules] = useState(() => [cloneRule(textRule), cloneRule(textRule)]);
+      return <RuleEditor definitions={[definition]} rules={rules} onChange={(next) => {
+        onChange(next);
+        setRules(next);
+      }} />;
+    }
+    render(<Editor />);
+    const [first, second] = screen.getAllByRole("spinbutton", { name: "目标长度" });
+    fireEvent.change(first, { target: { value: "" } });
+    fireEvent.change(second, { target: { value: "999" } });
+    // 字段编辑生成新 RuleSpec，但不应重挂载同一规则的数字输入。
+    fireEvent.change(screen.getAllByLabelText("填充字符")[0], { target: { value: "-" } });
+    expect(screen.getAllByRole("spinbutton", { name: "目标长度" })[0]).toBe(first);
+    expect(first).toHaveValue(null);
+    fireEvent.click(screen.getAllByRole("button", { name: "下移规则" })[0]);
+    expect(screen.getAllByRole("spinbutton", { name: "目标长度" })).toEqual([second, first]);
+    expect(first).toHaveValue(null);
+    expect(second).toHaveValue(999);
+    fireEvent.click(screen.getAllByRole("button", { name: "上移规则" })[1]);
+    expect(screen.getAllByRole("spinbutton", { name: "目标长度" })).toEqual([first, second]);
+    fireEvent.click(screen.getAllByRole("button", { name: "复制规则" })[0]);
+    const copy = screen.getAllByRole("spinbutton", { name: "目标长度" })[2];
+    expect(copy).not.toBe(first);
+    expect(copy).toHaveValue(8);
+    fireEvent.change(copy, { target: { value: "9" } });
+    expect(first).toHaveValue(null);
+    fireEvent.click(screen.getAllByRole("button", { name: "删除规则" })[0]);
+    expect(screen.getAllByRole("spinbutton", { name: "目标长度" })).toEqual([second, copy]);
+    expect(second).toHaveValue(999);
+    expect(copy).toHaveValue(9);
+    const sentRules = onChange.mock.lastCall![0] as RuleSpec[];
+    expect(sentRules).toEqual([textRule, { ...textRule, config: { ...textRule.config, fill_character: "-", length: 9 } }]);
+  });
+
+  it("preserves retained parent objects and resets drafts for a replacement list", () => {
+    const first = cloneRule(textRule);
+    const second = cloneRule(textRule);
+    const onChange = vi.fn();
+    const { rerender } = render(<RuleEditor definitions={[definition]} rules={[first, second]} onChange={onChange} />);
+    const input = screen.getAllByRole("spinbutton", { name: "目标长度" })[1];
+    fireEvent.change(input, { target: { value: "" } });
+    rerender(<RuleEditor definitions={[definition]} rules={[cloneRule(textRule), second, first]} onChange={onChange} />);
+    expect(screen.getAllByRole("spinbutton", { name: "目标长度" })[1]).toBe(input);
+    rerender(<RuleEditor definitions={[definition]} rules={[second]} onChange={onChange} />);
+    expect(screen.getByRole("spinbutton", { name: "目标长度" })).toBe(input);
+    expect(input).toHaveValue(null);
+    // 新对象即新列表成员，即使内容相同也不能继承旧编辑草稿。
+    rerender(<RuleEditor definitions={[definition]} rules={[cloneRule(second)]} onChange={onChange} />);
+    expect(screen.getByRole("spinbutton", { name: "目标长度" })).not.toBe(input);
+    expect(screen.getByRole("spinbutton", { name: "目标长度" })).toHaveValue(8);
+    rerender(<RuleEditor definitions={[definition]} rules={[]} onChange={onChange} />);
+    expect(screen.queryByRole("spinbutton")).not.toBeInTheDocument();
+  });
+
   it("opens the inline menu and appends an independent rule configuration", async () => {
     const onChange = vi.fn();
     render(

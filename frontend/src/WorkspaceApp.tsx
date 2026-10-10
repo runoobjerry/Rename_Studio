@@ -363,24 +363,26 @@ function Workspace({ mode, setMode }: { mode: PaletteMode; setMode: (mode: Palet
       else notify("目录已刷新。");
     });
   }, [files.refetch, notify]);
-  const toggleFile = useCallback((fileId: string) => {
+  const changeSelection = useCallback((update: () => void) => {
     if (execution.isPending) return;
-    toggleSelected(fileId); preview.reset(); execution.reset();
-  }, [execution.isPending, toggleSelected, preview.reset, execution.reset]);
-  const selectAllFiles = useCallback((ids: string[]) => {
-    if (execution.isPending) return;
-    setSelectedIds(ids); preview.reset(); execution.reset();
-  }, [execution.isPending, setSelectedIds, preview.reset, execution.reset]);
-  const clearFiles = useCallback(() => {
-    if (execution.isPending) return;
-    clearSelection(); preview.reset(); execution.reset();
-  }, [execution.isPending, clearSelection, preview.reset, execution.reset]);
-  const invertFiles = useCallback((ids: string[]) => {
-    if (execution.isPending) return;
-    const selected = new Set(useRenameStore.getState().selectedIds);
-    setSelectedIds(ids.filter((id) => !selected.has(id)));
+    update();
     preview.reset(); execution.reset();
-  }, [execution.isPending, setSelectedIds, preview.reset, execution.reset]);
+  }, [execution.isPending, preview.reset, execution.reset]);
+  const toggleFile = useCallback((fileId: string) => {
+    changeSelection(() => toggleSelected(fileId));
+  }, [changeSelection, toggleSelected]);
+  const selectAllFiles = useCallback((ids: string[]) => {
+    changeSelection(() => setSelectedIds(ids));
+  }, [changeSelection, setSelectedIds]);
+  const clearFiles = useCallback(() => {
+    changeSelection(clearSelection);
+  }, [changeSelection, clearSelection]);
+  const invertFiles = useCallback((ids: string[]) => {
+    changeSelection(() => {
+      const selected = new Set(useRenameStore.getState().selectedIds);
+      setSelectedIds(ids.filter((id) => !selected.has(id)));
+    });
+  }, [changeSelection, setSelectedIds]);
 
   const navigation = (
     <Box

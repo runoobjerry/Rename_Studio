@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { PreviewPanel } from "./PreviewPanel";
@@ -23,6 +23,50 @@ const validPreview = {
 };
 
 describe("PreviewPanel", () => {
+  it("keeps execution labels, original success categories and full-list counts distinct", () => {
+    const item = validPreview.items[0];
+    const items = ["renamed", "failed", "skipped", "pending", "unchanged"].map((id) => ({
+      ...item, file_id: id, original_name: `${id}.txt`, new_name: `new-${id}.txt`,
+      changed: id !== "unchanged",
+    }));
+    render(<PreviewPanel preview={{ ...validPreview, items }} execution={{
+      preview_id: validPreview.preview_id, status: "partial", items: [
+        { file_id: "renamed", original_name: "renamed.txt", new_name: "new-renamed.txt", status: "renamed", error: null },
+        { file_id: "failed", original_name: "failed.txt", new_name: "new-failed.txt", status: "failed", error: null },
+        { file_id: "skipped", original_name: "skipped.txt", new_name: "new-skipped.txt", status: "skipped", error: null },
+      ],
+    }} />);
+    const table = within(screen.getByRole("table", { name: "修改预览" }));
+    expect(table.getByText("已修改")).toHaveClass("valid");
+    expect(table.getByText("new-renamed.txt")).toHaveClass("renamed-name");
+    expect(table.getByText("修改失败")).toHaveClass("invalid");
+    expect(table.getAllByText("无变化")).toHaveLength(2);
+    expect(screen.getByText("1 项待修改 · 2 项无需修改")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "筛选状态" }));
+    fireEvent.click(screen.getByRole("menuitemcheckbox", { name: "待修改" }));
+    fireEvent.keyDown(screen.getByRole("menu"), { key: "Escape" });
+    // 已修改仍属于原待修改筛选，但不能再计入待修改数量。
+    expect(table.getByText("已修改")).toBeInTheDocument();
+    expect(table.getByText("new-pending.txt")).toBeInTheDocument();
+    expect(table.queryByText("修改失败")).not.toBeInTheDocument();
+    expect(table.queryByText("new-skipped.txt")).not.toBeInTheDocument();
+    expect(screen.getByText("1 项待修改 · 2 项无需修改 · 显示 2 项")).toBeInTheDocument();
+  });
+
+  it("keeps validation errors out of pending counts and uses their existing labels", () => {
+    const item = validPreview.items[0];
+    render(<PreviewPanel preview={{ ...validPreview, valid: false, items: [
+      { ...item, file_id: "conflict", valid: false, conflict: true },
+      { ...item, file_id: "invalid", valid: false },
+      { ...item, file_id: "error", valid: false, error: "禁止字符" },
+    ] }} />);
+    const table = within(screen.getByRole("table", { name: "修改预览" }));
+    expect(table.getByText("名称冲突")).toHaveClass("invalid");
+    expect(table.getByText("不可修改")).toHaveClass("invalid");
+    expect(table.getByText("禁止字符")).toHaveClass("invalid");
+    expect(screen.getByText("0 项待修改 · 0 项无需修改")).toBeInTheDocument();
+  });
+
   it("filters pending rows and keeps execution failures under errors", () => {
     render(<PreviewPanel preview={{ ...validPreview, items: [
       validPreview.items[0],

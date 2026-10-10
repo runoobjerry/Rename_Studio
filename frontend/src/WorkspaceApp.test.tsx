@@ -358,6 +358,81 @@ describe("task refresh and batch hint interaction", () => {
     return items;
   };
 
+  it.each(["toggle", "select-all", "clear", "invert"] as const)("invalidates an old preview after %s selection", async (operation) => {
+    const items = await setup(2);
+    if (operation === "select-all") {
+      fireEvent.click(screen.getByRole("button", { name: "刷新预览" }));
+      await waitFor(() => expect(screen.getByRole("button", { name: "开始修改" })).toBeEnabled());
+      act(() => useRenameStore.getState().setSelectedIds([items[0].id]));
+    }
+    fireEvent.click(screen.getByRole("button", { name: "刷新预览" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "开始修改" })).toBeEnabled());
+    if (operation === "toggle") {
+      fireEvent.click(screen.getByRole("checkbox", { name: "选择文件 file-0.txt" }));
+    } else if (operation === "invert") {
+      fireEvent.click(screen.getByRole("button", { name: "反选" }));
+    } else {
+      fireEvent.click(screen.getByRole("checkbox", { name: "选择当前显示的全部项目" }));
+    }
+    expect(useRenameStore.getState().selectedIds).toEqual(operation === "toggle" ? [items[1].id]
+      : operation === "select-all" ? items.map((item) => item.id) : []);
+    expect(screen.getByRole("button", { name: "开始修改" })).toBeDisabled();
+    expect(screen.queryByText("renamed-file-0.txt")).not.toBeInTheDocument();
+    expect(api.executePreview).not.toHaveBeenCalled();
+  });
+
+  it("preserves partial results during reconciliation and clears them on an ordinary selection", async () => {
+    const items = await setup(2);
+    vi.mocked(api.executePreview).mockResolvedValue({ preview_id: "task-preview", status: "partial", items: items.map((file, index) => ({
+      file_id: file.id, original_name: file.name, new_name: `renamed-${file.name}`,
+      status: index === 0 ? "failed" : "renamed", error: index === 0 ? "Write failed" : null,
+    })) });
+    fireEvent.click(screen.getByRole("button", { name: "刷新预览" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "开始修改" })).toBeEnabled());
+    fireEvent.click(screen.getByRole("button", { name: "开始修改" }));
+    fireEvent.click(screen.getByRole("button", { name: "应用" }));
+    // 默认待处理筛选隐藏失败/完成项，reconcileSelection 清空选择但保留执行结果。
+    await waitFor(() => expect(useRenameStore.getState().selectedIds).toEqual([]));
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    expect(screen.getByText("Write failed")).toBeInTheDocument();
+    expect(screen.getByText("已修改")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "筛选项目" }));
+    fireEvent.click(screen.getByRole("menuitemcheckbox", { name: "失败/待核对" }));
+    fireEvent.keyDown(screen.getByRole("menu"), { key: "Escape" });
+    await waitFor(() => expect(screen.queryByRole("menu")).not.toBeInTheDocument());
+    fireEvent.click(screen.getByRole("checkbox", { name: "选择文件 file-0.txt" }));
+    expect(useRenameStore.getState().selectedIds).toEqual([items[0].id]);
+    expect(screen.queryByText("Write failed")).not.toBeInTheDocument();
+    expect(screen.queryByText("已修改")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "开始修改" })).toBeDisabled();
+    expect(api.executePreview).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps selection controls locked while execution is pending", async () => {
+    const items = await setup(2);
+    let resolveExecution!: (value: Awaited<ReturnType<typeof api.executePreview>>) => void;
+    vi.mocked(api.executePreview).mockImplementationOnce(() => new Promise((resolve) => { resolveExecution = resolve; }));
+    fireEvent.click(screen.getByRole("button", { name: "刷新预览" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "开始修改" })).toBeEnabled());
+    fireEvent.click(screen.getByRole("button", { name: "开始修改" }));
+    fireEvent.click(screen.getByRole("button", { name: "应用" }));
+    await waitFor(() => expect(api.executePreview).toHaveBeenCalledTimes(1));
+    // Dialog 打开时背景 aria-hidden，用真实 input 验证控件禁用状态。
+    const fileSelection = screen.getByLabelText("选择文件 file-0.txt");
+    const allSelection = screen.getByLabelText("选择当前显示的全部项目");
+    const invertSelection = screen.getByLabelText("反选", { selector: "button" });
+    expect(fileSelection).toBeDisabled();
+    expect(allSelection).toBeDisabled();
+    expect(invertSelection).toBeDisabled();
+    fireEvent.click(fileSelection);
+    fireEvent.click(allSelection);
+    fireEvent.click(invertSelection);
+    expect(useRenameStore.getState().selectedIds).toEqual(items.map((item) => item.id));
+    await act(async () => resolveExecution({ preview_id: "task-preview", status: "completed", items: items.map((file) => ({
+      file_id: file.id, original_name: file.name, new_name: `renamed-${file.name}`, status: "renamed", error: null,
+    })) }));
+  });
+
   it("opens the hint only on preview click and cancels without creating a task", async () => {
     await setup(1001);
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();

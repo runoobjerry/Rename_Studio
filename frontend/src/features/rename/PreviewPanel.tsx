@@ -36,26 +36,22 @@ export const PreviewPanel = memo(function PreviewPanel({
 }: PreviewPanelProps) {
   const [filters, setFilters] = useState<StatusFilter[]>([]);
   const executionById = useMemo(() => new Map(execution?.items.map((item) => [item.file_id, item])), [execution?.items]);
-  const pendingCount = useMemo(() => preview?.items.filter(
-    (item) => item.changed && item.valid && !executionById.has(item.file_id),
-  ).length ?? 0, [preview?.items, executionById]);
-  const unchangedCount = useMemo(() => preview?.items.filter(
-    (item) => !item.changed || executionById.get(item.file_id)?.status === "skipped",
-  ).length ?? 0, [preview?.items, executionById]);
-
-  const visibleItems = useMemo(() => preview?.items.filter((item) => {
-    if (filters.length === 0) return true;
-    const result = executionById.get(item.file_id);
-    // 已执行项目仍按原预览分类，执行失败覆盖原分类，避免隐藏失败信息。
-    const category: StatusFilter = result?.status === "failed" ? "error"
-      : result?.status === "skipped" ? "unchanged"
-      : item.error || !item.valid || item.conflict ? "error"
-      : item.changed ? "pending" : "unchanged";
-    return filters.includes(category);
-  }) ?? [], [preview?.items, executionById, filters]);
+  const { rows, pendingCount, unchangedCount } = useMemo(() => {
+    let pendingCount = 0;
+    let unchangedCount = 0;
+    const rows = (preview?.items ?? []).map((item) => {
+      const status = statusFor(item, executionById.get(item.file_id));
+      if (status.isPendingChange) pendingCount++;
+      if (status.isUnchanged) unchangedCount++;
+      return { item, status };
+    });
+    return { rows, pendingCount, unchangedCount };
+  }, [preview?.items, executionById]);
+  const visibleItems = useMemo(() => rows.filter(({ status }) =>
+    filters.length === 0 || filters.includes(status.category)), [rows, filters]);
   const scrollKey = useMemo(() => [preview?.preview_id, filters], [preview?.preview_id, filters]);
-  const columnValues = useMemo(() => [visibleItems.map((item) => item.original_name), visibleItems.map((item) => item.new_name),
-    visibleItems.map((item) => statusFor(item, executionById.get(item.file_id)).label)], [visibleItems, executionById]);
+  const columnValues = useMemo(() => [visibleItems.map(({ item }) => item.original_name), visibleItems.map(({ item }) => item.new_name),
+    visibleItems.map(({ status }) => status.label)], [visibleItems]);
   const virtual = useVirtualTable(visibleItems.length, scrollKey, columnValues);
 
   return (
@@ -103,8 +99,9 @@ export const PreviewPanel = memo(function PreviewPanel({
             </TableHead>
             <TableBody>
               <VirtualTableSpacer height={virtual.top} columns={3} />
-              {visibleItems.slice(virtual.start, virtual.end).map((item, offset) => (
-                <PreviewRow key={item.file_id} item={item} result={executionById.get(item.file_id)} rowIndex={virtual.start + offset} />
+              {visibleItems.slice(virtual.start, virtual.end).map(({ item, status }, offset) => (
+                <PreviewRow key={item.file_id} item={item} label={status.label} statusClassName={status.className}
+                  renamed={status.renamed} rowIndex={virtual.start + offset} />
               ))}
               <VirtualTableSpacer height={virtual.bottom} columns={3} />
               {visibleItems.length === 0 && (
@@ -124,25 +121,48 @@ export const PreviewPanel = memo(function PreviewPanel({
   );
 });
 
-const PreviewRow = memo(function PreviewRow({ item, result, rowIndex }: {
-  item: PreviewResponse["items"][number]; result?: ExecuteResponse["items"][number]; rowIndex: number;
+const PreviewRow = memo(function PreviewRow({ item, label, statusClassName, renamed, rowIndex }: {
+  item: PreviewResponse["items"][number]; label: string; statusClassName: string; renamed: boolean; rowIndex: number;
 }) {
-  const status = statusFor(item, result);
   return <TableRow data-row-index={rowIndex} aria-rowindex={rowIndex + 2} tabIndex={0}>
     <TableCell>{item.original_name}</TableCell>
-    <TableCell className={result?.status === "renamed" ? "renamed-name" : undefined}>{item.new_name}</TableCell>
-    <TableCell><span className={`status ${status.className}`}>{status.label}</span></TableCell>
+    <TableCell className={renamed ? "renamed-name" : undefined}>{item.new_name}</TableCell>
+    <TableCell><span className={`status ${statusClassName}`}>{label}</span></TableCell>
   </TableRow>;
 });
 
 function statusFor(item: PreviewResponse["items"][number], result?: ExecuteResponse["items"][number]) {
-  if (result?.status === "renamed") return { label: "已修改", className: "valid" };
-  if (result?.status === "failed") {
-    return { label: result.error ?? "修改失败", className: "invalid" };
+  // 已修改项保留原预览分类；失败和跳过的执行结果覆盖分类。
+  let category: StatusFilter = item.error || !item.valid || item.conflict ? "error"
+    : item.changed ? "pending" : "unchanged";
+  let label: string;
+  let className: string;
+  if (result?.status === "renamed") {
+    label = "已修改";
+    className = "valid";
+  } else if (result?.status === "failed") {
+    category = "error";
+    label = result.error ?? "修改失败";
+    className = "invalid";
+  } else if (result?.status === "skipped") {
+    category = "unchanged";
+    label = "无变化";
+    className = "neutral";
+  } else if (item.error) {
+    label = item.error;
+    className = "invalid";
+  } else if (!item.valid) {
+    label = item.conflict ? "名称冲突" : "不可修改";
+    className = "invalid";
+  } else {
+    label = item.changed ? "待修改" : "无变化";
+    className = item.changed ? "pending" : "neutral";
   }
-  if (result?.status === "skipped") return { label: "无变化", className: "neutral" };
-  if (item.error) return { label: item.error, className: "invalid" };
-  if (!item.valid) return { label: item.conflict ? "名称冲突" : "不可修改", className: "invalid" };
-  return { label: item.changed ? "待修改" : "无变化", className: item.changed ? "pending" : "neutral" };
+  return {
+    category, label, className, renamed: result?.status === "renamed",
+    // 副标题统计独立于筛选分类：有效变更且尚无执行结果才计为待修改。
+    isPendingChange: item.changed && item.valid && !result,
+    isUnchanged: !item.changed || result?.status === "skipped",
+  };
 }
 
