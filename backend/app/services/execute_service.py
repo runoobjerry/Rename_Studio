@@ -1,6 +1,6 @@
 import asyncio
 import logging
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from itertools import chain
 from typing import Literal
@@ -81,7 +81,7 @@ class ExecuteService:
                     response = await self._execute_snapshot(snapshot, siblings, progress)
                     progress.processed = progress.total
                     progress.phase = "finished"
-                except BaseException as exc:
+                except (Exception, asyncio.CancelledError) as exc:
                     progress.phase = "failed"
                     progress.error = exc.message if isinstance(exc, AppError) else "Rename execution interrupted"
                     raise
@@ -171,13 +171,14 @@ class ExecuteService:
     ) -> dict[str, FileItem | AppError]:
         outcomes: dict[str, FileItem | AppError] = {}
         concurrency = provider.execution_batch_concurrency if allow_concurrent else 1
-        pending: dict[asyncio.Task[dict[str, FileItem | AppError]], tuple[int, list[RenameRequest]]] = {}
-        reconciling: set[int] = set()
         offset = 0
-        stopped = False
         active = 0
 
-        async def run_batch(index: int, batch: list[RenameRequest]) -> dict[str, FileItem | AppError]:
+        async def run_batch(
+            index: int,
+            batch: list[RenameRequest],
+            on_unknown: Callable[[], None] | None = None,
+        ) -> dict[str, FileItem | AppError]:
             nonlocal active
             active += 1
             started = monotonic()
@@ -186,7 +187,7 @@ class ExecuteService:
                 provider.id, request_id_context.get(), index, len(batch), active,
             )
             try:
-                return await ExecuteService._safe_rename_many(provider, batch, on_unknown=lambda: reconciling.add(index))
+                return await ExecuteService._safe_rename_many(provider, batch, on_unknown=on_unknown)
             finally:
                 active -= 1
                 logger.info(
@@ -194,12 +195,36 @@ class ExecuteService:
                     provider.id, request_id_context.get(), index, len(batch), active, (monotonic() - started) * 1000,
                 )
 
+        if concurrency == 1:
+            for offset in range(0, len(requests), provider.execution_batch_size):
+                batch = requests[offset:offset + provider.execution_batch_size]
+                task = asyncio.create_task(run_batch(offset // provider.execution_batch_size + 1, batch))
+                try:
+                    # 单组也保护已启动的写入，取消后等待其完成再释放执行锁。
+                    batch_outcomes = await asyncio.shield(task)
+                except asyncio.CancelledError:
+                    await ExecuteService._drain_writes([task])
+                    raise
+                outcomes.update(batch_outcomes)
+                if progress is not None:
+                    progress.processed += len(batch)
+                if any(isinstance(outcome, RenameOutcomeUnknownError) for outcome in batch_outcomes.values()):
+                    for request in requests[offset + len(batch):]:
+                        outcomes[request.file_id] = ProviderError("Rename was not attempted after an unknown write outcome")
+                    break
+            return outcomes
+
+        pending: dict[asyncio.Task[dict[str, FileItem | AppError]], tuple[int, list[RenameRequest]]] = {}
+        reconciling: set[int] = set()
+        stopped = False
+
         def start_batches() -> None:
             nonlocal offset
             while not stopped and not reconciling and len(pending) < concurrency and offset < len(requests):
                 index = offset // provider.execution_batch_size + 1
                 batch = requests[offset:offset + provider.execution_batch_size]
-                pending[asyncio.create_task(run_batch(index, batch))] = (index, batch)
+                task = asyncio.create_task(run_batch(index, batch, lambda index=index: reconciling.add(index)))
+                pending[task] = (index, batch)
                 offset += len(batch)
 
         try:
@@ -219,17 +244,33 @@ class ExecuteService:
                 start_batches()
         finally:
             if pending:
-                # 取消/异常只停止补组；远端写入已开始，必须等待它们收尾后才能释放执行锁。
-                draining = asyncio.gather(*pending, return_exceptions=True)
-                while not draining.done():
-                    try:
-                        await asyncio.shield(draining)
-                    except asyncio.CancelledError:
-                        # 重复取消也不能使已启动的写入成为无人等待的后台任务。
-                        continue
+                await ExecuteService._drain_writes(pending)
         for request in requests[offset:]:
             outcomes[request.file_id] = ProviderError("Rename was not attempted after an unknown write outcome")
         return outcomes
+
+    @staticmethod
+    async def _drain_writes(tasks: Iterable[asyncio.Task[dict[str, FileItem | AppError]]]) -> None:
+        # 保留调用方的原异常/取消；等待所有在途写入结束后才允许释放执行锁。
+        draining = asyncio.gather(*tasks, return_exceptions=True)
+        while not draining.done():
+            try:
+                await asyncio.shield(draining)
+            except asyncio.CancelledError:
+                # 重复取消也不能遗留后台写入。
+                continue
+
+    @staticmethod
+    def _record_failure(result: ExecuteItem, outcome: AppError) -> None:
+        result.error = outcome.message
+        result.error_code = outcome.code
+        result.actual_name = outcome.details.get("actual_name")
+
+    @staticmethod
+    def _record_success(result: ExecuteItem, current: FileItem) -> None:
+        result.status = "renamed"
+        result.error = None
+        result.current_file = current
 
     @staticmethod
     def _source_changed(before: FileItem, current: FileItem) -> bool:
@@ -290,9 +331,7 @@ class ExecuteService:
         for item in staged_items:
             outcome = staging_results[item.file_id]
             if isinstance(outcome, AppError):
-                results[item.file_id].error = outcome.message
-                results[item.file_id].error_code = outcome.code
-                results[item.file_id].actual_name = outcome.details.get("actual_name")
+                self._record_failure(results[item.file_id], outcome)
             else:
                 staged.append(StagedRename(preview=item, temporary=outcome))
         if len(staged) != len(staged_items):
@@ -317,9 +356,7 @@ class ExecuteService:
         for item in direct_items:
             outcome = direct_results[item.file_id]
             if isinstance(outcome, AppError):
-                results[item.file_id].error = outcome.message
-                results[item.file_id].error_code = outcome.code
-                results[item.file_id].actual_name = outcome.details.get("actual_name")
+                self._record_failure(results[item.file_id], outcome)
             else:
                 renamed_direct.append(DirectRename(preview=item, current=outcome))
         if len(renamed_direct) != len(direct_items):
@@ -335,14 +372,10 @@ class ExecuteService:
             else:
                 # 独立目标互不占用，允许保留已成功项目并明确报告 partial。
                 for renamed in renamed_direct:
-                    results[renamed.preview.file_id].status = "renamed"
-                    results[renamed.preview.file_id].error = None
-                    results[renamed.preview.file_id].current_file = renamed.current
+                    self._record_success(results[renamed.preview.file_id], renamed.current)
             return self._response(snapshot.preview_id, results)
         for renamed in renamed_direct:
-            results[renamed.preview.file_id].status = "renamed"
-            results[renamed.preview.file_id].error = None
-            results[renamed.preview.file_id].current_file = renamed.current
+            self._record_success(results[renamed.preview.file_id], renamed.current)
 
         if staged_items:
             # 有依赖的直接重命名可能回滚，只有整个直接阶段成功才计入。
@@ -357,14 +390,10 @@ class ExecuteService:
                 item = staged_item.preview
                 outcome = final_results[staged_item.temporary.id]
                 if not isinstance(outcome, AppError):
-                    results[item.file_id].status = "renamed"
-                    results[item.file_id].error = None
-                    results[item.file_id].current_file = outcome
+                    self._record_success(results[item.file_id], outcome)
                 else:
                     progress.phase = "rollback"
-                    results[item.file_id].error = outcome.message
-                    results[item.file_id].error_code = outcome.code
-                    results[item.file_id].actual_name = outcome.details.get("actual_name")
+                    self._record_failure(results[item.file_id], outcome)
                     await self._rollback_one(provider, staged_item, results[item.file_id])
                     progress.phase = "renaming"
                 progress.processed += 1

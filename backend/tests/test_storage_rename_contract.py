@@ -287,6 +287,36 @@ async def test_confirmed_failure_keeps_successes_and_continues_independent_group
 
 
 @pytest.mark.asyncio
+async def test_serial_cancellation_waits_for_the_started_write_without_starting_next_group() -> None:
+    provider = ControlledBatchProvider(41)
+    provider.execution_batch_concurrency = 1
+    execute, preview_id, task = await controlled_execution(provider)
+    try:
+        assert await next_group(provider) == 0
+        assert execute.progress(preview_id).processed == 0
+        task.cancel()
+        await asyncio.sleep(0)
+        await asyncio.sleep(0)
+        assert not task.done()
+        assert execute.providers.manager.info("stable").busy
+        task.cancel()
+        await asyncio.sleep(0)
+        assert not task.done()
+        assert len(provider.groups) == 1
+        assert provider.active == 1
+    finally:
+        provider.release_everything()
+        with pytest.raises(asyncio.CancelledError):
+            await asyncio.wait_for(task, timeout=5)
+    assert provider.active == 0
+    assert len(provider.groups) == 1
+    assert not execute.providers.manager.info("stable").busy
+    assert execute.progress(preview_id).phase == "failed"
+    assert provider.items["0"].name == "new-0"
+    assert provider.items["20"].name == "old-20"
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize("interrupt", ["cancel", "crash"])
 async def test_interrupted_execution_holds_connection_until_in_flight_writes_finish(interrupt: str) -> None:
     provider = ControlledBatchProvider(60)
