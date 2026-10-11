@@ -12,7 +12,6 @@ import {
   useMediaQuery,
   useTheme,
 } from "@mui/material";
-import type { PaletteMode } from "@mui/material";
 import { useQuery } from "@tanstack/react-query";
 
 import { fetchRules } from "./api/client";
@@ -27,6 +26,8 @@ import { RenameActionsWithProgress } from "./features/rename/RenameActionsWithPr
 import { RuleEditor } from "./features/rules/RuleEditor";
 import { useRenameStore } from "./stores/useRenameStore";
 import { createAppTheme } from "./theme";
+import { useThemePreference } from "./features/settings/useThemePreference";
+import type { ThemePreference } from "./features/settings/useThemePreference";
 import { NotificationProvider } from "./components/NotificationProvider";
 
 const SettingsPage = lazy(() =>
@@ -49,23 +50,17 @@ function SecondaryPageFallback() {
   );
 }
 
-function initialMode(): PaletteMode {
-  const saved = window.localStorage.getItem("renamer-color-mode");
-  if (saved === "light" || saved === "dark") return saved;
-  return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
-}
-
 export default function WorkspaceApp() {
-  const [mode, setMode] = useState<PaletteMode>(initialMode);
+  const { mode, preference, setPreference } = useThemePreference();
   const theme = useMemo(() => createAppTheme(mode), [mode]);
   return (
     <ThemeProvider theme={theme}>
-      <NotificationProvider><Workspace mode={mode} setMode={setMode} /></NotificationProvider>
+      <NotificationProvider><Workspace preference={preference} setPreference={setPreference} /></NotificationProvider>
     </ThemeProvider>
   );
 }
 
-function Workspace({ mode, setMode }: { mode: PaletteMode; setMode: (mode: PaletteMode) => void }) {
+function Workspace({ preference, setPreference }: { preference: ThemePreference; setPreference: (preference: ThemePreference) => void }) {
   const theme = useTheme();
   const compactNavigation = useMediaQuery(theme.breakpoints.down("md"));
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
@@ -84,9 +79,6 @@ function Workspace({ mode, setMode }: { mode: PaletteMode; setMode: (mode: Palet
     onLocalRootSelected: () => resetForStorageChange(),
   });
   const definitions = useQuery({ queryKey: ["rules"], queryFn: fetchRules });
-  useEffect(() => {
-    window.localStorage.setItem("renamer-color-mode", mode);
-  }, [mode]);
   const {
     selectedIds, rules, browserTask, taskCurrent, selectedCount,
     previewData, executionData, previewError, executeError, executionPreviewId,
@@ -189,7 +181,7 @@ function Workspace({ mode, setMode }: { mode: PaletteMode; setMode: (mode: Palet
 
             {view === "settings" && (
               <Suspense fallback={<SecondaryPageFallback />}>
-                <SettingsPage executingStorageId={isExecuting ? storageId : undefined} mode={mode} onModeChange={setMode} onBack={() => setView("workspace")} />
+                <SettingsPage executingStorageId={isExecuting ? storageId : undefined} preference={preference} onPreferenceChange={setPreference} onBack={() => setView("workspace")} />
               </Suspense>
             )}
 

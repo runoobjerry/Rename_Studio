@@ -87,3 +87,4 @@ export const fetchStorageAuthStatus = (id: string): Promise<AuthorizationStatus>
 export const startStorageAuth = (id: string): Promise<AuthorizationStart & { redirect_uri: string }> => request(`${storageUrl(id)}/auth/start`, { method: "POST" });
 export const disconnectStorage = (id: string): Promise<void> => request(`${storageUrl(id)}/auth/session`, { method: "DELETE" });
 export const pickStorageFolder = (id: string): Promise<LocalFolderPick> => request(`${storageUrl(id)}/local/pick`, { method: "POST" });
+export const pickLocalFolderDraft = (): Promise<LocalFolderPick> => request("/local/folder-picker", { method: "POST" });

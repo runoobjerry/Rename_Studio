@@ -50,7 +50,7 @@ frontend/
 
 ### 1. 配置本地目录
 
-默认浏览 `backend/local_storage`。工作台和连接设置均可选择后端电脑上的目录，也可手动输入已有目录的绝对路径；多连接配置保存在 `backend/.storage_connections.json`。可以复制 `.env.example` 为 `.env`，用 LOCAL_STORAGE_ROOT 设置首次启动默认目录；已保存的无效配置会明确报错，不静默回退：
+首次启动默认浏览后端当前系统用户的 Documents 文件夹（Windows 使用系统登记的位置，支持文档目录重定向）。已有连接仍使用保存的目录，不会被覆盖。工作台和连接设置均可选择后端电脑上的目录，也可手动输入已有目录的绝对路径；多连接配置保存在 `backend/.storage_connections.json`。可以复制 `.env.example` 为 `.env`，用 LOCAL_STORAGE_ROOT 设置首次启动默认目录；已保存的无效配置会明确报错，不静默回退：
 
 ```dotenv
 LOCAL_STORAGE_ROOT=D:/rename-test

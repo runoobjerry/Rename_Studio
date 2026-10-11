@@ -4,10 +4,13 @@ from pathlib import Path
 from typing import cast
 
 import pytest
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from app.api.dependencies import get_storage_manager, get_preview_service, get_execute_service
+from app.api import storage_router
 from app.core.errors import ProviderError, StorageBusyError, StorageConnectionChangedError, ValidationError
+from app.core import config as app_config
 from app.main import create_app
 from app.providers.local import LocalProvider
 from app.providers.onedrive import OneDriveProvider
@@ -55,6 +58,42 @@ def test_new_install_only_creates_local_and_restores_it(tmp_path: Path) -> None:
     assert manager.record("default-local").name == "Local Files"
     assert manager.state.schema_version == 2
     assert make_manager(tmp_path).state == manager.state
+    restored = manager.repository.load_or_initialize(tmp_path / "different-default", manager.registry.validate_config)
+    assert restored == manager.state
+
+
+def test_default_documents_root_and_explicit_override(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    documents = tmp_path / "Documents"
+    monkeypatch.delenv("LOCAL_STORAGE_ROOT", raising=False)
+    monkeypatch.setattr(app_config, "default_documents_directory", lambda: documents)
+    assert app_config.Settings(_env_file=None).local_storage_root == documents.resolve()
+    override = tmp_path / "custom"
+    monkeypatch.setenv("LOCAL_STORAGE_ROOT", str(override))
+    assert app_config.Settings(_env_file=None).local_storage_root == override.resolve()
+
+
+@pytest.mark.parametrize("selected", [True, False])
+def test_draft_folder_picker_does_not_modify_connections(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, selected: bool) -> None:
+    manager = make_manager(tmp_path)
+    before = manager.repository.path.read_bytes()
+    root = tmp_path / "Documents"
+    chosen = tmp_path / "chosen"
+    settings = app_config.Settings(_env_file=None, local_storage_root=root)
+    monkeypatch.setattr(storage_router, "get_settings", lambda: settings)
+
+    def choose(initial: Path) -> Path | None:
+        assert initial == root
+        return chosen if selected else None
+
+    monkeypatch.setattr(storage_router, "choose_local_directory", choose)
+    app = FastAPI()
+    app.include_router(storage_router.router)
+    with TestClient(app) as client:
+        response = client.post("/local/folder-picker")
+    assert response.status_code == 200
+    assert response.json() == {"root_path": str(chosen if selected else root), "selected": selected}
+    assert manager.repository.path.read_bytes() == before
+    assert not chosen.exists()
 
 
 def test_v1_upgrade_preserves_accounts_and_removes_empty_default_cloud(tmp_path: Path) -> None:

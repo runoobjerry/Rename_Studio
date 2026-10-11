@@ -17,7 +17,7 @@ export function createAppTheme(mode: PaletteMode) {
   const primaryDark = dark ? accentText : "#005c38";
   const primaryContrast = dark ? "#04130d" : "#ffffff";
   const success = dark ? "#45e6a4" : "#007a4b";
-  const warning = dark ? "#ffc56d" : "#925700";
+  const warning = dark ? "#ffc56d" : "#b67514";
   const error = dark ? "#ff9189" : "#b42318";
   const info = dark ? "#72d8cc" : "#146c64";
   const surfaceMuted = dark ? "#14221c" : "#f6f9f7";

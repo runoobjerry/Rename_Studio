@@ -1,6 +1,6 @@
 # 前端测试用例清单
 
-最后核对日期：2026-10-10。
+最后核对日期：2026-10-11。
 
 本清单记录 `frontend/src/` 中的前端自动化测试，按故障影响分类。用例名称采用中文描述，实际测试名称和断言以源文件为准。参数化测试按展开后的独立用例计数。
 
@@ -16,10 +16,10 @@
 
 | 级别 | 含义 | 用例数 |
 |---|---|---:|
-| P0：关键业务与安全 | 防止错误执行、状态污染、跨账号混用和批次重复处理 | 40 |
-| P1：业务功能与异常处理 | 保证主要交互、规则配置、接口和错误处理正确 | 53 |
+| P0：关键业务与安全 | 防止错误执行、状态污染、跨账号混用和批次重复处理 | 41 |
+| P1：业务功能与异常处理 | 保证主要交互、规则配置、接口和错误处理正确 | 61 |
 | P2：UI 契约与体验回归 | 保证布局、主题、提示及动画行为符合约定 | 23 |
-| **合计** | **15 个测试文件** | **116** |
+| **合计** | **16 个测试文件** | **125** |
 
 重要程度用于安排验证优先级，P2 不代表可以删除。
 
@@ -29,7 +29,8 @@
 | `stores/useRenameStore.test.ts` | 8 | 0 | 0 | 8 |
 | `features/rename/RenameActions.test.tsx` | 3 | 2 | 0 | 5 |
 | `features/rename/PreviewPanel.test.tsx` | 1 | 3 | 1 | 5 |
-| `features/settings/StorageSettingsPanel.test.tsx` | 1 | 2 | 0 | 3 |
+| `features/settings/StorageSettingsPanel.test.tsx` | 2 | 6 | 0 | 8 |
+| `features/settings/useThemePreference.test.ts` | 0 | 4 | 0 | 4 |
 | `features/files/defaultCloudLocation.test.ts` | 2 | 0 | 0 | 2 |
 | `features/files/FileBrowser.test.tsx` | 3 | 7 | 2 | 12 |
 | `features/files/FileBrowser.virtual.test.tsx` | 3 | 1 | 1 | 5 |
@@ -40,9 +41,9 @@
 | `components/NotificationProvider.test.tsx` | 0 | 4 | 4 | 8 |
 | `components/CheckboxFilterMenu.test.tsx` | 0 | 0 | 4 | 4 |
 | `theme.test.tsx` | 0 | 0 | 8 | 8 |
-| **合计** | **40** | **53** | **23** | **116** |
+| **合计** | **41** | **61** | **23** | **125** |
 
-## P0：关键业务与安全（40 个）
+## P0：关键业务与安全（41 个）
 
 ### [WorkspaceApp.test.tsx](../frontend/src/WorkspaceApp.test.tsx)（17 个）
 
@@ -81,9 +82,10 @@
 2. 进度查询失败时不虚构进度，不使用其他预览的进度数据。
 3. 即使当前批次没有名称变化，也必须确认后提交服务端执行。
 
-### [StorageSettingsPanel.test.tsx](../frontend/src/features/settings/StorageSettingsPanel.test.tsx)（1 个）
+### [StorageSettingsPanel.test.tsx](../frontend/src/features/settings/StorageSettingsPanel.test.tsx)（2 个）
 
 1. 禁止编辑正在执行的连接，默认连接不可删除。
+2. 关闭不发送删除请求，点击删除直接删除当前编辑的连接，不出现二次确认。
 
 ### [defaultCloudLocation.test.ts](../frontend/src/features/files/defaultCloudLocation.test.ts)（2 个）
 
@@ -114,7 +116,7 @@
 
 1. 创建预览传递替换 ID，释放接口只释放指定预览。
 
-## P1：业务功能与异常处理（53 个）
+## P1：业务功能与异常处理（61 个）
 
 ### [WorkspaceApp.test.tsx](../frontend/src/WorkspaceApp.test.tsx)（11 个）
 
@@ -135,10 +137,21 @@
 1. 为当前选择请求预览。
 2. 显示服务端处理数量，完成状态短暂显示后关闭弹窗。
 
-### [StorageSettingsPanel.test.tsx](../frontend/src/features/settings/StorageSettingsPanel.test.tsx)（2 个）
+### [StorageSettingsPanel.test.tsx](../frontend/src/features/settings/StorageSettingsPanel.test.tsx)（6 个）
 
-1. 使用明确配置创建独立存储连接。
-2. 显示云连接状态、账号名称和邮箱。
+1. 点击添加打开 Dialog，独立选择器仅填入路径、不调用连接编辑或创建接口；保存时才创建独立连接，成功后关闭。
+2. 列表仅显示云连接状态、不显示账号；编辑授权区分两行显示名称/邮箱，不提供切换账号，退出登录成功提示“账号已退出。”。
+3. 关闭丢弃未保存草稿，重新打开恢复原配置；保存提交修改且保持 Dialog 打开。
+4. 创建失败保留 Dialog 和草稿，取消不会再次发送请求。
+5. 根目录右侧图标调用对应连接的本地选择器，成功更新输入值，取消保留当前值，不额外提交配置。
+6. 新增浏览中禁用取消/保存/重复浏览；取消选择保留手动路径，取消新增不创建或修改连接。
+
+### [useThemePreference.test.ts](../frontend/src/features/settings/useThemePreference.test.ts)（4 个）
+
+1. 默认跟随系统，实时响应系统明暗变化。
+2. 保留原有明亮偏好（`light`）。
+3. 保留原有黑暗偏好（`dark`）。
+4. 显式主题不随系统变化；改回跟随系统后恢复响应，重新挂载保留偏好。
 
 ### [FileBrowser.test.tsx](../frontend/src/features/files/FileBrowser.test.tsx)（7 个）
 

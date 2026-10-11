@@ -90,6 +90,15 @@ async def pick_local(storage_id: str, manager: Manager) -> LocalFolderPickRespon
     return LocalFolderPickResponse(root_path=str(root), selected=selected is not None)
 
 
+@router.post("/local/folder-picker", response_model=LocalFolderPickResponse)
+async def pick_local_draft() -> LocalFolderPickResponse:
+    """Choose a directory for a new connection without writing connection state."""
+    root = get_settings().local_storage_root
+    selected = await asyncio.to_thread(choose_local_directory, root)
+    return LocalFolderPickResponse(root_path=str(selected if selected is not None else root),
+                                   selected=selected is not None)
+
+
 @router.get("/storages/{storage_id}/auth/status", response_model=AuthorizationStatus)
 async def auth_status(storage_id: str, manager: Manager) -> AuthorizationStatus:
     return cast(ConnectionAuth, manager.auth(storage_id)).status()

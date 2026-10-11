@@ -16,7 +16,7 @@
 - React 18、TypeScript 5.6、Vite 5、MUI 9、Emotion、TanStack Query 5、Zustand 5；测试使用 Vitest、Testing Library 和 JSDOM。
 - `frontend/src/App.tsx` 仅默认导出 `WorkspaceApp`；未使用的 `LegacyApp` 及旧 CSS 已移除。
 - `WorkspaceApp.tsx` 保留 Provider 入口及 Workspace 的布局、导航保护、默认云目录恢复协调和工作区/设置两个内存视图；`useWorkspaceStorage` 管理连接与目录，`useRenameWorkflow` 管理预览、执行、选择和任务编排。两个 Hook 不互相调用，由容器传入所需数据及重置回调；任务订阅留在容器以暂停目录自动查询。没有 URL 路由或深层链接。规则选择已改为主页菜单，原二级页面移除。
-- 设置页面懒加载，Vite 配置保留手动 vendor chunks。
+- 设置页面懒加载，Vite 配置保留手动 vendor chunks。`useThemePreference` 保存 light/dark/system 偏好并解析实际 PaletteMode；首次默认 system，实时跟随系统外观，兼容已有 light/dark 浏览器设置，不把 system 解析后的颜色写回偏好。
 - TanStack Query 管理服务端状态与缓存失效；Zustand 保存选择 ID、规则链和当前会话的分批任务；任务快照、逐项执行结果与查询缓存分离。筛选状态在组件内部，不持久化到 Store。
 - `api/client.ts` 是共享 HTTP 层，`types/index.ts` 映射 API 数据。
 - `theme.ts` 管理语义颜色和共享 MUI 控件样式；`styles.css` 保留布局、内部滚动、响应式组合及自定义组件几何样式，不要求整体迁移到 MUI。
@@ -25,7 +25,9 @@
 
 - 响应式 Drawer 按存储连接导航，支持多个本地目录/OneDrive 个人版账号连接和设置；明暗模式选择可持久化并支持系统偏好。
 - 本地根路径手动配置在设置页保留；工作区提供后端承载的文件夹选择器“浏览…”。选择器运行在后端机器上，远程/无桌面环境仍可通过设置页输入根路径。
-- 设置页支持连接新增、编辑和删除；仅默认 Local 不可删除。连接状态只读显示，已连接账号显示名称(邮箱)，云连接由用户添加。OneDrive App ID 可配置/清理，OAuth 弹窗登录、账号切换和断开均关联连接；回调验证来源、弹窗和消息结构，前端不保存令牌。
+- 设置页支持连接新增、编辑和删除；仅默认 Local 不可删除。列表连接状态只读且不显示账号信息，账号名/邮箱仅在编辑授权区显示，云连接由用户添加。OneDrive App ID 可配置/清理，OAuth 弹窗登录和退出均关联连接；退出成功提示“账号已退出。”，换号先退出再登录。回调验证来源、弹窗和消息结构，前端不保存令牌。
+- 设置页无独立主标题/副标题，返回按钮与两组标题在同一内容列（最大900px）对齐。“常规”卡片为左侧标题/描述、右侧主题下拉，选项明亮/黑暗/跟随系统；“连接设置”卡片包含已保存连接、带 AddIcon 的添加连接按钮及名称/服务/状态/无标题操作四列列表，分隔线区分设置行，窄屏在卡片内横向滚动。
+- 新增连接使用 Dialog（保存连接/取消）；列表 EditIcon 打开连接编辑 Dialog，所有连接 Dialog TextField 使用 standard 变体。配置下方的 text“保存”右对齐，保存成功保留 Dialog；底部为“删除”和“关闭”。用户要求移除删除二次确认，点击即删除连接配置/授权，不删除文件；默认 Local 删除禁用。关闭只丢弃未提交字段，不撤回已保存配置。授权区为单行的状态图标/两行文字/右侧text操作：未授权使用 warning ErrorIcon，body2“未授权”及caption配置保存提示，按钮为网页登录；已授权使用success CheckCircle，body2账号名/caption邮箱，按钮为error色断开账号。移除切换账号入口，换号须先断开再登录；读取中/失败不误报未授权。账号操作和本地选择器仍立即生效；改 App ID 后先保存再登录。请求/授权/执行忙碌时禁用冲突操作和 Dialog 关闭。
 - 目录浏览、返回上级、手动刷新、图标、文件名工具提示、修改时间、复选框选择和内部滚动。
 - `location-panel` 不再提供目录输入框、“使用此文件夹”或“打开文件夹”；路径为可点击的 MUI 面包屑，使用 ChevronRight 分隔。按实际可用宽度将左侧祖先折叠到 MoreHoriz 菜单，保留尽可能多的右侧目录，空间恢复时自动展开；单个过长的当前目录名省略显示，Tooltip 保留全名。菜单继承共享间距和字号，执行/连接忙碌时禁用导航。
 - 路径栏无独立连接标题，面包屑首项使用当前连接名称（仍指向根目录）。面包屑与“浏览…”/“设为默认路径”复用 `locationButtonSx`：30px 高、13px 字号；面包屑内边距上下4px/左右5px，操作按钮上下4px/左右10px。ChevronRight 为18px、两侧各2px，折叠图标按钮30px。工具栏最小高度44px，保持紧凑单行布局；下拉菜单继续继承统一主题，不随路径按钮一起缩小。
@@ -102,6 +104,7 @@
 - `frontend/src/features/rules/RuleEditor.tsx`、`RuleFields.tsx`：规则链、主页添加菜单、字段与内置 NumberStepper；旧 `RulePickerPage.tsx` 已删除，不重新引入。
 - `frontend/src/features/rename/PreviewPanel.tsx`、`RenameActions.tsx`：预览/执行结果、状态筛选与确认操作。
 - `frontend/src/features/settings/SettingsPage.tsx`、`StorageSettingsPanel.tsx`：外观、多连接配置和授权；仅使用连接级 API，旧 OneDriveSettingsPanel 已删除。
+- `frontend/src/features/settings/useThemePreference.ts`：浏览器主题偏好及系统外观订阅，WorkspaceApp 仅据实际 mode 创建主题。
 - `frontend/src/api/client.ts`、`types/index.ts`、`stores/useRenameStore.ts`、`theme.ts`、`styles.css`：共享边界。
 
 ## 安全边界与已知限制
@@ -109,7 +112,8 @@
 - 必须先预览，再确认执行；使用服务端生成的一次性 `preview_id`，不能由 UI 绕过执行前重校验。预览存活 10 分钟，后端重启会失效；过期时间尚未展示。
 - 查询键包含 storage_id、revision 和 location；文件夹/上级导航使用后端返回位置，面包屑更远祖先使用接口支持的 path 解析。连接、目录、账号、根目录、选择或规则变化使旧预览失效，规则链保留；过时目录/预览响应不能覆盖当前上下文。执行响应后仅完成项退出选择，失败/未执行项保留，未知项锁定待核对，直接合并已确认文件元数据而不自动刷新目录，执行期间保留请求与进度并禁用冲突操作。
 - 云盘查询在默认目录恢复前暂停；连接版本/账号切换后隔离缓存与旧预览。account_id 缺失不表示授权失败，仍可浏览但禁用默认目录保存，不以邮箱/显示名回退；失效默认目录保留设置并显示读取错误，用户可手动打开根目录后覆盖。
-- 连接面板跟踪弹窗关闭并使用 MUI Dialog 确认删除；仅 default-local 禁止删除，云连接均可删除。连接状态使用只读标记，已连接账号显示名称(邮箱)，不提供启停。
+- 连接面板跟踪授权弹窗关闭；按用户要求直接删除、不再二次确认，仅 default-local 禁止删除，云连接均可删除。连接状态使用只读标记，列表不显示账号信息，编辑授权区以紧凑两行显示名称/邮箱，不提供启停或切换账号按钮。
+- Local 新增/编辑根目录右侧为 FolderOpen 图标按钮和 Tooltip，复用 PanelIconButton。新增使用独立 POST /local/folder-picker，成功仅填入草稿，取消不改变输入，保存连接才持久化；选择期间禁用保存/取消/字段和关闭。编辑仍使用连接级选择接口并即时保存，手动输入须点击保存，不混用两种行为。首次初始化默认连接使用后端系统用户 Documents，Windows 支持目录重定向；已保存目录及 LOCAL_STORAGE_ROOT 显式覆盖不变，前端不推测系统路径。
 - 四种规则字段为手写配置 UI；新增后端规则不会自动产生前端字段，不应擅自实现通用表单引擎。
 - 没有搜索、排序或虚拟化；连接级目录接口没有分页/查询 API，OneDrive Graph 分页由后端聚合。
 - 已有测试文件：`api/client.test.ts`、`components/NotificationProvider.test.tsx`、`features/files/FileBrowser.test.tsx`、`features/rules/RuleEditor.test.tsx`、`RuleFields.test.tsx`、`features/rename/PreviewPanel.test.tsx`、`RenameActions.test.tsx`（均相对 `frontend/src/`）。测试文件存在不代表已运行通过；工作区编排、设置/OAuth 和主题切换等覆盖仍待扩充。添加规则用例已改为主页菜单，并补充按钮顺序、Tooltip、八项滚动上限、焦点恢复和独立配置检查。

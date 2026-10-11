@@ -228,6 +228,7 @@ Storage connection create/update requests reject the removed `enabled` field. Th
 | `DELETE /storages/{storage_id}` | none | 204; only default-local cannot be deleted |
 | `POST /storages/{storage_id}/files/list` | `{location?:StorageLocation}`; default root | Extended `DirectoryListing` |
 | `POST /storages/{storage_id}/local/pick` | none | `{root_path,selected}`; Local connections only |
+| `POST /local/folder-picker` | none | `{root_path,selected}`; draft-only directory picker on the backend machine; no connection required and no state persisted. Starts at configured `local_storage_root`; when cancelled, `selected=false` and the initial path is returned (clients must keep their draft). |
 | `GET /storages/{storage_id}/auth/status` | none | `{configured,connected,account_id,account_display_name,account_email}`; profile fields are nullable |
 | `POST /storages/{storage_id}/auth/start` | none | `{authorization_url,redirect_uri}` |
 | `DELETE /storages/{storage_id}/auth/session` | none | 204; preserves client configuration |
