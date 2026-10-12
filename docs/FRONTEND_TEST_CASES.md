@@ -189,8 +189,8 @@
 
 ### [PreviewPanel.test.tsx](../frontend/src/features/rename/PreviewPanel.test.tsx)（3 个）
 
-1. 区分执行标签、成功项原始分类和完整列表计数，结果合并到预览行。
-2. 正确筛选待修改行，将执行失败项归入错误。
+1. 完整执行结果合并到预览行；“已修改”仅展示成功项，完整列表计数不随筛选变化。
+2. 执行前筛选待修改项；执行后保留勾选并切换为“已修改”，失败归入错误、跳过归入无变化。
 3. 初始显示待修改项；仅在非空过滤排除全部行时显示过滤空状态。
 
 ### [client.test.ts](../frontend/src/api/client.test.ts)（12 个）

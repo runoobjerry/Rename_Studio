@@ -84,9 +84,12 @@ describe("storage settings", () => {
       account_display_name: "测试用户", account_email: "user@example.com",
     };
     await screen.findByRole("button", { name: "编辑连接 Local" });
+    vi.mocked(api.fetchStorages).mockResolvedValue([cloud]);
     client.setQueryData(["storages"], [cloud]);
-    expect(await screen.findByText("已连接")).toBeInTheDocument();
+    // Wait for the cloud row, not the old Local row's identical status label.
+    await screen.findByRole("button", { name: "编辑连接 OneDrive" });
     const table = within(screen.getByRole("table", { name: "已保存连接" }));
+    await waitFor(() => expect(table.getByText("已连接")).toBeInTheDocument());
     expect(table.queryByText(/测试用户|user@example.com/)).not.toBeInTheDocument();
     expect(screen.queryByRole("switch")).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "编辑连接 OneDrive" }));

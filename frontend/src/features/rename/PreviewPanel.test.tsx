@@ -23,10 +23,10 @@ const validPreview = {
 };
 
 describe("PreviewPanel", () => {
-  it("keeps execution labels, original success categories and full-list counts distinct", () => {
+  it("shows complete execution results and keeps full-list counts independent of filtering", () => {
     const item = validPreview.items[0];
-    const items = ["renamed", "failed", "skipped", "pending", "unchanged"].map((id) => ({
-      ...item, file_id: id, original_name: `${id}.txt`, new_name: `new-${id}.txt`,
+    const items = ["renamed", "failed", "skipped", "unchanged"].map((id) => ({
+      ...item, file_id: id, original_name: `${id}.txt`, new_name: id === "unchanged" ? "unchanged.txt" : `new-${id}.txt`,
       changed: id !== "unchanged",
     }));
     render(<PreviewPanel preview={{ ...validPreview, items }} execution={{
@@ -34,6 +34,7 @@ describe("PreviewPanel", () => {
         { file_id: "renamed", original_name: "renamed.txt", new_name: "new-renamed.txt", status: "renamed", error: null },
         { file_id: "failed", original_name: "failed.txt", new_name: "new-failed.txt", status: "failed", error: null },
         { file_id: "skipped", original_name: "skipped.txt", new_name: "new-skipped.txt", status: "skipped", error: null },
+        { file_id: "unchanged", original_name: "unchanged.txt", new_name: "unchanged.txt", status: "skipped", error: null },
       ],
     }} />);
     const table = within(screen.getByRole("table", { name: "修改预览" }));
@@ -42,16 +43,17 @@ describe("PreviewPanel", () => {
     expect(table.getByText("new-renamed.txt")).toHaveClass("renamed-name");
     expect(table.getByText("修改失败")).toHaveClass("invalid");
     expect(table.getAllByText("无变化")).toHaveLength(2);
-    expect(screen.getByText("1 项待修改 · 2 项无需修改")).toBeInTheDocument();
+    expect(screen.getByText("0 项待修改 · 2 项无需修改")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "筛选状态" }));
-    fireEvent.click(screen.getByRole("menuitemcheckbox", { name: "待修改" }));
+    expect(screen.queryByRole("menuitemcheckbox", { name: "待修改" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("menuitemcheckbox", { name: "已修改" }));
     fireEvent.keyDown(screen.getByRole("menu"), { key: "Escape" });
-    // 已修改仍属于原待修改筛选，但不能再计入待修改数量。
     expect(table.getByText("已修改")).toBeInTheDocument();
-    expect(table.getByText("new-pending.txt")).toBeInTheDocument();
+    expect(table.queryByText("待修改")).not.toBeInTheDocument();
     expect(table.queryByText("修改失败")).not.toBeInTheDocument();
     expect(table.queryByText("new-skipped.txt")).not.toBeInTheDocument();
-    expect(screen.getByText("1 项待修改 · 2 项无需修改 · 显示 2 项")).toBeInTheDocument();
+    expect(table.queryByText("unchanged.txt")).not.toBeInTheDocument();
+    expect(screen.getByText("0 项待修改 · 2 项无需修改 · 显示 1 项")).toBeInTheDocument();
   });
 
   it("keeps validation errors out of pending counts and uses their existing labels", () => {
@@ -68,20 +70,30 @@ describe("PreviewPanel", () => {
     expect(screen.getByText("0 项待修改 · 0 项无需修改")).toBeInTheDocument();
   });
 
-  it("filters pending rows and keeps execution failures under errors", () => {
-    render(<PreviewPanel preview={{ ...validPreview, items: [
+  it("switches the selected pending filter to renamed results and separates failures and skipped rows", () => {
+    const preview = { ...validPreview, items: [
       validPreview.items[0],
       { ...validPreview.items[0], file_id: "failed", original_name: "failed.txt", new_name: "failed-new.txt" },
       { ...validPreview.items[0], file_id: "unchanged", original_name: "same.txt", new_name: "same.txt", changed: false },
-    ] }} execution={{ preview_id: "preview-1", status: "partial", items: [{
-      file_id: "failed", original_name: "failed.txt", new_name: "failed-new.txt", status: "failed", error: "修改失败",
-    }] }} />);
+    ] };
+    const { rerender } = render(<PreviewPanel preview={preview} />);
     fireEvent.click(screen.getByRole("button", { name: "筛选状态" }));
     expect(screen.getByRole("menuitemcheckbox", { name: "待修改" })).toHaveAttribute("aria-checked", "false");
     fireEvent.click(screen.getByRole("menuitemcheckbox", { name: "待修改" }));
     expect(screen.getByText("renamed.txt")).toBeInTheDocument();
+    expect(screen.getByText("failed-new.txt")).toBeInTheDocument();
+    expect(screen.queryByText("same.txt")).not.toBeInTheDocument();
+    rerender(<PreviewPanel preview={preview} execution={{ preview_id: "preview-1", status: "partial", items: [
+      { file_id: "one.txt", original_name: "one.txt", new_name: "renamed.txt", status: "renamed", error: null },
+      { file_id: "failed", original_name: "failed.txt", new_name: "failed-new.txt", status: "failed", error: "修改失败" },
+      { file_id: "unchanged", original_name: "same.txt", new_name: "same.txt", status: "skipped", error: null },
+    ] }} />);
+    expect(screen.queryByRole("menuitemcheckbox", { name: "待修改" })).not.toBeInTheDocument();
+    expect(screen.getByRole("menuitemcheckbox", { name: "已修改" })).toHaveAttribute("aria-checked", "true");
+    expect(screen.getByText("renamed.txt")).toBeInTheDocument();
     expect(screen.queryByText("failed-new.txt")).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole("menuitemcheckbox", { name: "待修改" }));
+    expect(screen.queryByText("same.txt")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("menuitemcheckbox", { name: "已修改" }));
     expect(screen.getByText("failed-new.txt")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("menuitemcheckbox", { name: "错误" }));
     expect(screen.getByText("failed-new.txt")).toBeInTheDocument();
@@ -90,6 +102,7 @@ describe("PreviewPanel", () => {
     fireEvent.click(screen.getByRole("menuitemcheckbox", { name: "无变化" }));
     expect(screen.queryByText("renamed.txt")).not.toBeInTheDocument();
     expect(screen.queryByText("failed-new.txt")).not.toBeInTheDocument();
+    expect(screen.getAllByText("same.txt")).toHaveLength(2);
     fireEvent.click(screen.getByRole("menuitemcheckbox", { name: "无变化" }));
     expect(screen.getByText("renamed.txt")).toBeInTheDocument();
     expect(screen.getByText("failed-new.txt")).toBeInTheDocument();

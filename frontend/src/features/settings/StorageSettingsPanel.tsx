@@ -3,7 +3,7 @@ import EditIcon from "@mui/icons-material/Edit";
 import AddIcon from "@mui/icons-material/Add";
 import FolderOpenIcon from "@mui/icons-material/FolderOpen";
 import ErrorIcon from "@mui/icons-material/Error";
-import CheckCircle from "@mui/icons-material/CheckCircle";
+import Verified from "@mui/icons-material/Verified";
 import { Alert, Box, Button, Card, Dialog, DialogActions, DialogContent, DialogTitle, Divider, MenuItem, Stack, Chip, TextField, Typography,
   Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Tooltip, Skeleton } from "@mui/material";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -156,7 +156,7 @@ function ConnectionRow({ storage, executing, providerName }: { storage: StorageI
             <Divider />
               <Stack direction="row" spacing={1.5} sx={{ alignItems: "center" }}>
                 {!status.isPending && !status.error && status.data?.connected
-                  ? <CheckCircle sx={{ color: "success.main", flexShrink: 0 }} />
+                  ? <Verified sx={{ color: "success.main", flexShrink: 0 }} />
                   : <ErrorIcon sx={{ color: "warning.main", flexShrink: 0 }} />}
                 <Box sx={{ flex: 1, minWidth: 0, overflowWrap: "anywhere" }}>
                   <Typography variant="body2" sx={{ lineHeight: 1.5 }}>{status.isPending ? "正在读取授权状态…" : status.error ? "授权状态读取失败" : status.data?.connected ? status.data.account_display_name ?? "Microsoft 用户" : "未授权"}</Typography>
