@@ -21,16 +21,16 @@ export function SettingsPage({ preference, onPreferenceChange, onBack, executing
           <Card variant="outlined">
             <Stack direction="row" sx={{ alignItems: "center", justifyContent: "space-between", gap: 2, p: { xs: 2, sm: 2.5 } }}>
               <Box sx={{ minWidth: 0 }}>
-                <Typography id="theme-appearance-title" variant="body1" sx={{ fontWeight: 500 }}>外观主题</Typography>
-                <Typography variant="body2" sx={{ color: "text.secondary", mt: 0.5 }}>选择您偏好的界面主题</Typography>
+                <Typography id="theme-appearance-title" variant="body2" sx={{ fontWeight: 500 }}>外观主题</Typography>
+                <Typography variant="caption" sx={{ color: "text.secondary", mt: 0.5 }}>选择您偏好的界面主题</Typography>
               </Box>
               <TextField select size="small" value={preference}
                 onChange={(event) => onPreferenceChange(event.target.value as ThemePreference)}
-                slotProps={{ select: { "aria-labelledby": "theme-appearance-title" } }}
+                slotProps={{ select: { "aria-labelledby": "theme-appearance-title", sx: { typography: "body2" } } }}
                 sx={{ width: { xs: 132, sm: 160 }, flexShrink: 0 }}>
-                <MenuItem value="light">浅色</MenuItem>
-                <MenuItem value="dark">深色</MenuItem>
-                <MenuItem value="system">跟随系统</MenuItem>
+                <MenuItem value="light" sx={{ typography: "body2" }}>浅色</MenuItem>
+                <MenuItem value="dark" sx={{ typography: "body2" }}>深色</MenuItem>
+                <MenuItem value="system" sx={{ typography: "body2" }}>跟随系统</MenuItem>
               </TextField>
             </Stack>
           </Card>

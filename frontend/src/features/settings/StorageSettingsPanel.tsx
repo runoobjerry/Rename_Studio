@@ -12,6 +12,15 @@ import type { StorageInfo } from "../../types";
 import { errorMessage, useNotification } from "../../components/NotificationProvider";
 import { PanelIconButton } from "../../components/PanelIconButton";
 
+const connectionBodySx = {
+  "& .MuiInputBase-root, & .MuiInputLabel-root, & .MuiButton-root": {
+    fontSize: "body2.fontSize",
+  },
+  "& .MuiChip-root, & .MuiAlert-message": {
+    fontSize: "caption.fontSize",
+  },
+};
+
 function ConnectionRow({ storage, executing, providerName }: { storage: StorageInfo; executing: boolean; providerName: string }) {
   const notify = useNotification();
   const queryClient = useQueryClient();
@@ -139,19 +148,19 @@ function ConnectionRow({ storage, executing, providerName }: { storage: StorageI
         {(status.error || authError) && <Typography variant="caption" component="div" color="error" sx={{ mt: 0.5, maxWidth: 260, overflowWrap: "anywhere" }}>{authError ?? (status.error ? errorMessage(status.error) : "")}</Typography>}
       </TableCell>
       <TableCell align="right">
-        <Tooltip title={busy ? "连接忙碌，暂时无法编辑" : "编辑连接"}>
+        <Tooltip title={busy ? "连接忙碌，暂时无法编辑" : "编辑连接"} slotProps={{ tooltip: { sx: { fontSize: "caption.fontSize" } } }}>
           <span><PanelIconButton aria-label={`编辑连接 ${storage.name}`} disabled={busy} onClick={openEditor}><EditIcon /></PanelIconButton></span>
         </Tooltip>
       </TableCell>
     </TableRow>
-    <Dialog open={editing} fullWidth maxWidth="sm" aria-labelledby={`edit-${storage.storage_id}-title`} onClose={() => { if (!busy) setEditing(false); }}>
+    <Dialog open={editing} fullWidth maxWidth="sm" sx={connectionBodySx} aria-labelledby={`edit-${storage.storage_id}-title`} onClose={() => { if (!busy) setEditing(false); }}>
       <DialogTitle id={`edit-${storage.storage_id}-title`}>{storage.name} 设置</DialogTitle>
       <DialogContent dividers>
         <Stack spacing={2}>
           <TextField variant="standard" label="连接名称" size="small" value={name} disabled={busy} onChange={(event) => setName(event.target.value)} />
           {local ? <Stack direction="row" spacing={1} sx={{ alignItems: "flex-end" }}>
             <TextField variant="standard" label="本地根目录" size="small" value={root} disabled={busy} onChange={(event) => setRoot(event.target.value)} sx={{ flex: 1, minWidth: 0 }} />
-            <Tooltip title="浏览本地目录（在后端电脑打开，选择后立即保存）">
+            <Tooltip title="浏览本地目录（在后端电脑打开，选择后立即保存）" slotProps={{ tooltip: { sx: { fontSize: "caption.fontSize" } } }}>
               <span><PanelIconButton aria-label="浏览本地目录" disabled={busy} onClick={() => pick.mutate()}><FolderOpenIcon /></PanelIconButton></span>
             </Tooltip>
           </Stack> : <TextField variant="standard" label="OneDrive App ID" size="small" value={clientId} disabled={busy} onChange={(event) => setClientId(event.target.value)} />}
@@ -178,7 +187,7 @@ function ConnectionRow({ storage, executing, providerName }: { storage: StorageI
         </Stack>
       </DialogContent>
       <DialogActions sx={{ px: 3, py: 2 }}>
-        <Tooltip title={isDefault ? "默认本地连接不可删除" : "删除连接配置和本地授权，不删除文件"}>
+        <Tooltip title={isDefault ? "默认本地连接不可删除" : "删除连接配置和本地授权，不删除文件"} slotProps={{ tooltip: { sx: { fontSize: "caption.fontSize" } } }}>
           <span><Button color="error" disabled={busy || isDefault} onClick={() => operation.mutate({ run: () => deleteStorage(storage.storage_id), message: "存储连接设置已更新。" }, { onSuccess: () => setEditing(false) })}>删除</Button></span>
         </Tooltip>
         <Box sx={{ flex: 1 }} />
@@ -228,19 +237,19 @@ export function StorageSettingsPanel({ executingStorageId }: { executingStorageI
     create.mutate();
   };
   return <>
-    <Card variant="outlined">
+    <Card variant="outlined" sx={connectionBodySx}>
       <Stack direction="row" sx={{ alignItems: "center", justifyContent: "space-between", gap: 2, p: { xs: 2, sm: 2.5 } }}>
-        <Typography component="h3" variant="body1" sx={{ fontWeight: 500 }}>已保存连接</Typography>
-        <Button variant="outlined" size="small" startIcon={<AddIcon />} onClick={() => {
+        <Typography component="h3" variant="body2" sx={{ fontWeight: 500 }}>已保存连接</Typography>
+        <Button variant="outlined" size="small" startIcon={<AddIcon /> } onClick={() => {
           setProvider("local"); setName(""); setConfig(""); create.reset(); pickDraft.reset(); setAdding(true);
-        }}>添加连接</Button>
+        }} >添加连接</Button>
       </Stack>
       <Divider />
       {storages.error && <Alert severity="error" sx={{ m: 2 }}>{errorMessage(storages.error)}</Alert>}
       {providers.error && <Alert severity="error" sx={{ m: 2 }}>{errorMessage(providers.error)}</Alert>}
       {storages.isPending ? <Stack sx={{ p: 2 }} spacing={1}><Skeleton height={36} /><Skeleton height={36} /></Stack> : (
         <TableContainer>
-          <Table size="small" aria-label="已保存连接" sx={{ minWidth: 500, "& th": { color: "text.secondary", fontWeight: 500 }, "& th, & td": { px: { xs: 2, sm: 2.5 }, py: 1.5, fontSize: 13 }, "& td": { whiteSpace: "normal" }, "& tbody tr:last-child td": { borderBottom: 0 } }}>
+          <Table size="small" aria-label="已保存连接" sx={{ minWidth: 500, "& th": { color: "text.secondary", fontWeight: 500 }, "& th, & td": { px: { xs: 2, sm: 2.5 }, py: 1.5, fontSize: "body2.fontSize" }, "& td": { whiteSpace: "normal" }, "& tbody tr:last-child td": { borderBottom: 0 } }}>
             <TableHead><TableRow><TableCell>连接名称</TableCell><TableCell>连接服务</TableCell><TableCell>连接状态</TableCell><TableCell align="right" aria-label="连接操作" sx={{ width: 60 }} /></TableRow></TableHead>
             <TableBody>
               {(storages.data ?? []).map((storage) => <ConnectionRow key={storage.storage_id} storage={storage} executing={storage.storage_id === executingStorageId}
@@ -251,15 +260,15 @@ export function StorageSettingsPanel({ executingStorageId }: { executingStorageI
         </TableContainer>
       )}
     </Card>
-    <Dialog open={adding} fullWidth maxWidth="sm" aria-labelledby="add-connection-title" onClose={() => { if (!addingBusy) setAdding(false); }}>
+    <Dialog open={adding} fullWidth maxWidth="sm" sx={connectionBodySx} aria-labelledby="add-connection-title" onClose={() => { if (!addingBusy) setAdding(false); }}>
       <DialogTitle id="add-connection-title">添加连接</DialogTitle>
       <DialogContent dividers>
         <Stack spacing={2}>
-          <TextField variant="standard" select label="存储类型" size="small" value={providers.data?.some((definition) => definition.provider_type === provider) ? provider : ""} disabled={addingBusy} onChange={(event) => { setProvider(event.target.value); setConfig(""); pickDraft.reset(); }}>{(providers.data ?? []).map((definition) => <MenuItem key={definition.provider_type} value={definition.provider_type}>{definition.name}</MenuItem>)}</TextField>
+          <TextField variant="standard" select label="存储类型" size="small" value={providers.data?.some((definition) => definition.provider_type === provider) ? provider : ""} disabled={addingBusy} onChange={(event) => { setProvider(event.target.value); setConfig(""); pickDraft.reset(); }}>{(providers.data ?? []).map((definition) => <MenuItem key={definition.provider_type} value={definition.provider_type} sx={{ fontSize: "body2.fontSize" }}>{definition.name}</MenuItem>)}</TextField>
           <TextField variant="standard" label="连接名称" size="small" value={name} disabled={addingBusy} onChange={(event) => setName(event.target.value)} />
           {provider === "local" ? <Stack direction="row" spacing={1} sx={{ alignItems: "flex-end" }}>
             <TextField variant="standard" label="本地根目录" size="small" value={config} disabled={addingBusy} onChange={(event) => setConfig(event.target.value)} sx={{ flex: 1, minWidth: 0 }} />
-            <Tooltip title="浏览本地目录（在后端电脑打开，仅填入路径）">
+            <Tooltip title="浏览本地目录（在后端电脑打开，仅填入路径）" slotProps={{ tooltip: { sx: { fontSize: "caption.fontSize" } } }}>
               <span><PanelIconButton aria-label="浏览本地目录" disabled={addingBusy} onClick={() => pickDraft.mutate()}><FolderOpenIcon /></PanelIconButton></span>
             </Tooltip>
           </Stack> : <TextField variant="standard" label="OneDrive App ID（可稍后配置）" size="small" value={config} disabled={addingBusy} onChange={(event) => setConfig(event.target.value)} />}
