@@ -101,10 +101,16 @@ function ConnectionRow({ storage, executing, providerName }: { storage: StorageI
   const busy = executing || storage.busy || operation.isPending || pick.isPending || connect.isPending || awaitingAuth;
   const isDefault = storage.storage_id === "default-local";
   const requestError = operation.error ?? pick.error ?? connect.error ?? status.error;
-  const save = () => operation.mutate({ run: () => updateStorage(storage.storage_id, {
-    name: name.trim(),
-    config: local ? { root_path: root.trim() } : { client_id: clientId.trim() || null },
-  }), message: "存储连接设置已更新。" });
+  const save = () => {
+    if (Array.from(name.trim()).length > 10) {
+      notify("连接名称最多为 10 个字符。", "error");
+      return;
+    }
+    operation.mutate({ run: () => updateStorage(storage.storage_id, {
+      name: name.trim(),
+      config: local ? { root_path: root.trim() } : { client_id: clientId.trim() || null },
+    }), message: "存储连接设置已更新。" });
+  };
   const openEditor = () => {
     setName(storage.name);
     setRoot(storage.config.root_path ?? "");
@@ -214,6 +220,13 @@ export function StorageSettingsPanel({ executingStorageId }: { executingStorageI
   });
   const addingBusy = create.isPending || pickDraft.isPending;
   const createError = create.error ?? pickDraft.error ?? providers.error;
+  const saveConnection = () => {
+    if (Array.from(name.trim()).length > 10) {
+      notify("连接名称最多为 10 个字符。", "error");
+      return;
+    }
+    create.mutate();
+  };
   return <>
     <Card variant="outlined">
       <Stack direction="row" sx={{ alignItems: "center", justifyContent: "space-between", gap: 2, p: { xs: 2, sm: 2.5 } }}>
@@ -255,7 +268,7 @@ export function StorageSettingsPanel({ executingStorageId }: { executingStorageI
       </DialogContent>
       <DialogActions sx={{ px: 3, py: 2 }}>
         <Button disabled={addingBusy} onClick={() => setAdding(false)}>取消</Button>
-        <Button variant="contained" disabled={addingBusy || providers.isPending || providers.isError || !name.trim() || (provider === "local" && !config.trim())} onClick={() => create.mutate()}>保存连接</Button>
+        <Button variant="text" disabled={addingBusy || providers.isPending || providers.isError || !name.trim() || (provider === "local" && !config.trim())} onClick={saveConnection}>保存连接</Button>
       </DialogActions>
     </Dialog>
   </>;
