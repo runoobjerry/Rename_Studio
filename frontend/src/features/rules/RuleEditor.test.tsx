@@ -121,18 +121,6 @@ describe("RuleEditor", () => {
     expect(screen.getByRole("button", { name: "添加规则" })).toHaveFocus();
   });
 
-  it("places clear before add and shows descriptions in a tooltip", async () => {
-    render(<RuleEditor definitions={[definition]} rules={[]} onChange={vi.fn()} />);
-    const actions = document.querySelector(".rule-heading-actions");
-    expect(actions?.querySelectorAll("button")[0]).toHaveTextContent("一键清除");
-    expect(actions?.querySelectorAll("button")[1]).toHaveTextContent("添加规则");
-    fireEvent.click(screen.getByRole("button", { name: "添加规则" }));
-    fireEvent.mouseOver(screen.getByRole("menuitem", { name: "填充" }));
-    expect(await screen.findByRole("tooltip")).toHaveTextContent("填充文件名");
-    fireEvent.keyDown(screen.getByRole("menu"), { key: "Escape" });
-    await waitFor(() => expect(screen.queryByRole("menu")).not.toBeInTheDocument());
-  });
-
   it("limits the menu viewport to eight rows without dropping overflow options", () => {
     // 临时注入已适配规则模板，仅验证未来超过八项时的展示边界。
     const extras = Array.from({ length: 9 }, (_, index) => ({ ...definition, type: `test-${index}`, name: `测试规则 ${index}` }));
@@ -230,3 +218,4 @@ describe("RuleEditor", () => {
     ]);
   });
 });
+

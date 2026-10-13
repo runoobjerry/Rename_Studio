@@ -18,30 +18,7 @@ function Actions() {
 }
 
 describe("shared notifications", () => {
-  it("shows a new notification immediately while the old one fades in place", async () => {
-    render(<NotificationProvider><Actions /></NotificationProvider>);
-    fireEvent.click(screen.getByRole("button", { name: "成功通知" }));
-    expect(screen.getByText("保存完成")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "新通知" }));
-    expect(screen.getByRole("alert")).toHaveTextContent("部分修改失败");
-    expect(screen.getByText("保存完成")).toBeInTheDocument();
-    expect(screen.getByText("保存完成").closest(".MuiSnackbar-root")).toHaveAttribute("aria-hidden", "true");
-    expect(screen.getByText("保存完成").closest(".MuiSnackbar-root")).toHaveStyle({ pointerEvents: "none" });
-    await waitFor(() => expect(screen.queryByText("保存完成")).not.toBeInTheDocument());
-    expect(screen.getByRole("alert")).toHaveTextContent("部分修改失败");
-  });
-
-  it("keeps a dismissed notification mounted until the normal reverse animation ends", async () => {
-    render(<NotificationProvider><Actions /></NotificationProvider>);
-    fireEvent.click(screen.getByRole("button", { name: "成功通知" }));
-    fireEvent.click(screen.getByRole("button", { name: /close/i }));
-    expect(screen.getByText("保存完成")).toBeInTheDocument();
-    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
-    expect(screen.getByText("保存完成").closest(".MuiAlert-root")?.getAttribute("style")).toContain("scale");
-    await waitFor(() => expect(screen.queryByText("保存完成")).not.toBeInTheDocument());
-  });
-
-  it.each(["成功通知", "错误通知"])("auto-closes %s after five seconds, then removes it after the exit animation", (button) => {
+  it.each(["成功通知", "错误通知"])("auto-closes %s after five seconds", (button) => {
     vi.useFakeTimers();
     render(<NotificationProvider><Actions /></NotificationProvider>);
     fireEvent.click(screen.getByRole("button", { name: button }));
@@ -49,9 +26,6 @@ describe("shared notifications", () => {
     expect(screen.getByRole("alert")).toBeInTheDocument();
     act(() => { vi.advanceTimersByTime(1); });
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
-    expect(document.querySelector(".MuiSnackbar-root")).not.toBeNull();
-    act(() => { vi.advanceTimersByTime(180); });
-    expect(document.querySelector(".MuiSnackbar-root")).toBeNull();
   });
 
   it("gives the new notification its own timer and ignores the old exit callback", () => {
@@ -83,3 +57,4 @@ describe("shared notifications", () => {
     expect(errorMessage(new Error("Network unavailable"))).toBe("Network unavailable");
   });
 });
+

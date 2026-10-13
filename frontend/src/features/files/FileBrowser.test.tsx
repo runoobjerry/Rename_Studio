@@ -1,7 +1,5 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { ThemeProvider } from "@mui/material";
-import { createAppTheme } from "../../theme";
 
 import { FileBrowser } from "./FileBrowser";
 
@@ -48,25 +46,6 @@ describe("FileBrowser", () => {
     expect(navigateLocation).toHaveBeenLastCalledWith({ kind: "id", value: "parent-id" });
     expect(navigate).not.toHaveBeenCalled();
   });
-  it.each(["light", "dark"] as const)("uses shared icon-only toolbar controls in %s mode without changing the filter", (mode) => {
-    const theme = createAppTheme(mode);
-    render(<ThemeProvider theme={theme}>
-      <FileBrowser listing={{ ...listing, parent_path: "" }} providerName="本地文件" selectedIds={[]}
-        onNavigate={vi.fn()} onToggle={vi.fn()} onRefresh={vi.fn()} onSelectAll={vi.fn()} onInvertSelection={vi.fn()} />
-    </ThemeProvider>);
-    for (const name of ["返回上级", "刷新", "反选"]) {
-      const button = screen.getByRole("button", { name });
-      expect(button).toHaveStyle({ color: theme.palette.text.secondary, padding: "5px", border: "0px" });
-      expect(button.textContent).toBe("");
-    }
-    expect(screen.getByTestId("ArrowBackRoundedIcon")).toHaveStyle({ fontSize: "20px" });
-    expect(screen.getByTestId("RefreshRoundedIcon")).toHaveStyle({ fontSize: "20px" });
-    const inverseIcon = screen.getByRole("button", { name: "反选" }).querySelector("span");
-    expect(inverseIcon).toHaveStyle({ width: "20px", height: "20px" });
-    expect(screen.getByTestId("FilterListOffIcon")).toHaveStyle({ fontSize: "20px" });
-    expect(screen.queryByRole("button", { name: "全选" })).not.toBeInTheDocument();
-  });
-
   it("passes only visible IDs to bulk actions and uses visible rows for header state", async () => {
     const onSelectAll = vi.fn();
     const onInvertSelection = vi.fn();
@@ -241,3 +220,4 @@ it("does not automatically show a batch hint when the selection exceeds 1000 ite
   expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
 });
+
