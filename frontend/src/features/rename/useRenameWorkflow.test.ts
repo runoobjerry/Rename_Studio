@@ -53,7 +53,6 @@ describe("rename workflow", () => {
   });
 
   it("opens the batch hint only on request and cancels without creating a task", async () => {
-    window.localStorage.setItem("renamer-hide-batch-limit-hint", "true");
     const hook = await setupWorkspace(1001);
     expect(hook.result.current.workflow.batchHintOpen).toBe(false);
     act(() => hook.result.current.workflow.requestPreview());
@@ -72,7 +71,6 @@ describe("rename workflow", () => {
     act(() => hook.result.current.workflow.changeBatchHintPreference(true));
     await waitFor(() => expect(serverSettings.preferences.hide_batch_limit_hint).toBe(true));
     expect(api.patchAppSettings).toHaveBeenCalledWith({ hide_batch_limit_hint: true });
-    expect(window.localStorage.getItem("renamer-hide-batch-limit-hint")).toBeNull();
     act(() => hook.result.current.workflow.continueBatchPreview());
     await waitFor(() => expect(api.createStoragePreview).toHaveBeenCalledWith(
       "default-local", { kind: "root" }, listing(1001).items.slice(0, 1000).map((file) => file.id), [],

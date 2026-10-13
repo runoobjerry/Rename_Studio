@@ -19,7 +19,6 @@ const wrapper = ({ children }: { children: ReactNode }) => createElement(QueryCl
 const changeSystem = (dark: boolean) => act(() => { systemDark = dark; listeners.forEach((listener) => listener()); });
 
 beforeEach(() => {
-  window.localStorage.clear();
   systemDark = false;
   listeners = new Set();
   serverSettings = { preferences: {
@@ -37,11 +36,10 @@ beforeEach(() => {
     removeEventListener: (_event: string, listener: () => void) => listeners.delete(listener),
   }));
 });
-afterEach(() => { cleanup(); client.clear(); vi.clearAllMocks(); vi.unstubAllGlobals(); window.localStorage.clear(); });
+afterEach(() => { cleanup(); client.clear(); vi.clearAllMocks(); vi.unstubAllGlobals(); });
 
 describe("theme preference", () => {
-  it("uses server system preference, ignores old browser data and follows live system changes", async () => {
-    window.localStorage.setItem("renamer-color-mode", "dark");
+  it("uses server system preference and follows live system changes", async () => {
     const { result } = renderHook(useThemePreference, { wrapper });
     await waitFor(() => expect(fetchAppSettings).toHaveBeenCalledOnce());
     expect(result.current.preference).toBe("system");

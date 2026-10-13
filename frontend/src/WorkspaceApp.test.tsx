@@ -33,7 +33,6 @@ const status = (accountId: string | null, connected = true): AuthorizationStatus
 });
 
 beforeEach(() => {
-  window.localStorage.clear();
   serverSettings = { preferences: {
     theme: "system", hide_batch_limit_hint: false, cloud_default_locations: {},
   } };
@@ -178,8 +177,6 @@ describe("cloud default path integration", () => {
         location: { kind: "id", value: "document-id" }, is_directory: true, size: null, modified_at: null,
       }],
     }));
-    window.localStorage.setItem('renamer-default-cloud-path:["onedrive","account-a"]', "Old");
-    window.localStorage.setItem('renamer-default-cloud-location:["user-onedrive","account-a"]', JSON.stringify({ kind: "id", value: "old" }));
     seedCloud("user-onedrive", "account-a", { kind: "path", value: "照片" });
     await openCloud();
     expect(screen.getByRole("button", { name: "照片" })).toHaveAttribute("aria-current", "page");
@@ -240,13 +237,10 @@ describe("factory reset", () => {
     await waitFor(() => expect(screen.queryByRole("dialog", { name: "确认恢复出厂设置？" })).not.toBeInTheDocument());
   });
 
-  it("clears in-memory rules and old app keys after one successful reset", async () => {
+  it("clears in-memory rules and restores preferences after one successful reset", async () => {
     serverSettings.preferences.theme = "dark";
     serverSettings.preferences.hide_batch_limit_hint = true;
     seedCloud("user-onedrive", "account-a", { kind: "id", value: "old-folder" });
-    window.localStorage.setItem("renamer-color-mode", "dark");
-    window.localStorage.setItem('renamer-default-cloud-location:["user-onedrive","account-a"]', "old");
-    window.localStorage.setItem("unrelated-data", "keep");
     useRenameStore.setState({ rules: [{ type: "insert", enabled: true, config: { text: "x" } }], selectedIds: ["old"], task: null });
     fireEvent.click(await openSettings());
     fireEvent.click(within(screen.getByRole("dialog", { name: "确认恢复出厂设置？" }))
@@ -255,26 +249,9 @@ describe("factory reset", () => {
     await waitFor(() => expect(useRenameStore.getState().rules).toEqual([]));
     expect(useRenameStore.getState().selectedIds).toEqual([]);
     expect(serverSettings.preferences).toEqual({ theme: "system", hide_batch_limit_hint: false, cloud_default_locations: {} });
-    expect(window.localStorage.getItem("renamer-color-mode")).toBeNull();
-    expect(window.localStorage.getItem('renamer-default-cloud-location:["user-onedrive","account-a"]')).toBeNull();
-    expect(window.localStorage.getItem("unrelated-data")).toBe("keep");
+    expect(await screen.findByText("已恢复出厂设置。")).toBeInTheDocument();
     await waitFor(() => expect(screen.queryByRole("dialog", { name: "确认恢复出厂设置？" })).not.toBeInTheDocument());
     await waitFor(() => expect(screen.getByRole("combobox", { name: "外观主题" })).toHaveTextContent("跟随系统"));
-  });
-
-  it("keeps the cleanup warning visible after a successful reset", async () => {
-    useRenameStore.setState({ rules: [{ type: "insert", enabled: true, config: { text: "x" } }] });
-    fireEvent.click(await openSettings());
-    vi.spyOn(Storage.prototype, "key").mockImplementation(() => { throw new Error("Storage unavailable"); });
-    window.localStorage.setItem("renamer-color-mode", "dark");
-    fireEvent.click(within(screen.getByRole("dialog", { name: "确认恢复出厂设置？" }))
-      .getByRole("button", { name: "恢复出厂设置" }));
-    expect(await screen.findByText(/恢复已完成，但旧浏览器设置未能清理/)).toBeInTheDocument();
-    await waitFor(() => expect(screen.queryByRole("dialog", { name: "确认恢复出厂设置？" })).not.toBeInTheDocument());
-    expect(screen.getByText(/恢复已完成，但旧浏览器设置未能清理/)).toBeInTheDocument();
-    expect(screen.queryByText("已恢复出厂设置。")).not.toBeInTheDocument();
-    expect(useRenameStore.getState().rules).toEqual([]);
-    expect(serverSettings.preferences.theme).toBe("system");
   });
 
   it("keeps current settings and rules when reset fails", async () => {

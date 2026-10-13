@@ -1,53 +1,6 @@
-# UI 自动化精简记录与人工验收清单
+# UI人工验收清单
 
 日期：2026-10-13。基于主分支提交 `17069ea8a1af3440eac16613f58541013bf8be74`。
-
-## 修改范围
-
-测试精简分两轮调整：第一轮（已合并的 PR #5）将视觉、尺寸、文案和动画检查转为浏览器人工验收；本轮将工作台状态细节下移到 Hook，合并重复 UI 测试和过细的异常输入组合，并简化测试覆盖清单。
-
-完整工作台从 32 项调整为 12 项。以下数量仅记录本轮变更，日常维护不再同步总数与分类数量；实际用例数和执行状态以 Vitest / CI 输出为准。
-
-产品代码、默认超时、CI 检查门槛未修改。实际提速和稳定性须由 CI 验证。
-
-## 被移除的自动化用例
-
-参数化测试按展开后的用例数计数。以下文件路径相对于 `frontend/src/`。
-
-| 原测试文件 | 原测试名称或参数 | 数量 | 转移的检查 |
-|---|---|---:|---|
-| `theme.test.tsx` | `applies theme spacing to %s without local spacing overrides`；light/dark × menu/select/filter/rules | 8 | 菜单内外间距、行高、字号、圆角与一致性 |
-| `components/CheckboxFilterMenu.test.tsx` | `uses a neutral off icon by default and accent when any option is checked`；light/dark | 2 | 筛选图标的颜色、尺寸和启用状态外观 |
-| `components/CheckboxFilterMenu.test.tsx` | `shows a tooltip describing the default state`；light/dark | 2 | 未启用筛选的 Tooltip |
-| `features/files/FileBrowser.test.tsx` | `uses shared icon-only toolbar controls in %s mode without changing the filter`；light/dark | 2 | 工具栏纯图标样式、间距和尺寸 |
-| `features/files/FileBrowser.virtual.test.tsx` | `keeps checkbox geometry fixed when switching between large and small directories` | 1 | 大小目录、全选前后复选框与列宽稳定 |
-| `features/rules/RuleEditor.test.tsx` | `places clear before add and shows descriptions in a tooltip` | 1 | 操作按钮顺序、规则说明 Tooltip |
-| `features/rename/PreviewPanel.test.tsx` | `shows the empty preview guidance` | 1 | 无预览时的说明文案 |
-| `components/NotificationProvider.test.tsx` | `shows a new notification immediately while the old one fades in place` | 1 | 新旧通知切换时的淡出效果 |
-| `components/NotificationProvider.test.tsx` | `keeps a dismissed notification mounted until the normal reverse animation ends` | 1 | 手动关闭通知的退出动画 |
-| **合计** | | **19** | |
-
-此外，通知五秒自动关闭保留一项代表性测试；成功和错误共用同一计时逻辑，不再分别展开。移除 Snackbar 动画期间存在、180ms 后卸载及退出后 DOM 节点数量断言，保留关闭行为、独立计时器、旧回调不影响新消息及连续消息不显示中间消息的覆盖。
-
-`theme.test.tsx` 与 `CheckboxFilterMenu.test.tsx` 全部内容属于上述视觉检查，因此删除整个测试文件；产品组件保持不变。
-
-## 第二轮覆盖迁移与合并
-
-| 原位置 / 场景 | 处理方式与承接位置 |
-|---|---|
-| WorkspaceApp 四种选择操作使旧预览失效 | 全部操作与实际选择 ID 在 `features/rename/useRenameWorkflow.test.ts` 验证；工作台保留单项选择与规则修改的 UI 接线流程 |
-| 刷新后移除消失 ID、预览失效、只提交剩余 ID；刷新失败保留选择 | 迁到工作流 Hook，使用真实 QueryClient、Store 和 API mock，继续覆盖刷新后的替换 ID 与清空选择 |
-| 部分执行结果在核对选择时保留，普通选择清除 | 迁到工作流 Hook；FileBrowser 和 PreviewPanel 保留任务筛选和结果展示验证 |
-| 超 1000 项提示取消、偏好保存、继续后只提交 1000 项 | 迁到工作流 Hook，不挂载 1001 项的完整页面；Store 的 1000 / 2000 项测试保留；提示框 UI 补充人工验收 |
-| 选择清除后仍保留释放 ID；迟到选择预览释放；规则修改传递替换 ID | 迁到工作流 Hook；跨连接迟到预览仍在工作台验证 |
-| 执行成功 / 响应丢失后不自动刷新，允许手动刷新 | 两种结果都迁到组合真实存储 Hook 与工作流 Hook 的测试，保留查询失效、结果身份缓存及未知批次断言 |
-| 本地选择器确认 / 取消对任务的影响 | 两种结果迁到 `workspace/hooks/useWorkspaceStorage.test.ts`，仍验证真实工作流任务清理及保留 |
-| 云默认目录缺账号、保存失败、读取失败、目录失败 | 迁到存储 Hook；账号切换和导航保存 / 重新进入保留完整工作台验证 |
-| 工作台内联添加规则、旧布局元素不存在的断言 | 添加规则接线并入选择 / 规则失效流程；RuleEditor 保留菜单添加及配置独立性；旧布局断言删除 |
-| API 非标准错误的六种输入 | 保留 HTML 网关错误及错误字段类型非法的 JSON；删除 `null`、数组、`error:null`、空白字段四种展开组合。真实结构化错误、缺可选元数据、网络失败、204 仍保留；不改解析器 |
-| 成功 / 错误通知重复计时测试 | 保留共享计时的一项代表性用例；两类通知外观及关闭效果转人工验收 |
-
-Hook 测试不挂载完整 MUI 页面，使用真实查询和 Store，仅 mock API 与通知展示。工作台仍保留连接隔离、账号切换、过滤后选择、恢复出厂设置、执行期间锁定和关键回调连接。
 
 ## 人工验收方法
 

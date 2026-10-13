@@ -55,7 +55,7 @@
 - FileSnapshot/RenameTask 实际保存 taskItemId、不可覆盖的 before、当前文件 ID、after、规则副本、顺序、任务/批次/预览 ID 和逐项状态。current_file 使用 Provider 确认的 ID，兼容本地路径 ID 变化；不按名称认定身份或成功。
 - 无完整执行响应或 RENAME_OUTCOME_UNKNOWN 锁定本批，禁止直接选择重试。没有独立核对弹窗；用户须在真实存储核对结果后结束旧任务，重新选择开始任务。原返回上级按钮在任务中替换为 Logout 图标“结束当前任务”，清空任务、选择和旧预览；执行/预览/刷新期间禁用退出。任务内文件夹名称禁用导航。
 - 切换连接/目录/账号/连接版本结束当前任务并清空选择；规则变化使旧任务不能继续，需重新预览或结束任务后重新选择。退出明确丢弃旧会话记录，不提供撤回。
-- 选择超过 1000 项时，仅点击“刷新预览”才弹出分批处理 Dialog，说明每次仅处理前 1000 项及通过待处理筛选继续处理。取消不创建任务/提交请求；点击“继续预览”才提交预览。“下次不再提示”保存到浏览器 localStorage；存储不可用时在当前页面会话内生效。没有独立任务操作条、整体进度条、状态列或任务状态下拉框。
+- 选择超过 1000 项时，仅点击“刷新预览”才弹出分批处理 Dialog，说明每次仅处理前 1000 项及通过待处理筛选继续处理。取消不创建任务/提交请求；点击“继续预览”才提交预览。“下次不再提示”通过应用设置 API 保存到后端 JSON，保存失败时撤销本次更改并提示错误。没有独立任务操作条、整体进度条、状态列或任务状态下拉框。
 - 未处理批次仍占用名称；跨批次依赖冲突由后端拒绝，不做复杂调度。现有四种规则不使用 RuleContext.index/total 编号；未来添加序号规则前须定义跨批次编号协议。
 - 任务只保存在当前页面内存；页面刷新即丢失。没有新增快照缓存、持久化历史或撤回 API。FileSnapshot.version 仅为类型预留，Provider 尚未提供版本标识。
 
@@ -96,6 +96,7 @@
 - `frontend/src/WorkspaceApp.tsx`：Provider 入口、工作区布局、规则定义查询、导航保护及跨 Hook 的默认目录恢复/本地选择器协调。
 - `frontend/src/workspace/components/{StorageSidebar,StorageLocationPanel,BatchLimitDialog}.tsx`：侧边栏内容、目录位置与反馈、分批提示的纯展示组件；Drawer 容器由 WorkspaceApp 管理。
 - `frontend/src/workspace/hooks/useWorkspaceStorage.ts`：连接/目录状态与查询、本地根目录选择、云默认位置读写和手动刷新；通过容器回调清理重命名视图。
+- `frontend/src/workspace/hooks/useFactoryReset.ts`：恢复出厂设置的禁用条件、请求状态、缓存清理和成功后的工作区重置；任务状态、结束任务和切换连接动作由容器显式传入，连接与重命名 Hook 不互相调用。
 - `frontend/src/features/rename/useRenameWorkflow.ts`：有效选择与任务/预览上下文、预览 ID 保留/替换/释放、执行结果通知与确认缓存合并、未知结果锁定、选择/规则操作及分批提示偏好。上下文重置和目录选择收敛 effect 保留原顺序，默认目录恢复仍随后由容器协调；不订阅进度查询、不改 Store 状态机。
 - `frontend/src/components/NotificationProvider.tsx`、`CheckboxFilterMenu.tsx`：共享通知与筛选菜单。
 - `frontend/src/components/PanelIconButton.tsx`：文件/预览面板图标按钮的共享外观；有状态控件可局部覆盖状态颜色，不重复定义尺寸和间距。
