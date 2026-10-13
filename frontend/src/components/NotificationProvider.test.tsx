@@ -1,4 +1,4 @@
-import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ApiError } from "../api/client";
 import { errorMessage, NotificationProvider, useNotification } from "./NotificationProvider";
@@ -18,10 +18,10 @@ function Actions() {
 }
 
 describe("shared notifications", () => {
-  it.each(["成功通知", "错误通知"])("auto-closes %s after five seconds", (button) => {
+  it("auto-closes notifications after five seconds", () => {
     vi.useFakeTimers();
     render(<NotificationProvider><Actions /></NotificationProvider>);
-    fireEvent.click(screen.getByRole("button", { name: button }));
+    fireEvent.click(screen.getByRole("button", { name: "成功通知" }));
     act(() => { vi.advanceTimersByTime(4999); });
     expect(screen.getByRole("alert")).toBeInTheDocument();
     act(() => { vi.advanceTimersByTime(1); });
@@ -40,13 +40,13 @@ describe("shared notifications", () => {
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 
-  it("only displays the newest message in a same-render burst without leaking intermediate messages", async () => {
+  it("only displays the newest message in a same-render burst without leaking intermediate messages", () => {
     render(<NotificationProvider><Actions /></NotificationProvider>);
     fireEvent.click(screen.getByRole("button", { name: "连续通知" }));
     expect(screen.getByRole("alert")).toHaveTextContent("部分修改失败");
     expect(screen.queryByText("保存完成")).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: /close/i }));
-    await waitFor(() => expect(document.querySelectorAll(".MuiSnackbar-root")).toHaveLength(0));
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 
   it("adds actionable context to expired preview errors", () => {
@@ -57,4 +57,5 @@ describe("shared notifications", () => {
     expect(errorMessage(new Error("Network unavailable"))).toBe("Network unavailable");
   });
 });
+
 

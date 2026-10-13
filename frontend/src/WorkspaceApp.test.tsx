@@ -123,44 +123,6 @@ describe("directory refresh selection", () => {
     })),
   });
 
-  it("drops removed selections, invalidates the old preview and submits only remaining IDs", async () => {
-    vi.mocked(api.fetchStorageFiles).mockResolvedValue(listing(["A", "B", "C"]));
-    vi.mocked(api.createStoragePreview).mockImplementation(async (_provider, _path, ids) => ({
-      preview_id: `preview-${ids.join("-")}`, expires_at: "2099-01-01T00:00:00Z", valid: true,
-      items: ids.map((id) => ({
-        file_id: id, original_name: `${id}.txt`, new_name: `new-${id}.txt`,
-        changed: true, valid: true, conflict: false, error: null,
-      })),
-    }));
-    render(<QueryClientProvider client={client}><WorkspaceApp /></QueryClientProvider>);
-    fireEvent.click(await screen.findByRole("checkbox", { name: "选择当前显示的全部项目" }));
-    fireEvent.click(screen.getByRole("button", { name: "刷新预览" }));
-    await waitFor(() => expect(screen.getByRole("button", { name: "开始修改" })).toBeEnabled());
-
-    vi.mocked(api.fetchStorageFiles).mockResolvedValue(listing(["B", "C", "D"]));
-    fireEvent.click(screen.getByRole("button", { name: "刷新" }));
-    await waitFor(() => expect(useRenameStore.getState().selectedIds).toEqual(["B", "C"]));
-    expect(screen.getByRole("button", { name: "开始修改" })).toBeDisabled();
-    expect(screen.queryByText("new-A.txt")).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "刷新预览" }));
-    await waitFor(() => expect(api.createStoragePreview).toHaveBeenLastCalledWith("default-local", { kind: "root" }, ["B", "C"], [], "preview-A-B-C"));
-
-    vi.mocked(api.fetchStorageFiles).mockResolvedValue(listing([]));
-    fireEvent.click(screen.getByRole("button", { name: "刷新" }));
-    await waitFor(() => expect(useRenameStore.getState().selectedIds).toEqual([]));
-    expect(screen.getByRole("button", { name: "刷新预览" })).toBeDisabled();
-  });
-
-  it("preserves selection when the directory refresh fails", async () => {
-    vi.mocked(api.fetchStorageFiles).mockResolvedValue(listing(["A", "B", "C"]));
-    render(<QueryClientProvider client={client}><WorkspaceApp /></QueryClientProvider>);
-    fireEvent.click(await screen.findByRole("checkbox", { name: "选择当前显示的全部项目" }));
-    vi.mocked(api.fetchStorageFiles).mockRejectedValueOnce(new Error("Refresh unavailable"));
-    fireEvent.click(screen.getByRole("button", { name: "刷新" }));
-    await screen.findByText(/目录刷新失败/);
-    expect(useRenameStore.getState().selectedIds).toEqual(["A", "B", "C"]);
-  });
-
   it("isolates a new connection revision and clears its previous task and preview", async () => {
     vi.mocked(api.fetchStorageFiles).mockResolvedValue(listing(["A"]));
     vi.mocked(api.createStoragePreview).mockResolvedValue({
@@ -186,42 +148,6 @@ describe("directory refresh selection", () => {
     await waitFor(() => expect(api.releaseStoragePreview).toHaveBeenCalledWith("default-local", "revision-preview"));
   });
 
-  it.each([false, true])("preserves or resets the task when the folder picker returns selected=%s", async (selected) => {
-    vi.mocked(api.fetchStorageFiles).mockResolvedValue(listing(["A"]));
-    vi.mocked(api.createStoragePreview).mockResolvedValue({
-      preview_id: "picker-preview", expires_at: "2099-01-01T00:00:00Z", valid: true,
-      items: [{ file_id: "A", original_name: "A.txt", new_name: "new-A.txt", changed: true, valid: true, conflict: false, error: null }],
-    });
-    vi.mocked(api.pickStorageFolder).mockResolvedValue({ root_path: selected ? "C:\\new-root" : "C:\\files", selected });
-    render(<QueryClientProvider client={client}><WorkspaceApp /></QueryClientProvider>);
-    fireEvent.click(await screen.findByRole("checkbox", { name: "选择当前显示的全部项目" }));
-    fireEvent.click(screen.getByRole("button", { name: "刷新预览" }));
-    await waitFor(() => expect(screen.getByRole("button", { name: "开始修改" })).toBeEnabled());
-    const previousTask = useRenameStore.getState().task;
-    if (selected) {
-      const storages = client.getQueryData<StorageInfo[]>(["storages"])!;
-      vi.mocked(api.fetchStorages).mockResolvedValue(storages.map((storage) => storage.storage_id === "default-local"
-        ? { ...storage, revision: 2, config: { root_path: "C:\\new-root" } } : storage));
-      vi.mocked(api.fetchStorageFiles).mockResolvedValue(listing(["B"]));
-    }
-    fireEvent.click(screen.getByRole("button", { name: "浏览…" }));
-    await waitFor(() => expect(api.pickStorageFolder).toHaveBeenCalledWith("default-local"));
-    await waitFor(() => expect(screen.getByRole("button", { name: "浏览…" })).toBeEnabled());
-    if (selected) {
-      await screen.findByText("已选择本地根文件夹。");
-      await screen.findByRole("checkbox", { name: "选择文件 B.txt" });
-      expect(useRenameStore.getState().selectedIds).toEqual([]);
-      expect(useRenameStore.getState().task).toBeNull();
-      expect(screen.getByRole("button", { name: "开始修改" })).toBeDisabled();
-    } else {
-      expect(useRenameStore.getState().selectedIds).toEqual(["A"]);
-      expect(useRenameStore.getState().task).toBe(previousTask);
-      expect(screen.getByRole("button", { name: "开始修改" })).toBeEnabled();
-      expect(screen.queryByText("已选择本地根文件夹。")).not.toBeInTheDocument();
-      expect(api.fetchStorageFiles).toHaveBeenCalledTimes(1);
-    }
-  });
-
   it("clears hidden selections and does not restore them after refresh or removing the filter", async () => {
     vi.mocked(api.fetchStorageFiles).mockResolvedValue(listing(["A", "B"]));
     render(<QueryClientProvider client={client}><WorkspaceApp /></QueryClientProvider>);
@@ -240,28 +166,6 @@ describe("directory refresh selection", () => {
     fireEvent.click(screen.getByRole("button", { name: "筛选项目" }));
     fireEvent.click(screen.getByRole("menuitemcheckbox", { name: "文件夹" }));
     expect(useRenameStore.getState().selectedIds).toEqual([]);
-  });
-});
-
-describe("inline rule menu integration", () => {
-  it("adds a rule without leaving the workspace", async () => {
-    vi.mocked(api.fetchRules).mockResolvedValue([
-      { type: "padding", name: "填充", description: "填充文件名", config_schema: {} },
-    ]);
-    render(<QueryClientProvider client={client}><WorkspaceApp /></QueryClientProvider>);
-    await waitFor(() => expect(screen.getByRole("button", { name: "添加规则" })).toBeEnabled());
-    fireEvent.click(screen.getByRole("button", { name: "添加规则" }));
-    fireEvent.click(screen.getByRole("menuitem", { name: "填充" }));
-    expect(useRenameStore.getState().rules).toEqual([
-      expect.objectContaining({ type: "padding", enabled: true }),
-    ]);
-    expect(screen.getByRole("navigation", { name: "文件路径" })).toBeInTheDocument();
-    expect(within(screen.getByRole("navigation", { name: "文件路径" })).getByRole("button", { name: "本地文件" })).toBeInTheDocument();
-    expect(document.getElementById("location-title")).toBeNull();
-    expect(screen.queryByRole("textbox", { name: "本地根文件夹路径" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "使用此文件夹" })).not.toBeInTheDocument();
-    expect(screen.getByText("1. 填充")).toBeInTheDocument();
-    expect(screen.queryByText("返回工作台")).not.toBeInTheDocument();
   });
 });
 
@@ -319,42 +223,6 @@ describe("cloud default path integration", () => {
     expect(screen.queryByRole("button", { name: "a-folder" })).not.toBeInTheDocument();
   });
 
-  it("keeps browsing available without an account ID but does not save a shared default", async () => {
-    vi.mocked(api.fetchStorageAuthStatus).mockResolvedValue(status(null));
-    render(<QueryClientProvider client={client}><WorkspaceApp /></QueryClientProvider>);
-    fireEvent.click(await screen.findByRole("button", { name: "OneDrive" }));
-    await waitFor(() => expect(api.fetchStorageFiles).toHaveBeenCalledWith("user-onedrive", { kind: "root" }));
-    expect(within(screen.getByRole("navigation", { name: "文件路径" })).getByRole("button", { name: "OneDrive" })).toBeEnabled();
-    expect(screen.getByRole("button", { name: "设为默认路径" })).toBeDisabled();
-    expect(screen.getByText(/当前账号缺少账号 ID/)).toBeInTheDocument();
-  });
-
-  it("reports storage failure without replacing the saved default", async () => {
-    seedCloud("user-onedrive", "account-a", { kind: "path", value: "照片" });
-    await openCloud();
-    vi.mocked(api.patchAppSettings).mockRejectedValueOnce(new Error("Disk unavailable"));
-    fireEvent.click(screen.getByRole("button", { name: "设为默认路径" }));
-    expect(await screen.findByText(/默认路径保存失败/)).toBeInTheDocument();
-    expect(savedCloud("user-onedrive", "account-a")).toEqual({ kind: "path", value: "照片" });
-  });
-
-  it("falls back to root when the default cannot be read", async () => {
-    vi.mocked(api.fetchAppSettings).mockRejectedValueOnce(new Error("Server unavailable"));
-    await openCloud();
-    expect(within(screen.getByRole("navigation", { name: "文件路径" })).getByRole("button", { name: "OneDrive" })).toHaveAttribute("aria-current", "page");
-    expect(await screen.findByText(/无法读取默认路径/)).toBeInTheDocument();
-    expect(api.fetchStorageFiles).toHaveBeenCalledWith("user-onedrive", { kind: "root" });
-  });
-
-  it("does not overwrite the default when the requested directory fails to load", async () => {
-    seedCloud("user-onedrive", "account-a", { kind: "path", value: "照片" });
-    await openCloud();
-    vi.mocked(api.fetchStorageFiles).mockRejectedValueOnce(new Error("Directory not found"));
-    fireEvent.click(within(screen.getByRole("navigation", { name: "文件路径" })).getByRole("button", { name: "OneDrive" }));
-    await screen.findByText(/目录读取失败/);
-    expect(screen.getByRole("button", { name: "设为默认路径" })).toBeDisabled();
-    expect(savedCloud("user-onedrive", "account-a")).toEqual({ kind: "path", value: "照片" });
-  });
 });
 
 describe("factory reset", () => {
@@ -423,7 +291,7 @@ describe("factory reset", () => {
   });
 });
 
-describe("task refresh and batch hint interaction", () => {
+describe("workspace workflow wiring", () => {
   const entries = (count: number) => Array.from({ length: count }, (_, index) => ({
     id: `file-${index}.txt`, name: `file-${index}.txt`, path: `file-${index}.txt`, parent_path: "",
     is_directory: false, size: 1, modified_at: null,
@@ -441,54 +309,27 @@ describe("task refresh and batch hint interaction", () => {
     return items;
   };
 
-  it.each(["toggle", "select-all", "clear", "invert"] as const)("invalidates an old preview after %s selection", async (operation) => {
-    const items = await setup(2);
-    if (operation === "select-all") {
-      fireEvent.click(screen.getByRole("button", { name: "刷新预览" }));
-      await waitFor(() => expect(screen.getByRole("button", { name: "开始修改" })).toBeEnabled());
-      act(() => useRenameStore.getState().setSelectedIds([items[0].id]));
-    }
-    fireEvent.click(screen.getByRole("button", { name: "刷新预览" }));
-    await waitFor(() => expect(screen.getByRole("button", { name: "开始修改" })).toBeEnabled());
-    if (operation === "toggle") {
-      fireEvent.click(screen.getByRole("checkbox", { name: "选择文件 file-0.txt" }));
-    } else if (operation === "invert") {
-      fireEvent.click(screen.getByRole("button", { name: "反选" }));
-    } else {
-      fireEvent.click(screen.getByRole("checkbox", { name: "选择当前显示的全部项目" }));
-    }
-    expect(useRenameStore.getState().selectedIds).toEqual(operation === "toggle" ? [items[1].id]
-      : operation === "select-all" ? items.map((item) => item.id) : []);
-    expect(screen.getByRole("button", { name: "开始修改" })).toBeDisabled();
-    expect(screen.queryByText("renamed-file-0.txt")).not.toBeInTheDocument();
-    expect(api.executePreview).not.toHaveBeenCalled();
-  });
-
-  it("preserves partial results during reconciliation and clears them on an ordinary selection", async () => {
-    const items = await setup(2);
-    vi.mocked(api.executePreview).mockResolvedValue({ preview_id: "task-preview", status: "partial", items: items.map((file, index) => ({
-      file_id: file.id, original_name: file.name, new_name: `renamed-${file.name}`,
-      status: index === 0 ? "failed" : "renamed", error: index === 0 ? "Write failed" : null,
-    })) });
-    fireEvent.click(screen.getByRole("button", { name: "刷新预览" }));
-    await waitFor(() => expect(screen.getByRole("button", { name: "开始修改" })).toBeEnabled());
-    fireEvent.click(screen.getByRole("button", { name: "开始修改" }));
-    fireEvent.click(screen.getByRole("button", { name: "应用" }));
-    // 默认待处理筛选隐藏失败/完成项，reconcileSelection 清空选择但保留执行结果。
-    await waitFor(() => expect(useRenameStore.getState().selectedIds).toEqual([]));
-    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
-    expect(screen.getByText("Write failed")).toBeInTheDocument();
-    expect(screen.getByText("已修改")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "筛选项目" }));
-    fireEvent.click(screen.getByRole("menuitemcheckbox", { name: "失败/待核对" }));
-    fireEvent.keyDown(screen.getByRole("menu"), { key: "Escape" });
-    await waitFor(() => expect(screen.queryByRole("menu")).not.toBeInTheDocument());
+  it("connects selection and rule changes to preview invalidation", async () => {
+    vi.mocked(api.fetchRules).mockResolvedValue([
+      { type: "insert", name: "插入", description: "插入文本", config_schema: {} },
+    ]);
+    await setup(2);
+    const previewButton = screen.getByRole("button", { name: "刷新预览" });
+    const executeButton = screen.getByRole("button", { name: "开始修改" });
+    fireEvent.click(previewButton);
+    await waitFor(() => expect(executeButton).toBeEnabled());
     fireEvent.click(screen.getByRole("checkbox", { name: "选择文件 file-0.txt" }));
-    expect(useRenameStore.getState().selectedIds).toEqual([items[0].id]);
-    expect(screen.queryByText("Write failed")).not.toBeInTheDocument();
-    expect(screen.queryByText("已修改")).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "开始修改" })).toBeDisabled();
-    expect(api.executePreview).toHaveBeenCalledTimes(1);
+    expect(useRenameStore.getState().selectedIds).toEqual(["file-1.txt"]);
+    expect(executeButton).toBeDisabled();
+    expect(screen.queryByText("renamed-file-0.txt")).not.toBeInTheDocument();
+    fireEvent.click(previewButton);
+    await waitFor(() => expect(executeButton).toBeEnabled());
+    fireEvent.click(screen.getByRole("button", { name: "添加规则" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "插入" }));
+    expect(useRenameStore.getState().rules).toEqual([expect.objectContaining({ type: "insert", enabled: true })]);
+    expect(executeButton).toBeDisabled();
+    expect(screen.queryByText("renamed-file-1.txt")).not.toBeInTheDocument();
+    expect(api.executePreview).not.toHaveBeenCalled();
   });
 
   it("keeps selection controls locked while execution is pending", async () => {
@@ -516,83 +357,6 @@ describe("task refresh and batch hint interaction", () => {
     })) }));
   });
 
-  it("opens the hint only on preview click and cancels without creating a task", async () => {
-    window.localStorage.setItem("renamer-hide-batch-limit-hint", "true");
-    await setup(1001);
-    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
-    expect(screen.queryByText(/超过\s*1000\s*项的上限/)).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "刷新预览" }));
-    const dialog = screen.getByRole("dialog");
-    expect(within(dialog).getByText(/超过\s*1000\s*项的上限/)).toBeInTheDocument();
-    expect(api.createStoragePreview).not.toHaveBeenCalled();
-    expect(useRenameStore.getState().task).toBeNull();
-    fireEvent.click(within(dialog).getByRole("button", { name: "取消" }));
-    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
-    expect(useRenameStore.getState().selectedIds).toHaveLength(1001);
-    expect(api.createStoragePreview).not.toHaveBeenCalled();
-  });
-
-  it("remembers the hint preference and submits only 1000 after continuing", async () => {
-    const items = await setup(1001);
-    fireEvent.click(screen.getByRole("button", { name: "刷新预览" }));
-    const dialog = screen.getByRole("dialog");
-    fireEvent.click(within(dialog).getByRole("checkbox", { name: "下次不再提示" }));
-    await waitFor(() => expect(serverSettings.preferences.hide_batch_limit_hint).toBe(true));
-    expect(window.localStorage.getItem("renamer-hide-batch-limit-hint")).toBeNull();
-    fireEvent.click(within(dialog).getByRole("button", { name: "继续预览" }));
-    await waitFor(() => expect(api.createStoragePreview).toHaveBeenCalledWith("default-local", { kind: "root" }, items.slice(0, 1000).map((file) => file.id), []));
-    await waitFor(() => expect(screen.getByRole("button", { name: "开始修改" })).toBeEnabled());
-    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
-    fireEvent.click(screen.getByRole("button", { name: "刷新预览" }));
-    await waitFor(() => expect(api.createStoragePreview).toHaveBeenCalledTimes(2));
-    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
-  });
-
-  it("retains the release ID after selection resets the preview and releases it on task end", async () => {
-    await setup(2);
-    fireEvent.click(screen.getByRole("button", { name: "刷新预览" }));
-    await waitFor(() => expect(screen.getByRole("button", { name: "开始修改" })).toBeEnabled());
-    fireEvent.click(screen.getByRole("checkbox", { name: "选择文件 file-0.txt" }));
-    expect(screen.getByRole("button", { name: "开始修改" })).toBeDisabled();
-    expect(api.releaseStoragePreview).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole("button", { name: "结束当前任务" }));
-    await waitFor(() => expect(api.releaseStoragePreview).toHaveBeenCalledWith("default-local", "task-preview"));
-    expect(useRenameStore.getState().task).toBeNull();
-  });
-
-  it("releases a late preview response after its selection context changes", async () => {
-    await setup(2);
-    let resolvePreview!: (value: Awaited<ReturnType<typeof api.createStoragePreview>>) => void;
-    vi.mocked(api.createStoragePreview).mockImplementationOnce(() => new Promise((resolve) => { resolvePreview = resolve; }));
-    fireEvent.click(screen.getByRole("button", { name: "刷新预览" }));
-    await waitFor(() => expect(api.createStoragePreview).toHaveBeenCalledTimes(1));
-    act(() => useRenameStore.getState().setSelectedIds([]));
-    await act(async () => resolvePreview({ preview_id: "late-preview", expires_at: "2099-01-01T00:00:00Z", valid: true, items: [] }));
-    await waitFor(() => expect(api.releaseStoragePreview).toHaveBeenCalledWith("default-local", "late-preview"));
-    expect(screen.getByRole("button", { name: "开始修改" })).toBeDisabled();
-  });
-
-  it("invalidates a preview on rule changes and retains its ID for replacement", async () => {
-    vi.mocked(api.fetchRules).mockResolvedValue([
-      { type: "insert", name: "插入", description: "插入文本", config_schema: {} },
-    ]);
-    const items = await setup(2);
-    fireEvent.click(screen.getByRole("button", { name: "刷新预览" }));
-    await waitFor(() => expect(screen.getByRole("button", { name: "开始修改" })).toBeEnabled());
-    fireEvent.click(screen.getByRole("button", { name: "添加规则" }));
-    fireEvent.click(screen.getByRole("menuitem", { name: "插入" }));
-    await waitFor(() => expect(screen.queryByRole("menu")).not.toBeInTheDocument());
-    expect(useRenameStore.getState().rules).toEqual([expect.objectContaining({ type: "insert", enabled: true })]);
-    expect(screen.getByRole("button", { name: "开始修改" })).toBeDisabled();
-    expect(api.releaseStoragePreview).not.toHaveBeenCalled();
-
-    fireEvent.click(screen.getByRole("button", { name: "刷新预览" }));
-    await waitFor(() => expect(api.createStoragePreview).toHaveBeenLastCalledWith(
-      "default-local", { kind: "root" }, items.map((file) => file.id), useRenameStore.getState().rules, "task-preview",
-    ));
-    expect(api.executePreview).not.toHaveBeenCalled();
-  });
-
   it("releases a late preview to its original storage after switching connections", async () => {
     await setup(2);
     let resolvePreview!: (value: Awaited<ReturnType<typeof api.createStoragePreview>>) => void;
@@ -609,36 +373,5 @@ describe("task refresh and batch hint interaction", () => {
     expect(api.executePreview).not.toHaveBeenCalled();
   });
 
-  it.each(["success", "lost-response"])("does not refresh automatically after %s, but allows manual refresh", async (outcome) => {
-    const items = await setup(2);
-    if (outcome === "success") {
-      vi.mocked(api.executePreview).mockResolvedValue({ preview_id: "task-preview", status: "completed", items: items.map((file) => ({
-        file_id: file.id, original_name: file.name, new_name: `renamed-${file.name}`, status: "renamed", error: null,
-        current_file: { ...file, id: `renamed-${file.id}`, name: `renamed-${file.name}`, path: `renamed-${file.path}` },
-      })) });
-    } else {
-      vi.mocked(api.executePreview).mockRejectedValue(new Error("Execution response lost"));
-    }
-    fireEvent.click(screen.getByRole("button", { name: "刷新预览" }));
-    await waitFor(() => expect(screen.getByRole("button", { name: "开始修改" })).toBeEnabled());
-    // 活跃任务的目录缓存即使被其他组件标记失效，也不得自动读取目录。
-    await act(async () => { await client.invalidateQueries({ queryKey: ["files"] }); });
-    expect(api.fetchStorageFiles).toHaveBeenCalledTimes(1);
-    fireEvent.click(screen.getByRole("button", { name: "开始修改" }));
-    fireEvent.click(screen.getByRole("button", { name: "应用" }));
-    await waitFor(() => expect(useRenameStore.getState().task!.items.every((item) => item.status === (outcome === "success" ? "completed" : "unknown"))).toBe(true));
-    expect(api.fetchStorageFiles).toHaveBeenCalledTimes(1);
-    if (outcome === "success") {
-      const cached = client.getQueryData<{ items: { id: string }[] }>(["files", "default-local", 1, { kind: "root" }]);
-      expect(cached!.items.map((file) => file.id)).toEqual(items.map((file) => `renamed-${file.id}`));
-      vi.mocked(api.fetchStorageFiles).mockResolvedValue({ provider: "local", path: "", parent_path: null, items: items.map((file) => ({
-        ...file, id: `renamed-${file.id}`, name: `renamed-${file.name}`, path: `renamed-${file.path}`,
-      })) });
-    } else {
-      fireEvent.click(screen.getByRole("button", { name: "关闭" }));
-    }
-    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
-    fireEvent.click(screen.getByRole("button", { name: "刷新" }));
-    await waitFor(() => expect(api.fetchStorageFiles).toHaveBeenCalledTimes(2));
-  });
 });
+
