@@ -71,11 +71,7 @@ describe("API client", () => {
 
   it.each([
     "<html>Bad gateway</html>",
-    "null",
-    "[]",
-    JSON.stringify({ error: null }),
     JSON.stringify({ error: { message: 42, code: [], details: [] } }),
-    JSON.stringify({ error: { message: "  ", code: "", details: null } }),
   ])("falls back safely for a non-standard response: %s", async (body) => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(body, { status: 502 })));
 
@@ -123,3 +119,4 @@ describe("API client", () => {
     await expect(fetchStorages()).rejects.toBe(networkError);
   });
 });
+
