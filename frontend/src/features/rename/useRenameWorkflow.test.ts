@@ -1,8 +1,7 @@
 import { act, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-import * as api from "../../api/client";
 import { useRenameStore } from "../../stores/useRenameStore";
-import { client, listing, preview, serverSettings, setupWorkspace } from "../../test/workspaceHarness";
+import { api, client, listing, preview, serverSettings, setupWorkspace } from "../../test/workspaceHarness";
 
 describe("rename workflow", () => {
   it.each(["toggle", "select-all", "clear", "invert"] as const)("invalidates an old preview after %s selection", async (operation) => {

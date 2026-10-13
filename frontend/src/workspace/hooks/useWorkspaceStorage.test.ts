@@ -1,8 +1,7 @@
 import { act, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-import * as api from "../../api/client";
 import { useRenameStore } from "../../stores/useRenameStore";
-import { client, listing, notify, openCloud, preview, serverSettings, setupWorkspace, status } from "../../test/workspaceHarness";
+import { api, client, listing, notify, openCloud, preview, serverSettings, setupWorkspace, status } from "../../test/workspaceHarness";
 import type { StorageInfo } from "../../types";
 
 describe("workspace storage", () => {

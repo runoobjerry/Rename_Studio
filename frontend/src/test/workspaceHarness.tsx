@@ -19,6 +19,8 @@ vi.mock("../components/NotificationProvider", async (importOriginal) => ({
   useNotification: () => notify,
 }));
 
+// 测试与 Hook 共享注册 mock 后的模块，避免测试提前持有原始 API。
+export { api };
 export const notify = vi.fn();
 export let client: QueryClient;
 export let serverSettings: AppSettings;
