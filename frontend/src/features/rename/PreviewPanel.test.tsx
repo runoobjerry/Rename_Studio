@@ -107,12 +107,6 @@ describe("PreviewPanel", () => {
     expect(screen.getByText("renamed.txt")).toBeInTheDocument();
     expect(screen.getByText("failed-new.txt")).toBeInTheDocument();
   });
-  it("shows the empty preview guidance", () => {
-    render(<PreviewPanel providerName="本地文件" />);
-
-    expect(screen.getByText(/预览不会修改 本地文件 中的内容/)).toBeInTheDocument();
-  });
-
   it("shows the filtered empty state only while a nonempty filter excludes all rows", () => {
     render(<PreviewPanel preview={validPreview} />);
     expect(screen.getByText("renamed.txt")).toBeInTheDocument();
@@ -125,3 +119,4 @@ describe("PreviewPanel", () => {
     expect(screen.queryByText("没有符合筛选条件的项目。")).not.toBeInTheDocument();
   });
 });
+

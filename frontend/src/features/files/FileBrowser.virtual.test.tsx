@@ -32,31 +32,6 @@ it("mounts a bounded window while selecting all filtered items, including unmoun
   expect(callbacks.onSelectAll).toHaveBeenCalledWith(items.map((item) => item.id));
 });
 
-it("keeps checkbox geometry fixed when switching between large and small directories", () => {
-  vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (this: HTMLElement) {
-    const width = this.classList.contains("MuiCheckbox-root") ? 48.008 : 800;
-    return { x: 0, y: 0, top: 0, left: 0, bottom: 40, right: width, height: 40, width, toJSON: () => ({}) };
-  });
-  const callbacks = props();
-  const { rerender } = render(<FileBrowser {...callbacks} />);
-  const table = screen.getByRole("table");
-  expect(table.querySelector("col")).toHaveStyle({ width: "44px" });
-  expect(table.querySelectorAll("col")[1].style.width).toBe("");
-  const assertCheckboxes = () => {
-    for (const input of screen.getAllByRole("checkbox")) {
-      const control = input.closest(".MuiCheckbox-root")!;
-      expect(control).toHaveStyle({ width: "20px", height: "20px", padding: "0px" });
-      expect(control.querySelector("svg")).toHaveStyle({ width: "20px", height: "20px" });
-    }
-  };
-  assertCheckboxes();
-  rerender(<FileBrowser {...callbacks} selectedIds={items.map((item) => item.id)} />);
-  assertCheckboxes();
-  rerender(<FileBrowser {...callbacks} listing={{ ...listing, items: items.slice(0, 2) }} />);
-  expect(screen.getByRole("table").querySelector("colgroup")).not.toBeInTheDocument();
-  assertCheckboxes();
-});
-
 it("renders distant rows on scroll and reaches the last row with the keyboard", async () => {
   render(<FileBrowser {...props()} />);
   const container = screen.getByRole("table").parentElement!;
@@ -92,3 +67,4 @@ it("filters errors across unmounted preview rows without losing full preview sta
   const table = await screen.findByRole("table", { name: "修改预览" });
   expect(table).toHaveAttribute("aria-rowcount", "2");
 });
+

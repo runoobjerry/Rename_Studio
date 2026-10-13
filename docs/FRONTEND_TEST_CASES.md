@@ -18,8 +18,8 @@
 |---|---|---:|
 | P0：关键业务与安全 | 防止错误执行、状态污染、跨账号混用和批次重复处理 | 41 |
 | P1：业务功能与异常处理 | 保证主要交互、规则配置、接口和错误处理正确 | 70 |
-| P2：UI 契约与体验回归 | 保证布局、主题、提示及动画行为符合约定 | 23 |
-| **合计** | **16 个测试文件** | **134** |
+| P2：UI 契约与体验回归 | 保证目录折叠、菜单访问及通知关闭行为符合约定 | 4 |
+| **合计** | **14 个测试文件** | **115** |
 
 重要程度用于安排验证优先级，P2 不代表可以删除。
 
@@ -28,20 +28,18 @@
 | `WorkspaceApp.test.tsx` | 18 | 14 | 0 | 32 |
 | `stores/useRenameStore.test.ts` | 8 | 0 | 0 | 8 |
 | `features/rename/RenameActions.test.tsx` | 3 | 2 | 0 | 5 |
-| `features/rename/PreviewPanel.test.tsx` | 1 | 3 | 1 | 5 |
+| `features/rename/PreviewPanel.test.tsx` | 1 | 3 | 0 | 4 |
 | `features/settings/StorageSettingsPanel.test.tsx` | 2 | 6 | 0 | 8 |
 | `features/settings/useThemePreference.test.ts` | 0 | 8 | 0 | 8 |
 | `features/files/defaultCloudLocation.test.ts` | 1 | 0 | 0 | 1 |
-| `features/files/FileBrowser.test.tsx` | 3 | 7 | 2 | 12 |
-| `features/files/FileBrowser.virtual.test.tsx` | 3 | 1 | 1 | 5 |
+| `features/files/FileBrowser.test.tsx` | 3 | 7 | 0 | 10 |
+| `features/files/FileBrowser.virtual.test.tsx` | 3 | 1 | 0 | 4 |
 | `features/files/LocationBreadcrumbs.test.tsx` | 1 | 1 | 1 | 3 |
-| `features/rules/RuleEditor.test.tsx` | 0 | 7 | 2 | 9 |
+| `features/rules/RuleEditor.test.tsx` | 0 | 7 | 1 | 8 |
 | `features/rules/RuleFields.test.tsx` | 0 | 3 | 0 | 3 |
 | `api/client.test.ts` | 1 | 14 | 0 | 15 |
-| `components/NotificationProvider.test.tsx` | 0 | 4 | 4 | 8 |
-| `components/CheckboxFilterMenu.test.tsx` | 0 | 0 | 4 | 4 |
-| `theme.test.tsx` | 0 | 0 | 8 | 8 |
-| **合计** | **41** | **70** | **23** | **134** |
+| `components/NotificationProvider.test.tsx` | 0 | 4 | 2 | 6 |
+| **合计** | **41** | **70** | **4** | **115** |
 
 ## P0：关键业务与安全（41 个）
 
@@ -224,53 +222,21 @@
 3. 预览过期错误附加“重新预览”的操作提示。
 4. 其他错误消息保持可用。
 
-## P2：UI 契约与体验回归（23 个）
-
-### [theme.test.tsx](../frontend/src/theme.test.tsx)（8 个）
-
-以下用例验证共享主题间距，不使用局部间距覆盖。
-
-1. 浅色主题：普通菜单（`light/menu`）。
-2. 浅色主题：Select 菜单（`light/select`）。
-3. 浅色主题：过滤菜单（`light/filter`）。
-4. 浅色主题：规则菜单（`light/rules`）。
-5. 深色主题：普通菜单（`dark/menu`）。
-6. 深色主题：Select 菜单（`dark/select`）。
-7. 深色主题：过滤菜单（`dark/filter`）。
-8. 深色主题：规则菜单（`dark/rules`）。
-
-### [CheckboxFilterMenu.test.tsx](../frontend/src/components/CheckboxFilterMenu.test.tsx)（4 个）
-
-1. 浅色主题下，默认中性图标、选中后强调色。
-2. 深色主题下，默认中性图标、选中后强调色。
-3. 浅色主题下，Tooltip 说明默认过滤状态。
-4. 深色主题下，Tooltip 说明默认过滤状态。
-
-### [FileBrowser.test.tsx](../frontend/src/features/files/FileBrowser.test.tsx)（2 个）
-
-1. 浅色主题下使用共享纯图标工具栏，不改变过滤控件。
-2. 深色主题下使用共享纯图标工具栏，不改变过滤控件。
-
-### [FileBrowser.virtual.test.tsx](../frontend/src/features/files/FileBrowser.virtual.test.tsx)（1 个）
-
-1. 大、小目录切换时 Checkbox 尺寸保持固定。
+## P2：UI 契约与体验回归（4 个）
 
 ### [LocationBreadcrumbs.test.tsx](../frontend/src/features/files/LocationBreadcrumbs.test.tsx)（1 个）
 
 1. 空间不足时仅折叠左侧祖先目录，空间恢复后重新展开。
 
-### [RuleEditor.test.tsx](../frontend/src/features/rules/RuleEditor.test.tsx)（2 个）
+### [RuleEditor.test.tsx](../frontend/src/features/rules/RuleEditor.test.tsx)（1 个）
 
-1. 清空按钮位于添加按钮之前，Tooltip 显示规则描述。
-2. 菜单视口限制为八行，超出部分仍可访问。
+1. 菜单视口限制为八行，超出部分仍可访问。
 
-### [PreviewPanel.test.tsx](../frontend/src/features/rename/PreviewPanel.test.tsx)（1 个）
+### [NotificationProvider.test.tsx](../frontend/src/components/NotificationProvider.test.tsx)（2 个）
 
-1. 没有预览时显示预览操作说明。
+1. 成功通知五秒后关闭。
+2. 错误通知五秒后关闭。
 
-### [NotificationProvider.test.tsx](../frontend/src/components/NotificationProvider.test.tsx)（4 个）
+## 人工视觉验收
 
-1. 新通知立即显示，旧通知在原位置淡出。
-2. 手动关闭通知后，等待退出动画结束再卸载。
-3. 成功通知五秒后关闭，退出动画结束后移除。
-4. 错误通知五秒后关闭，退出动画结束后移除。
+纯样式、尺寸、文案和动画效果转由浏览器人工检查，移除记录和步骤见 [UI 人工验收清单](UI_MANUAL_ACCEPTANCE.md)。相关 UI 修改后检查对应项目，发布前完整检查；关键交互与状态逻辑仍由自动化测试覆盖。
