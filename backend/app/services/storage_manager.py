@@ -3,13 +3,15 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from uuid import uuid4
 from datetime import datetime
+from pathlib import Path
 
 from app.core.errors import NotFoundError, StorageBusyError, StorageConnectionChangedError, ValidationError
 from app.providers.base import StorageProvider
 from app.providers.registry import ProviderRegistry
 from app.repositories.storage_repository import JsonStorageRepository
-from app.schemas.storage import StorageCreate, StorageInfo, StorageRecord, StorageState, StorageUpdate
+from app.schemas.storage import AppPreferences, AppSettingsPatch, AppSettingsResponse, StorageCreate, StorageInfo, StorageRecord, StorageState, StorageUpdate, validate_preferences_size
 from app.services.connection_auth import ConnectionAuth
+from app.services.preview_store import PreviewStore
 
 
 class StorageManager:
@@ -49,8 +51,68 @@ class StorageManager:
             del state.connections[storage_id]
         else:
             state.connections[storage_id] = record
+        default = state.preferences.cloud_default_locations.get(storage_id)
+        if default is not None and (record is None or default.account_id != record.credentials.get("account_id")):
+            del state.preferences.cloud_default_locations[storage_id]
         self.repository.save(state)
         self.state = state
+
+    def app_settings(self) -> AppSettingsResponse:
+        return AppSettingsResponse(preferences=self.state.preferences)
+
+    def update_app_settings(self, request: AppSettingsPatch) -> AppSettingsResponse:
+        preferences = self.state.preferences.model_copy(deep=True)
+        fields = request.model_fields_set
+        if "theme" in fields:
+            preferences.theme = request.theme
+        if "hide_batch_limit_hint" in fields:
+            preferences.hide_batch_limit_hint = request.hide_batch_limit_hint
+        if "cloud_default_locations" in fields:
+            for storage_id, default in request.cloud_default_locations.items():
+                if default is None:
+                    preferences.cloud_default_locations.pop(storage_id, None)
+                else:
+                    if default.account_id != self.record(storage_id).credentials.get("account_id"):
+                        raise StorageConnectionChangedError("Default location belongs to a different account")
+                    preferences.cloud_default_locations[storage_id] = default
+        try:
+            # A valid patch may exceed the aggregate limits after merging with saved connections.
+            validate_preferences_size(preferences)
+        except ValueError as exc:
+            raise ValidationError("Preferences exceed the allowed limits") from exc
+        if preferences == self.state.preferences:
+            return self.app_settings()
+        state = self.state.model_copy(deep=True)
+        state.preferences = preferences
+        self.repository.save(state)
+        self.state = state
+        return self.app_settings()
+
+    async def factory_reset(self, local_root: Path, previews: PreviewStore) -> AppSettingsResponse:
+        if self._busy:
+            raise StorageBusyError("A storage is executing a rename; finish it before resetting")
+        config = self.validate_config("local", {"root_path": str(local_root)})
+        previous_local = self.record("default-local")
+        state = StorageState(
+            preferences=AppPreferences(),
+            connections={"default-local": StorageRecord(
+                storage_id="default-local", provider_type="local", name="Local Files",
+                config=config, revision=previous_local.revision + 1,
+            )},
+        )
+        # No await separates the busy check, atomic save, and in-memory invalidation.
+        self.repository.save(state)
+        self.state = state
+        self.authorization_sessions.clear()
+        self._auth.clear()
+        previews.clear()
+        clients = self._clients
+        self._clients = {}
+        for _, provider in clients.values():
+            task = asyncio.create_task(provider.aclose())
+            self._closing.add(task)
+            task.add_done_callback(self._closing.discard)
+        return self.app_settings()
 
     def create(self, request: StorageCreate) -> StorageInfo:
         config = self.validate_config(request.provider_type, request.config)

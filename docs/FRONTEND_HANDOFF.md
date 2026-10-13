@@ -16,7 +16,8 @@
 - React 18、TypeScript 5.6、Vite 5、MUI 9、Emotion、TanStack Query 5、Zustand 5；测试使用 Vitest、Testing Library 和 JSDOM。
 - `frontend/src/App.tsx` 仅默认导出 `WorkspaceApp`；未使用的 `LegacyApp` 及旧 CSS 已移除。
 - `WorkspaceApp.tsx` 保留 Provider 入口及 Workspace 的布局、导航保护、默认云目录恢复协调和工作区/设置两个内存视图；`useWorkspaceStorage` 管理连接与目录，`useRenameWorkflow` 管理预览、执行、选择和任务编排。两个 Hook 不互相调用，由容器传入所需数据及重置回调；任务订阅留在容器以暂停目录自动查询。没有 URL 路由或深层链接。规则选择已改为主页菜单，原二级页面移除。
-- 设置页面懒加载，Vite 配置保留手动 vendor chunks。`useThemePreference` 保存 light/dark/system 偏好并解析实际 PaletteMode；首次默认 system，实时跟随系统外观，兼容已有 light/dark 浏览器设置，不把 system 解析后的颜色写回偏好。
+- 设置页面懒加载，Vite 配置保留手动 vendor chunks。`useThemePreference` 读取后端 light/dark/system 偏好并解析实际 PaletteMode；加载前暂用 system，实时跟随系统外观，不读取旧浏览器主题，也不把 system 解析后的颜色写回偏好。
+- `useAppSettings` 在同一个 QueryClient 内串行保存实际修改字段，失败后继续处理后续保存；请求不包含偏好版本字段，不为保存额外读取设置。后端合并当前状态后原子写入完整 v3 JSON，最后成功处理的字段修改生效；保存成功才更新查询缓存，失败时回退草稿并通知。连接自身的 revision 和 Preview/Execute 校验继续保留。
 - TanStack Query 管理服务端状态与缓存失效；Zustand 保存选择 ID、规则链和当前会话的分批任务；任务快照、逐项执行结果与查询缓存分离。筛选状态在组件内部，不持久化到 Store。
 - `api/client.ts` 是共享 HTTP 层，`types/index.ts` 映射 API 数据。
 - `theme.ts` 管理语义颜色和共享 MUI 控件样式；`styles.css` 保留布局、内部滚动、响应式组合及自定义组件几何样式，不要求整体迁移到 MUI。
@@ -31,7 +32,7 @@
 - 目录浏览、返回上级、手动刷新、图标、文件名工具提示、修改时间、复选框选择和内部滚动。
 - `location-panel` 不再提供目录输入框、“使用此文件夹”或“打开文件夹”；路径为可点击的 MUI 面包屑，使用 ChevronRight 分隔。按实际可用宽度将左侧祖先折叠到 MoreHoriz 菜单，保留尽可能多的右侧目录，空间恢复时自动展开；单个过长的当前目录名省略显示，Tooltip 保留全名。菜单继承共享间距和字号，执行/连接忙碌时禁用导航。
 - 路径栏无独立连接标题，面包屑首项使用当前连接名称（仍指向根目录）。面包屑与“浏览…”/“设为默认路径”复用 `locationButtonSx`：30px 高、13px 字号；面包屑内边距上下4px/左右5px，操作按钮上下4px/左右10px。ChevronRight 为18px、两侧各2px，折叠图标按钮30px。工具栏最小高度44px，保持紧凑单行布局；下拉菜单继续继承统一主题，不随路径按钮一起缩小。
-- OneDrive 路径栏旁提供“设为默认路径”，保存当前成功打开的目录位置（含根目录），按 storage_id 与稳定 account_id 在浏览器 localStorage 中隔离。不再读取旧 Provider/账号路径；云连接由用户创建，唯一默认连接为 Local Files。重新进入连接或切换账号时恢复；不保存未提交输入，不跨浏览器同步，默认启动仍为 default-local。
+- OneDrive 路径栏旁提供“设为默认路径”，通过应用设置 API 保存当前成功打开的目录位置（含根目录）。后端 v3 状态中每个 storage_id 只保留一条 `{account_id, location}`；换号、断开授权、修改连接配置或删除连接时清除旧记录。重新进入连接时仅恢复匹配当前账号的目录，否则打开根目录；不读取旧浏览器路径、不保存未提交输入，默认启动仍为 default-local。
 - 四种规则 `padding`、`replace`、`remove`、`insert` 的字段配置，以及启用/禁用、上移/下移、复制、删除和清空规则链。
 - 规则标题栏左侧“一键清除”、右侧“添加规则”；添加按钮打开紧凑 MUI 菜单，每项 34px/13px，最多同时显示八项，超出滚动显示，Tooltip 展示描述。选择后追加独立配置到规则链末尾、关闭菜单并恢复按钮焦点，不切换页面；使用现有 `onChange` 重置旧预览/执行结果，仅展示前端已适配的规则。
 - 服务端预览、冲突/无效名称展示、MUI 执行确认 Dialog、防重复提交、逐项执行结果合并与目录后台刷新。
@@ -100,7 +101,7 @@
 - `frontend/src/components/PanelIconButton.tsx`：文件/预览面板图标按钮的共享外观；有状态控件可局部覆盖状态颜色，不重复定义尺寸和间距。
 - `frontend/src/features/files/FileBrowser.tsx`：导航、文件表格、类型筛选与可见项选择。
 - `frontend/src/features/files/LocationBreadcrumbs.tsx`：路径按钮、按实际宽度折叠祖先及目录菜单；优先使用当前/上级的服务端 location，更远祖先使用服务端显示路径的分段通过已支持的 path 位置解析，不拼接远端 ID。远端路径重名/外部改名时可能读取失败，保留目录错误和根目录恢复入口。
-- `frontend/src/features/files/defaultCloudLocation.ts`：按连接/账号隔离的默认目录位置；不宣称已支持其他云盘。
+- `frontend/src/features/files/defaultCloudLocation.ts`：读取连接的默认目录并核对当前账号；不宣称已支持其他云盘。
 - `frontend/src/features/rules/RuleEditor.tsx`、`RuleFields.tsx`：规则链、主页添加菜单、字段与内置 NumberStepper；旧 `RulePickerPage.tsx` 已删除，不重新引入。
 - `frontend/src/features/rename/PreviewPanel.tsx`、`RenameActions.tsx`：预览/执行结果、状态筛选与确认操作。
 - `frontend/src/features/settings/SettingsPage.tsx`、`StorageSettingsPanel.tsx`：外观、多连接配置和授权；仅使用连接级 API，旧 OneDriveSettingsPanel 已删除。

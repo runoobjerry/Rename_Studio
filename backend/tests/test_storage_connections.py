@@ -1,5 +1,5 @@
-import json
 import asyncio
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import cast
 
@@ -7,8 +7,8 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from app.api.dependencies import get_storage_manager, get_preview_service, get_execute_service
-from app.api import storage_router
+from app.api.dependencies import get_storage_manager, get_preview_service, get_execute_service, get_preview_store
+from app.api import app_settings_router, storage_router
 from app.core.errors import ProviderError, StorageBusyError, StorageConnectionChangedError, ValidationError
 from app.core import config as app_config
 from app.main import create_app
@@ -56,7 +56,12 @@ def test_new_install_only_creates_local_and_restores_it(tmp_path: Path) -> None:
     manager = make_manager(tmp_path)
     assert list(manager.state.connections) == ["default-local"]
     assert manager.record("default-local").name == "Local Files"
-    assert manager.state.schema_version == 2
+    assert manager.state.schema_version == 3
+    assert manager.state.preferences.model_dump() == {
+        "theme": "system", "hide_batch_limit_hint": False,
+        "cloud_default_locations": {},
+    }
+    assert manager.record("default-local").config["root_path"] == str((tmp_path / "files").resolve())
     assert make_manager(tmp_path).state == manager.state
     restored = manager.repository.load_or_initialize(tmp_path / "different-default", manager.registry.validate_config)
     assert restored == manager.state
@@ -96,55 +101,225 @@ def test_draft_folder_picker_does_not_modify_connections(tmp_path: Path, monkeyp
     assert not chosen.exists()
 
 
-def test_v1_upgrade_preserves_accounts_and_removes_empty_default_cloud(tmp_path: Path) -> None:
+def test_corrupt_state_does_not_reset_connections(tmp_path: Path) -> None:
+    make_manager(tmp_path)
+    (tmp_path / "storages.json").write_text('{"schema_version":3}', encoding="utf-8")
+    with pytest.raises(ProviderError):
+        make_manager(tmp_path)
+
+
+def test_app_settings_keeps_only_current_account_default_and_rotated_token(tmp_path: Path) -> None:
+    from app.schemas.storage import AppSettingsPatch
+
     manager = make_manager(tmp_path)
     cloud = manager.create(StorageCreate(provider_type="onedrive", name="Account", config={"client_id": "app"}))
-    payload = manager.state.model_dump()
-    payload["schema_version"] = 1
-    for record in payload["connections"].values():
-        record["enabled"] = False
-    payload["connections"][cloud.storage_id]["credentials"] = {
-        "refresh_token": "fixture-token", "account_id": "account-a",
-    }
-    payload["connections"]["default-onedrive"] = {
-        "storage_id": "default-onedrive", "provider_type": "onedrive", "name": "OneDrive",
-        "enabled": True, "config": {"client_id": None}, "revision": 1, "credentials": {},
-    }
-    path = tmp_path / "storages.json"
-    path.write_text(json.dumps(payload), encoding="utf-8")
+    manager._persist_auth(cloud.storage_id, {"client_id": "app"}, {
+        "account_id": "account-a", "refresh_token": "rotated-token",
+    })
+    manager.update_app_settings(AppSettingsPatch.model_validate({
+        "cloud_default_locations": {cloud.storage_id: {"account_id": "account-a", "location": {"kind": "id", "value": "folder-a"}}},
+    }))
+    manager._persist_auth(cloud.storage_id, {"client_id": "app"}, {
+        "account_id": "account-a", "refresh_token": "new-token",
+    })
+    manager.update_app_settings(AppSettingsPatch(theme="dark"))
+    assert manager.state.preferences.cloud_default_locations[cloud.storage_id].location.value == "folder-a"
+    assert manager.record(cloud.storage_id).credentials["refresh_token"] == "new-token"
+    manager._persist_auth(cloud.storage_id, {"client_id": "app"}, {
+        "account_id": "account-b", "refresh_token": "rotated-token",
+    })
+    assert cloud.storage_id not in manager.state.preferences.cloud_default_locations
+    with pytest.raises(StorageConnectionChangedError):
+        manager.update_app_settings(AppSettingsPatch.model_validate({
+            "cloud_default_locations": {cloud.storage_id: {"account_id": "account-a", "location": {"kind": "root"}}},
+        }))
+    manager.update_app_settings(AppSettingsPatch.model_validate({
+        "cloud_default_locations": {cloud.storage_id: {"account_id": "account-b", "location": {"kind": "root"}}},
+    }))
     restored = make_manager(tmp_path)
-    assert "default-onedrive" not in restored.state.connections
-    assert restored.record(cloud.storage_id).credentials["account_id"] == "account-a"
-    assert "enabled" not in restored.info(cloud.storage_id).model_dump()
-    assert "credentials" not in restored.info(cloud.storage_id).model_dump()
-    assert path.with_name("storages.json.pre-storage-v2.bak").exists()
+    default = restored.state.preferences.cloud_default_locations[cloud.storage_id]
+    assert default.account_id == "account-b"
+    assert default.location.kind == "root"
+    assert restored.state.preferences.theme == "dark"
+    assert restored.record(cloud.storage_id).credentials["refresh_token"] == "rotated-token"
+    cleared = restored.update_app_settings(AppSettingsPatch(
+        cloud_default_locations={cloud.storage_id: None},
+    ))
+    assert cloud.storage_id not in cleared.preferences.cloud_default_locations
     assert make_manager(tmp_path).state == restored.state
 
 
 @pytest.mark.asyncio
-async def test_configured_former_default_cloud_is_deletable(tmp_path: Path) -> None:
+@pytest.mark.parametrize("action", ["disconnect", "configure", "delete"])
+async def test_connection_changes_remove_current_account_default(tmp_path: Path, action: str) -> None:
+    from app.schemas.storage import AppSettingsPatch
+
     manager = make_manager(tmp_path)
-    payload = manager.state.model_dump()
-    payload["schema_version"] = 1
-    payload["connections"]["default-local"]["enabled"] = True
-    payload["connections"]["default-onedrive"] = {
-        "storage_id": "default-onedrive", "provider_type": "onedrive", "name": "OneDrive",
-        "enabled": True, "config": {"client_id": "app"}, "revision": 1,
-        "credentials": {"refresh_token": "fixture-token"},
-    }
-    (tmp_path / "storages.json").write_text(json.dumps(payload), encoding="utf-8")
-    restored = make_manager(tmp_path)
-    assert restored.record("default-onedrive").credentials["refresh_token"] == "fixture-token"
-    await restored.delete("default-onedrive")
-    assert list(restored.state.connections) == ["default-local"]
-    await restored.aclose()
+    cloud = manager.create(StorageCreate(provider_type="onedrive", name="Account", config={"client_id": "app"}))
+    manager._persist_auth(cloud.storage_id, {"client_id": "app"}, {
+        "account_id": "account-a", "refresh_token": "fixture-token",
+    })
+    manager.update_app_settings(AppSettingsPatch.model_validate({
+        "cloud_default_locations": {cloud.storage_id: {"account_id": "account-a", "location": {"kind": "root"}}},
+    }))
+    if action == "disconnect":
+        cast(ConnectionAuth, manager.auth(cloud.storage_id)).disconnect()
+    elif action == "configure":
+        await manager.update(cloud.storage_id, StorageUpdate(config={"client_id": "other-app"}))
+    else:
+        await manager.delete(cloud.storage_id)
+    assert cloud.storage_id not in manager.state.preferences.cloud_default_locations
+    assert make_manager(tmp_path).state == manager.state
+    await manager.aclose()
 
 
-def test_corrupt_state_does_not_reset_connections(tmp_path: Path) -> None:
-    make_manager(tmp_path)
-    (tmp_path / "storages.json").write_text('{"schema_version":2}', encoding="utf-8")
+def test_app_settings_noop_and_failed_save_do_not_change_state(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from app.schemas.storage import AppSettingsPatch
+
+    manager = make_manager(tmp_path)
+    original = manager.state.model_copy(deep=True)
+    disk = manager.repository.path.read_bytes()
+
+    def fail_save(state: object) -> None:
+        raise ProviderError("fixture disk failure")
+
+    monkeypatch.setattr(manager.repository, "save", fail_save)
+    assert manager.update_app_settings(AppSettingsPatch(theme="system")).preferences == original.preferences
     with pytest.raises(ProviderError):
-        make_manager(tmp_path)
+        manager.update_app_settings(AppSettingsPatch(theme="dark"))
+    assert manager.state == original
+    assert manager.repository.path.read_bytes() == disk
+
+
+def test_app_settings_api_partial_updates_preserve_other_fields_and_credentials(tmp_path: Path) -> None:
+    manager = make_manager(tmp_path)
+    cloud = manager.create(StorageCreate(provider_type="onedrive", name="Account", config={"client_id": "app"}))
+    manager._persist_auth(cloud.storage_id, {"client_id": "app"}, {"refresh_token": "fixture-secret"})
+    app = create_app()
+    app.dependency_overrides[get_storage_manager] = lambda: manager
+    with TestClient(app) as client:
+        initial = client.get("/app-settings")
+        assert initial.status_code == 200
+        assert initial.json() == {"preferences": {
+            "theme": "system", "hide_batch_limit_hint": False,
+            "cloud_default_locations": {},
+        }}
+        updated = client.patch("/app-settings", json={"theme": "dark"})
+        assert updated.status_code == 200
+        assert updated.json()["preferences"]["theme"] == "dark"
+        hint = client.patch("/app-settings", json={"hide_batch_limit_hint": True})
+        assert hint.status_code == 200
+        assert hint.json()["preferences"]["theme"] == "dark"
+        last = client.patch("/app-settings", json={"theme": "light"})
+        assert last.status_code == 200
+        assert last.json() == {"preferences": {
+            "theme": "light", "hide_batch_limit_hint": True, "cloud_default_locations": {},
+        }}
+        rejected = client.patch("/app-settings", json={
+            "credentials": {"refresh_token": "fixture-secret"},
+        })
+        assert rejected.status_code == 422
+        assert rejected.json()["error"]["code"] == "REQUEST_VALIDATION_ERROR"
+        unsupported_rules = client.patch("/app-settings", json={
+            "rules": [{"type": "replace", "config": {}}],
+        })
+        assert unsupported_rules.status_code == 422
+        for response in (initial, updated, hint, last, rejected):
+            assert "fixture-secret" not in response.text
+            assert "credentials" not in initial.text + updated.text
+        assert manager.record(cloud.storage_id).credentials["refresh_token"] == "fixture-secret"
+        assert make_manager(tmp_path).state == manager.state
+
+
+def test_factory_reset_api_rejects_busy_and_never_returns_credentials(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    manager = make_manager(tmp_path)
+    cloud = manager.create(StorageCreate(provider_type="onedrive", name="Cloud", config={"client_id": "app"}))
+    manager._persist_auth(cloud.storage_id, {"client_id": "app"}, {"refresh_token": "fixture-secret"})
+    previews = PreviewStore()
+    monkeypatch.setattr(app_settings_router, "get_settings", lambda: app_config.Settings(
+        _env_file=None, local_storage_root=tmp_path / "files",
+    ))
+    app = create_app()
+    app.dependency_overrides[get_storage_manager] = lambda: manager
+    app.dependency_overrides[get_preview_store] = lambda: previews
+    with TestClient(app) as client:
+        with manager.execution("default-local", manager.record("default-local").revision):
+            busy = client.post("/app-settings/factory-reset")
+        assert busy.status_code == 409
+        assert busy.json()["error"]["code"] == "STORAGE_BUSY"
+        assert manager.record(cloud.storage_id).credentials["refresh_token"] == "fixture-secret"
+        done = client.post("/app-settings/factory-reset")
+        assert done.status_code == 200
+        assert done.json() == {"preferences": {
+            "theme": "system", "hide_batch_limit_hint": False, "cloud_default_locations": {},
+        }}
+        assert "fixture-secret" not in busy.text + done.text
+
+
+@pytest.mark.asyncio
+async def test_factory_reset_clears_connections_preferences_and_old_preview(tmp_path: Path) -> None:
+    from app.schemas.storage import AppSettingsPatch
+    from app.core.errors import PreviewNotFoundError
+
+    manager = make_manager(tmp_path)
+    source = tmp_path / "files" / "keep.txt"
+    source.write_text("keep", encoding="utf-8")
+    cloud = manager.create(StorageCreate(provider_type="onedrive", name="Cloud", config={"client_id": "app"}))
+    extra = manager.create(StorageCreate(provider_type="local", name="Extra", config={"root_path": str(tmp_path)}))
+    manager._persist_auth(cloud.storage_id, {"client_id": "app"}, {"refresh_token": "fixture-secret", "account_id": "account-a"})
+    auth = manager.auth(cloud.storage_id)
+    manager.authorization_sessions["old-session"] = (cloud.storage_id, 1, "old-session", datetime.now(UTC))
+    manager.update_app_settings(AppSettingsPatch(theme="dark", hide_batch_limit_hint=True))
+    preview, execute = services(manager)
+    snapshot = await preview.preview(RenamePreviewRequest(
+        storage_id="default-local", location=RootLocation(), file_ids=["keep.txt"], rules=[],
+    ))
+    previous_revision = manager.record("default-local").revision
+
+    result = await manager.factory_reset(tmp_path / "files", preview.store)
+
+    assert result.preferences.model_dump() == {
+        "theme": "system", "hide_batch_limit_hint": False, "cloud_default_locations": {},
+    }
+    assert list(manager.state.connections) == ["default-local"]
+    assert manager.record("default-local").revision == previous_revision + 1
+    assert manager.authorization_sessions == {}
+    assert source.read_text(encoding="utf-8") == "keep"
+    assert cloud.storage_id not in manager.state.connections and extra.storage_id not in manager.state.connections
+    assert "fixture-secret" not in manager.repository.path.read_text(encoding="utf-8")
+    with pytest.raises(PreviewNotFoundError):
+        preview.store.get(snapshot.preview_id)
+    with pytest.raises(PreviewNotFoundError):
+        await execute.execute(snapshot.preview_id)
+    with pytest.raises(StorageConnectionChangedError):
+        cast(OneDriveAuthService, auth).disconnect()
+    assert make_manager(tmp_path).state == manager.state
+    await manager.aclose()
+
+
+@pytest.mark.asyncio
+async def test_factory_reset_busy_and_failed_save_leave_state_untouched(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    manager = make_manager(tmp_path)
+    cloud = manager.create(StorageCreate(provider_type="onedrive", name="Cloud", config={"client_id": "app"}))
+    manager._persist_auth(cloud.storage_id, {"client_id": "app"}, {"refresh_token": "fixture-secret"})
+    before = manager.state.model_copy(deep=True)
+    disk = manager.repository.path.read_bytes()
+    previews = PreviewStore()
+    with manager.execution("default-local", manager.record("default-local").revision):
+        with pytest.raises(StorageBusyError):
+            await manager.factory_reset(tmp_path / "files", previews)
+    assert manager.state == before
+    assert manager.repository.path.read_bytes() == disk
+
+    def fail_save(state: object) -> None:
+        raise ProviderError("fixture disk failure")
+
+    monkeypatch.setattr(manager.repository, "save", fail_save)
+    with pytest.raises(ProviderError):
+        await manager.factory_reset(tmp_path / "files", previews)
+    assert manager.state == before
+    assert manager.repository.path.read_bytes() == disk
+    assert manager.record(cloud.storage_id).credentials["refresh_token"] == "fixture-secret"
 
 
 @pytest.mark.asyncio

@@ -1,5 +1,4 @@
 import json
-import shutil
 import logging
 from pathlib import Path
 from uuid import uuid4
@@ -24,17 +23,6 @@ class JsonStorageRepository:
         if self.path.exists():
             try:
                 payload = json.loads(self.path.read_text(encoding="utf-8"))
-                upgrading = payload["schema_version"] == 1
-                if upgrading:
-                    # Upgrade the previous connection document without reading legacy settings.
-                    for record in payload["connections"].values():
-                        record.pop("enabled")
-                    cloud = payload["connections"].get("default-onedrive")
-                    if (cloud is not None and cloud["provider_type"] == "onedrive"
-                            and cloud["name"] == "OneDrive"
-                            and not cloud["config"].get("client_id") and not cloud["credentials"]):
-                        del payload["connections"]["default-onedrive"]
-                    payload["schema_version"] = 2
                 state = StorageState.model_validate(payload)
                 if any(key != record.storage_id for key, record in state.connections.items()):
                     raise ValueError("Connection key mismatch")
@@ -42,11 +30,6 @@ class JsonStorageRepository:
                     raise ValueError("Default Local connection type mismatch")
                 for record in state.connections.values():
                     record.config = validate_config(record.provider_type, record.config)
-                if upgrading:
-                    backup = self.path.with_name(self.path.name + ".pre-storage-v2.bak")
-                    if not backup.exists():
-                        shutil.copy2(self.path, backup)
-                    self.save(state)
                 return state
             except (OSError, ValueError, KeyError, TypeError, AttributeError, ModelValidationError) as exc:
                 raise ProviderError("Storage state is invalid; restore its backup before starting") from exc

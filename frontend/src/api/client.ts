@@ -9,6 +9,7 @@ import type {
   AuthorizationStart,
   AuthorizationStatus,
   StorageInfo, StorageLocation, StorageCreate, StorageUpdate, StorageProviderDefinition,
+  AppSettings, AppSettingsPatch,
 } from "../types";
 
 export class ApiError extends Error {
@@ -58,6 +59,12 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
 export function fetchRules(): Promise<RuleDefinition[]> {
   return request("/rules");
 }
+
+export const fetchAppSettings = (): Promise<AppSettings> => request("/app-settings");
+export const patchAppSettings = (body: AppSettingsPatch): Promise<AppSettings> =>
+  request("/app-settings", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+export const factoryResetAppSettings = (): Promise<AppSettings> =>
+  request("/app-settings/factory-reset", { method: "POST" });
 
 export function executePreview(previewId: string): Promise<ExecuteResponse> {
   return request("/rename/execute", {

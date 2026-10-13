@@ -45,6 +45,29 @@ export interface RuleSpec {
   config: Record<string, unknown>;
 }
 
+export type ThemePreference = "light" | "dark" | "system";
+
+export interface CloudDefaultLocation {
+  account_id: string;
+  location: StorageLocation;
+}
+
+export interface AppPreferences {
+  theme: ThemePreference;
+  hide_batch_limit_hint: boolean;
+  cloud_default_locations: Record<string, CloudDefaultLocation>;
+}
+
+export interface AppSettings {
+  preferences: AppPreferences;
+}
+
+export interface AppSettingsPatch {
+  theme?: ThemePreference;
+  hide_batch_limit_hint?: boolean;
+  cloud_default_locations?: Record<string, CloudDefaultLocation | null>;
+}
+
 export interface RuleDefinition {
   type: string;
   name: string;

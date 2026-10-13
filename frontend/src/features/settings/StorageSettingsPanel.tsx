@@ -44,6 +44,7 @@ function ConnectionRow({ storage, executing, providerName }: { storage: StorageI
     setClientId(storage.config.client_id ?? "");
   }, [storage.name, storage.config.root_path, storage.config.client_id]);
   const refresh = () => {
+    void queryClient.invalidateQueries({ queryKey: ["app-settings"] });
     void queryClient.invalidateQueries({ queryKey: ["storages"] });
     void queryClient.invalidateQueries({ queryKey: ["storage-auth", storage.storage_id] });
     void queryClient.invalidateQueries({ queryKey: ["files", storage.storage_id] });

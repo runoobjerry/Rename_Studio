@@ -1,7 +1,8 @@
+import json
 from typing import Annotated, Literal
 from pathlib import Path
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.core.paths import normalize_storage_path
 from app.schemas.rules import RuleSpec
@@ -30,6 +31,59 @@ class PathLocation(BaseModel):
 
 
 StorageLocation = Annotated[RootLocation | IdLocation | PathLocation, Field(discriminator="kind")]
+
+
+class CloudDefaultLocation(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    account_id: str = Field(min_length=1, max_length=200)
+    location: StorageLocation
+
+    @field_validator("location")
+    @classmethod
+    def check_location_length(cls, location: StorageLocation) -> StorageLocation:
+        if isinstance(location, (IdLocation, PathLocation)) and len(location.value) > 4096:
+            raise ValueError("Invalid cloud location length")
+        return location
+
+
+def validate_preferences_size(preferences: "AppPreferences | AppSettingsPatch") -> None:
+    if len(preferences.cloud_default_locations) > 100:
+        raise ValueError("Too many cloud connections")
+    for storage_id in preferences.cloud_default_locations:
+        if not storage_id or len(storage_id) > 200:
+            raise ValueError("Invalid cloud connection key")
+    encoded = json.dumps(preferences.model_dump(mode="json"), ensure_ascii=False)
+    if len(encoded.encode("utf-8")) > 131072:
+        raise ValueError("Preferences exceed the size limit")
+
+
+class AppPreferences(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    theme: Literal["light", "dark", "system"] = "system"
+    hide_batch_limit_hint: bool = False
+    cloud_default_locations: dict[str, CloudDefaultLocation] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def check_size(self) -> "AppPreferences":
+        validate_preferences_size(self)
+        return self
+
+
+class AppSettingsResponse(BaseModel):
+    preferences: AppPreferences
+
+
+class AppSettingsPatch(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    theme: Literal["light", "dark", "system"] = "system"
+    hide_batch_limit_hint: bool = False
+    # Replace one connection's current-account default; null removes it.
+    cloud_default_locations: dict[str, CloudDefaultLocation | None] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def check_size(self) -> "AppSettingsPatch":
+        validate_preferences_size(self)
+        return self
 
 
 class LocalConfig(BaseModel):
@@ -96,7 +150,8 @@ class StorageRecord(BaseModel):
 
 class StorageState(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    schema_version: Literal[2] = 2
+    schema_version: Literal[3] = 3
+    preferences: AppPreferences = Field(default_factory=AppPreferences)
     connections: dict[str, StorageRecord]
 
 

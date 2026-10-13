@@ -191,6 +191,30 @@ Empty means exactly `""`; whitespace remains meaningful text. Skipped rules pres
 - Progress is process-local, uses the same singleton execution service, and is retained for 10 minutes after termination. Restart, expiry, or an unknown/consumed preview without a retained record yields 404; an expired unexecuted preview yields 409. This does not provide durable jobs, history, or reconnect/resume semantics.
 - Frontend polls every 500ms only while POST is pending; fast batches may appear as 0% → 100%. Polling failure never triggers another execute request.
 
+## App Settings
+
+Application preferences share the v3 `backend/settings.json` document with connection configuration and credentials. Settings responses expose only `{preferences}`. Preference updates have no revision field; connection revisions and Preview/Execute checks remain unchanged.
+
+```ts
+interface AppPreferences {
+  theme: "light" | "dark" | "system";
+  hide_batch_limit_hint: boolean;
+  cloud_default_locations: Record<string, { account_id: string; location: StorageLocation }>;
+}
+```
+
+| Route | Request | Response |
+| --- | --- | --- |
+| `GET /app-settings` | none | Current preferences |
+| `PATCH /app-settings` | Only changed preference fields | Updated preferences; unchanged values do not cause a write |
+| `POST /app-settings/factory-reset` | none | Default preferences; clears cloud connections, credentials and previews |
+
+A cloud-default patch replaces the whole record for each supplied storage ID; `null` deletes that connection's default, and omitted connections remain unchanged. Each connection retains only its current account's default. Saving another account's record is rejected with `STORAGE_CONNECTION_CHANGED` (409). Account changes, disconnects, configuration changes and connection deletion remove the default atomically with the connection update. Normal token rotation preserves the default.
+
+The frontend serializes saves within one QueryClient and submits only changed fields, without reading settings before each save. A failed save does not block later queued saves. The backend merges each patch into current in-memory preferences and atomically saves the complete state document, preserving omitted preferences, connections and current credentials. The last successfully processed change to each field takes effect. Memory and frontend cache update only after a successful save; failures return errors and retain prior state. After a successful save, older in-flight settings reads are cancelled before the cache is updated.
+
+Preferences allow at most 100 cloud-default records, connection/account identifiers of 1–200 characters, directory values up to 4096 characters, and JSON size up to 128 KiB. Factory reset waits for queued frontend saves, rejects new saves while resetting, and rejects active backend renames with `STORAGE_BUSY` (409); default Local remains, and real files are untouched. Rules remain frontend memory state.
+
 ## Not Implemented
 
 - RuleSet API or persistence.

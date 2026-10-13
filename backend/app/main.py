@@ -13,6 +13,7 @@ from fastapi.responses import JSONResponse
 
 from app.api.router import router
 from app.api.storage_router import router as storage_router
+from app.api.app_settings_router import router as app_settings_router
 from app.api.dependencies import get_preview_store, get_storage_manager
 from app.core.config import get_settings
 from app.core.errors import AppError
@@ -49,7 +50,7 @@ def create_app() -> FastAPI:
         CORSMiddleware,
         allow_origins=[settings.frontend_origin],
         allow_credentials=False,
-        allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+        allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
         allow_headers=["Content-Type"],
     )
 
@@ -90,15 +91,19 @@ def create_app() -> FastAPI:
 
     @app.exception_handler(RequestValidationError)
     async def handle_request_validation(
-        _request: Request, exc: RequestValidationError
+        request: Request, exc: RequestValidationError
     ) -> JSONResponse:
+        errors = exc.errors()
+        if request.url.path == "/app-settings":
+            errors = [{key: value for key, value in error.items() if key not in ("input", "ctx")}
+                      for error in errors]
         return JSONResponse(
             status_code=422,
             content={
                 "error": {
                     "code": "REQUEST_VALIDATION_ERROR",
                     "message": "Request validation failed",
-                    "details": {"errors": jsonable_encoder(exc.errors())},
+                    "details": {"errors": jsonable_encoder(errors)},
                 }
             },
         )
@@ -126,6 +131,7 @@ def create_app() -> FastAPI:
 
     app.include_router(router)
     app.include_router(storage_router)
+    app.include_router(app_settings_router)
     return app
 
 

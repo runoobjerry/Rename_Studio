@@ -50,7 +50,7 @@ frontend/
 
 ### 1. 配置本地目录
 
-首次启动默认浏览后端当前系统用户的 Documents 文件夹（Windows 使用系统登记的位置，支持文档目录重定向）。已有连接仍使用保存的目录，不会被覆盖。工作台和连接设置均可选择后端电脑上的目录，也可手动输入已有目录的绝对路径；多连接配置保存在 `backend/.storage_connections.json`。可以复制 `.env.example` 为 `.env`，用 LOCAL_STORAGE_ROOT 设置首次启动默认目录；已保存的无效配置会明确报错，不静默回退：
+首次启动默认浏览后端当前系统用户的 Documents 文件夹（Windows 使用系统登记的位置，支持文档目录重定向）。已有连接仍使用保存的目录，不会被覆盖。工作台和连接设置均可选择后端电脑上的目录，也可手动输入已有目录的绝对路径；多连接配置保存在 `backend/settings.json`。可以复制 `.env.example` 为 `.env`，用 LOCAL_STORAGE_ROOT 设置首次启动默认目录；已保存的无效配置会明确报错，不静默回退：
 
 ```dotenv
 LOCAL_STORAGE_ROOT=D:/rename-test
@@ -95,9 +95,9 @@ npm run dev
 4. 在设置页创建或编辑 OneDrive 连接，保存 App ID 后点击“网页登录”，并选择要操作的账号；每个连接独立授权。
 5. 在侧栏选择连接，通过文件夹 ID 导航；也可输入相对路径，例如 `照片/待整理`，留空表示根目录。同名目录导致路径歧义时使用文件夹导航。
 
-OAuth 使用个人账户的 consumers 租户、公共客户端授权码流程和 PKCE，无需客户端密钥，请求 Files.ReadWrite、User.Read 和 offline_access。切换账号先删除该连接旧令牌，断开保留 App ID；将 App ID 清空并保存可清理授权配置。配置和刷新令牌保存在被 Git 忽略的 `backend/.storage_connections.json`，访问令牌仅在内存中；重启后按连接刷新。
+OAuth 使用个人账户的 consumers 租户、公共客户端授权码流程和 PKCE，无需客户端密钥，请求 Files.ReadWrite、User.Read 和 offline_access。切换账号先删除该连接旧令牌，断开保留 App ID；将 App ID 清空并保存可清理授权配置。配置和刷新令牌保存在被 Git 忽略的 `backend/settings.json`，访问令牌仅在内存中；重启后按连接刷新。
 
-首次启动只创建 `default-local`（Local Files），云连接由用户添加。版本 1 的连接状态文件升级为版本 2 前保留 `.pre-storage-v2.bak` 备份：移除启停字段和未配置的自动 OneDrive，保留已有账号连接。仅默认 Local 不可删除；不再读取旧 Local/OneDrive 独立设置文件。迁移、接口和验收记录见 [多存储重构说明](docs/MULTI_STORAGE_REFACTOR.md)。Google Drive 尚未实现。
+首次启动只创建 `default-local`（Local Files），云连接由用户添加。连接与应用偏好统一保存在 v3 状态文件中；仅默认 Local 不可删除。旧版独立设置文件和 v1/v2 状态文件不再读取。接口见 [API 参考](docs/API_REFERENCE.md)。Google Drive 尚未实现。
 
 刷新令牌等同于长期登录凭据，应保护该本地文件，不要复制、提交到 Git 或写入日志。连接状态文件不存储客户端密钥。
 

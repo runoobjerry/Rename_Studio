@@ -26,7 +26,7 @@ class Settings(BaseSettings):
     app_name: str = "OneDriver Renamer"
     local_storage_root: Path = Field(default_factory=lambda: default_documents_directory())
     frontend_origin: str = "http://localhost:5173"
-    storage_state_file: Path = _BACKEND_ROOT / ".storage_connections.json"
+    storage_state_file: Path = _BACKEND_ROOT / "settings.json"
     storage_redirect_uri: str = "http://localhost:8000/auth/storage/callback"
 
     model_config = SettingsConfigDict(

@@ -2,7 +2,8 @@ import { useCallback, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { fetchStorageFiles, fetchStorageAuthStatus, fetchStorages, pickStorageFolder } from "../../api/client";
 import { errorMessage, useNotification } from "../../components/NotificationProvider";
-import { readDefaultCloudLocation, saveDefaultCloudLocation } from "../../features/files/defaultCloudLocation";
+import { readDefaultCloudLocation } from "../../features/files/defaultCloudLocation";
+import { useAppSettings } from "../../features/settings/useAppSettings";
 import type { StorageLocation } from "../../types";
 
 interface WorkspaceStorageOptions {
@@ -13,6 +14,7 @@ interface WorkspaceStorageOptions {
 export function useWorkspaceStorage({ hasTask, onLocalRootSelected }: WorkspaceStorageOptions) {
   const notify = useNotification();
   const queryClient = useQueryClient();
+  const appSettings = useAppSettings();
   const [storageId, setStorageId] = useState("default-local");
   const [location, setLocation] = useState<StorageLocation>({ kind: "root" });
   const setPath = useCallback((value: string) => setLocation(value ? { kind: "path", value } : { kind: "root" }), []);
@@ -66,26 +68,21 @@ export function useWorkspaceStorage({ hasTask, onLocalRootSelected }: WorkspaceS
   }, [setPath]);
 
   const restoreDefaultCloudPath = useCallback(() => {
-    let defaultLocation: StorageLocation = { kind: "root" };
-    try {
-      if (cloudConnected && cloudAccountId) defaultLocation = readDefaultCloudLocation(storageId, cloudAccountId);
-    } catch {
-      notify("无法读取默认路径，将打开云盘根目录。请检查浏览器存储权限。", "warning");
-    }
+    const defaultLocation = cloudConnected && cloudAccountId && appSettings.data
+      ? readDefaultCloudLocation(appSettings.data.preferences, storageId, cloudAccountId)
+      : { kind: "root" } as StorageLocation;
+    if (appSettings.isError) notify("无法读取默认路径，将打开云盘根目录。", "warning");
     // 由工作区在原 effect 位置调用；恢复完成前 cloudReady 阻止目录请求。
     setLocation(defaultLocation);
     setRestoredCloudSession(cloudSession);
-  }, [cloudConnected, cloudAccountId, storageId, cloudSession, notify]);
+  }, [cloudConnected, cloudAccountId, appSettings.data, appSettings.isError, storageId, cloudSession, notify]);
 
   const setDefaultCloudPath = useCallback(() => {
     if (!cloudAccountId || !cloudReady || !files.isSuccess || files.isFetching || files.error) return;
-    try {
-      saveDefaultCloudLocation(storageId, cloudAccountId, files.data.location!);
-      notify(`已将“${files.data.path || "根目录"}”设为当前账号的默认路径。`);
-    } catch {
-      notify("默认路径保存失败，请检查浏览器存储权限或可用空间。", "error");
-    }
-  }, [cloudAccountId, cloudReady, files.isSuccess, files.isFetching, files.error, files.data, storageId, notify]);
+    void appSettings.save({ cloud_default_locations: { [storageId]: { account_id: cloudAccountId, location: files.data.location! } } })
+      .then(() => notify(`已将“${files.data.path || "根目录"}”设为当前账号的默认路径。`))
+      .catch((error: Error) => notify(`默认路径保存失败：${errorMessage(error)}`, "error"));
+  }, [cloudAccountId, cloudReady, files.isSuccess, files.isFetching, files.error, files.data, storageId, notify, appSettings.save]);
 
   const refreshFiles = useCallback(() => {
     void files.refetch().then((result) => {
@@ -99,6 +96,7 @@ export function useWorkspaceStorage({ hasTask, onLocalRootSelected }: WorkspaceS
     storageId, location, setLocation, setPath, selectStorage,
     providers, activeStorage, providerId, providerName, oneDriveStatus, localSettings,
     cloudAccountId, cloudConnected, cloudSession, cloudReady, restoredCloudSession,
+    appSettingsReady: appSettings.isSuccess || appSettings.isError,
     files, workspaceKey, settingsLoading, pickLocalRoot,
     restoreDefaultCloudPath, setDefaultCloudPath, refreshFiles,
   };

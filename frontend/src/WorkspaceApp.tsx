@@ -12,7 +12,7 @@ import {
   useMediaQuery,
   useTheme,
 } from "@mui/material";
-import { useQuery } from "@tanstack/react-query";
+import { useIsMutating, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { fetchRules } from "./api/client";
 import { BatchLimitDialog } from "./workspace/components/BatchLimitDialog";
@@ -27,8 +27,9 @@ import { RuleEditor } from "./features/rules/RuleEditor";
 import { useRenameStore } from "./stores/useRenameStore";
 import { createAppTheme } from "./theme";
 import { useThemePreference } from "./features/settings/useThemePreference";
+import { useAppSettings } from "./features/settings/useAppSettings";
 import type { ThemePreference } from "./features/settings/useThemePreference";
-import { NotificationProvider } from "./components/NotificationProvider";
+import { NotificationProvider, errorMessage, useNotification } from "./components/NotificationProvider";
 
 const SettingsPage = lazy(() =>
   import("./features/settings/SettingsPage").then((module) => ({
@@ -51,16 +52,32 @@ function SecondaryPageFallback() {
 }
 
 export default function WorkspaceApp() {
-  const { mode, preference, setPreference } = useThemePreference();
+  const { mode, preference, setPreference, settingsError } = useThemePreference();
   const theme = useMemo(() => createAppTheme(mode), [mode]);
   return (
     <ThemeProvider theme={theme}>
-      <NotificationProvider><Workspace preference={preference} setPreference={setPreference} /></NotificationProvider>
+      <NotificationProvider><Workspace preference={preference} setPreference={setPreference} settingsError={settingsError} /></NotificationProvider>
     </ThemeProvider>
   );
 }
 
-function Workspace({ preference, setPreference }: { preference: ThemePreference; setPreference: (preference: ThemePreference) => void }) {
+function Workspace({ preference, setPreference, settingsError }: {
+  preference: ThemePreference;
+  setPreference: (preference: ThemePreference) => Promise<void>;
+  settingsError: Error | null;
+}) {
+  const notify = useNotification();
+  const queryClient = useQueryClient();
+  const appSettings = useAppSettings();
+  const activeMutations = useIsMutating();
+  const [resetPending, setResetPending] = useState(false);
+  const [resetEpoch, setResetEpoch] = useState(0);
+  useEffect(() => {
+    if (settingsError) notify(`读取应用设置失败，暂用默认偏好：${errorMessage(settingsError)}`, "warning");
+  }, [settingsError, notify]);
+  const changeTheme = (next: ThemePreference) => {
+    void setPreference(next).catch((error: Error) => notify(`主题保存失败，已撤销本次更改：${errorMessage(error)}`, "error"));
+  };
   const theme = useTheme();
   const compactNavigation = useMediaQuery(theme.breakpoints.down("md"));
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
@@ -70,7 +87,7 @@ function Workspace({ preference, setPreference }: { preference: ThemePreference;
   const {
     storageId, location, setLocation, setPath, selectStorage,
     providers, activeStorage, providerId, providerName, oneDriveStatus, localSettings,
-    cloudAccountId, cloudConnected, cloudSession, cloudReady, restoredCloudSession,
+    cloudAccountId, cloudConnected, cloudSession, cloudReady, restoredCloudSession, appSettingsReady,
     files, workspaceKey, settingsLoading, pickLocalRoot,
     restoreDefaultCloudPath, setDefaultCloudPath, refreshFiles,
   } = useWorkspaceStorage({
@@ -96,12 +113,57 @@ function Workspace({ preference, setPreference }: { preference: ThemePreference;
     },
   });
   useEffect(() => {
-    if (isExecuting || providerId !== "onedrive" || restoredCloudSession === cloudSession) return;
+    if (isExecuting || providerId !== "onedrive" || !appSettingsReady || restoredCloudSession === cloudSession) return;
     restoreDefaultCloudPath();
     resetForStorageChange();
-  }, [providerId, cloudSession, restoredCloudSession]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [providerId, cloudSession, restoredCloudSession, appSettingsReady]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const loadError = providers.error ?? definitions.error ?? oneDriveStatus.error ?? localSettings.error;
+  let resetDisabledReason: string | undefined;
+  if (task?.items.some((item) => item.status === "unknown")) {
+    resetDisabledReason = "请先核对待核对项并结束当前任务。";
+  } else if (isExecuting || isPreviewing || providers.data?.some((storage) => storage.busy)) {
+    resetDisabledReason = "重命名操作进行中，完成后才能重置。";
+  } else if (activeMutations > 0) {
+    resetDisabledReason = "连接正在保存，请稍后重试。";
+  }
+  const factoryReset = async () => {
+    if (resetPending || resetDisabledReason) return false;
+    setResetPending(true);
+    try {
+      try {
+        await appSettings.factoryReset();
+      } catch (error) {
+        notify(`恢复出厂设置失败：${errorMessage(error as Error)}`, "error");
+        return false;
+      }
+      await queryClient.cancelQueries({ predicate: (query) => query.queryKey[0] !== "app-settings" });
+      endTask();
+      useRenameStore.getState().setRules([]);
+      selectStorage("default-local");
+      setResetEpoch((current) => current + 1);
+      queryClient.removeQueries({ predicate: (query) => query.queryKey[0] !== "app-settings" && query.queryKey[0] !== "rules" });
+      void queryClient.invalidateQueries({ queryKey: ["storages"] });
+      let browserSettingsCleared = true;
+      try {
+        const keys = Array.from({ length: window.localStorage.length }, (_, index) => window.localStorage.key(index))
+          .filter((key): key is string => key !== null);
+        for (const key of keys) {
+          if (key === "renamer-color-mode" || key === "renamer-hide-batch-limit-hint"
+            || key.startsWith("renamer-default-cloud-location:") || key.startsWith("renamer-default-cloud-path:")) {
+            window.localStorage.removeItem(key);
+          }
+        }
+      } catch {
+        browserSettingsCleared = false;
+      }
+      notify(browserSettingsCleared ? "已恢复出厂设置。" : "恢复已完成，但旧浏览器设置未能清理；应用不会再读取这些值。",
+        browserSettingsCleared ? "success" : "warning");
+      return true;
+    } finally {
+      setResetPending(false);
+    }
+  };
 
   const navigate = useCallback((nextPath: string) => {
     if (isExecuting || pickLocalRoot.isPending || activeStorage?.busy) return;
@@ -181,7 +243,10 @@ function Workspace({ preference, setPreference }: { preference: ThemePreference;
 
             {view === "settings" && (
               <Suspense fallback={<SecondaryPageFallback />}>
-                <SettingsPage executingStorageId={isExecuting ? storageId : undefined} preference={preference} onPreferenceChange={setPreference} onBack={() => setView("workspace")} />
+                <SettingsPage executingStorageId={isExecuting ? storageId : undefined} preference={preference}
+                  onPreferenceChange={changeTheme} onBack={() => setView("workspace")}
+                  onFactoryReset={factoryReset} resetDisabledReason={resetDisabledReason} resetPending={resetPending}
+                  resetEpoch={resetEpoch} />
               </Suspense>
             )}
 

@@ -1,10 +1,33 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { ApiError, createStoragePreview, releaseStoragePreview, disconnectStorage, fetchStorages, fetchRenameProgress } from "./client";
+import { ApiError, createStoragePreview, releaseStoragePreview, disconnectStorage, fetchStorages, fetchRenameProgress, fetchAppSettings, patchAppSettings, factoryResetAppSettings } from "./client";
 
 afterEach(() => vi.unstubAllGlobals());
 
 describe("API client", () => {
+  it("reads app settings and submits only changed preference fields", async () => {
+    const payload = { preferences: {
+      theme: "dark", hide_batch_limit_hint: false, cloud_default_locations: {},
+    } };
+    const fetchMock = vi.fn().mockImplementation(async () => new Response(JSON.stringify(payload)));
+    vi.stubGlobal("fetch", fetchMock);
+    expect(await fetchAppSettings()).toEqual(payload);
+    expect(await patchAppSettings({ theme: "dark" })).toEqual(payload);
+    expect(fetchMock).toHaveBeenNthCalledWith(1, "/api/app-settings", undefined);
+    expect(fetchMock).toHaveBeenNthCalledWith(2, "/api/app-settings", {
+      method: "PATCH", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ theme: "dark" }),
+    });
+  });
+  it("requests the single factory reset endpoint", async () => {
+    const response = { preferences: {
+      theme: "system", hide_batch_limit_hint: false, cloud_default_locations: {},
+    } };
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify(response)));
+    vi.stubGlobal("fetch", fetchMock);
+    expect(await factoryResetAppSettings()).toEqual(response);
+    expect(fetchMock).toHaveBeenCalledWith("/api/app-settings/factory-reset", { method: "POST" });
+  });
   it("passes the replacement ID and releases only the specified preview", async () => {
     const fetchMock = vi.fn()
       .mockResolvedValueOnce(new Response(JSON.stringify({ preview_id: "new" })))

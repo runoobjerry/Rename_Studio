@@ -10,8 +10,11 @@ secrets.json
 .local_settings.json.tmp
 .storage_connections.json
 .storage_connections.json.*.tmp
+/backend/settings.json
+/backend/settings.json.*.tmp
 *.pre-storage-v1.bak
 *.pre-storage-v2.bak
+*.pre-storage-v3.bak
 AGENTS.md
 !frontend/AGENTS.md
 __pycache__/

@@ -61,6 +61,9 @@ class PreviewStore:
     def consume(self, preview_id: str) -> None:
         self._snapshots.pop(preview_id, None)
 
+    def clear(self) -> None:
+        self._snapshots.clear()
+
     def release(self, preview_id: str, storage_id: str) -> None:
         # 仅释放调用方指定连接的快照；已消费、过期或重复释放均无需报错。
         snapshot = self._snapshots.get(preview_id)

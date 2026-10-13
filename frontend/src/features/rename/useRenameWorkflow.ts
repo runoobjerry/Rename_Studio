@@ -3,6 +3,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { createStoragePreview, releaseStoragePreview, executePreview } from "../../api/client";
 import { errorMessage, useNotification } from "../../components/NotificationProvider";
 import { RENAME_BATCH_SIZE, useRenameStore } from "../../stores/useRenameStore";
+import { useAppSettings } from "../settings/useAppSettings";
 import type { DirectoryListing, RenameTask, RuleSpec, StorageInfo, StorageLocation } from "../../types";
 
 interface RenameWorkflowOptions {
@@ -23,23 +24,15 @@ interface RenameWorkflowOptions {
   };
 }
 
-const batchHintPreference = "renamer-hide-batch-limit-hint";
-
-function readBatchHintPreference(): boolean {
-  try {
-    return window.localStorage.getItem(batchHintPreference) === "true";
-  } catch {
-    // 浏览器存储受限时仍允许用户处理文件，提示偏好保留在当前页面。
-    return false;
-  }
-}
-
 export function useRenameWorkflow({
   storageId, location, workspaceKey, cloudSession, providerId, cloudReady, activeStorage, task, files,
 }: RenameWorkflowOptions) {
   const notify = useNotification();
   const queryClient = useQueryClient();
-  const [skipBatchHint, setSkipBatchHint] = useState(readBatchHintPreference);
+  const appSettings = useAppSettings();
+  const [batchHintDraft, setBatchHintDraft] = useState<boolean | null>(null);
+  const batchHintEditId = useRef(0);
+  const skipBatchHint = batchHintDraft ?? appSettings.data?.preferences.hide_batch_limit_hint ?? false;
   const [batchHintContext, setBatchHintContext] = useState<string | null>(null);
   const selectedIds = useRenameStore((state) => state.selectedIds);
   const resetTask = useRenameStore((state) => state.resetTask);
@@ -226,12 +219,11 @@ export function useRenameWorkflow({
   };
 
   const changeBatchHintPreference = (checked: boolean) => {
-    setSkipBatchHint(checked);
-    try {
-      window.localStorage.setItem(batchHintPreference, String(checked));
-    } catch {
-      notify("无法保存提示偏好，本次页面会话内仍然生效。", "warning");
-    }
+    const id = ++batchHintEditId.current;
+    setBatchHintDraft(checked);
+    void appSettings.save({ hide_batch_limit_hint: checked })
+      .catch((error: Error) => notify(`提示偏好保存失败，已撤销本次更改：${errorMessage(error)}`, "error"))
+      .finally(() => { if (batchHintEditId.current === id) setBatchHintDraft(null); });
   };
 
   // 本地根目录选择和默认云路径恢复复用原有清理顺序；不丢失待释放 ID。

@@ -3,9 +3,9 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import * as api from "./api/client";
 import WorkspaceApp from "./WorkspaceApp";
-import { readDefaultCloudLocation, saveDefaultCloudLocation } from "./features/files/defaultCloudLocation";
+import { readDefaultCloudLocation } from "./features/files/defaultCloudLocation";
 import { useRenameStore } from "./stores/useRenameStore";
-import type { AuthorizationStatus, StorageInfo } from "./types";
+import type { AppSettings, AuthorizationStatus, StorageInfo, StorageLocation } from "./types";
 
 vi.mock("./api/client", async (importOriginal) => {
   const original = await importOriginal<typeof import("./api/client")>();
@@ -13,10 +13,20 @@ vi.mock("./api/client", async (importOriginal) => {
     ...original,
     fetchStorages: vi.fn(), fetchRules: vi.fn(), pickStorageFolder: vi.fn(),
     fetchStorageAuthStatus: vi.fn(), fetchStorageFiles: vi.fn(), createStoragePreview: vi.fn(), releaseStoragePreview: vi.fn(), executePreview: vi.fn(), fetchRenameProgress: vi.fn(),
+    fetchAppSettings: vi.fn(), patchAppSettings: vi.fn(), factoryResetAppSettings: vi.fn(), fetchStorageProviders: vi.fn(),
   };
 });
 
 let client: QueryClient;
+let serverSettings: AppSettings;
+const savedCloud = (storageId: string, accountId: string) => {
+  const settings = client.getQueryData<AppSettings>(["app-settings"]);
+  expect(settings).toBeDefined();
+  return readDefaultCloudLocation(settings!.preferences, storageId, accountId);
+};
+const seedCloud = (storageId: string, accountId: string, location: StorageLocation) => {
+  serverSettings.preferences.cloud_default_locations[storageId] = { account_id: accountId, location };
+};
 const status = (accountId: string | null, connected = true): AuthorizationStatus => ({
   configured: true, connected, account_id: accountId,
   account_display_name: "同名用户", account_email: null,
@@ -24,6 +34,37 @@ const status = (accountId: string | null, connected = true): AuthorizationStatus
 
 beforeEach(() => {
   window.localStorage.clear();
+  serverSettings = { preferences: {
+    theme: "system", hide_batch_limit_hint: false, cloud_default_locations: {},
+  } };
+  vi.mocked(api.fetchAppSettings).mockImplementation(async () => serverSettings);
+  vi.mocked(api.patchAppSettings).mockImplementation(async (patch) => {
+    const locations = { ...serverSettings.preferences.cloud_default_locations };
+    for (const [storageId, location] of Object.entries(patch.cloud_default_locations ?? {})) {
+      if (location) locations[storageId] = location;
+      else delete locations[storageId];
+    }
+    serverSettings = { preferences: {
+      ...serverSettings.preferences, ...patch, cloud_default_locations: locations,
+    } };
+    return serverSettings;
+  });
+  vi.mocked(api.factoryResetAppSettings).mockImplementation(async () => {
+    serverSettings = { preferences: {
+      theme: "system", hide_batch_limit_hint: false, cloud_default_locations: {},
+    } };
+    vi.mocked(api.fetchStorages).mockResolvedValue([{
+      storage_id: "default-local", provider_type: "local", name: "本地文件", revision: 2, busy: false,
+      config: { root_path: "C:\\files" }, account_id: null, account_display_name: null, account_email: null,
+    }]);
+    return serverSettings;
+  });
+  vi.mocked(api.fetchStorageProviders).mockResolvedValue([
+    { provider_type: "local", name: "Local", locations: ["root", "path", "id"], can_rename: true,
+      browser_auth: false, local_picker: true, config_schema: {} },
+    { provider_type: "onedrive", name: "OneDrive", locations: ["root", "path", "id"], can_rename: true,
+      browser_auth: true, local_picker: false, config_schema: {} },
+  ]);
   useRenameStore.setState({ selectedIds: [], rules: [], task: null });
   vi.stubGlobal("matchMedia", vi.fn((query: string) => ({
     matches: false, media: query, onchange: null,
@@ -233,7 +274,9 @@ describe("cloud default path integration", () => {
         location: { kind: "id", value: "document-id" }, is_directory: true, size: null, modified_at: null,
       }],
     }));
-    saveDefaultCloudLocation("user-onedrive", "account-a", { kind: "path", value: "照片" });
+    window.localStorage.setItem('renamer-default-cloud-path:["onedrive","account-a"]', "Old");
+    window.localStorage.setItem('renamer-default-cloud-location:["user-onedrive","account-a"]', JSON.stringify({ kind: "id", value: "old" }));
+    seedCloud("user-onedrive", "account-a", { kind: "path", value: "照片" });
     await openCloud();
     expect(screen.getByRole("button", { name: "照片" })).toHaveAttribute("aria-current", "page");
     expect(api.fetchStorageFiles).toHaveBeenCalledWith("user-onedrive", { kind: "path", value: "照片" });
@@ -241,35 +284,39 @@ describe("cloud default path integration", () => {
     expect(screen.queryByRole("textbox", { name: "云端文件夹路径" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "打开文件夹" })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "设为默认路径" }));
-    expect(readDefaultCloudLocation("user-onedrive", "account-a")).toEqual({ kind: "path", value: "照片" });
+    await waitFor(() => expect(savedCloud("user-onedrive", "account-a")).toEqual({ kind: "path", value: "照片" }));
     expect(await screen.findByText("已将“照片”设为当前账号的默认路径。")).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "文档" }));
     await waitFor(() => expect(api.fetchStorageFiles).toHaveBeenCalledWith("user-onedrive", { kind: "id", value: "document-id" }));
     await waitFor(() => expect(screen.getByRole("button", { name: "设为默认路径" })).toBeEnabled());
     fireEvent.click(screen.getByRole("button", { name: "设为默认路径" }));
-    expect(readDefaultCloudLocation("user-onedrive", "account-a")).toEqual({ kind: "id", value: "document-id" });
+    await waitFor(() => expect(savedCloud("user-onedrive", "account-a")).toEqual({ kind: "id", value: "document-id" }));
     fireEvent.click(screen.getByRole("button", { name: "本地文件" }));
     fireEvent.click(screen.getByRole("button", { name: "OneDrive" }));
     await waitFor(() => expect(api.fetchStorageFiles).toHaveBeenLastCalledWith("user-onedrive", { kind: "id", value: "document-id" }));
   });
 
   it("switches accounts without reusing the previous directory or selection", async () => {
-    saveDefaultCloudLocation("user-onedrive", "account-a", { kind: "path", value: "a-folder" });
-    saveDefaultCloudLocation("user-onedrive", "account-b", { kind: "path", value: "b-folder" });
+    seedCloud("user-onedrive", "account-a", { kind: "path", value: "a-folder" });
     await openCloud();
     useRenameStore.setState({ selectedIds: ["old-file"] });
     vi.mocked(api.fetchStorageFiles).mockClear();
+    serverSettings = { preferences: { ...serverSettings.preferences, cloud_default_locations: {} } };
+    client.setQueryData(["app-settings"], serverSettings);
     client.setQueryData(["storage-auth", "user-onedrive", 1], status("account-b"));
-    await screen.findByRole("button", { name: "b-folder" });
-    await waitFor(() => expect(api.fetchStorageFiles).toHaveBeenCalledWith("user-onedrive", { kind: "path", value: "b-folder" }));
+    await waitFor(() => expect(api.fetchStorageFiles).toHaveBeenCalledWith("user-onedrive", { kind: "root" }));
     expect(api.fetchStorageFiles).not.toHaveBeenCalledWith("user-onedrive", { kind: "path", value: "a-folder" });
     expect(useRenameStore.getState().selectedIds).toEqual([]);
-    client.setQueryData(["storage-auth", "user-onedrive", 1], status(null, false));
-    await waitFor(() => expect(screen.queryByRole("button", { name: "b-folder" })).not.toBeInTheDocument());
-    expect(readDefaultCloudLocation("user-onedrive", "account-a")).toEqual({ kind: "path", value: "a-folder" });
+    await waitFor(() => expect(screen.getByRole("button", { name: "设为默认路径" })).toBeEnabled());
+    fireEvent.click(screen.getByRole("button", { name: "设为默认路径" }));
+    await waitFor(() => expect(serverSettings.preferences.cloud_default_locations["user-onedrive"]).toEqual({
+      account_id: "account-b", location: { kind: "root" },
+    }));
+    expect(savedCloud("user-onedrive", "account-a")).toEqual({ kind: "root" });
     client.setQueryData(["storage-auth", "user-onedrive", 1], status("account-a"));
-    await screen.findByRole("button", { name: "a-folder" });
+    await waitFor(() => expect(screen.getByRole("button", { name: "设为默认路径" })).toBeEnabled());
+    expect(screen.queryByRole("button", { name: "a-folder" })).not.toBeInTheDocument();
   });
 
   it("keeps browsing available without an account ID but does not save a shared default", async () => {
@@ -283,20 +330,16 @@ describe("cloud default path integration", () => {
   });
 
   it("reports storage failure without replacing the saved default", async () => {
-    saveDefaultCloudLocation("user-onedrive", "account-a", { kind: "path", value: "照片" });
+    seedCloud("user-onedrive", "account-a", { kind: "path", value: "照片" });
     await openCloud();
-    vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => { throw new Error("Quota exceeded"); });
+    vi.mocked(api.patchAppSettings).mockRejectedValueOnce(new Error("Disk unavailable"));
     fireEvent.click(screen.getByRole("button", { name: "设为默认路径" }));
     expect(await screen.findByText(/默认路径保存失败/)).toBeInTheDocument();
-    expect(readDefaultCloudLocation("user-onedrive", "account-a")).toEqual({ kind: "path", value: "照片" });
+    expect(savedCloud("user-onedrive", "account-a")).toEqual({ kind: "path", value: "照片" });
   });
 
   it("falls back to root when the default cannot be read", async () => {
-    const getItem = Storage.prototype.getItem;
-    vi.spyOn(Storage.prototype, "getItem").mockImplementation(function (this: Storage, key: string) {
-      if (key.startsWith("renamer-default-cloud-location:")) throw new Error("Storage unavailable");
-      return getItem.call(this, key);
-    });
+    vi.mocked(api.fetchAppSettings).mockRejectedValueOnce(new Error("Server unavailable"));
     await openCloud();
     expect(within(screen.getByRole("navigation", { name: "文件路径" })).getByRole("button", { name: "OneDrive" })).toHaveAttribute("aria-current", "page");
     expect(await screen.findByText(/无法读取默认路径/)).toBeInTheDocument();
@@ -304,13 +347,79 @@ describe("cloud default path integration", () => {
   });
 
   it("does not overwrite the default when the requested directory fails to load", async () => {
-    saveDefaultCloudLocation("user-onedrive", "account-a", { kind: "path", value: "照片" });
+    seedCloud("user-onedrive", "account-a", { kind: "path", value: "照片" });
     await openCloud();
     vi.mocked(api.fetchStorageFiles).mockRejectedValueOnce(new Error("Directory not found"));
     fireEvent.click(within(screen.getByRole("navigation", { name: "文件路径" })).getByRole("button", { name: "OneDrive" }));
     await screen.findByText(/目录读取失败/);
     expect(screen.getByRole("button", { name: "设为默认路径" })).toBeDisabled();
-    expect(readDefaultCloudLocation("user-onedrive", "account-a")).toEqual({ kind: "path", value: "照片" });
+    expect(savedCloud("user-onedrive", "account-a")).toEqual({ kind: "path", value: "照片" });
+  });
+});
+
+describe("factory reset", () => {
+  const openSettings = async () => {
+    render(<QueryClientProvider client={client}><WorkspaceApp /></QueryClientProvider>);
+    fireEvent.click(await screen.findByRole("button", { name: "设置" }));
+    return screen.findByRole("button", { name: "将程序还原为原始默认状态" });
+  };
+
+  it("cancels confirmation without calling the reset API", async () => {
+    fireEvent.click(await openSettings());
+    const dialog = screen.getByRole("dialog", { name: "确认恢复出厂设置？" });
+    fireEvent.click(within(dialog).getByRole("button", { name: "取消" }));
+    expect(api.factoryResetAppSettings).not.toHaveBeenCalled();
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "确认恢复出厂设置？" })).not.toBeInTheDocument());
+  });
+
+  it("clears in-memory rules and old app keys after one successful reset", async () => {
+    serverSettings.preferences.theme = "dark";
+    serverSettings.preferences.hide_batch_limit_hint = true;
+    seedCloud("user-onedrive", "account-a", { kind: "id", value: "old-folder" });
+    window.localStorage.setItem("renamer-color-mode", "dark");
+    window.localStorage.setItem('renamer-default-cloud-location:["user-onedrive","account-a"]', "old");
+    window.localStorage.setItem("unrelated-data", "keep");
+    useRenameStore.setState({ rules: [{ type: "insert", enabled: true, config: { text: "x" } }], selectedIds: ["old"], task: null });
+    fireEvent.click(await openSettings());
+    fireEvent.click(within(screen.getByRole("dialog", { name: "确认恢复出厂设置？" }))
+      .getByRole("button", { name: "恢复出厂设置" }));
+    await waitFor(() => expect(api.factoryResetAppSettings).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(useRenameStore.getState().rules).toEqual([]));
+    expect(useRenameStore.getState().selectedIds).toEqual([]);
+    expect(serverSettings.preferences).toEqual({ theme: "system", hide_batch_limit_hint: false, cloud_default_locations: {} });
+    expect(window.localStorage.getItem("renamer-color-mode")).toBeNull();
+    expect(window.localStorage.getItem('renamer-default-cloud-location:["user-onedrive","account-a"]')).toBeNull();
+    expect(window.localStorage.getItem("unrelated-data")).toBe("keep");
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "确认恢复出厂设置？" })).not.toBeInTheDocument());
+    await waitFor(() => expect(screen.getByRole("combobox", { name: "外观主题" })).toHaveTextContent("跟随系统"));
+  });
+
+  it("keeps the cleanup warning visible after a successful reset", async () => {
+    useRenameStore.setState({ rules: [{ type: "insert", enabled: true, config: { text: "x" } }] });
+    fireEvent.click(await openSettings());
+    vi.spyOn(Storage.prototype, "key").mockImplementation(() => { throw new Error("Storage unavailable"); });
+    window.localStorage.setItem("renamer-color-mode", "dark");
+    fireEvent.click(within(screen.getByRole("dialog", { name: "确认恢复出厂设置？" }))
+      .getByRole("button", { name: "恢复出厂设置" }));
+    expect(await screen.findByText(/恢复已完成，但旧浏览器设置未能清理/)).toBeInTheDocument();
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "确认恢复出厂设置？" })).not.toBeInTheDocument());
+    expect(screen.getByText(/恢复已完成，但旧浏览器设置未能清理/)).toBeInTheDocument();
+    expect(screen.queryByText("已恢复出厂设置。")).not.toBeInTheDocument();
+    expect(useRenameStore.getState().rules).toEqual([]);
+    expect(serverSettings.preferences.theme).toBe("system");
+  });
+
+  it("keeps current settings and rules when reset fails", async () => {
+    serverSettings.preferences.theme = "dark";
+    useRenameStore.setState({ rules: [{ type: "insert", enabled: true, config: { text: "keep" } }] });
+    vi.mocked(api.factoryResetAppSettings).mockRejectedValueOnce(new Error("Disk unavailable"));
+    fireEvent.click(await openSettings());
+    fireEvent.click(within(screen.getByRole("dialog", { name: "确认恢复出厂设置？" }))
+      .getByRole("button", { name: "恢复出厂设置" }));
+    expect(await screen.findByText(/恢复出厂设置失败：Disk unavailable/)).toBeInTheDocument();
+    expect(useRenameStore.getState().rules).toHaveLength(1);
+    expect(serverSettings.preferences.theme).toBe("dark");
+    expect(screen.getByRole("dialog", { name: "确认恢复出厂设置？" })).toBeInTheDocument();
   });
 });
 
@@ -408,6 +517,7 @@ describe("task refresh and batch hint interaction", () => {
   });
 
   it("opens the hint only on preview click and cancels without creating a task", async () => {
+    window.localStorage.setItem("renamer-hide-batch-limit-hint", "true");
     await setup(1001);
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     expect(screen.queryByText(/超过\s*1000\s*项的上限/)).not.toBeInTheDocument();
@@ -427,7 +537,8 @@ describe("task refresh and batch hint interaction", () => {
     fireEvent.click(screen.getByRole("button", { name: "刷新预览" }));
     const dialog = screen.getByRole("dialog");
     fireEvent.click(within(dialog).getByRole("checkbox", { name: "下次不再提示" }));
-    expect(window.localStorage.getItem("renamer-hide-batch-limit-hint")).toBe("true");
+    await waitFor(() => expect(serverSettings.preferences.hide_batch_limit_hint).toBe(true));
+    expect(window.localStorage.getItem("renamer-hide-batch-limit-hint")).toBeNull();
     fireEvent.click(within(dialog).getByRole("button", { name: "继续预览" }));
     await waitFor(() => expect(api.createStoragePreview).toHaveBeenCalledWith("default-local", { kind: "root" }, items.slice(0, 1000).map((file) => file.id), []));
     await waitFor(() => expect(screen.getByRole("button", { name: "开始修改" })).toBeEnabled());
