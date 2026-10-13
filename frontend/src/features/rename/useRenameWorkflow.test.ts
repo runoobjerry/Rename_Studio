@@ -1,7 +1,16 @@
 import { act, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
+import * as api from "../../api/client";
 import { useRenameStore } from "../../stores/useRenameStore";
-import { api, client, listing, preview, serverSettings, setupWorkspace } from "../../test/workspaceHarness";
+import { client, listing, preview, serverSettings, setupWorkspace } from "../../test/workspaceHarness";
+
+// 在测试入口注册，确保 API 导入和共享 Hook 使用同一份 mock。
+vi.mock("../../api/client", async (importOriginal) => ({
+  ...await importOriginal<typeof import("../../api/client")>(),
+  fetchStorages: vi.fn(), fetchStorageAuthStatus: vi.fn(), fetchStorageFiles: vi.fn(),
+  pickStorageFolder: vi.fn(), fetchAppSettings: vi.fn(), patchAppSettings: vi.fn(),
+  createStoragePreview: vi.fn(), releaseStoragePreview: vi.fn(), executePreview: vi.fn(),
+}));
 
 describe("rename workflow", () => {
   it.each(["toggle", "select-all", "clear", "invert"] as const)("invalidates an old preview after %s selection", async (operation) => {

@@ -8,19 +8,11 @@ import { useRenameWorkflow } from "../features/rename/useRenameWorkflow";
 import { useWorkspaceStorage } from "../workspace/hooks/useWorkspaceStorage";
 import type { AppSettings, AuthorizationStatus, DirectoryListing } from "../types";
 
-vi.mock("../api/client", async (importOriginal) => ({
-  ...await importOriginal<typeof import("../api/client")>(),
-  fetchStorages: vi.fn(), fetchStorageAuthStatus: vi.fn(), fetchStorageFiles: vi.fn(),
-  pickStorageFolder: vi.fn(), fetchAppSettings: vi.fn(), patchAppSettings: vi.fn(),
-  createStoragePreview: vi.fn(), releaseStoragePreview: vi.fn(), executePreview: vi.fn(),
-}));
 vi.mock("../components/NotificationProvider", async (importOriginal) => ({
   ...await importOriginal<typeof import("../components/NotificationProvider")>(),
   useNotification: () => notify,
 }));
 
-// 测试与 Hook 共享注册 mock 后的模块，避免测试提前持有原始 API。
-export { api };
 export const notify = vi.fn();
 export let client: QueryClient;
 export let serverSettings: AppSettings;
