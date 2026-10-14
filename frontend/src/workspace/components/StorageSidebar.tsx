@@ -2,7 +2,8 @@ import AutoFixHighRoundedIcon from "@mui/icons-material/AutoFixHighRounded";
 import CloudQueueRoundedIcon from "@mui/icons-material/CloudQueueRounded";
 import ComputerRoundedIcon from "@mui/icons-material/ComputerRounded";
 import SettingsRoundedIcon from "@mui/icons-material/SettingsRounded";
-import { Box, List, ListItemButton, ListItemIcon, ListItemText, Skeleton, Stack, Typography } from "@mui/material";
+import { Box, List, ListItemButton, ListItemIcon, ListItemText, Skeleton, Stack, Tooltip, Typography } from "@mui/material";
+import { useLayoutEffect, useRef, useState } from "react";
 import type { StorageInfo } from "../../types";
 
 interface StorageSidebarProps {
@@ -13,6 +14,29 @@ interface StorageSidebarProps {
   storageId: string;
   onSelectStorage: (storageId: string) => void;
   onOpenSettings: () => void;
+}
+
+function StorageName({ name }: { name: string }) {
+  const nameRef = useRef<HTMLSpanElement>(null);
+  const [isOverflowing, setIsOverflowing] = useState(false);
+
+  useLayoutEffect(() => {
+    const element = nameRef.current!;
+    const updateOverflow = () => setIsOverflowing(element.scrollWidth > element.clientWidth);
+    updateOverflow();
+    const observer = new ResizeObserver(updateOverflow);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [name]);
+
+  return (
+    <Tooltip title={isOverflowing ? name : ""}>
+      <ListItemText
+        sx={{ minWidth: 0 }}
+        primary={<Typography ref={nameRef} component="span" noWrap sx={{ display: "block" }}>{name}</Typography>}
+      />
+    </Tooltip>
+  );
 }
 
 // Drawer 的响应式容器与开关由父组件负责。
@@ -59,7 +83,7 @@ export function StorageSidebar({ storages, isLoading, disabled, view, storageId,
             <ListItemIcon>
               {provider.provider_type === "onedrive" ? <CloudQueueRoundedIcon /> : <ComputerRoundedIcon />}
             </ListItemIcon>
-            <ListItemText primary={provider.name} />
+            <StorageName name={provider.name} />
           </ListItemButton>
         ))}
       </List>
