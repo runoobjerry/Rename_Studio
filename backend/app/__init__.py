@@ -1,1 +1,1 @@
-"""OneDriver Renamer backend package."""
+"""Rename_Studio backend package."""

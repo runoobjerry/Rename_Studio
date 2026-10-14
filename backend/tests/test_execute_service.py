@@ -158,12 +158,12 @@ async def test_executes_swap_with_temporary_names(tmp_path: Path) -> None:
     assert (tmp_path / "a.txt").read_text(encoding="utf-8") == "B"
     assert (tmp_path / "b.txt").read_text(encoding="utf-8") == "A"
     temporary_count = sum(
-        name.startswith("onedriver-renamer-") for name in provider.rename_targets
+        name.startswith("Rename_Studio-") for name in provider.rename_targets
     )
     assert temporary_count == 2
     progress = execute_service.progress(preview.preview_id)
     assert progress.total == progress.processed == 2
-    assert not list(tmp_path.glob("onedriver-renamer-*"))
+    assert not list(tmp_path.glob("Rename_Studio-*"))
 
 
 @pytest.mark.asyncio

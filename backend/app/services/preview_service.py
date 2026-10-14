@@ -15,7 +15,7 @@ from app.services.preview_store import PreviewStore
 from app.services.rename_engine import RenameEngine
 
 
-logger = logging.getLogger("onedriver_renamer.preview")
+logger = logging.getLogger("rename_studio.preview")
 
 
 @contextmanager

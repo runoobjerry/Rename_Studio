@@ -3,7 +3,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "onedriver-renamer-backend"
+name = "rename-studio-backend"
 version = "0.1.0"
 description = "Local-first rule-driven batch rename API"
 requires-python = ">=3.12"

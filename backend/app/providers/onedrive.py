@@ -26,7 +26,7 @@ from app.schemas.storage import IdLocation, PathLocation, RootLocation, StorageL
 from app.services.connection_auth import ConnectionAuth
 
 
-logger = logging.getLogger("onedriver_renamer.onedrive_performance")
+logger = logging.getLogger("rename_studio.onedrive_performance")
 
 
 GRAPH_ROOT = "https://graph.microsoft.com/v1.0"

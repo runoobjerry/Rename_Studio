@@ -20,7 +20,7 @@ from app.core.errors import AppError
 from app.core.log_context import request_id_context
 
 
-logger = logging.getLogger("onedriver_renamer.api")
+logger = logging.getLogger("rename_studio.api")
 
 
 def create_app() -> FastAPI:

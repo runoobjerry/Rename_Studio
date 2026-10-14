@@ -59,7 +59,7 @@ export function StorageSidebar({ storages, isLoading, disabled, view, storageId,
         <Box className="brand-mark"><AutoFixHighRoundedIcon fontSize="small" /></Box>
         <Box>
           <Typography variant="subtitle1" sx={{ fontWeight: 800, lineHeight: 1.1 }}>
-            Rename Studio
+            Rename_Studio
           </Typography>
           <Typography variant="caption" color="textPrimary">批量重命名工作台</Typography>
         </Box>

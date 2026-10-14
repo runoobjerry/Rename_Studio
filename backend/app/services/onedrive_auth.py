@@ -21,7 +21,7 @@ GRAPH_ME_URL = (
     "?$select=id,displayName,mail,userPrincipalName"
 )
 SCOPES = "offline_access Files.ReadWrite User.Read"
-logger = logging.getLogger("onedriver_renamer.onedrive_auth")
+logger = logging.getLogger("rename_studio.onedrive_auth")
 
 
 @dataclass(slots=True)

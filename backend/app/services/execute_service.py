@@ -22,7 +22,7 @@ from app.services.preview_service import PreviewService
 from app.services.preview_store import PreviewSnapshot, PreviewStore
 
 
-logger = logging.getLogger("onedriver_renamer.rename")
+logger = logging.getLogger("rename_studio.rename")
 
 
 @dataclass(slots=True)
@@ -417,7 +417,7 @@ class ExecuteService:
         for item in items:
             # 按需生成较短候选，首选名称可用时不生成后续 UUID。
             candidates = chain(
-                (f"onedriver-renamer-{uuid4().hex}",),
+                (f"Rename_Studio-{uuid4().hex}",),
                 (uuid4().hex[:width] for width in (32, 16, 8, 4, 2, 1) for _ in range(8)),
             )
             for candidate in candidates:

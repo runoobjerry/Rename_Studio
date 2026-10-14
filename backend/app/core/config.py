@@ -23,7 +23,7 @@ def default_documents_directory() -> Path:
 
 
 class Settings(BaseSettings):
-    app_name: str = "OneDriver Renamer"
+    app_name: str = "Rename_Studio"
     local_storage_root: Path = Field(default_factory=lambda: default_documents_directory())
     frontend_origin: str = "http://localhost:5173"
     storage_state_file: Path = _BACKEND_ROOT / "settings.json"
