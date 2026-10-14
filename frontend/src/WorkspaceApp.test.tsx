@@ -231,10 +231,10 @@ describe("factory reset", () => {
 
   it("cancels confirmation without calling the reset API", async () => {
     fireEvent.click(await openSettings());
-    const dialog = screen.getByRole("dialog", { name: "确认恢复出厂设置？" });
+    const dialog = screen.getByRole("dialog", { name: "确认重置？" });
     fireEvent.click(within(dialog).getByRole("button", { name: "取消" }));
     expect(api.factoryResetAppSettings).not.toHaveBeenCalled();
-    await waitFor(() => expect(screen.queryByRole("dialog", { name: "确认恢复出厂设置？" })).not.toBeInTheDocument());
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "确认重置？" })).not.toBeInTheDocument());
   });
 
   it("clears in-memory rules and restores preferences after one successful reset", async () => {
@@ -243,14 +243,14 @@ describe("factory reset", () => {
     seedCloud("user-onedrive", "account-a", { kind: "id", value: "old-folder" });
     useRenameStore.setState({ rules: [{ type: "insert", enabled: true, config: { text: "x" } }], selectedIds: ["old"], task: null });
     fireEvent.click(await openSettings());
-    fireEvent.click(within(screen.getByRole("dialog", { name: "确认恢复出厂设置？" }))
+    fireEvent.click(within(screen.getByRole("dialog", { name: "确认重置？" }))
       .getByRole("button", { name: "恢复出厂设置" }));
     await waitFor(() => expect(api.factoryResetAppSettings).toHaveBeenCalledTimes(1));
     await waitFor(() => expect(useRenameStore.getState().rules).toEqual([]));
     expect(useRenameStore.getState().selectedIds).toEqual([]);
     expect(serverSettings.preferences).toEqual({ theme: "system", hide_batch_limit_hint: false, cloud_default_locations: {} });
-    expect(await screen.findByText("已恢复出厂设置。")).toBeInTheDocument();
-    await waitFor(() => expect(screen.queryByRole("dialog", { name: "确认恢复出厂设置？" })).not.toBeInTheDocument());
+    expect(await screen.findByText("已重置应用")).toBeInTheDocument();
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "确认重置？" })).not.toBeInTheDocument());
     await waitFor(() => expect(screen.getByRole("combobox", { name: "外观主题" })).toHaveTextContent("跟随系统"));
   });
 
@@ -259,12 +259,12 @@ describe("factory reset", () => {
     useRenameStore.setState({ rules: [{ type: "insert", enabled: true, config: { text: "keep" } }] });
     vi.mocked(api.factoryResetAppSettings).mockRejectedValueOnce(new Error("Disk unavailable"));
     fireEvent.click(await openSettings());
-    fireEvent.click(within(screen.getByRole("dialog", { name: "确认恢复出厂设置？" }))
+    fireEvent.click(within(screen.getByRole("dialog", { name: "确认重置？" }))
       .getByRole("button", { name: "恢复出厂设置" }));
     expect(await screen.findByText(/恢复出厂设置失败：Disk unavailable/)).toBeInTheDocument();
     expect(useRenameStore.getState().rules).toHaveLength(1);
     expect(serverSettings.preferences.theme).toBe("dark");
-    expect(screen.getByRole("dialog", { name: "确认恢复出厂设置？" })).toBeInTheDocument();
+    expect(screen.getByRole("dialog", { name: "确认重置？" })).toBeInTheDocument();
   });
 });
 

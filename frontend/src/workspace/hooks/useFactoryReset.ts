@@ -51,7 +51,7 @@ export function useFactoryReset({
       setResetEpoch((current) => current + 1);
       queryClient.removeQueries({ predicate: (query) => query.queryKey[0] !== "app-settings" && query.queryKey[0] !== "rules" });
       void queryClient.invalidateQueries({ queryKey: ["storages"] });
-      notify("已恢复出厂设置。", "success");
+      notify("已重置应用", "success");
       return true;
     } finally {
       setResetPending(false);

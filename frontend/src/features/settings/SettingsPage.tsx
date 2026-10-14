@@ -25,7 +25,7 @@ export function SettingsPage({ preference, onPreferenceChange, onBack, executing
   return (
     <Box component="section" aria-label="设置" sx={{ width: "100%", maxWidth: 900, mx: "auto", py: 1 }}>
       <Button startIcon={<ArrowBackRoundedIcon />} onClick={onBack}
-        sx={{ mb: 2, px: 0, color: "text.secondary", "& .MuiButton-startIcon": { ml: 0 } }}>返回工作台</Button>
+        sx={{ mb: 2, color: "text.secondary", "& .MuiButton-startIcon": { ml: 0 } }}>返回主页</Button>
       <Stack spacing={3}>
         <Box component="section" aria-labelledby="general-settings-title">
           <Typography id="general-settings-title" component="h2" variant="subtitle1" sx={{ mb: 1.25, fontWeight: 600 }}>常规</Typography>
@@ -56,20 +56,20 @@ export function SettingsPage({ preference, onPreferenceChange, onBack, executing
             <Button fullWidth color="inherit" disabled={Boolean(resetDisabledReason) || resetPending}
               onClick={() => setConfirmOpen(true)} endIcon={<KeyboardArrowRightIcon />}
               sx={{ typography: "body2", fontWeight: 500, justifyContent: "space-between", textAlign: "left", px: { xs: 2, sm: 2.5 }, py: 2 }}>
-              将程序还原为原始默认状态
+              将应用还原为原始默认状态
             </Button>
           </Card>
           {resetDisabledReason && <Typography variant="caption" sx={{ color: "text.secondary", mt: 0.75, display: "block" }}>{resetDisabledReason}</Typography>}
         </Box>
       </Stack>
       <Dialog open={confirmOpen} onClose={() => { if (!resetPending) setConfirmOpen(false); }} aria-labelledby="factory-reset-title">
-        <DialogTitle id="factory-reset-title">确认恢复出厂设置？</DialogTitle>
-        <DialogContent><DialogContentText variant="body2">
-          将删除已保存的连接设置和本地授权凭证，恢复主题、提示及默认云目录偏好，并清空当前规则链。不会删除真实文件，也不会撤销已执行的重命名。
+        <DialogTitle id="factory-reset-title">确认重置？</DialogTitle>
+        <DialogContent><DialogContentText variant="body2" sx={{ whiteSpace: 'pre-line' }} >
+          {`此操作将会：\n\n- 删除已保存的连接设置和本地授权凭证\n- 恢复主题、提示及默认云目录偏好\n- 清空当前规则链\n\n不会删除真实文件，也不会撤销已执行的重命名。`}
         </DialogContentText></DialogContent>
         <DialogActions sx={{ "& .MuiButton-root": { fontSize: "body2.fontSize" } }}>
           <Button disabled={resetPending} onClick={() => setConfirmOpen(false)}>取消</Button>
-          <Button color="error" disabled={resetPending || Boolean(resetDisabledReason)} onClick={confirmReset}>恢复出厂设置</Button>
+          <Button color="error" disabled={resetPending || Boolean(resetDisabledReason)} onClick={confirmReset}>重置</Button>
         </DialogActions>
       </Dialog>
     </Box>

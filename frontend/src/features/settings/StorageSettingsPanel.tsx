@@ -132,8 +132,8 @@ function ConnectionRow({ storage, executing, providerName }: {
   const statusErrorMessage = authError ?? (status.error ? errorMessage(status.error) : "");
   const requestErrorMessage = authError ?? (requestError ? errorMessage(requestError) : "");
   const save = () => {
-    if (Array.from(name.trim()).length > 10) {
-      notify("连接名称最多为 10 个字符。", "error");
+    if (Array.from(name.trim()).length > 20) {
+      notify("连接名称最多为 20 个字符。", "error");
       return;
     }
     operation.mutate({
@@ -246,7 +246,7 @@ function ConnectionRow({ storage, executing, providerName }: {
             <Stack direction="row" spacing={1} sx={{ alignItems: "flex-end" }}>
               <TextField variant="standard" label="本地根目录" size="small" value={root} disabled={busy}
                 onChange={(event) => setRoot(event.target.value)} sx={{ flex: 1, minWidth: 0 }} />
-              <Tooltip title="浏览本地目录（在后端电脑打开，选择后立即保存）"
+              <Tooltip title="浏览本地目录"
                 slotProps={{ tooltip: { sx: { fontSize: "caption.fontSize" } } }}>
                 <span>
                   <PanelIconButton aria-label="浏览本地目录" disabled={busy} onClick={() => pick.mutate()}>
@@ -369,8 +369,8 @@ export function StorageSettingsPanel({ executingStorageId }: { executingStorageI
     pickDraft.reset();
   };
   const saveConnection = () => {
-    if (Array.from(name.trim()).length > 10) {
-      notify("连接名称最多为 10 个字符。", "error");
+    if (Array.from(name.trim()).length > 20) {
+      notify("连接名称最多为 20 个字符。", "error");
       return;
     }
     create.mutate();
