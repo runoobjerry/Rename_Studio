@@ -226,7 +226,7 @@ describe("factory reset", () => {
   const openSettings = async () => {
     render(<QueryClientProvider client={client}><WorkspaceApp /></QueryClientProvider>);
     fireEvent.click(await screen.findByRole("button", { name: "设置" }));
-    return screen.findByRole("button", { name: "将程序还原为原始默认状态" });
+    return screen.findByRole("button", { name: "将应用还原为原始默认状态" });
   };
 
   it("cancels confirmation without calling the reset API", async () => {
@@ -244,7 +244,7 @@ describe("factory reset", () => {
     useRenameStore.setState({ rules: [{ type: "insert", enabled: true, config: { text: "x" } }], selectedIds: ["old"], task: null });
     fireEvent.click(await openSettings());
     fireEvent.click(within(screen.getByRole("dialog", { name: "确认重置？" }))
-      .getByRole("button", { name: "恢复出厂设置" }));
+      .getByRole("button", { name: "重置" }));
     await waitFor(() => expect(api.factoryResetAppSettings).toHaveBeenCalledTimes(1));
     await waitFor(() => expect(useRenameStore.getState().rules).toEqual([]));
     expect(useRenameStore.getState().selectedIds).toEqual([]);
@@ -260,7 +260,7 @@ describe("factory reset", () => {
     vi.mocked(api.factoryResetAppSettings).mockRejectedValueOnce(new Error("Disk unavailable"));
     fireEvent.click(await openSettings());
     fireEvent.click(within(screen.getByRole("dialog", { name: "确认重置？" }))
-      .getByRole("button", { name: "恢复出厂设置" }));
+      .getByRole("button", { name: "重置" }));
     expect(await screen.findByText(/恢复出厂设置失败：Disk unavailable/)).toBeInTheDocument();
     expect(useRenameStore.getState().rules).toHaveLength(1);
     expect(serverSettings.preferences.theme).toBe("dark");
