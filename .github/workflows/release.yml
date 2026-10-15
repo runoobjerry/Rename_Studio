@@ -1,4 +1,5 @@
 name: Release ZIPs
+run-name: ${{ github.ref_name }}
 
 on:
   push:
@@ -21,7 +22,7 @@ jobs:
       tag: ${{ steps.version.outputs.tag }}
       prerelease: ${{ steps.version.outputs.prerelease }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
@@ -47,7 +48,7 @@ jobs:
           with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
               output.write(f"tag={tag}\nprerelease={'true' if '-' in version else 'false'}\n")
           PY
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: "22"
           cache: npm
@@ -58,7 +59,7 @@ jobs:
       - name: Frontend type check and build
         working-directory: frontend
         run: npm run build
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: release-frontend
           path: frontend/dist/
@@ -89,12 +90,12 @@ jobs:
       run:
         shell: bash
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
           architecture: ${{ matrix.architecture }}
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v7
         with:
           name: release-frontend
           path: frontend/dist/
@@ -121,7 +122,7 @@ jobs:
           PY
       - name: Check extracted release service
         run: '"$RUNTIME_PYTHON" scripts/check_release.py "dist/releases/Rename_Studio-$RELEASE_TAG-$PACKAGE_PLATFORM.zip"'
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: release-package-${{ matrix.platform }}
           path: dist/releases/*
@@ -138,7 +139,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v7
         with:
           pattern: release-package-*
           path: artifacts/
