@@ -27,7 +27,8 @@ def check_release(archive: Path) -> None:
             return response.read()
 
     with tempfile.TemporaryDirectory(prefix="rename-studio-check-") as temporary:
-        scratch = Path(temporary)
+        # Compare resolved paths on both sides (symlinks / Windows short names).
+        scratch = Path(temporary).resolve()
         with zipfile.ZipFile(archive) as bundle:
             for name in bundle.namelist():
                 target = (scratch / name).resolve()
