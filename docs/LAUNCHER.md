@@ -1,6 +1,6 @@
-# Windows PS1 启动与人工验收
+# Windows / macOS 启动与人工验收
 
-## 用户启动
+## Windows 用户启动
 
 要求 Windows、交互式 PowerShell 5.1+、已安装的 Python 3.12+。用户不需要 Node.js；首次安装运行依赖需要联网。项目目录必须可写。
 
@@ -27,6 +27,26 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\Start.ps1
 
 保持启动窗口打开。按 **Q 或 Ctrl+C** 安全退出：停止接受新请求，等待当前请求结束，再清理 Provider 客户端。关闭浏览器不会停止服务。服务进程持有 PowerShell 进程句柄，在该进程结束时也会尝试正常退出；不要将强制终止后端、断电或反复强制关闭窗口视为安全退出。若关闭的是脚本而宿主 PowerShell 进程仍在，不能依赖进程监测代替 Q 退出。
 
+## macOS 用户启动
+
+要求 macOS、交互式终端和预先安装的 Python 3.12+。在终端执行以下命令，不要求给脚本添加执行权限；路径含空格或中文时保留引号：
+
+```bash
+bash "/项目完整路径/Start.sh"
+bash "/项目完整路径/Start.sh" --python "/Python完整路径/python3"
+bash "/项目完整路径/Start.sh" --no-browser
+```
+
+脚本兼容系统自带 Bash 3.2，从 PATH、常见 Homebrew 位置和 python.org Framework 位置探测 Python；不自动安装 Python、Homebrew 或开发工具。自动探测跳过 `/usr/bin/python3` 系统入口，避免触发开发工具安装；非标准安装位置可用 `--python` 指定。Python 检测阶段的错误显示在终端；选定 Python 后的启动和安装日志写入 `.runtime/logs`。
+
+`Start.sh` 默认由 macOS 用户使用，只负责 Python、交互式终端检查和参数传递，不校验操作系统；随后以 Python 标准库控制器 `backend/scripts/start_macos.py` 管理虚拟环境、文件锁、日志及子进程。不依赖外部 `flock` 命令。端口检查使用 macOS 自带的 `lsof`，仅查看、不关闭占用进程。默认地址、发布模式和 OAuth 回调与 Windows 一致。
+
+保持终端打开，输入 **Q 后按 Enter**，或按 **Ctrl+C** 退出；创建环境和安装期间也可取消。退出时通过停止文件通知服务，等待当前请求完成，不超时强杀服务。控制器处理 SIGTERM/SIGHUP；若控制器直接消失，服务也会通过父子进程关系变化尝试正常停止。强杀后端或断电仍可能留下未知写入结果，必须核对真实文件，不要盲目重试。
+
+依赖和成功指纹仍保存在 `.runtime`，虚拟环境 Python 位于 `.runtime/venv/bin/python`。不要跨系统或跨 CPU 架构复制虚拟环境；在目标机器重新创建。项目移动、Python 变化或创建环境中断后，退出并移走 `.runtime/venv` 再启动。不要删除 `backend/settings.json`；跨系统迁移的旧 Local 连接路径需按实际情况重新配置。
+
+macOS 的启动与固定依赖安装尚未实机验证，不能将语法检查视为平台支持验收。若 Python 发行版没有 Tk，现有系统目录选择器不可用，可使用已有的绝对路径输入功能；这不是启动脚本自动安装的系统组件。
+
 ## 环境、日志与更新
 
 - `.runtime/venv` 是发布运行环境，独立于开发用 `backend/.venv`。脚本直接调用其中的 Python，不激活环境，不安装开发依赖。
@@ -41,7 +61,7 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\Start.ps1
 
 开发者执行现有前端构建命令，把完整 `frontend/dist` 放入发布包。脚本不执行 npm、构建或下载前端。
 
-发布包至少包含 `Start.ps1`、`backend/app`、`backend/pyproject.toml`、`backend/requirements-runtime.txt` 和完整 `frontend/dist`。不要打包开发虚拟环境、`.runtime`、`node_modules`、用户 `.env` 或包含凭据的 `backend/settings.json`。
+Windows 发布包至少包含 `Start.ps1`、`backend/app`、`backend/pyproject.toml`、`backend/requirements-runtime.txt` 和完整 `frontend/dist`；macOS 包使用 `Start.sh`，并额外包含 `backend/scripts/start_macos.py`。通用包可同时包含两个入口。Shell 文件必须保留 LF 换行（仓库 `.gitattributes` 已约束）。不要打包开发虚拟环境、`.runtime`、`node_modules`、用户 `.env` 或包含凭据的 `backend/settings.json`。
 
 发布入口 `app.launcher` 使用单个 Uvicorn worker，不启用 reload。发布应用保留现有根路径 API 和 OAuth 回调，并增加 `/api` 挂载，静态页面在 `/`；`/api` 下不存在的路径不会返回前端 HTML。启动时检查 `index.html` 直接引用的本地资源；动态加载的页面资源仍需通过完整 dist 发布及 UI 验收确认。前端当前没有 URL 路由，静态服务不增加 SPA 任意路径回退。
 
@@ -73,3 +93,15 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\Start.ps1
 | 浏览器与日志 | `-NoBrowser` 不自动打开；默认浏览器启动失败仍保留运行服务和可复制地址。错误窗口可阅读，stdout/stderr 日志可定位阶段，多次启动会清理旧日志。 |
 | 更新保留数据 | 退出后替换完整前端及后端程序，保留状态文件；连接、偏好和授权仍存在，依赖是否重装符合清单变化情况。 |
 | 开发回归 | 按原方式启动 Vite 和开发后端，验证代理/热更新；由用户运行后端 pytest、前端 `npm run check`，确认发布代码不要求开发模式存在 dist。 |
+
+macOS 另需执行下列验收，以上通用业务、依赖、发布包、端口、更新与开发回归场景同样适用：
+
+| 场景 | 操作与预期 |
+| --- | --- |
+| macOS 平台 | 在实际支持的 Apple Silicon / Intel Mac 和 Python 版本上全新安装，确认固定依赖可安装、页面/API 可用；不复用 Windows 或其他架构的虚拟环境。 |
+| Python 探测 | 验证 PATH、常见安装位置、`--python` 含空格路径、只有旧版本/系统入口/无 Python；正确提示，不触发系统组件安装。 |
+| Shell 与路径 | 使用系统 Bash，从其他工作目录执行；测试中文和空格路径、默认无参数、`--help`、`--no-browser`、未知参数和缺少 `--python` 参数。 |
+| 离线与安装恢复 | 首次安装后断网重启跳过 pip；安装失败后恢复网络可重试。安装中按 Ctrl+C 或输入 Q 回车，检查安装进程停止、成功指纹未写入，按提示重建或重试。 |
+| 并发与锁 | 安装中和运行中多次启动只有一个流程，运行中第二次只打开已有页面；退出后保留的 lock 文件不会阻止重启。 |
+| 正常与异常退出 | Q 回车/Ctrl+C 释放端口；执行中退出等待请求完成。关闭终端/终止控制器时服务尝试退出；结束服务进程时保留错误日志。其他 Python 进程不受影响。 |
+| Windows 回归 | 共用 `app.launcher` 的父进程监测已按平台拆分；复验 Start.ps1 就绪探测、正常/执行中退出和宿主进程结束，不运行 macOS 控制器。 |

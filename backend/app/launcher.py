@@ -1,10 +1,9 @@
-"""Local release runner with graceful shutdown controlled by the owning PS1."""
+"""Local release runner with graceful shutdown controlled by its owning launcher."""
 
 import argparse
 import asyncio
-from contextlib import suppress
-import ctypes
-from ctypes import wintypes
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager, suppress
 from html.parser import HTMLParser
 import os
 from pathlib import Path
@@ -36,7 +35,16 @@ def check_build(dist: Path) -> None:
             raise RuntimeError(f"Frontend build is incomplete: {reference}")
 
 
-async def serve(stop_file: Path, parent_pid: int, instance_id: str) -> None:
+@contextmanager
+def watch_parent(parent_pid: int) -> Iterator[Callable[[], bool]]:
+    if os.name != "nt":
+        # A child is reparented when its owner dies; no PID lookup/reuse is involved.
+        yield lambda: os.getppid() != parent_pid
+        return
+
+    import ctypes
+    from ctypes import wintypes
+
     # Keep a handle to the actual owner, so PID reuse cannot confuse shutdown.
     kernel = ctypes.WinDLL("kernel32", use_last_error=True)
     kernel.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
@@ -50,6 +58,19 @@ async def serve(stop_file: Path, parent_pid: int, instance_id: str) -> None:
         raise ctypes.WinError(ctypes.get_last_error())
 
     try:
+        def parent_exited() -> bool:
+            owner_status = kernel.WaitForSingleObject(parent, 0)
+            if owner_status == 0xFFFFFFFF:
+                raise ctypes.WinError(ctypes.get_last_error())
+            return owner_status == 0
+
+        yield parent_exited
+    finally:
+        kernel.CloseHandle(parent)
+
+
+async def serve(stop_file: Path, parent_pid: int, instance_id: str) -> None:
+    with watch_parent(parent_pid) as parent_exited:
         # Override only this child process; development .env and the PS session stay intact.
         os.environ["FRONTEND_ORIGIN"] = "http://localhost:8000"
         os.environ["STORAGE_REDIRECT_URI"] = "http://localhost:8000/auth/storage/callback"
@@ -67,10 +88,7 @@ async def serve(stop_file: Path, parent_pid: int, instance_id: str) -> None:
 
         async def watch_owner() -> None:
             while True:
-                owner_status = kernel.WaitForSingleObject(parent, 0)
-                if owner_status == 0xFFFFFFFF:
-                    raise ctypes.WinError(ctypes.get_last_error())
-                if stop_file.exists() or owner_status == 0:
+                if stop_file.exists() or parent_exited():
                     server.should_exit = True
                     return
                 await asyncio.sleep(0.5)
@@ -90,8 +108,6 @@ async def serve(stop_file: Path, parent_pid: int, instance_id: str) -> None:
                 watcher.cancel()
                 with suppress(asyncio.CancelledError):
                     await watcher
-    finally:
-        kernel.CloseHandle(parent)
 
 
 def main() -> None:
