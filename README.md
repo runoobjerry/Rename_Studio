@@ -46,7 +46,15 @@ frontend/
 
 ## 本地运行
 
-要求：Python 3.12+、Node.js 20+。
+### 用户使用发布包
+
+Windows 用户提前安装 Python 3.12+，在包含完整 `frontend/dist` 的发布包根目录运行 `./Start.ps1`，也可右键选择“使用 PowerShell 运行”。脚本创建独立运行环境、按需安装依赖，启动服务后打开 `http://localhost:8000`；用户不需要 Node.js。保持启动窗口打开，按 Q 或 Ctrl+C 安全退出。
+
+首次安装需要联网。启动日志保存在 `.runtime/logs`；更新程序时保留 `backend/settings.json`。参数、环境重建、发布包准备及人工测试见 [PS1 启动与验收](docs/LAUNCHER.md)。
+
+### 开发环境
+
+要求：Python 3.12+、Node.js 20+。以下开发启动方式保持不变。
 
 ### 1. 配置本地目录
 

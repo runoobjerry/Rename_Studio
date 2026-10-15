@@ -94,7 +94,7 @@ def create_app() -> FastAPI:
         request: Request, exc: RequestValidationError
     ) -> JSONResponse:
         errors = exc.errors()
-        if request.url.path == "/app-settings":
+        if request.scope["route"].path == "/app-settings":
             errors = [{key: value for key, value in error.items() if key not in ("input", "ctx")}
                       for error in errors]
         return JSONResponse(
