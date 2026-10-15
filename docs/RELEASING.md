@@ -102,7 +102,7 @@ python scripts/build_release.py v1.0.0-alpha2 --platform macos
 
 两个命令可在同一系统组装对应文件集合，不能据此宣称另一平台运行通过。输出默认位于被 Git 忽略的 `dist/releases/`；可用 `--output` 指定另一输出目录。已有同名 ZIP 或校验文件时拒绝覆盖，应更换空输出目录或由维护者处理旧输出后重建。
 
-脚本从空临时目录按白名单组包，只包括后端 Python 源码、元数据与运行依赖清单、完整前端产物、平台入口、面向用户的 README、LICENSE 和启动文档。macOS 包额外包含启动控制器；不复制整个 backend，不依赖 `.gitignore` 排除用户状态。发现本地数据混入、版本不一致或 Shell 换行错误时失败。
+脚本从空临时目录按白名单组包，只包括后端 Python 源码、元数据与运行依赖清单、完整前端产物、平台入口、面向用户的 README 和 LICENSE。macOS 包额外包含启动控制器；发布包 README 链接到对应版本的在线启动说明。不复制整个 backend，不依赖 `.gitignore` 排除用户状态。发现本地数据混入、版本不一致或 Shell 换行错误时失败。
 
 ZIP 内只有一个 `Rename_Studio/` 根目录。每个平台另生成 `.zip.sha256`；Actions 汇总并复核后生成面向用户的 `SHA256SUMS.txt`。
 

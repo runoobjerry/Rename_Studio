@@ -36,7 +36,7 @@ bash "/完整路径/Rename_Studio/Start.sh"
 
 OneDrive 需自行注册支持个人 Microsoft 账户的公共客户端应用，回调为 `http://localhost:8000/auth/storage/callback`，委托权限为 `Files.ReadWrite`、`User.Read`。无需客户端密钥；在连接设置中填写 App ID 后网页登录。完整步骤见对应版本的[项目 README](https://github.com/runoobjerry/Rename_Studio/tree/{{TAG}}#readme)。
 
-更多参数、故障处理及验收事项见[启动说明](docs/LAUNCHER.md)。日志位于 `.runtime/logs`。
+更多参数、故障处理及验收事项见对应版本的[在线启动说明](https://github.com/runoobjerry/Rename_Studio/blob/{{TAG}}/docs/LAUNCHER.md)。日志位于 `.runtime/logs`。
 
 ## 许可与源码
 

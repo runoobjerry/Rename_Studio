@@ -14,8 +14,6 @@ def package_files(platform: str) -> dict[str, Path]:
     files = {
         "README.md": ROOT / "docs/RELEASE_README.md",
         "LICENSE": ROOT / "LICENSE",
-        "docs/LAUNCHER.md": ROOT / "docs/LAUNCHER.md",
-        "docs/RELEASING.md": ROOT / "docs/RELEASING.md",
         "backend/pyproject.toml": ROOT / "backend/pyproject.toml",
         "backend/requirements-runtime.txt": ROOT / "backend/requirements-runtime.txt",
     }
