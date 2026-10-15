@@ -2,7 +2,7 @@ import AutoFixHighRoundedIcon from "@mui/icons-material/AutoFixHighRounded";
 import CloudQueueRoundedIcon from "@mui/icons-material/CloudQueueRounded";
 import ComputerRoundedIcon from "@mui/icons-material/ComputerRounded";
 import SettingsRoundedIcon from "@mui/icons-material/SettingsRounded";
-import { Box, List, ListItemButton, ListItemIcon, ListItemText, Skeleton, Stack, Tooltip, Typography } from "@mui/material";
+import { Box, Divider, List, ListItemButton, ListItemIcon, ListItemText, Skeleton, Stack, Tooltip, Typography } from "@mui/material";
 import { useLayoutEffect, useRef, useState } from "react";
 import type { StorageInfo } from "../../types";
 
@@ -59,7 +59,7 @@ export function StorageSidebar({ storages, isLoading, disabled, view, storageId,
         <Box className="brand-mark"><AutoFixHighRoundedIcon fontSize="small" /></Box>
         <Box>
           <Typography variant="subtitle1" sx={{ fontWeight: 800, lineHeight: 1.1 }}>
-            Rename_Studio
+            Rename Studio
           </Typography>
           <Typography variant="caption" color="textPrimary">批量重命名工作台</Typography>
         </Box>
@@ -88,6 +88,7 @@ export function StorageSidebar({ storages, isLoading, disabled, view, storageId,
         ))}
       </List>
       <Box sx={{ flex: 1 }} />
+      <Divider sx={{ my: 0.5, borderColor: "var(--app-border)" }} />
       <List disablePadding>
         <ListItemButton
           selected={view === "settings"}
@@ -97,10 +98,6 @@ export function StorageSidebar({ storages, isLoading, disabled, view, storageId,
           <ListItemText primary="设置" />
         </ListItemButton>
       </List>
-      <Box className="sidebar-meta">
-        <Typography variant="caption" color="textSecondary">© 2026 JERRY </Typography>
-        <Typography variant="caption" color="textSecondary">Ver. 0.20-alpha</Typography>
-      </Box>
     </Box>
   );
 }

@@ -3,6 +3,9 @@ import { defineConfig } from "vitest/config";
 
 export default defineConfig({
   plugins: [react()],
+  define: {
+    "import.meta.env.VITE_BUILD_TIME": JSON.stringify(new Date().toISOString()),
+  },
   build: {
     rollupOptions: {
       output: {

@@ -1,9 +1,16 @@
 import { useState } from "react";
 import ArrowBackRoundedIcon from "@mui/icons-material/ArrowBackRounded";
 import KeyboardArrowRightIcon from "@mui/icons-material/KeyboardArrowRight";
-import { Box, Button, Card, Dialog, DialogActions, DialogContent, DialogContentText, DialogTitle, MenuItem, Stack, TextField, Typography } from "@mui/material";
+import AutoFixHighRoundedIcon from "@mui/icons-material/AutoFixHighRounded";
+import GitHubIcon from "@mui/icons-material/GitHub";
+import { version } from "../../../package.json";
+import { Box, Button, Card, Divider, Dialog, DialogActions, DialogContent, DialogContentText, DialogTitle, MenuItem, Stack, TextField, Typography } from "@mui/material";
 import { StorageSettingsPanel } from "./StorageSettingsPanel";
 import type { ThemePreference } from "./useThemePreference";
+
+const buildTime = new Date(import.meta.env.VITE_BUILD_TIME).toLocaleString("zh-CN", {
+  timeZone: "Asia/Shanghai", hour12: false,
+});
 
 interface SettingsPageProps {
   preference: ThemePreference;
@@ -60,6 +67,35 @@ export function SettingsPage({ preference, onPreferenceChange, onBack, executing
             </Button>
           </Card>
           {resetDisabledReason && <Typography variant="caption" sx={{ color: "text.secondary", mt: 0.75, display: "block" }}>{resetDisabledReason}</Typography>}
+        </Box>
+        <Box component="section" aria-labelledby="about-settings-title">
+          <Typography id="about-settings-title" component="h2" variant="subtitle1" sx={{ mb: 1.25, fontWeight: 600 }}>关于</Typography>
+          <Card variant="outlined">
+            <Stack direction="row" sx={{ alignItems: "center", justifyContent: "space-between", gap: 2, p: { xs: 2, sm: 2.5 } }}>
+              <Stack direction="row" spacing={1.25} sx={{ alignItems: "center", minWidth: 0 }}>
+                <Box className="brand-mark" sx={{ flexShrink: 0 }}><AutoFixHighRoundedIcon fontSize="small" /></Box>
+                <Typography variant="body2" sx={{ fontWeight: 500 }}>Rename Studio</Typography>
+              </Stack>
+              <Box sx={{ flexShrink: 0, textAlign: "right" }}>
+                <Typography variant="body2" color="text.secondary">v{version}</Typography>
+                <Typography variant="caption" component="div" sx={{ color: "text.secondary"}}>{buildTime} BUILD</Typography>
+              </Box>
+            </Stack>
+            <Divider />
+            <Button fullWidth color="inherit" href="https://github.com/runoobjerry/Rename_Studio"
+              target="_blank" rel="noopener noreferrer" aria-label="项目源代码仓库（在新标签页打开）"
+              endIcon={<GitHubIcon />}
+              sx={{ borderRadius: 0, typography: "body2", fontWeight: 500, justifyContent: "space-between", textAlign: "left", px: { xs: 2, sm: 2.5 }, py: 2 }}>
+              项目源代码仓库
+            </Button>
+            <Divider />
+            <Box sx={{ p: { xs: 2, sm: 2.5 } }}>
+              <Typography variant="body2">© 2026 Jerry 保留所有权利</Typography>
+              <Typography variant="caption" component="p" sx={{ color: "text.secondary", mt: 0.5 }}>
+                本软件采用 GNU Affero General Public License v3.0（AGPL-3.0）许可证，完整条款请参阅项目 LICENSE 文件。
+              </Typography>
+            </Box>
+          </Card>
         </Box>
       </Stack>
       <Dialog open={confirmOpen} onClose={() => { if (!resetPending) setConfirmOpen(false); }} aria-labelledby="factory-reset-title">
