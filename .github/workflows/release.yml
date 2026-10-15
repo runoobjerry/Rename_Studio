@@ -1,0 +1,166 @@
+name: Release ZIPs
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  frontend:
+    name: Version check and frontend build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    outputs:
+      tag: ${{ steps.version.outputs.tag }}
+      prerelease: ${{ steps.version.outputs.prerelease }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Check release version
+        id: version
+        env:
+          REF_TYPE: ${{ github.ref_type }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          import subprocess
+          import sys
+          sys.path.insert(0, str(Path("scripts").resolve()))
+          from set_version import parse_version
+          tag = os.environ["REF_NAME"] if os.environ["REF_TYPE"] == "tag" else "v" + json.loads(Path("frontend/package.json").read_text())["version"]
+          version, _ = parse_version(tag)
+          if tag != "v" + version:
+              raise SystemExit("Release tags must use the v prefix")
+          subprocess.run([sys.executable, "scripts/set_version.py", tag, "--check"], check=True)
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
+              output.write(f"tag={tag}\nprerelease={'true' if '-' in version else 'false'}\n")
+          PY
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install locked frontend dependencies
+        working-directory: frontend
+        run: npm ci --no-audit --no-fund
+      - name: Frontend tests, type check and build
+        working-directory: frontend
+        run: npm run check
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-frontend
+          path: frontend/dist/
+          if-no-files-found: error
+          include-hidden-files: true
+          retention-days: 7
+          overwrite: true
+
+  package:
+    name: Package and check ${{ matrix.platform }}
+    needs: frontend
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: windows
+            runner: windows-2022
+            architecture: x64
+          - platform: macos
+            runner: macos-15
+            architecture: arm64
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 25
+    env:
+      RELEASE_TAG: ${{ needs.frontend.outputs.tag }}
+      PACKAGE_PLATFORM: ${{ matrix.platform }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          architecture: ${{ matrix.architecture }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-frontend
+          path: frontend/dist/
+      - name: Assemble and verify ZIP contents
+        run: python scripts/build_release.py "$RELEASE_TAG" --platform "$PACKAGE_PLATFORM"
+      - name: Install and check runtime dependencies in a fresh environment
+        run: |
+          python - <<'PY'
+          import os
+          from pathlib import Path
+          import platform
+          import subprocess
+          import sys
+          expected = "amd64" if os.name == "nt" else "arm64"
+          if platform.machine().lower() != expected:
+              raise SystemExit(f"Unexpected runner architecture: {platform.machine()}")
+          runtime = Path(os.environ["RUNNER_TEMP"]) / "release-runtime"
+          subprocess.run([sys.executable, "-m", "venv", str(runtime)], check=True)
+          python = runtime / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
+          subprocess.run([str(python), "-m", "pip", "install", "--disable-pip-version-check", "-r", "backend/requirements-runtime.txt"], check=True)
+          subprocess.run([str(python), "-m", "pip", "check"], check=True)
+          with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as output:
+              output.write(f"RUNTIME_PYTHON={python}\n")
+          PY
+      - name: Check extracted release service
+        run: '"$RUNTIME_PYTHON" scripts/check_release.py "dist/releases/Rename_Studio-$RELEASE_TAG-$PACKAGE_PLATFORM.zip"'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-package-${{ matrix.platform }}
+          path: dist/releases/*
+          if-no-files-found: error
+          retention-days: 14
+          overwrite: true
+
+  draft:
+    name: Create release draft
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
+    needs: [frontend, package]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: release-package-*
+          path: artifacts/
+      - name: Verify checksums and create draft
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ needs.frontend.outputs.tag }}
+          PRERELEASE: ${{ needs.frontend.outputs.prerelease }}
+        shell: bash
+        run: |
+          mkdir release
+          for platform in windows macos; do
+            cp "artifacts/release-package-$platform/Rename_Studio-$RELEASE_TAG-$platform.zip" release/
+            cat "artifacts/release-package-$platform/Rename_Studio-$RELEASE_TAG-$platform.zip.sha256" >> release/SHA256SUMS.txt
+          done
+          cd release
+          sha256sum --check SHA256SUMS.txt
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            echo "Release already exists; drafts and published assets will not be overwritten."
+            exit 1
+          fi
+          options=(--draft --verify-tag --title "Rename Studio $RELEASE_TAG" --generate-notes)
+          if [[ "$PRERELEASE" == true ]]; then options+=(--prerelease --latest=false); fi
+          gh release create "$RELEASE_TAG" ./*.zip SHA256SUMS.txt "${options[@]}"

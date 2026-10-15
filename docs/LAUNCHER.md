@@ -59,7 +59,7 @@ macOS 的启动与固定依赖安装尚未实机验证，不能将语法检查�
 
 ## 开发者发布与开发边界
 
-开发者执行现有前端构建命令，把完整 `frontend/dist` 放入发布包。脚本不执行 npm、构建或下载前端。
+开发者或 GitHub Actions 执行现有前端构建命令，再由 `scripts/build_release.py` 按白名单组装对应系统 ZIP。推送版本标签后自动构建与检查，成功后创建 Release 草稿，由维护者人工公开；版本更新、流程图及完整步骤见[版本发布](RELEASING.md)。用户启动脚本不执行 npm、构建或下载前端。
 
 Windows 发布包至少包含 `Start.ps1`、`backend/app`、`backend/pyproject.toml`、`backend/requirements-runtime.txt` 和完整 `frontend/dist`；macOS 包使用 `Start.sh`，并额外包含 `backend/scripts/start_macos.py`。通用包可同时包含两个入口。Shell 文件必须保留 LF 换行（仓库 `.gitattributes` 已约束）。不要打包开发虚拟环境、`.runtime`、`node_modules`、用户 `.env` 或包含凭据的 `backend/settings.json`。
 

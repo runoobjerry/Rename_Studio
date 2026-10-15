@@ -179,10 +179,13 @@ npm ci
 npm run check
 ```
 
-`npm run check` 依次运行 Vitest、TypeScript 检查与 Vite 构建；单独构建使用 `npm run build`。GitHub Actions 在涉及前端或工作流文件的 PR、main 分支推送，以及手动触发时运行前端测试与构建，不包含后端或真实 OneDrive 验收。
+`npm run check` 依次运行 Vitest、TypeScript 检查与 Vite 构建；单独构建使用 `npm run build`。原有 Frontend CI 在涉及前端或对应工作流文件的 PR、main 分支推送，以及手动触发时运行前端测试与构建。
+
+发布使用独立的 **Release ZIPs** 工作流：推送 `v*` 标签后校验版本、测试并构建前端，在 Windows x64 / macOS ARM64 的 Python 3.12 全新环境检查运行依赖与解压包服务，全部成功后上传两个系统 ZIP 和校验和至 **Release 草稿**，由维护者最后公开。预发布版本自动标记 Pre-release。手动触发只生成 Actions 构建产物，不创建 Release。工作流不运行后端 pytest，不访问真实 OneDrive，也不能替代实机验收。
 
 发布包需包含完整前端构建产物、后端程序、运行依赖清单及对应平台启动文件，不包含用户状态、凭据、开发环境或 `node_modules`。固定运行依赖的全新安装和 macOS 实机启动仍需人工验收，不能仅依据脚本存在宣称验证通过。
 
+- [版本更新、构建工作流程图与发布操作](docs/RELEASING.md)
 - [启动、发布包与人工验收](docs/LAUNCHER.md)
 - [前端测试与 CI](docs/FRONTEND_TESTING.md)
 - [前端测试用例](docs/FRONTEND_TEST_CASES.md)
