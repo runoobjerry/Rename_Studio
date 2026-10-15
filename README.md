@@ -1,66 +1,86 @@
-# Rename_Studio
+# Rename Studio
 
-一个本地优先、规则驱动的批量文件重命名 WebUI。Local/OneDrive 多存储基础已由用户构建测试并确认可用；本轮接口精简与状态展示优化仅完成静态检查。
+本地优先、规则驱动的批量重命名 WebUI，当前支持本地文件和 OneDrive 个人账号。先预览名称与冲突，再确认执行；支持多个独立存储连接。
 
-## 当前能力
+## 如何使用
 
-- 在受限根目录内浏览本地文件和子目录
-- 在 WebUI 中选择并持久化本地根文件夹
-- 多选当前目录中的文件和子文件夹名称并生成只读重命名预览
-- 使用短期预览凭证确认并执行本地批量重命名
-- 通过唯一临时名称安全处理交换和循环重命名
-- 按注册表扩展的有序规则链架构
-- 填充规则：数字序列补零、文本自定义字符左/右填充
-- 替换规则：支持全部、首个、末个，大小写、全字和扩展名选项
-- 移除规则：与替换规则共享一致的字面量匹配选项
-- 插入规则：支持前缀、后缀、字符位置及指定文本前后插入
-- 文件名合法性、同批目标重复和已有文件冲突检测
-- 统一 API 错误结构
-- React WebUI、TanStack Query 服务端状态和 Zustand 选择状态
-- OneDrive 个人账号 OAuth 2.0 授权、目录浏览和 Graph 批量重命名
-- 当前目录文件及子文件夹名称的全选、反选
-- App ID、刷新令牌本地持久化、连接状态和一键清理
-- 多个 Local/OneDrive 独立连接、配置/授权隔离、目录 ID 导航和连接级 API
+### 功能与限制
 
-当前已注册填充、替换、移除和插入规则；空规则链仍会保持原文件名。历史和撤销尚未实现。只有用户确认有效预览后，`POST /rename/execute` 才会修改本地文件或 OneDrive 项目。
+- 浏览本地或 OneDrive 目录，选择当前目录中的文件和子文件夹，支持全选、反选与筛选。
+- 按顺序组合填充、替换、移除、插入四类规则，支持添加、删除、启用/禁用、排序和复制。
+- 预览原名、新名、名称合法性与冲突，确认后执行，并展示进度和逐项结果。
+- 管理多个独立连接，保存主题、云盘默认目录和分批提示偏好，支持恢复默认设置。
 
-## 项目结构
+每批最多处理 **1000 项**，最多组合 **20 条规则**。选择超过 1000 项时，本批只处理前 1000 项；完成后可通过“待处理项目”筛选继续操作。每批只处理同一目录的直接子项：可以重命名子文件夹，但不会递归修改其中的文件。
 
-```text
-backend/
-  app/
-    api/          HTTP 路由与依赖组装
-    core/         配置与领域错误
-    providers/    StorageProvider、LocalProvider 与 OneDriveProvider
-    rules/        规则接口与注册表
-    schemas/      Pydantic API 契约
-    services/     文件服务、Rename Engine、Preview Service
-  tests/
-frontend/
-  src/
-    api/          API 客户端
-    features/     文件、规则和预览功能
-    stores/       页面 UI 状态
-    types/        前端 API 类型
+| 规则 | 用法 |
+| --- | --- |
+| 填充 | 对每段连续数字补零，或用单个字符从左/右填充文本。例如长度为 3 时，`episode1-part12.mp4` 变为 `episode001-part012.mp4`。 |
+| 替换 / 移除 | 按字面量匹配全部、首个或末个结果，可设置大小写、全字匹配及是否忽略扩展名；输入不作为正则表达式。 |
+| 插入 | 在前缀、后缀、指定字符位置或指定文本前后插入；文本定位使用区分大小写的首个匹配，找不到时保持原名。 |
+
+填充和插入保留文件的最后一个扩展名；文件夹按完整名称处理，不将句点后的文本视为扩展名。空规则链保持原名。
+
+### 启动发布包
+
+要求预先安装 **Python 3.12+**，项目目录可写，首次安装依赖需要联网。包含完整 `frontend/dist` 的发布包不需要 Node.js；从源码下载的仓库需先由开发者构建前端。
+
+**Windows：** 在发布包根目录打开交互式 PowerShell 5.1+，执行：
+
+```powershell
+.\Start.ps1
 ```
 
-## 本地运行
+也可右键脚本选择“使用 PowerShell 运行”。保持启动窗口打开，按 **Q 或 Ctrl+C** 退出。
 
-### 用户使用发布包
+**macOS：** 在交互式终端执行，路径含空格时保留引号：
 
-Windows 用户提前安装 Python 3.12+，在包含完整 `frontend/dist` 的发布包根目录运行 `./Start.ps1`，也可右键选择“使用 PowerShell 运行”。脚本创建独立运行环境、按需安装依赖，启动服务后打开 `http://localhost:8000`；用户不需要 Node.js。保持启动窗口打开，按 Q 或 Ctrl+C 安全退出。
+```bash
+bash "/项目完整路径/Start.sh"
+```
 
-macOS 用户同样提前安装 Python 3.12+，在终端执行 `bash /项目完整路径/Start.sh`（路径含空格时加引号）。脚本无需额外 Shell 工具或 Node.js，启动后打开同一页面；输入 Q 后按 Enter，或按 Ctrl+C 安全退出。支持 `--python /完整路径/python3` 和 `--no-browser`。
+保持终端打开，输入 **Q 后按 Enter**，或按 **Ctrl+C** 退出。macOS 启动脚本和固定依赖安装仍需实机验收，详见[启动与验收](docs/LAUNCHER.md)。
 
-首次安装需要联网。启动日志保存在 `.runtime/logs`；更新程序时保留 `backend/settings.json`。参数、环境重建、发布包准备及人工测试见 [启动与验收](docs/LAUNCHER.md)。
+启动脚本创建独立的 `.runtime/venv`，按需安装运行依赖，并打开 [本地页面](http://localhost:8000)。服务仅监听 `127.0.0.1:8000`；关闭浏览器不会停止服务。日志位于 `.runtime/logs`。指定 Python、关闭自动打开浏览器、端口冲突和环境修复等说明见[启动与验收](docs/LAUNCHER.md)。
 
-### 开发环境
+### 第一次重命名
 
-要求：Python 3.12+、Node.js 20+。以下开发启动方式保持不变。
+1. 选择存储连接。首次启动仅创建 `Local Files`，默认根目录为运行后端的系统用户的 Documents 文件夹；可在工作台或连接设置中更换目录。
+2. 进入目标目录，选择文件或子文件夹。建议先使用少量测试副本。
+3. 添加并排列规则，生成预览，核对新名称与冲突提示。
+4. 确认有效预览后执行，等待完成并检查逐项结果。修改文件、连接配置或授权后，需要重新预览。
 
-### 1. 配置本地目录
+系统目录选择器操作的是**运行后端的电脑**，并需要桌面会话与 Tk 支持；不可用时可手动输入已有目录的绝对路径。本地浏览受所配置根目录限制。
 
-首次启动默认浏览后端当前系统用户的 Documents 文件夹（Windows 使用系统登记的位置，支持文档目录重定向）。已有连接仍使用保存的目录，不会被覆盖。工作台和连接设置均可选择后端电脑上的目录，也可手动输入已有目录的绝对路径；多连接配置保存在 `backend/settings.json`。可以复制 `.env.example` 为 `.env`，用 LOCAL_STORAGE_ROOT 设置首次启动默认目录；已保存的无效配置会明确报错，不静默回退：
+预览默认有效期为 10 分钟，后端重启后失效。执行期间不要强制结束后端或覆盖程序文件。遇到超时、部分失败或结果不确定时，先检查进度和真实文件名称，再决定后续操作，避免重复改名。
+
+### 连接 OneDrive 个人账号
+
+1. 在 Microsoft Entra 管理中心注册支持个人 Microsoft 账户的应用。
+2. 在“身份验证”的移动和桌面应用程序配置中添加回调 `http://localhost:8000/auth/storage/callback`，启用“允许公共客户端流”。
+3. 配置 Microsoft Graph 委托权限 `Files.ReadWrite` 和 `User.Read`。
+4. 在应用设置中添加 OneDrive 连接，保存应用的客户端 ID（App ID），点击“网页登录”完成授权。无需客户端密钥，每个连接独立授权。
+5. 在侧栏选择连接，通过文件夹导航浏览；也可输入相对路径，例如 `照片/待整理`，留空表示根目录。同名目录造成歧义时使用文件夹导航。
+
+当前授权使用个人账户端点、授权码流程与 PKCE，请求 `offline_access`、`Files.ReadWrite` 和 `User.Read`。断开账号会清除该连接的登录凭据并保留 App ID；重新登录可选择其他账号。云盘操作需要联网。
+
+### 配置、更新与数据保护
+
+连接配置、刷新令牌和应用偏好统一保存在 `backend/settings.json`。**刷新令牌属于长期登录凭据，状态文件是未加密的 JSON**：请限制访问，不要提交到 Git、公开上传或随发布包分发。访问令牌仅保存在内存中。
+
+更新前退出应用，替换程序文件及完整 `frontend/dist`，保留 `backend/settings.json`、用户 `.env` 与 `.runtime`。不要跨系统或 CPU 架构复制虚拟环境；项目移动或 Python 变化后按启动提示重建运行环境。
+
+“恢复默认设置”会清除额外连接、已保存授权、偏好和当前工作台状态，重新建立默认 Local 连接；不会撤销已经执行的重命名，也不会删除真实文件。执行中的批次完成后才能重置。
+
+## 开发者
+
+### 环境与启动
+
+后端使用 Python 3.12+、FastAPI、Pydantic 和 httpx；前端使用 React、TypeScript、Vite、MUI、TanStack Query 和 Zustand。连接与应用偏好当前使用版本为 3 的 JSON 状态文档持久化。
+
+需要 Python 3.12+ 与 Node.js 20+；仓库前端 CI 使用 Node.js 22。以下命令在仓库根目录开始执行。
+
+如需覆盖首次初始化的本地根目录，先将 `.env.example` 复制为根目录 `.env`，取消 `LOCAL_STORAGE_ROOT` 的注释并设置已有目录：
 
 ```dotenv
 LOCAL_STORAGE_ROOT=D:/rename-test
@@ -68,13 +88,9 @@ FRONTEND_ORIGIN=http://localhost:5173
 STORAGE_REDIRECT_URI=http://localhost:8000/auth/storage/callback
 ```
 
-Local Provider 会解析并校验所有路径，拒绝访问配置根目录之外的内容。建议使用专门的测试目录，不要直接指向重要文件。
+`LOCAL_STORAGE_ROOT` 用于首次初始化和恢复默认设置，不覆盖已保存的连接目录。无效的已保存状态会报错，不会静默回退。旧版独立设置文件及 v1/v2 状态文档不再读取。
 
-系统文件夹选择器只能选择运行后端的电脑上的目录，并要求后端进程具有桌面会话；远程服务器或无图形界面环境应使用绝对路径输入。
-
-### 2. 启动后端
-
-在 PowerShell 中：
+**启动后端（PowerShell）：**
 
 ```powershell
 cd backend
@@ -83,113 +99,100 @@ python -m venv .venv
 .\.venv\Scripts\python -m uvicorn app.main:app --reload
 ```
 
-API 默认运行于 `http://127.0.0.1:8000`，交互文档位于 `http://127.0.0.1:8000/docs`。
+API 默认位于 [127.0.0.1:8000](http://127.0.0.1:8000)，交互文档位于 [/docs](http://127.0.0.1:8000/docs)。macOS 可使用 `.venv/bin/python` 替换上述虚拟环境解释器路径。
 
-### 3. 启动前端
-
-另开一个 PowerShell：
-
-```powershell
-cd frontend
-npm install
-npm run dev
-```
-
-访问 `http://localhost:5173`。Vite 会把 `/api` 请求代理到后端。
-
-## OneDrive 个人版设置
-
-1. 在 Microsoft Entra 管理中心注册应用，支持的账户类型选择包含“个人 Microsoft 账户”的选项。
-2. 在“身份验证”的公共客户端配置中添加连接回调 `http://localhost:8000/auth/storage/callback`，启用“允许公共客户端流”。自定义地址时同步设置对应环境变量。
-3. 在 Microsoft Graph 的委托权限中确认已添加 `Files.ReadWrite` 和 `User.Read`。
-4. 在设置页创建或编辑 OneDrive 连接，保存 App ID 后点击“网页登录”，并选择要操作的账号；每个连接独立授权。
-5. 在侧栏选择连接，通过文件夹 ID 导航；也可输入相对路径，例如 `照片/待整理`，留空表示根目录。同名目录导致路径歧义时使用文件夹导航。
-
-OAuth 使用个人账户的 consumers 租户、公共客户端授权码流程和 PKCE，无需客户端密钥，请求 Files.ReadWrite、User.Read 和 offline_access。切换账号先删除该连接旧令牌，断开保留 App ID；将 App ID 清空并保存可清理授权配置。配置和刷新令牌保存在被 Git 忽略的 `backend/settings.json`，访问令牌仅在内存中；重启后按连接刷新。
-
-首次启动只创建 `default-local`（Local Files），云连接由用户添加。连接与应用偏好统一保存在 v3 状态文件中；仅默认 Local 不可删除。旧版独立设置文件和 v1/v2 状态文件不再读取。接口见 [API 参考](docs/API_REFERENCE.md)。Google Drive 尚未实现。
-
-刷新令牌等同于长期登录凭据，应保护该本地文件，不要复制、提交到 Git 或写入日志。连接状态文件不存储客户端密钥。
-
-Graph 支持完整分页、字段裁剪和连接复用，Provider 管理批量请求及有限并发。预览和执行分别读取完整目录，快照绑定连接版本；执行期间拒绝该连接的配置/授权变更。交换、循环和占用链使用临时名称。401 尝试刷新，429 遵循 Retry-After；写入超时或不确定的服务端错误先核对元数据，不盲目重放已可能成功的写入。真实账号授权与改名验收由用户执行。
-
-## 测试
-
-后端：
-
-```powershell
-cd backend
-.\.venv\Scripts\python -m pytest
-```
-
-前端：
+**另开终端启动前端：**
 
 ```powershell
 cd frontend
 npm ci
+npm run dev
+```
+
+访问 [localhost:5173](http://localhost:5173)。Vite 将 `/api` 请求代理到后端并移除此前缀。开发模式无需 `frontend/dist`；发布模式使用单进程后端提供静态页面，同时保留根路径 API 和 `/api` 挂载。发布启动器固定本地端口、前端 Origin 和 OAuth 回调；修改开发环境回调时需同步应用注册配置。
+
+### 目录与职责
+
+```text
+backend/
+  app/
+    api/           HTTP 路由与依赖组装
+    core/          配置、错误、路径与日志上下文
+    providers/     统一存储接口及 Local / OneDrive 适配
+    repositories/  JSON 状态读写与原子提交
+    rules/         规则实现、配置与注册表
+    schemas/       Pydantic 输入输出契约
+    services/      连接管理、授权、预览与重命名执行
+    launcher.py    发布服务启动与退出控制
+    release.py     API 与静态资源组装
+  scripts/         macOS 启动控制器
+  tests/           后端测试
+frontend/
+  src/
+    api/           API 客户端
+    components/    共享 UI 组件
+    features/      文件、规则、重命名与设置功能
+    stores/        工作台 UI 与批次状态
+    workspace/     工作台组件与编排 hooks
+    types/         前端契约类型
+  AGENTS.md        前端模块边界
+
+docs/              API、交接、测试与人工验收文档
+Start.ps1          Windows 发布入口
+Start.sh           macOS 发布入口
+```
+
+- Rule 负责名称转换；Provider 负责存储访问和名称限制；服务层负责预览、冲突校验与执行规划；UI 负责交互。
+- 新规则实现 `RenameRule` 和 Pydantic 配置，在注册表中注册，并补充前端默认配置与编辑控件，无需修改 Rename Engine。
+- 新存储实现 `StorageProvider`，提供配置 Schema 并注册。`provider_type` 表示实现类型，`storage_id` 表示独立连接；位置和文件 ID 按不透明值传递。
+- `StorageManager` 管理连接生命周期、版本和执行互斥；Repository 原子提交完整状态，API 响应不暴露凭据。
+
+具体约束见 [AGENTS.md](AGENTS.md)、[前端约束](frontend/AGENTS.md)和[前端交接](docs/FRONTEND_HANDOFF.md)。
+
+### API 与执行契约
+
+完整接口、请求示例和错误码见 [API 参考](docs/API_REFERENCE.md)，运行时 Schema 见后端 `/docs`。主要接口按职责分组如下：
+
+| 职责 | 接口 |
+| --- | --- |
+| 健康检查与定义 | `GET /health`、`GET /rules`、`GET /storage-providers` |
+| 连接管理与浏览 | `/storages`、`/storages/{storage_id}`、`POST /storages/{storage_id}/files/list` |
+| 本地目录选择 | `POST /local/folder-picker`、`POST /storages/{storage_id}/local/pick` |
+| 预览与执行 | `POST /storages/{storage_id}/rename/preview`、`DELETE /storages/{storage_id}/rename/previews/{preview_id}`、`POST /rename/execute`、`GET /rename/progress/{preview_id}` |
+| 授权 | `GET /storages/{storage_id}/auth/status`、`POST /storages/{storage_id}/auth/start`、`DELETE /storages/{storage_id}/auth/session`、`GET /auth/storage/callback` |
+| 应用设置 | `GET/PATCH /app-settings`、`POST /app-settings/factory-reset` |
+
+所有批量重命名必须先预览。服务端保存不可变快照，绑定连接版本、目录、源项和规则；执行只接收 `preview_id`，重新读取源项与冲突集合并校验。过期、已消费或不再匹配当前状态的预览被拒绝。快照与执行进度位于单进程内存中，不能据此部署多 worker。
+
+交换、循环和名称占用链通过唯一临时名称分阶段处理，失败时尽力回滚并返回逐项结果。未知写入结果先查询真实状态，不能盲目重放整批。OneDrive Provider 负责 Graph 分页、批量请求、有界并发、认证刷新及限流处理，业务服务不直接调用 Graph。
+
+### 测试、构建与发布
+
+由开发者或维护者手动执行以下命令；静态文档核对不能替代测试、浏览器操作和真实云盘验收。
+
+```powershell
+# 后端：在 backend 目录执行
+.\.venv\Scripts\python -m pytest
+
+# 前端：在 frontend 目录执行
+npm ci
 npm run check
 ```
 
-半自动流程：Codex 完成开发后由用户在本地手动运行 `npm run check` 和 UI 验收；Git Commit 与 Git Push 必须分别获得用户明确批准，Push 仅针对开发分支。GitHub Actions 在 PR 上自动复核，PR 合并由用户手动完成。详见 [前端测试与 CI](docs/FRONTEND_TESTING.md) 和 [操作指南](docs/CODEX_CI_GUIDE.md)。
+`npm run check` 依次运行 Vitest、TypeScript 检查与 Vite 构建；单独构建使用 `npm run build`。GitHub Actions 在涉及前端或工作流文件的 PR、main 分支推送，以及手动触发时运行前端测试与构建，不包含后端或真实 OneDrive 验收。
 
-测试覆盖本地目录排序与路径隔离、名称验证、规则链、预览不可变性、冲突检测、短期预览、普通执行、循环交换、状态失效、部分失败，以及 OneDrive 授权 URL、密钥隐藏、分页映射和批处理适配。
+发布包需包含完整前端构建产物、后端程序、运行依赖清单及对应平台启动文件，不包含用户状态、凭据、开发环境或 `node_modules`。固定运行依赖的全新安装和 macOS 实机启动仍需人工验收，不能仅依据脚本存在宣称验证通过。
 
-## API
+- [启动、发布包与人工验收](docs/LAUNCHER.md)
+- [前端测试与 CI](docs/FRONTEND_TESTING.md)
+- [前端测试用例](docs/FRONTEND_TEST_CASES.md)
+- [UI 人工验收](docs/UI_MANUAL_ACCEPTANCE.md)
+- [当前前端状态](docs/UI_STATE.md)与[待办](docs/UI_TODO.md)
 
-| Method | Path | 状态 | 说明 |
-| --- | --- | --- | --- |
-| `GET` | `/health` | 可用 | 健康检查 |
-| `GET` | `/storage-providers` | 可用 | Provider 定义、配置 Schema 与能力 |
-| `GET/POST` | `/storages` | 可用 | 查询、创建连接 |
-| `GET/PUT/DELETE` | `/storages/{storage_id}` | 可用 | 查询、编辑、删除连接 |
-| `POST` | `/storages/{storage_id}/files/list` | 可用 | 按目录位置浏览 |
-| `POST` | `/storages/{storage_id}/local/pick` | 可用 | 为 Local 连接选择根目录 |
-| `GET` | `/rules` | 可用 | 已注册规则定义 |
-| `POST` | `/storages/{storage_id}/rename/preview` | 可用 | 生成只读预览 |
-| `POST` | `/rename/execute` | 可用 | 执行服务端预览 |
-| `GET` | `/rename/progress/{preview_id}` | 可用 | 查询真实执行进度 |
-| `GET` | `/storages/{storage_id}/auth/status` | 可用 | 查询账号连接状态 |
-| `POST` | `/storages/{storage_id}/auth/start` | 可用 | 创建浏览器授权地址 |
-| `DELETE` | `/storages/{storage_id}/auth/session` | 可用 | 断开账号并保留连接配置 |
-| `GET` | `/auth/storage/callback` | 可用 | 连接级 OAuth 回调 |
+### 免责声明
 
-向 `/storages/default-local/rename/preview` 发送预览请求：
+本项目按仓库 [LICENSE](LICENSE) 中的 GNU AGPL v3 许可条款提供，不作适销性、特定用途适用性或无错误运行的保证；责任限制以该许可证为准。
 
-```json
-{
-  "location": { "kind": "root" },
-  "file_ids": ["example.txt"],
-  "rules": [
-    {
-      "type": "padding",
-      "enabled": true,
-      "config": {
-        "mode": "number",
-        "length": 3,
-        "fill_character": "_",
-        "side": "left"
-      }
-    }
-  ]
-}
-```
+批量重命名会修改真实文件或云端项目。预览、冲突检测与回滚机制不能替代备份，也不能保证在网络中断、第三方服务异常、外部并发修改或进程被强制终止时完整恢复。请仅操作自己拥有或获授权的文件，使用前备份重要数据，并先在测试副本上验证规则。当前没有历史撤销功能，执行前请自行确认结果。
 
-预览响应包含有效期约 10 分钟的 `preview_id`。执行时只提交该 ID：
-
-```json
-{
-  "preview_id": "server-generated-preview-id"
-}
-```
-
-执行前服务端会重新读取文件并再次检查名称和冲突。预览过期、文件变化或重复执行都会被拒绝。当前预览凭证保存在单进程内存中，后端重启后自动失效。
-
-每个批次只允许选择同一目录下的直接子项。该限制同时适用于本地和 OneDrive：子文件夹可以改名，但不会递归枚举或重命名其中的文件；进入其他目录或切换 Provider 时，当前选择会被清空。
-
-数字模式会把主文件名中的每段连续数字分别补零，例如 `episode1-part12.mp4` 在长度为 3 时得到 `episode001-part012.mp4`。文本模式将整个主文件名填充到目标长度，可指定单个填充字符以及从左侧或右侧填充。两种模式都保留最后一个扩展名。
-
-替换与移除规则按字面量查找，不会把输入当成正则表达式。操作序数支持全部、首个和末个；“仅全字匹配”使用 Unicode 单词边界；开启“忽略扩展名”后，只处理最后一个扩展名前的主文件名。
-
-插入规则始终保留最后一个扩展名。字符位置从 1 开始：从左计数时在第 N 个字符后插入，从右计数时在倒数第 N 个字符前插入；超出长度时收敛到主文件名首部或尾部。指定文本前后插入采用区分大小写的字面量首个匹配，找不到指定文本时保持文件名不变。
-
-加入具体规则时，只需实现 `RenameRule`、定义 Pydantic 配置、注册规则，并增加相应前端配置控件，无需修改 Rename Engine。
+本项目为独立工具，与 Microsoft 等第三方服务提供商无隶属或官方背书关系。第三方服务的可用性、限制及使用条款由其提供方决定；请妥善保护本地凭据和账号授权。

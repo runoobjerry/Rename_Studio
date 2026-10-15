@@ -1,22 +1,12 @@
+# Environment and credentials
 .env
 .env.*
 !.env.example
 *.local
-credentials.json
-secrets.json
-.onedrive_credentials.json
-.onedrive_credentials.json.tmp
-.local_settings.json
-.local_settings.json.tmp
-.storage_connections.json
-.storage_connections.json.*.tmp
 /backend/settings.json
-/backend/settings.json.*.tmp
-*.pre-storage-v1.bak
-*.pre-storage-v2.bak
-*.pre-storage-v3.bak
-AGENTS.md
-!frontend/AGENTS.md
+/backend/settings.json.*
+
+# Python caches and environments
 __pycache__/
 *.py[cod]
 .pytest_cache/
@@ -24,10 +14,20 @@ __pycache__/
 .ruff_cache/
 .venv/
 /.runtime/
+
+# Frontend dependencies and generated files
 node_modules/
 dist/
 coverage/
-backend/local_storage/*
-!backend/local_storage/.gitkeep
-backend/tests/test_out.txt
 *.tsbuildinfo
+
+# Legacy local files and test output
+/backend/local_storage/
+backend/tests/test_out.txt
+
+# Logs and operating system metadata
+*.log
+.DS_Store
+._*
+Thumbs.db
+Desktop.ini
