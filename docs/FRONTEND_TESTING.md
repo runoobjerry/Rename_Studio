@@ -23,7 +23,7 @@ npm run dev
 
 ## GitHub Actions
 
-工作流位于 `.github/workflows/frontend-ci.yml`，会在涉及前端的 PR、涉及前端的 `main` Push 或人工从 Actions 页面触发时执行；单纯 Push 开发分支不自动触发。远程 CI 使用模拟数据，不访问真实 OneDrive 或执行实际云端重命名。
+工作流位于 `.github/workflows/frontend-ci.yml`，会在涉及前端或该工作流文件的 PR，以及人工从 Actions 页面触发时执行；普通分支推送（包括 `main`）不自动触发。远程 CI 使用模拟数据，不访问真实 OneDrive 或执行实际云端重命名。推送版本标签时，独立的发布工作流执行 `npm run build`，仅进行前端类型检查与构建，不运行 Vitest；发布前由开发者在本地执行 `npm run check`。原有 Frontend CI 继续运行测试与构建，详见[版本发布](RELEASING.md)。
 
 在 PR 的 **Checks** 或 **Actions → Frontend CI** 查看运行结果。失败时让 Codex 分析相关 Job 日志和修复建议，但所有新增提交/推送仍需要人工分别批准。
 
