@@ -54,6 +54,25 @@ it("isolates saved results from the API response and preserves confirmed local i
   expect(useRenameStore.getState().selectedIds).toEqual([]);
 });
 
+it("uses supplied file order, reorders drafts without replacing snapshots, and freezes reported tasks", () => {
+  const first = useRenameStore.getState().prepareBatch("context", "test", { kind: "root" }, [...files].reverse());
+  expect(first.fileIds).toEqual(["b.txt", "a.txt"]);
+  const task = useRenameStore.getState().task!;
+  const before = task.items[0].before;
+  const second = prepare();
+  expect(second.fileIds).toEqual(["a.txt", "b.txt"]);
+  expect(useRenameStore.getState().task!.taskId).toBe(task.taskId);
+  expect(useRenameStore.getState().task!.items[1].before).toBe(before);
+  expect(useRenameStore.getState().task!.items.map((item) => item.order)).toEqual([0, 1]);
+  useRenameStore.getState().bindPreview(second.batchId, "failed");
+  useRenameStore.getState().applyResults({ preview_id: "failed", status: "failed", items: files.map((file) => ({
+    file_id: file.id, original_name: file.name, new_name: `new-${file.name}`, status: "failed", error: "Write failed",
+  })) });
+  const retry = useRenameStore.getState().prepareBatch("context", "test", { kind: "root" }, [...files].reverse());
+  expect(retry.fileIds).toEqual(["a.txt", "b.txt"]);
+  expect(useRenameStore.getState().task!.batches[0].outcome).toBe("reported");
+});
+
 describe("session rename batches", () => {
   beforeEach(() => { useRenameStore.setState({ selectedIds: [], rules: [], task: null }); });
   const files = (count: number) => Array.from({ length: count }, (_, index) => ({

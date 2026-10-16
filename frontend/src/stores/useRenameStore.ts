@@ -14,7 +14,7 @@ interface RenameUiState {
   clearSelection: () => void;
   setRules: (rules: RuleSpec[]) => void;
   resetTask: () => void;
-  prepareBatch: (contextKey: string, storageId: string, location: StorageLocation, files: FileItem[]) => { batchId: string; fileIds: string[] };
+  prepareBatch: (contextKey: string, storageId: string, location: StorageLocation, orderedFiles: FileItem[]) => { batchId: string; fileIds: string[] };
   bindPreview: (batchId: string, previewId: string) => void;
   applyResults: (response: ExecuteResponse) => void;
   markUnknown: (previewId: string) => void;
@@ -36,22 +36,28 @@ export const useRenameStore = create<RenameUiState>((set, get) => ({
   clearSelection: () => set({ selectedIds: [] }),
   setRules: (rules) => set({ rules }),
   resetTask: () => set({ task: null }),
-  prepareBatch: (contextKey, storageId, location, files) => {
+  prepareBatch: (contextKey, storageId, location, orderedFiles) => {
     const state = get();
-    const byId = new Map(files.map((file) => [file.id, file]));
+    const byId = new Map(orderedFiles.map((file) => [file.id, file]));
+    const selected = new Set(state.selectedIds);
     let task = state.task;
     if (!task || task.contextKey !== contextKey) {
       task = {
         taskId: crypto.randomUUID(), contextKey, storageId, location: structuredClone(location),
         rules: structuredClone(state.rules), batches: [],
-        items: state.selectedIds.filter((id) => byId.has(id)).map((id, order) => ({
+        items: orderedFiles.filter((file) => selected.has(file.id)).map((file, order) => ({
           taskItemId: crypto.randomUUID(), order,
-          before: Object.freeze({ ...structuredClone(byId.get(id)!), storageId }),
-          currentFileId: id, status: "pending",
+          before: Object.freeze({ ...structuredClone(file), storageId }),
+          currentFileId: file.id, status: "pending",
         })),
       };
+    } else if (!task.batches.some((batch) => batch.outcome !== undefined)) {
+      // 只重排未执行的任务，保留固定成员、身份和原始快照；目录缺项放在末尾。
+      const positions = new Map(orderedFiles.map((file, index) => [file.id, index]));
+      task = { ...task, items: [...task.items].sort((left, right) =>
+        (positions.get(left.currentFileId) ?? orderedFiles.length) - (positions.get(right.currentFileId) ?? orderedFiles.length))
+        .map((item, order) => ({ ...item, order })) };
     }
-    const selected = new Set(state.selectedIds);
     const items = task.items.filter((item) => retryable(item.status) && selected.has(item.currentFileId) && byId.has(item.currentFileId)).slice(0, RENAME_BATCH_SIZE);
     const batchId = crypto.randomUUID();
     if (items.length === 0) return { batchId, fileIds: [] };

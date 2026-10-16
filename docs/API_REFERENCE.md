@@ -130,6 +130,7 @@ Empty means exactly `""`; whitespace remains meaningful text. Skipped rules pres
 ```
 
 - No files are modified. Unchanged items remain in `items`; `valid` is true only when every item is valid.
+- `file_ids` is ordered: rule context indices and response `items` follow that order. The server snapshot preserves it; execution revalidation does not sort the files again.
 - Errors: 422 more than 1000 files/more than 20 rules/empty/duplicate/cross-directory/out-of-path/root selection, invalid path, or rule config; 404 missing item/directory; provider errors as above.
 - Preview snapshots live in the current backend process for 10 minutes. Expired snapshots are removed on new saves, on access to an expired ID, and by a lifecycle-managed sweep every 60 seconds. A backend restart invalidates them. No global capacity limit is applied.
 - A successfully saved preview replaces only the explicitly supplied `previous_preview_id` belonging to the same storage connection; unrelated previews are retained. A failed preview request preserves the old snapshot. A saved response with `valid: false` still replaces the old snapshot. Replacement does not change execution revalidation or consume semantics.
@@ -166,6 +167,7 @@ Empty means exactly `""`; whitespace remains meaningful text. Skipped rules pres
 
 - Errors: 404 missing/already-consumed preview; 409 expired or changed source state; 422 invalid preview; provider errors during revalidation.
 - The backend revalidates before mutation, consumes the preview before real execution, and will not execute it twice.
+- Response `items` follow the saved preview order. Actual writes may use temporary-name stages and concurrent Provider batches; completion order is not guaranteed.
 - Item failures can be returned in an HTTP 200 response with overall `partial` or `failed`; inspect response status and every item.
 
 ## Rename Execution Progress

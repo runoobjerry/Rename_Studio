@@ -8,7 +8,7 @@ from pydantic import BaseModel
 
 from app.core.errors import PreviewExpiredError, PreviewNotFoundError, ValidationError
 from app.providers.local import LocalProvider
-from app.rules.base import RenameRule, RuleContext
+from app.rules.base import EmptyRuleConfig, RenameRule, RuleContext
 from app.rules.registry import RuleRegistry
 from app.schemas.files import FileItem
 from app.schemas.rename import PreviewItem, RenamePreviewRequest
@@ -47,6 +47,16 @@ class CountingLocalProvider(LocalProvider):
     async def get_metadata_many(self, file_ids: list[str]) -> list[FileItem]:
         self.metadata_many_calls += 1
         return await super().get_metadata_many(file_ids)
+
+
+class IndexRule(RenameRule[EmptyRuleConfig]):
+    type = "test_index"
+    display_name = "Test index"
+    description = "Test-only order-sensitive rule"
+    config_model = EmptyRuleConfig
+
+    def apply(self, filename: str, context: RuleContext, config: EmptyRuleConfig) -> str:
+        return f"{context.index}-{filename}"
 
 
 def build_service(root: Path, *, with_test_rule: bool = False) -> PreviewService:
@@ -91,6 +101,24 @@ async def test_known_directory_preview_uses_one_listing(tmp_path: Path) -> None:
     assert preview.valid is True
     assert provider.list_calls == 1
     assert provider.metadata_many_calls == 0
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("known_directory", [False, True])
+async def test_request_order_controls_rule_context_and_preview_items(tmp_path: Path, known_directory: bool) -> None:
+    for name in ["001.jpg", "002.jpg"]:
+        (tmp_path / name).write_text(name, encoding="utf-8")
+    rules = RuleRegistry()
+    rules.register(IndexRule())
+    service = PreviewService(registry_for([LocalProvider(tmp_path)]), RenameEngine(rules))
+    preview = await service.preview(RenamePreviewRequest(
+        storage_id="local", location=RootLocation() if known_directory else None,
+        file_ids=["002.jpg", "001.jpg"], rules=[RuleSpec(type="test_index")],
+    ))
+    assert preview.valid
+    assert [item.original_name for item in preview.items] == ["002.jpg", "001.jpg"]
+    assert [item.new_name for item in preview.items] == ["0-002.jpg", "1-001.jpg"]
+    assert sorted(item.name for item in tmp_path.iterdir()) == ["001.jpg", "002.jpg"]
 
 
 @pytest.mark.asyncio

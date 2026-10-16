@@ -38,7 +38,11 @@ export function useVirtualTable(count: number, resetKey: unknown, columnValues: 
         if (text.classList.contains("status")) width += 26; // 状态标签的左右内边距、圆点和间隔。
         const headerStyle = getComputedStyle(headers[index]);
         context.font = headerStyle.font;
-        width = Math.max(width, context.measureText(headers[index].textContent ?? "").width);
+        const sortIcon = headers[index].querySelector(".MuiTableSortLabel-icon");
+        const sortIconStyle = sortIcon ? getComputedStyle(sortIcon) : null;
+        const sortIconWidth = sortIcon && sortIconStyle ? sortIcon.getBoundingClientRect().width
+          + parseFloat(sortIconStyle.marginLeft) + parseFloat(sortIconStyle.marginRight) : 0;
+        width = Math.max(width, context.measureText(headers[index].textContent ?? "").width + sortIconWidth);
         const cellStyle = getComputedStyle(cell);
         return Math.ceil(width + parseFloat(cellStyle.paddingLeft) + parseFloat(cellStyle.paddingRight) + 1);
       });

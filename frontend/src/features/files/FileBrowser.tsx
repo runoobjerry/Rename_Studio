@@ -16,6 +16,7 @@ import {
   TableContainer,
   TableHead,
   TableRow,
+  TableSortLabel,
   Tooltip,
 } from "@mui/material";
 
@@ -25,6 +26,7 @@ import { PanelIconButton } from "../../components/PanelIconButton";
 import { useVirtualTable } from "../../hooks/useVirtualTable";
 import { VirtualTableSpacer } from "../../components/VirtualTableSpacer";
 import selectInverseIcon from "../../assets/icon/select-inverse.svg";
+import type { FileSort } from "./fileSort";
 
 const fileFilters = [
   { value: "file", label: "文件" },
@@ -44,6 +46,10 @@ const fileCheckboxSx = {
 type FileFilter = typeof fileFilters[number]["value"] | typeof taskFilters[number]["value"];
 interface FileBrowserProps {
   listing: DirectoryListing;
+  items: FileItem[];
+  sort: FileSort;
+  sortLocked: boolean;
+  onSortChange: (sort: FileSort) => void;
   task?: Pick<RenameTask, "taskId" | "items"> | null;
   taskCurrent?: boolean;
   disabled?: boolean;
@@ -81,7 +87,7 @@ function formatModifiedAt(value: string | null): string {
 }
 
 export const FileBrowser = memo(function FileBrowser({
-  listing,
+  listing, items: panelItems, sort, sortLocked, onSortChange,
   task, taskCurrent = false, disabled = false, onEndTask, onReconcileSelection,
   providerName,
   selectedIds,
@@ -101,10 +107,6 @@ export const FileBrowser = memo(function FileBrowser({
   }, [task?.taskId]); // eslint-disable-line react-hooks/exhaustive-deps -- 新任务才应用默认筛选。
   const taskItems = useMemo(() => new Map(task?.items.map((item) => [item.currentFileId, item])), [task?.items]);
   const listedItems = useMemo(() => new Map(listing.items.map((item) => [item.id, item])), [listing.items]);
-  // 当前任务展示固定成员；刷新缺项时保留快照，不让非任务文件混入。
-  const panelItems = useMemo(() => task ? task.items.map((item) => listedItems.get(item.currentFileId)
-    ?? item.after?.current_file ?? item.reconciliation?.file ?? { ...item.before, id: item.currentFileId }) : listing.items,
-  [task?.items, listedItems, listing.items]);
   const hasTask = Boolean(task);
   const filteredItems = useCallback((nextFilters: FileFilter[]) => {
     const types = nextFilters.filter((filter) => filter === "file" || filter === "folder");
@@ -125,7 +127,7 @@ export const FileBrowser = memo(function FileBrowser({
   const visibleSelectedCount = useMemo(() => visibleItems.filter((item) => selectedSet.has(item.id)).length, [visibleItems, selectedSet]);
   const selectableIds = useMemo(() => visibleIds.filter((id) => listedItems.has(id) &&
     taskItems.get(id)?.status !== "completed" && taskItems.get(id)?.status !== "unknown"), [visibleIds, listedItems, taskItems]);
-  const scrollKey = useMemo(() => [listing.items, task?.taskId, filters], [listing.items, task?.taskId, filters]);
+  const scrollKey = useMemo(() => [listing.items, task?.taskId, filters, sort], [listing.items, task?.taskId, filters, sort]);
   const columnValues = useMemo(() => [visibleItems.map(() => ""), visibleItems.map((item) => item.name),
     visibleItems.map((item) => getExtension(item.name, item.is_directory)),
     visibleItems.map((item) => formatModifiedAt(item.modified_at))], [visibleItems]);
@@ -147,6 +149,7 @@ export const FileBrowser = memo(function FileBrowser({
           <p className="panel-summary">
             共 {totalCount} 项 · 已选择 {selectedCount} 项
             {filters.length > 0 && ` · 显示 ${visibleItems.length} 项`}
+            {sortLocked && " · 排序已锁定，结束任务后可调整"}
           </p>
         </div>
         <div className="browser-heading-actions">
@@ -238,9 +241,23 @@ export const FileBrowser = memo(function FileBrowser({
                   slotProps={{ input: { "aria-label": "选择当前显示的全部项目" } }}
                 />
               </TableCell>
-              <TableCell>文件名</TableCell>
+              <TableCell sortDirection={sort.field === "name" ? sort.direction : false}>
+                <TableSortLabel active={sort.field === "name"} direction={sort.field === "name" ? sort.direction : "asc"}
+                  slotProps={{ icon: { sx: { fontSize: 16 } } }}
+                  disabled={disabled || sortLocked} onClick={() => onSortChange({ field: "name",
+                    direction: sort.field === "name" && sort.direction === "asc" ? "desc" : "asc" })}>
+                  文件名
+                </TableSortLabel>
+              </TableCell>
               <TableCell className="file-extension-column">扩展名</TableCell>
-              <TableCell className="file-modified-column">修改时间</TableCell>
+              <TableCell className="file-modified-column" sortDirection={sort.field === "modified_at" ? sort.direction : false}>
+                <TableSortLabel active={sort.field === "modified_at"} direction={sort.field === "modified_at" ? sort.direction : "asc"}
+                  slotProps={{ icon: { sx: { fontSize: 16 } } }}
+                  disabled={disabled || sortLocked} onClick={() => onSortChange({ field: "modified_at",
+                    direction: sort.field === "modified_at" && sort.direction === "asc" ? "desc" : "asc" })}>
+                  修改时间
+                </TableSortLabel>
+              </TableCell>
             </TableRow>
           </TableHead>
           <TableBody>

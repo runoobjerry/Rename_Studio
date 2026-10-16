@@ -1,4 +1,4 @@
-import { type ReactNode } from "react";
+import { type ReactNode, useState } from "react";
 import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, beforeEach, expect, vi } from "vitest";
@@ -6,6 +6,7 @@ import * as api from "../api/client";
 import { useRenameStore } from "../stores/useRenameStore";
 import { useRenameWorkflow } from "../features/rename/useRenameWorkflow";
 import { useWorkspaceStorage } from "../workspace/hooks/useWorkspaceStorage";
+import { defaultFileSort, type FileSort } from "../features/files/fileSort";
 import type { AppSettings, AuthorizationStatus, DirectoryListing } from "../types";
 
 vi.mock("../components/NotificationProvider", async (importOriginal) => ({
@@ -71,9 +72,10 @@ export async function setupWorkspace(count = 2) {
   vi.mocked(api.fetchStorageFiles).mockResolvedValue(listing(count));
   const wrapper = ({ children }: { children: ReactNode }) => <QueryClientProvider client={client}>{children}</QueryClientProvider>;
   const hook = renderHook(() => {
+    const [sort, setSort] = useState<FileSort>(defaultFileSort);
     const task = useRenameStore((state) => state.task);
     const storage = useWorkspaceStorage({ hasTask: Boolean(task), onLocalRootSelected: (): void => workflow.resetForStorageChange() });
-    const workflow = useRenameWorkflow({ ...storage, task });
+    const workflow = useRenameWorkflow({ ...storage, task, sort, onSortChange: setSort });
     return { storage, workflow };
   }, { wrapper });
   await waitFor(() => expect(hook.result.current.storage.files.isSuccess).toBe(true));

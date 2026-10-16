@@ -4,6 +4,7 @@ import { createStoragePreview, releaseStoragePreview, executePreview } from "../
 import { errorMessage, useNotification } from "../../components/NotificationProvider";
 import { RENAME_BATCH_SIZE, useRenameStore } from "../../stores/useRenameStore";
 import { useAppSettings } from "../settings/useAppSettings";
+import { fileBrowserItems, sortFileItems, type FileSort } from "../files/fileSort";
 import type { DirectoryListing, RenameTask, RuleSpec, StorageInfo, StorageLocation } from "../../types";
 
 interface RenameWorkflowOptions {
@@ -15,6 +16,8 @@ interface RenameWorkflowOptions {
   cloudReady: boolean;
   activeStorage?: Pick<StorageInfo, "revision" | "busy">;
   task: RenameTask | null;
+  sort: FileSort;
+  onSortChange: (sort: FileSort) => void;
   files: {
     data: DirectoryListing | undefined;
     isSuccess: boolean;
@@ -25,7 +28,7 @@ interface RenameWorkflowOptions {
 }
 
 export function useRenameWorkflow({
-  storageId, location, workspaceKey, cloudSession, providerId, cloudReady, activeStorage, task, files,
+  storageId, location, workspaceKey, cloudSession, providerId, cloudReady, activeStorage, task, files, sort, onSortChange,
 }: RenameWorkflowOptions) {
   const notify = useNotification();
   const queryClient = useQueryClient();
@@ -42,15 +45,27 @@ export function useRenameWorkflow({
   const setSelectedIds = useRenameStore((state) => state.setSelectedIds);
   const clearSelection = useRenameStore((state) => state.clearSelection);
 
-  // 提交前以当前目录校验选中 ID，避免刷新后仍提交已删除的项目。
-  const currentSelectedIds = useMemo(() => {
-    const availableIds = new Set(files.data?.items.map((item) => item.id));
-    return selectedIds.filter((id) => availableIds.has(id));
-  }, [files.data, selectedIds]);
   const taskContext = useMemo(() => JSON.stringify([workspaceKey, cloudSession, rules]), [workspaceKey, cloudSession, rules]);
-  const browserTask = useMemo(() => task ? { taskId: task.taskId, items: task.items } : null, [task?.taskId, task?.items]);
   const taskCurrent = task?.contextKey === taskContext;
-  const previewContext = useMemo(() => JSON.stringify([workspaceKey, currentSelectedIds, rules]), [workspaceKey, currentSelectedIds, rules]);
+  const sortLocked = Boolean(task?.batches.some((batch) => batch.outcome !== undefined));
+  const sortedFiles = useMemo(() => sortFileItems(files.data?.items ?? [], sort), [files.data?.items, sort]);
+  const browserItems = useMemo(() => task ? fileBrowserItems(files.data?.items ?? [], task, sort, sortLocked) : sortedFiles,
+    [files.data?.items, task?.items, sort, sortLocked, sortedFiles]);
+  const orderedFiles = useMemo(() => {
+    if (!taskCurrent) return sortedFiles;
+    const availableIds = new Set(sortedFiles.map((item) => item.id));
+    const members = new Set(browserItems.map((item) => item.id));
+    // 非任务成员仍参与提交前校验，不能因任务面板隐藏它们而绕过固定成员检查。
+    return [...browserItems.filter((item) => availableIds.has(item.id)), ...sortedFiles.filter((item) => !members.has(item.id))];
+  }, [taskCurrent, browserItems, sortedFiles]);
+  // 请求使用列表顺序，并与真实目录取交集；执行后的任务保留冻结顺序。
+  const currentSelectedIds = useMemo(() => {
+    const selected = new Set(selectedIds);
+    return orderedFiles.filter((item) => selected.has(item.id)).map((item) => item.id);
+  }, [orderedFiles, selectedIds]);
+  const browserTask = useMemo(() => task ? { taskId: task.taskId, items: task.items } : null, [task?.taskId, task?.items]);
+  const previewContext = useMemo(() => JSON.stringify([workspaceKey, currentSelectedIds, rules, sort]),
+    [workspaceKey, currentSelectedIds, rules, sort]);
   useEffect(() => {
     // Dialog 仅确认点击时的选择；上下文改变后必须由用户再次点击预览。
     if (batchHintContext && batchHintContext !== previewContext) setBatchHintContext(null);
@@ -150,27 +165,27 @@ export function useRenameWorkflow({
 
   const requestBatchPreview = () => {
     if (!files.data || files.isFetching || files.error || execution.isPending || preview.isPending || activeStorage?.busy) return;
+    const selected = new Set(useRenameStore.getState().selectedIds);
+    const fileIds = orderedFiles.filter((item) => selected.has(item.id)).map((item) => item.id);
     if (task && !taskCurrent && task.items.some((item) => item.status === "unknown")) {
       notify("旧任务仍有待核对项，请先恢复原规则并核对执行结果。", "warning");
       return;
     }
     if (taskCurrent && task) {
       const members = new Set(task.items.map((item) => item.currentFileId));
-      if (currentSelectedIds.some((id) => !members.has(id))) {
+      if (fileIds.some((id) => !members.has(id))) {
         notify("本次任务的文件集合已固定；请先结束当前任务，再选择文件开始新任务。", "warning");
         return;
       }
     }
-    const batch = useRenameStore.getState().prepareBatch(taskContext, storageId, location, files.data.items);
+    const batch = useRenameStore.getState().prepareBatch(taskContext, storageId, location, orderedFiles);
     if (!batch.fileIds.length) {
       notify("没有可处理的任务文件；失败项可单独选择重试，待核对项须先核对。", "warning");
       return;
     }
     execution.reset();
-    // 使用当前目录中的实际选择生成上下文，避免过时预览覆盖当前任务。
-    const selected = useRenameStore.getState().selectedIds;
-    const available = new Set(files.data.items.map((file) => file.id));
-    const contextKey = JSON.stringify([workspaceKey, selected.filter((id) => available.has(id)), rules]);
+    // 同一事件内选择可能已更新，使用 Store 中的实际选择，避免迟到响应覆盖新上下文。
+    const contextKey = JSON.stringify([workspaceKey, fileIds, rules, sort]);
     currentWorkspace.current = contextKey;
     preview.mutate({ contextKey, batchId: batch.batchId, storageId, location, fileIds: batch.fileIds, rules });
   };
@@ -218,6 +233,13 @@ export function useRenameWorkflow({
     execution.reset();
   };
 
+  const changeSort = useCallback((nextSort: FileSort) => {
+    if (sortLocked || execution.isPending || preview.isPending) return;
+    onSortChange(nextSort);
+    // 切回旧排序也不能重新启用旧预览；保留快照 ID 供下次替换或结束任务时释放。
+    preview.reset(); execution.reset();
+  }, [sortLocked, execution.isPending, preview.isPending, onSortChange, preview.reset, execution.reset]);
+
   const changeBatchHintPreference = (checked: boolean) => {
     const id = ++batchHintEditId.current;
     setBatchHintDraft(checked);
@@ -241,7 +263,7 @@ export function useRenameWorkflow({
   const executeRename = (previewId: string) => execution.mutate(previewId);
 
   return {
-    selectedIds, rules, browserTask, taskCurrent,
+    selectedIds, rules, browserTask, taskCurrent, browserItems, sortLocked, changeSort,
     selectedCount: Math.min(RENAME_BATCH_SIZE, currentSelectedIds.length),
     previewData, executionData: execution.data,
     previewError: preview.variables?.contextKey === previewContext ? preview.error?.message : undefined,

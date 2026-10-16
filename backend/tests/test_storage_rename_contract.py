@@ -391,6 +391,18 @@ def request(ids: list[str], names: dict[str, str]) -> RenamePreviewRequest:
 
 
 @pytest.mark.asyncio
+async def test_preview_and_execution_results_keep_requested_order() -> None:
+    provider = StableIdProvider({"1": "001.jpg", "2": "002.jpg"})
+    preview, execute = services(provider)
+    snapshot = await preview.preview(request(["2", "1"], {"001.jpg": "a.jpg", "002.jpg": "b.jpg"}))
+    assert [item.file_id for item in snapshot.items] == ["2", "1"]
+    result = await execute.execute(snapshot.preview_id)
+    assert result.status == "completed"
+    assert [item.file_id for item in result.items] == ["2", "1"]
+    assert [item.new_name for item in result.items] == ["b.jpg", "a.jpg"]
+
+
+@pytest.mark.asyncio
 async def test_all_existing_same_name_owners_are_checked() -> None:
     provider = StableIdProvider({"unselected": "same", "selected": "same", "other": "old"})
     preview, _ = services(provider)

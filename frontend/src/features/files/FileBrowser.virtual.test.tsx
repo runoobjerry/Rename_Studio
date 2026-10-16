@@ -1,6 +1,6 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import { FileBrowser } from "./FileBrowser";
+import { FileBrowserHarness as FileBrowser } from "../../test/FileBrowserHarness";
 import { PreviewPanel } from "../rename/PreviewPanel";
 
 const items = Array.from({ length: 1000 }, (_, index) => ({
@@ -29,13 +29,15 @@ it("mounts a bounded window while selecting all filtered items, including unmoun
   expect(screen.getAllByRole("row").length).toBeLessThan(40);
   expect(screen.queryByRole("checkbox", { name: "选择文件 file-999" })).not.toBeInTheDocument();
   fireEvent.click(screen.getByRole("checkbox", { name: "选择当前显示的全部项目" }));
-  expect(callbacks.onSelectAll).toHaveBeenCalledWith(items.map((item) => item.id));
+  expect(callbacks.onSelectAll).toHaveBeenCalledWith([
+    ...items.filter((item) => item.is_directory), ...items.filter((item) => !item.is_directory),
+  ].map((item) => item.id));
 });
 
 it("renders distant rows on scroll and reaches the last row with the keyboard", async () => {
   render(<FileBrowser {...props()} />);
   const container = screen.getByRole("table").parentElement!;
-  container.scrollTop = 6000;
+  container.scrollTop = 6400;
   fireEvent.scroll(container);
   await screen.findByRole("checkbox", { name: "选择文件 file-150" });
   fireEvent.keyDown(container, { key: "End" });
@@ -49,6 +51,22 @@ it("clears selections hidden by a filter across the entire dataset", () => {
   fireEvent.click(screen.getByRole("button", { name: "筛选项目" }));
   fireEvent.click(screen.getByRole("menuitemcheckbox", { name: "文件" }));
   expect(callbacks.onSelectAll).toHaveBeenCalledWith(items.filter((item) => !item.is_directory).map((item) => item.id));
+});
+
+it("sorts all rows before virtualization and resets the scroll position", () => {
+  const callbacks = props();
+  render(<FileBrowser {...callbacks} />);
+  const container = screen.getByRole("table").parentElement!;
+  container.scrollTop = 6400;
+  fireEvent.scroll(container);
+  fireEvent.click(screen.getByRole("button", { name: "文件名" }));
+  expect(container.scrollTop).toBe(0);
+  expect(screen.getAllByRole("row").length).toBeLessThan(40);
+  expect(screen.getByRole("checkbox", { name: "选择文件 file-999" })).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("checkbox", { name: "选择当前显示的全部项目" }));
+  expect(callbacks.onSelectAll).toHaveBeenCalledWith([
+    ...items.filter((item) => item.is_directory).reverse(), ...items.filter((item) => !item.is_directory).reverse(),
+  ].map((item) => item.id));
 });
 
 it("filters errors across unmounted preview rows without losing full preview statistics", async () => {

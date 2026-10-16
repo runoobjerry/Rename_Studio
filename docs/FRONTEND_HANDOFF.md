@@ -14,19 +14,19 @@
 |---|---|
 | `App.tsx`、`WorkspaceApp.tsx` | 应用入口、Provider 组合、工作区/设置内存视图、布局、导航保护与跨 Hook 协调；没有 URL 路由或深层链接 |
 | `workspace/hooks/useWorkspaceStorage.ts` | 连接与目录查询、本地根目录选择、默认云目录恢复/保存、手动刷新 |
-| `features/rename/useRenameWorkflow.ts` | 有效选择、预览 ID 生命周期、预览/执行请求、分批提示、结果通知及确认元数据合并 |
+| `features/rename/useRenameWorkflow.ts` | 有序有效选择与任务展示、预览 ID 生命周期、预览/执行请求、分批提示、结果通知及确认元数据合并 |
 | `stores/useRenameStore.ts`、`types/index.ts` | 选择、规则链、当前会话任务/批次快照与逐项状态；API 类型 |
 | `workspace/hooks/useFactoryReset.ts` | 重置禁用条件、请求状态、成功后的缓存和工作区清理 |
 | `features/settings/{SettingsPage,StorageSettingsPanel}.tsx` | 外观、多连接配置、授权与重置确认 |
 | `features/settings/{useAppSettings,useThemePreference}.ts` | 后端设置读取/串行保存、主题草稿与系统外观订阅 |
-| `features/files/{FileBrowser,LocationBreadcrumbs}.tsx`、`defaultCloudLocation.ts` | 文件/任务成员表、筛选与选择、路径导航、默认目录账号匹配 |
+| `features/files/{FileBrowser,LocationBreadcrumbs}.tsx`、`fileSort.ts`、`defaultCloudLocation.ts` | 文件/任务成员表、排序比较、筛选与选择、路径导航、默认目录账号匹配 |
 | `features/rules/{RuleEditor,RuleFields}.tsx` | 顺序规则链、添加菜单和显式字段配置 |
 | `features/rename/{PreviewPanel,RenameActions,RenameActionsWithProgress}.tsx` | 预览/结果展示、确认执行、局部进度订阅 |
 | `workspace/components/{StorageSidebar,StorageLocationPanel,BatchLimitDialog}.tsx` | 侧边栏、目录操作与分批提示展示；Drawer 容器由 WorkspaceApp 管理 |
 | `components/`、`hooks/useVirtualTable.ts`、`theme.ts`、`styles.css` | 共享通知、筛选、图标按钮、表格虚拟化、主题与布局 |
 | `api/client.ts` | 共享 HTTP 层和连接级 API 客户端 |
 
-TanStack Query 管理服务端状态，Zustand 管理选择、规则与页面内存任务；筛选留在组件。连接与重命名 Hook 不直接互相调用，由 WorkspaceApp 显式传入数据及重置动作，展示组件不承载任务状态机。
+TanStack Query 管理服务端状态，Zustand 管理选择、规则与页面内存任务；筛选留在组件，文件排序由 WorkspaceApp 保存在页面内存并显式传给工作流与表格，不修改目录缓存。连接与重命名 Hook 不直接互相调用，由 WorkspaceApp 显式传入数据及重置动作，展示组件不承载任务状态机。
 
 ## 已实现能力与限制
 
@@ -34,7 +34,8 @@ TanStack Query 管理服务端状态，Zustand 管理选择、规则与页面内
 - `padding`、`replace`、`remove`、`insert` 四种规则的字段编辑，以及启用/禁用、排序、复制、删除和清空。只展示前端已适配的规则；新增后端规则不会自动生成字段 UI。
 - 服务端预览、冲突和无效名称展示、人工确认执行、逐项结果及分批任务。任务文件集合在首次预览固定，每批上限见 API 契约与 Store 常量；跨批次名称依赖由后端拒绝，不由前端复杂调度。现有规则不使用跨批次序号。
 - 文件和预览表已有虚拟化。选择、筛选、统计及列宽基于完整数据，不能只按挂载行计算；进度查询局部订阅，避免更新整个工作区。
-- 主题、分批提示和默认云目录由后端应用设置持久化；任务只在页面内存，刷新即丢失。没有持久化历史、撤销/重做、规则集 UI、搜索或排序；目录接口无前端分页，OneDrive 分页由后端聚合。
+- 文件名和修改时间支持表头升降序排序，预览与任务分批使用同一顺序；具体约定见下方“选择、筛选和排序”。
+- 主题、分批提示和默认云目录由后端应用设置持久化；任务和排序只在页面内存，刷新即丢失。没有持久化历史、撤销/重做、规则集 UI 或搜索；目录接口无前端分页，OneDrive 分页由后端聚合。
 
 ## 必须保留的业务与交互约定
 
@@ -48,12 +49,16 @@ TanStack Query 管理服务端状态，Zustand 管理选择、规则与页面内
 - 超过单批上限时，点击预览才出现分批提示；取消不创建任务或提交预览。偏好保存失败撤销草稿并提示。
 - 进度来自只读服务端查询；轮询失败不重新执行、不模拟增长。已处理数量包含失败，进度完成不等于全部成功，逐项结果为准。
 
-### 选择和筛选
+### 选择、筛选和排序
 
 - 文件筛选清除隐藏项的选择，取消筛选不恢复旧选择。全选/反选只作用于全部可见且可选择的项目，替换选择集合；没有可选择项时禁用批量选择。
 - 目录成功刷新后，选择与完整目录取交集；不自动选择新增项，读取失败保留选择。选择收缩使旧预览失效，但不重置进行中的执行请求与进度。
 - 预览筛选仅影响显示，不缩小执行范围；执行结果中的失败/跳过分别归入错误/无变化，成功结果将待修改标签切为已修改。
 - 普通筛选无勾选时显示全部；任务开始后默认显示待处理项，类型组与状态组之间取交集，各组内部取并集，失败组包含待核对项。
+- 排序复用 MUI TableSortLabel，箭头为 16px；默认完整文件名自然升序，Intl.Collator 使用浏览器语言列表（缺失时使用浏览器单语言，最后为 en-US），忽略大小写并按数字值比较；同值再按原始名称和 ID 稳定比较。不同文字的相对顺序由语言设置决定，不额外指定字符类别优先级。文件夹始终置顶；修改时间按真实时间值比较，缺失时间在各自类型分组内置后，同时间按文件名升序。
+- 排序作用于完整数据，再筛选、虚拟化和分批；选择先后不决定预览顺序。切换目录、连接或设置页保留当前页面的排序设置，不写入后端偏好或 localStorage。
+- 首次执行前可调整排序，保留任务成员和 before 快照，旧预览立即失效，必须手动刷新预览。执行期间禁止调整；任何已报告或未知批次都会锁定当前任务顺序，包括无变化确认和失败，结束任务后才可调整。执行后更新名称、修改时间或 Local ID 不重排任务。
+- 预览响应、规则上下文索引及执行结果遵循提交的 ID 顺序；真实写入仍按后端临时名称、并发及回滚机制安全调度，不承诺完成先后。
 
 ### 设置、授权和目录
 

@@ -17,6 +17,7 @@
 |---|---|
 | 连接/账号/目录隔离，旧目录与旧预览不能污染新工作区 | [WorkspaceApp](../frontend/src/WorkspaceApp.test.tsx)、[默认云目录](../frontend/src/features/files/defaultCloudLocation.test.ts) |
 | 选择及规则变化使旧预览失效；保留替换 ID、释放迟到或结束任务的预览 | [工作流 Hook](../frontend/src/features/rename/useRenameWorkflow.test.ts)、WorkspaceApp 代表性 UI 接线 |
+| 排序与完整列表、预览、1001 项分批保持一致；草稿可重排且旧预览不能复活，执行后冻结顺序并保留 Local 新 ID 与已有记录 | 工作流 Hook、[Rename Store](../frontend/src/stores/useRenameStore.test.ts)、WorkspaceApp、[虚拟列表](../frontend/src/features/files/FileBrowser.virtual.test.tsx) |
 | 刷新只移除已消失的选择，失败保留选择；过滤隐藏项不恢复旧选择 | 工作流 Hook、WorkspaceApp、[FileBrowser](../frontend/src/features/files/FileBrowser.test.tsx) |
 | 1000 / 2000 项分批、固定任务快照、成功项不重复选择、失败重试与未知结果显式核对 | [Rename Store](../frontend/src/stores/useRenameStore.test.ts)、工作流 Hook |
 | 执行成功或响应丢失后暂停自动目录读取，允许人工刷新；合并服务端确认的文件身份 | 工作流 Hook、Rename Store |
@@ -37,6 +38,7 @@
 | 主题跟随系统、服务器偏好恢复、保存失败回退、连续编辑串行、迟到读取不覆盖保存 | [主题偏好 Hook](../frontend/src/features/settings/useThemePreference.test.ts) |
 | 连接创建/编辑/关闭草稿、本地选择器、授权状态与失败保留输入 | StorageSettingsPanel |
 | 目录语义导航、文本选择不误导航、任务过滤、目录折叠与键盘/滚动访问 | FileBrowser、虚拟列表、[LocationBreadcrumbs](../frontend/src/features/files/LocationBreadcrumbs.test.tsx) |
+| MUI 表头升降序、选择不随排序变化、锁定提示；中文数字名称自然排序、等价名称稳定比较、真实时间/时区、同时间及缺失值分组置后、不修改源数组 | FileBrowser、[文件排序](../frontend/src/features/files/fileSort.test.ts) |
 | 规则添加、编辑、移动、复制、删除及数字草稿归属；加载时禁止添加，溢出菜单仍可访问 | [RuleEditor](../frontend/src/features/rules/RuleEditor.test.tsx)、[RuleFields](../frontend/src/features/rules/RuleFields.test.tsx) |
 | API 偏好 PATCH / 恢复接口 / 进度 ID 编码；结构化错误、HTML 网关错误和代表性非法 JSON；成功、204、网络失败 | API client |
 | 通知五秒关闭、新通知独立计时、连续消息不泄漏中间消息、过期预览提供操作提示 | [NotificationProvider](../frontend/src/components/NotificationProvider.test.tsx) |

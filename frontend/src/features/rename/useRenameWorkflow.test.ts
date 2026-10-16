@@ -167,4 +167,114 @@ describe("rename workflow", () => {
     await waitFor(() => expect(hook.result.current.storage.files.error?.message).toBe("Refresh unavailable"));
     expect(useRenameStore.getState().selectedIds).toEqual(["file-0.txt", "file-1.txt"]);
   });
+
+  it("invalidates preview on sorting, keeps task snapshots, and never revives a previous ordering", async () => {
+    const hook = await setupWorkspace(3);
+    act(() => hook.result.current.workflow.selectAllFiles(["file-1.txt", "file-0.txt", "file-2.txt"]));
+    await preview(hook);
+    const task = useRenameStore.getState().task!;
+    const before = task.items[0].before;
+    act(() => hook.result.current.workflow.changeSort({ field: "name", direction: "desc" }));
+    expect(hook.result.current.workflow.previewData).toBeUndefined();
+    expect(useRenameStore.getState().selectedIds).toEqual(["file-1.txt", "file-0.txt", "file-2.txt"]);
+    act(() => hook.result.current.workflow.changeSort({ field: "name", direction: "asc" }));
+    expect(hook.result.current.workflow.previewData).toBeUndefined();
+    act(() => hook.result.current.workflow.changeSort({ field: "name", direction: "desc" }));
+    await preview(hook);
+    expect(api.createStoragePreview).toHaveBeenLastCalledWith("default-local", { kind: "root" },
+      ["file-2.txt", "file-1.txt", "file-0.txt"], [], "task-preview");
+    expect(hook.result.current.workflow.previewData!.items.map((item) => item.file_id))
+      .toEqual(["file-2.txt", "file-1.txt", "file-0.txt"]);
+    expect(useRenameStore.getState().task!.taskId).toBe(task.taskId);
+    expect(useRenameStore.getState().task!.items[2].before).toBe(before);
+    expect(api.executePreview).not.toHaveBeenCalled();
+  });
+
+  it("uses timestamp order and releases a late preview when refreshed metadata changes that order", async () => {
+    const hook = await setupWorkspace(3);
+    const key = ["files", "default-local", 1, { kind: "root" }];
+    const data = { ...listing(3), items: listing(3).items.map((file, index) => ({
+      ...file, modified_at: index === 2 ? null : `2026-10-16T00:00:${index === 0 ? "30" : "20"}Z`,
+    })) };
+    act(() => client.setQueryData(key, data));
+    act(() => hook.result.current.workflow.changeSort({ field: "modified_at", direction: "asc" }));
+    let finish!: (value: Awaited<ReturnType<typeof api.createStoragePreview>>) => void;
+    vi.mocked(api.createStoragePreview).mockReturnValueOnce(new Promise((resolve) => { finish = resolve; }));
+    act(() => hook.result.current.workflow.requestPreview());
+    await waitFor(() => expect(api.createStoragePreview).toHaveBeenCalledWith("default-local", { kind: "root" },
+      ["file-1.txt", "file-0.txt", "file-2.txt"], []));
+    act(() => client.setQueryData(key, { ...data, items: data.items.map((file) =>
+      file.id === "file-0.txt" ? { ...file, modified_at: "2026-10-16T00:00:10Z" } : file) }));
+    // Query 缓存通知异步送达 React；先确认新顺序生效，再模拟旧预览迟到。
+    await waitFor(() => expect(hook.result.current.workflow.browserItems.map((file) => file.id))
+      .toEqual(["file-0.txt", "file-1.txt", "file-2.txt"]));
+    await act(async () => finish({ preview_id: "late-sorted", expires_at: "2099-01-01T00:00:00Z", valid: true, items: [] }));
+    await waitFor(() => expect(api.releaseStoragePreview).toHaveBeenCalledWith("default-local", "late-sorted"));
+    expect(hook.result.current.workflow.previewData).toBeUndefined();
+    await preview(hook);
+    expect(api.createStoragePreview).toHaveBeenLastCalledWith("default-local", { kind: "root" },
+      ["file-0.txt", "file-1.txt", "file-2.txt"], []);
+  });
+
+  it("keeps fixed task membership validation when sorting the selected IDs", async () => {
+    const hook = await setupWorkspace(3);
+    act(() => hook.result.current.workflow.selectAllFiles(["file-0.txt", "file-1.txt"]));
+    await preview(hook);
+    act(() => hook.result.current.workflow.changeSort({ field: "name", direction: "desc" }));
+    act(() => hook.result.current.workflow.selectAllFiles(["file-0.txt", "file-1.txt", "file-2.txt"]));
+    act(() => hook.result.current.workflow.requestPreview());
+    expect(api.createStoragePreview).toHaveBeenCalledTimes(1);
+    expect(useRenameStore.getState().task!.items).toHaveLength(2);
+  });
+
+  it.each(["skipped", "failed", "lost-response"] as const)("locks sort after %s and unlocks only after task end", async (outcome) => {
+    const hook = await setupWorkspace();
+    await preview(hook);
+    if (outcome === "lost-response") vi.mocked(api.executePreview).mockRejectedValueOnce(new Error("Lost response"));
+    else vi.mocked(api.executePreview).mockResolvedValueOnce({ preview_id: "task-preview",
+      status: outcome === "failed" ? "failed" : "completed", items: listing().items.map((file) => ({
+        file_id: file.id, original_name: file.name, new_name: file.name, status: outcome, error: null,
+      })) });
+    act(() => hook.result.current.workflow.executeRename("task-preview"));
+    await waitFor(() => expect(hook.result.current.workflow.sortLocked).toBe(true));
+    await waitFor(() => expect(hook.result.current.workflow.isExecuting).toBe(false));
+    act(() => hook.result.current.workflow.changeSort({ field: "name", direction: "desc" }));
+    expect(hook.result.current.workflow.browserItems.map((item) => item.id)).toEqual(["file-0.txt", "file-1.txt"]);
+    act(() => hook.result.current.workflow.endTask());
+    act(() => hook.result.current.workflow.changeSort({ field: "name", direction: "desc" }));
+    expect(hook.result.current.workflow.sortLocked).toBe(false);
+    expect(hook.result.current.workflow.browserItems.map((item) => item.id)).toEqual(["file-1.txt", "file-0.txt"]);
+  });
+
+  it("splits descending order before the batch limit and freezes order across confirmed local ID changes", async () => {
+    const hook = await setupWorkspace(1001);
+    let previewNumber = 0;
+    vi.mocked(api.createStoragePreview).mockImplementation(async (_id, _location, ids) => ({
+      preview_id: `sorted-${++previewNumber}`, expires_at: "2099-01-01T00:00:00Z", valid: true,
+      items: ids.map((id) => ({ file_id: id, original_name: id, new_name: `new-${id}`,
+        changed: true, valid: true, conflict: false, error: null })),
+    }));
+    act(() => hook.result.current.workflow.changeSort({ field: "name", direction: "desc" }));
+    act(() => hook.result.current.workflow.requestPreview());
+    expect(hook.result.current.workflow.batchHintOpen).toBe(true);
+    act(() => hook.result.current.workflow.continueBatchPreview());
+    await waitFor(() => expect(hook.result.current.workflow.previewData?.preview_id).toBe("sorted-1"));
+    const firstIds = listing(1001).items.slice(1).reverse().map((file) => file.id);
+    expect(api.createStoragePreview).toHaveBeenCalledWith("default-local", { kind: "root" }, firstIds, []);
+    const byId = new Map(listing(1001).items.map((file) => [file.id, file]));
+    vi.mocked(api.executePreview).mockResolvedValueOnce({ preview_id: "sorted-1", status: "completed",
+      items: firstIds.map((id) => ({ file_id: id, original_name: id, new_name: `new-${id}`, status: "renamed", error: null,
+        current_file: { ...byId.get(id)!, id: `new-${id}`, name: `new-${id}`, modified_at: "2026-10-16T01:00:00Z" },
+      })) });
+    act(() => hook.result.current.workflow.executeRename("sorted-1"));
+    await waitFor(() => expect(hook.result.current.workflow.executionData?.status).toBe("completed"));
+    expect(hook.result.current.workflow.browserItems.map((file) => file.id))
+      .toEqual([...firstIds.map((id) => `new-${id}`), "file-0.txt"]);
+    act(() => hook.result.current.workflow.changeSort({ field: "modified_at", direction: "asc" }));
+    act(() => hook.result.current.workflow.requestPreview());
+    await waitFor(() => expect(hook.result.current.workflow.previewData?.preview_id).toBe("sorted-2"));
+    expect(api.createStoragePreview).toHaveBeenLastCalledWith("default-local", { kind: "root" },
+      ["file-0.txt"], [], "sorted-1");
+    expect(useRenameStore.getState().task!.items.filter((item) => item.status === "completed")).toHaveLength(1000);
+  });
 });

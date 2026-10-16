@@ -20,6 +20,7 @@ import { StorageSidebar } from "./workspace/components/StorageSidebar";
 import { StorageLocationPanel } from "./workspace/components/StorageLocationPanel";
 import { useWorkspaceStorage } from "./workspace/hooks/useWorkspaceStorage";
 import { FileBrowser } from "./features/files/FileBrowser";
+import { defaultFileSort, type FileSort } from "./features/files/fileSort";
 import { useRenameWorkflow } from "./features/rename/useRenameWorkflow";
 import { PreviewPanel } from "./features/rename/PreviewPanel";
 import { RenameActionsWithProgress } from "./features/rename/RenameActionsWithProgress";
@@ -77,6 +78,7 @@ function Workspace({ preference, setPreference, settingsError }: {
   const compactNavigation = useMediaQuery(theme.breakpoints.down("md"));
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [view, setView] = useState<AppView>("workspace");
+  const [fileSort, setFileSort] = useState<FileSort>(defaultFileSort);
   // 任务订阅留在容器以暂停存储自动查询；两个业务 Hook 不互相调用。
   const task = useRenameStore((state) => state.task);
   const {
@@ -92,7 +94,7 @@ function Workspace({ preference, setPreference, settingsError }: {
   });
   const definitions = useQuery({ queryKey: ["rules"], queryFn: fetchRules });
   const {
-    selectedIds, rules, browserTask, taskCurrent, selectedCount,
+    selectedIds, rules, browserTask, taskCurrent, browserItems, sortLocked, changeSort, selectedCount,
     previewData, executionData, previewError, executeError, executionPreviewId,
     isPreviewing, isExecuting, hasExecuted,
     batchHintOpen, skipBatchHint, closeBatchHint, changeBatchHintPreference, continueBatchPreview,
@@ -101,6 +103,7 @@ function Workspace({ preference, setPreference, settingsError }: {
     resetForStorageChange,
   } = useRenameWorkflow({
     storageId, location, workspaceKey, cloudSession, providerId, cloudReady, task,
+    sort: fileSort, onSortChange: setFileSort,
     activeStorage: activeStorage && { revision: activeStorage.revision, busy: activeStorage.busy },
     files: {
       data: files.data, isSuccess: files.isSuccess, isFetching: files.isFetching,
@@ -232,6 +235,10 @@ function Workspace({ preference, setPreference, settingsError }: {
                       <FileBrowser
                         onNavigateLocation={navigateLocation}
                         listing={files.data}
+                        items={browserItems}
+                        sort={fileSort}
+                        sortLocked={sortLocked}
+                        onSortChange={changeSort}
                         providerName={providerName}
                         selectedIds={selectedIds}
                         task={browserTask}
