@@ -32,6 +32,7 @@ export const listing = (count = 2): DirectoryListing => ({
 beforeEach(() => {
   vi.resetAllMocks();
   window.localStorage.clear();
+  window.sessionStorage.clear();
   useRenameStore.setState({ selectedIds: [], rules: [], task: null });
   client = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } });
   serverSettings = { preferences: { theme: "system", hide_batch_limit_hint: false, cloud_default_locations: {} } };

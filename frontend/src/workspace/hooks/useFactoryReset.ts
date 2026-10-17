@@ -12,11 +12,11 @@ interface FactoryResetOptions {
   isPreviewing: boolean;
   storageBusy: boolean;
   endTask: () => void;
-  selectStorage: (storageId: string) => void;
+  resetWorkspaceSession: () => void;
 }
 
 export function useFactoryReset({
-  task, isExecuting, isPreviewing, storageBusy, endTask, selectStorage,
+  task, isExecuting, isPreviewing, storageBusy, endTask, resetWorkspaceSession,
 }: FactoryResetOptions) {
   const notify = useNotification();
   const queryClient = useQueryClient();
@@ -47,7 +47,7 @@ export function useFactoryReset({
       await queryClient.cancelQueries({ predicate: (query) => query.queryKey[0] !== "app-settings" });
       endTask();
       useRenameStore.getState().setRules([]);
-      selectStorage("default-local");
+      resetWorkspaceSession();
       setResetEpoch((current) => current + 1);
       queryClient.removeQueries({ predicate: (query) => query.queryKey[0] !== "app-settings" && query.queryKey[0] !== "rules" });
       void queryClient.invalidateQueries({ queryKey: ["storages"] });

@@ -82,7 +82,7 @@ function Workspace({ preference, setPreference, settingsError }: {
   // 任务订阅留在容器以暂停存储自动查询；两个业务 Hook 不互相调用。
   const task = useRenameStore((state) => state.task);
   const {
-    storageId, location, setLocation, setPath, selectStorage,
+    storageId, location, setLocation, setPath, selectStorage, resetWorkspaceSession, locationReady,
     providers, activeStorage, providerId, providerName, oneDriveStatus, localSettings,
     cloudAccountId, cloudConnected, cloudSession, cloudReady, restoredCloudSession, appSettingsReady,
     files, workspaceKey, settingsLoading, pickLocalRoot,
@@ -114,24 +114,24 @@ function Workspace({ preference, setPreference, settingsError }: {
     if (isExecuting || providerId !== "onedrive" || !appSettingsReady || restoredCloudSession === cloudSession) return;
     restoreDefaultCloudPath();
     resetForStorageChange();
-  }, [providerId, cloudSession, restoredCloudSession, appSettingsReady]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [isExecuting, providerId, cloudSession, restoredCloudSession, appSettingsReady]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const loadError = providers.error ?? definitions.error ?? oneDriveStatus.error ?? localSettings.error;
   const { factoryReset, resetDisabledReason, resetPending, resetEpoch } = useFactoryReset({
     task, isExecuting, isPreviewing,
     storageBusy: providers.data?.some((storage) => storage.busy) ?? false,
-    endTask, selectStorage,
+    endTask, resetWorkspaceSession,
   });
 
   const navigate = useCallback((nextPath: string) => {
-    if (isExecuting || pickLocalRoot.isPending || activeStorage?.busy) return;
+    if (!locationReady || isExecuting || pickLocalRoot.isPending || activeStorage?.busy) return;
     setPath(nextPath);
-  }, [isExecuting, pickLocalRoot.isPending, activeStorage?.busy, setPath]);
+  }, [locationReady, isExecuting, pickLocalRoot.isPending, activeStorage?.busy, setPath]);
 
   const navigateLocation = useCallback((next: StorageLocation) => {
-    if (isExecuting || pickLocalRoot.isPending || activeStorage?.busy) return;
+    if (!locationReady || isExecuting || pickLocalRoot.isPending || activeStorage?.busy) return;
     setLocation(next);
-  }, [isExecuting, pickLocalRoot.isPending, activeStorage?.busy]);
+  }, [locationReady, isExecuting, pickLocalRoot.isPending, activeStorage?.busy, setLocation]);
 
   const selectProvider = (nextProviderId: string) => {
     if (isExecuting || pickLocalRoot.isPending) return;
@@ -212,10 +212,10 @@ function Workspace({ preference, setPreference, settingsError }: {
               <>
                 <StorageLocationPanel
                   compactNavigation={compactNavigation}
-                  listing={providerId === "local" || cloudReady ? files.data : undefined}
+                  listing={locationReady ? files.data : undefined}
                   rootLabel={providerName}
                   providerId={providerId}
-                  navigationDisabled={!activeStorage || isExecuting || pickLocalRoot.isPending || activeStorage.busy || (providerId === "onedrive" && !cloudReady)}
+                  navigationDisabled={!locationReady || !activeStorage || isExecuting || pickLocalRoot.isPending || activeStorage.busy}
                   defaultPathDisabled={!cloudAccountId || !cloudReady || !files.isSuccess || files.isFetching || Boolean(files.error) || oneDriveStatus.isError}
                   browseDisabled={!activeStorage || pickLocalRoot.isPending || isExecuting || activeStorage.busy}
                   isPickingFolder={pickLocalRoot.isPending}
@@ -231,7 +231,7 @@ function Workspace({ preference, setPreference, settingsError }: {
 
                 <div className="workspace-grid">
                   <div className="workspace-primary">
-                    {files.data && (providerId === "local" || cloudReady) ? (
+                    {files.data && locationReady ? (
                       <FileBrowser
                         onNavigateLocation={navigateLocation}
                         listing={files.data}
@@ -300,7 +300,7 @@ function Workspace({ preference, setPreference, settingsError }: {
                       selectedCount={selectedCount}
                       isPreviewing={isPreviewing}
                       isExecuting={isExecuting}
-                      isBlocked={pickLocalRoot.isPending || !activeStorage || activeStorage.busy || files.isFetching || Boolean(files.error)}
+                      isBlocked={!locationReady || pickLocalRoot.isPending || !activeStorage || activeStorage.busy || files.isFetching || Boolean(files.error)}
                       hasExecuted={hasExecuted}
                       allowUnchangedBatch={taskCurrent}
                       executionPreviewId={executionPreviewId}

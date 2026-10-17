@@ -5,6 +5,7 @@ import * as api from "./api/client";
 import WorkspaceApp from "./WorkspaceApp";
 import { readDefaultCloudLocation } from "./features/files/defaultCloudLocation";
 import { useRenameStore } from "./stores/useRenameStore";
+import { readWorkspaceSession, workspaceSessionKey } from "./workspace/workspaceSession";
 import type { AppSettings, AuthorizationStatus, StorageInfo, StorageLocation } from "./types";
 
 vi.mock("./api/client", async (importOriginal) => {
@@ -33,6 +34,7 @@ const status = (accountId: string | null, connected = true): AuthorizationStatus
 });
 
 beforeEach(() => {
+  window.sessionStorage.clear();
   serverSettings = { preferences: {
     theme: "system", hide_batch_limit_hint: false, cloud_default_locations: {},
   } };
@@ -221,11 +223,16 @@ describe("cloud default path integration", () => {
     fireEvent.click(screen.getByRole("button", { name: "文档" }));
     await waitFor(() => expect(api.fetchStorageFiles).toHaveBeenCalledWith("user-onedrive", { kind: "id", value: "document-id" }));
     await waitFor(() => expect(screen.getByRole("button", { name: "设为默认路径" })).toBeEnabled());
-    fireEvent.click(screen.getByRole("button", { name: "设为默认路径" }));
-    await waitFor(() => expect(savedCloud("user-onedrive", "account-a")).toEqual({ kind: "id", value: "document-id" }));
+    // 默认目录仍为“照片”，重新进入须使用尚未设为默认值的工作目录。
     fireEvent.click(screen.getByRole("button", { name: "本地文件" }));
     fireEvent.click(screen.getByRole("button", { name: "OneDrive" }));
     await waitFor(() => expect(api.fetchStorageFiles).toHaveBeenLastCalledWith("user-onedrive", { kind: "id", value: "document-id" }));
+    await waitFor(() => expect(within(screen.getByLabelText("文件路径")).getByRole("button", { name: "文档" }))
+      .toHaveAttribute("aria-current", "page"));
+    expect(savedCloud("user-onedrive", "account-a")).toEqual({ kind: "path", value: "照片" });
+    await waitFor(() => expect(screen.getByRole("button", { name: "设为默认路径" })).toBeEnabled());
+    fireEvent.click(screen.getByRole("button", { name: "设为默认路径" }));
+    await waitFor(() => expect(savedCloud("user-onedrive", "account-a")).toEqual({ kind: "id", value: "document-id" }));
   });
 
   it("switches accounts without reusing the previous directory or selection", async () => {
@@ -245,11 +252,34 @@ describe("cloud default path integration", () => {
       account_id: "account-b", location: { kind: "root" },
     }));
     expect(savedCloud("user-onedrive", "account-a")).toEqual({ kind: "root" });
+    expect(readWorkspaceSession().session.locations["user-onedrive"])
+      .toEqual({ revision: 1, accountId: "account-b", location: { kind: "root" } });
     client.setQueryData(["storage-auth", "user-onedrive", 1], status("account-a"));
     await waitFor(() => expect(screen.getByRole("button", { name: "设为默认路径" })).toBeEnabled());
     expect(screen.queryByRole("button", { name: "a-folder" })).not.toBeInTheDocument();
   });
 
+});
+
+describe("workspace path navigation", () => {
+  it("keeps the current directory through both settings return actions", async () => {
+    window.sessionStorage.setItem(workspaceSessionKey, JSON.stringify({
+      version: 1, activeStorageId: "default-local", locations: {
+        "default-local": { revision: 1, accountId: null, location: { kind: "path", value: "工作目录" } },
+      },
+    }));
+    render(<QueryClientProvider client={client}><WorkspaceApp /></QueryClientProvider>);
+    await waitFor(() => expect(screen.getByRole("button", { name: "工作目录" })).toHaveAttribute("aria-current", "page"));
+    vi.mocked(api.fetchStorageFiles).mockClear();
+    for (const returnButton of ["返回主页", "本地文件"]) {
+      fireEvent.click(screen.getByRole("button", { name: "设置" }));
+      await screen.findByRole("button", { name: "返回主页" });
+      fireEvent.click(screen.getByRole("button", { name: returnButton }));
+      await waitFor(() => expect(screen.getByRole("button", { name: "工作目录" })).toHaveAttribute("aria-current", "page"));
+      expect(api.fetchStorageFiles).not.toHaveBeenCalled();
+      expect(readWorkspaceSession().session.locations["default-local"].location).toEqual({ kind: "path", value: "工作目录" });
+    }
+  });
 });
 
 describe("factory reset", () => {
@@ -268,6 +298,14 @@ describe("factory reset", () => {
   });
 
   it("clears in-memory rules and restores preferences after one successful reset", async () => {
+    window.sessionStorage.setItem(workspaceSessionKey, JSON.stringify({
+      version: 1, activeStorageId: "default-local", locations: {
+        "default-local": { revision: 1, accountId: null, location: { kind: "path", value: "重置前的目录" } },
+        "user-onedrive": { revision: 1, accountId: "account-a", location: { kind: "id", value: "remembered-folder" } },
+      },
+    }));
+    window.sessionStorage.setItem("unrelated-session-key", "keep");
+    const removeItem = vi.spyOn(Storage.prototype, "removeItem");
     serverSettings.preferences.theme = "dark";
     serverSettings.preferences.hide_batch_limit_hint = true;
     seedCloud("user-onedrive", "account-a", { kind: "id", value: "old-folder" });
@@ -282,9 +320,22 @@ describe("factory reset", () => {
     expect(await screen.findByText("已重置应用")).toBeInTheDocument();
     await waitFor(() => expect(screen.queryByRole("dialog", { name: "确认重置？" })).not.toBeInTheDocument());
     await waitFor(() => expect(screen.getByRole("combobox", { name: "外观主题" })).toHaveTextContent("跟随系统"));
+    expect(removeItem).toHaveBeenCalledWith(workspaceSessionKey);
+    expect(window.sessionStorage.getItem("unrelated-session-key")).toBe("keep");
+    fireEvent.click(screen.getByRole("button", { name: "返回主页" }));
+    await waitFor(() => expect(readWorkspaceSession().session.locations["default-local"])
+      .toEqual({ revision: 2, accountId: null, location: { kind: "root" } }));
+    expect(readWorkspaceSession().session.locations["user-onedrive"]).toBeUndefined();
+    expect(readWorkspaceSession().session.activeStorageId).toBe("default-local");
+    expect(screen.queryByRole("button", { name: "重置前的目录" })).not.toBeInTheDocument();
   });
 
   it("keeps current settings and rules when reset fails", async () => {
+    window.sessionStorage.setItem(workspaceSessionKey, JSON.stringify({
+      version: 1, activeStorageId: "default-local", locations: {
+        "default-local": { revision: 1, accountId: null, location: { kind: "path", value: "保留目录" } },
+      },
+    }));
     serverSettings.preferences.theme = "dark";
     useRenameStore.setState({ rules: [{ type: "insert", enabled: true, config: { text: "keep" } }] });
     vi.mocked(api.factoryResetAppSettings).mockRejectedValueOnce(new Error("Disk unavailable"));
@@ -295,6 +346,8 @@ describe("factory reset", () => {
     expect(useRenameStore.getState().rules).toHaveLength(1);
     expect(serverSettings.preferences.theme).toBe("dark");
     expect(screen.getByRole("dialog", { name: "确认重置？" })).toBeInTheDocument();
+    expect(readWorkspaceSession().session.locations["default-local"].location).toEqual({ kind: "path", value: "保留目录" });
+    expect(readWorkspaceSession().session.activeStorageId).toBe("default-local");
   });
 });
 
