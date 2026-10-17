@@ -47,7 +47,6 @@ def get_storage_manager() -> StorageManager:
             before_change=guard,
         ),
     ))
-    # Google Drive remains read-only until preview/execution integration is implemented.
     registry.register(ProviderDefinition(
         "google_drive", "Google Drive", GoogleDriveConfig, ("root", "id"),
         lambda record, auth: GoogleDriveProvider(cast(ConnectionAuth, auth)),
@@ -56,7 +55,6 @@ def get_storage_manager() -> StorageManager:
             client_id=cast(str | None, record.config["client_id"]),
             credentials=record.credentials, persist=persist, before_change=guard,
         ),
-        can_rename=False,
     ))
     repository = JsonStorageRepository(settings.storage_state_file)
     state = repository.load_or_initialize(settings.local_storage_root, registry.validate_config)

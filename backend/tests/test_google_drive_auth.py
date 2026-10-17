@@ -17,10 +17,12 @@ from app.core.config import Settings
 from app.core.errors import AuthenticationError, ProviderError, RateLimitError, StorageBusyError, StorageConnectionChangedError
 from app.main import create_app
 from app.rules.registry import RuleRegistry
+from app.rules.text_operations import ReplaceRule
 from app.schemas.storage import AppSettingsPatch, StorageCreate, StorageUpdate
 from app.services.google_drive_auth import ABOUT_URL, SCOPE, TOKEN_URL, GoogleDriveAuthService
 from app.services.preview_service import PreviewService
 from app.services.preview_store import PreviewStore
+from app.services.execute_service import ExecuteService
 from app.services.rename_engine import RenameEngine
 from app.services.storage_manager import StorageManager
 
@@ -74,15 +76,20 @@ async def authorize(auth: GoogleDriveAuthService) -> None:
 def api(manager: StorageManager) -> TestClient:
     app = create_app()
     app.dependency_overrides[dependencies.get_storage_manager] = lambda: manager
-    preview = PreviewService(manager.registry, RenameEngine(RuleRegistry()), PreviewStore())
+    rules = RuleRegistry()
+    rules.register(ReplaceRule())
+    preview = PreviewService(manager.registry, RenameEngine(rules), PreviewStore())
     app.dependency_overrides[dependencies.get_preview_service] = lambda: preview
+    app.dependency_overrides[dependencies.get_preview_store] = lambda: preview.store
+    execute = ExecuteService(manager.registry, preview.store, preview)
+    app.dependency_overrides[dependencies.get_execute_service] = lambda: execute
     return TestClient(app)
 
 
-def test_connection_api_separates_secret_and_advertises_read_only_locations(manager: StorageManager) -> None:
+def test_connection_api_separates_secret_and_advertises_rename_capability(manager: StorageManager) -> None:
     with api(manager) as client:
         definition = next(item for item in client.get("/storage-providers").json() if item["provider_type"] == "google_drive")
-        assert definition["browser_auth"] and not definition["can_rename"]
+        assert definition["browser_auth"] and definition["can_rename"]
         assert definition["locations"] == ["root", "id"]
         assert "client_secret" not in definition["config_schema"]["properties"]
         response = client.post("/storages", json={
@@ -99,7 +106,7 @@ def test_connection_api_separates_secret_and_advertises_read_only_locations(mana
         status = client.get(f"/storages/{storage_id}/auth/status").json()
         assert status["configured"] and not status["connected"]
         assert client.post(f"/storages/{storage_id}/files/list", json={}).status_code == 401
-        assert client.post(f"/storages/{storage_id}/rename/preview", json={"file_ids": ["file-id"]}).status_code == 422
+        assert client.post(f"/storages/{storage_id}/rename/preview", json={"file_ids": ["file-id"]}).status_code == 401
         assert manager.record(storage_id).credentials == {"client_secret": CLIENT_SECRET}
 
 
@@ -444,7 +451,7 @@ async def test_delete_and_reset_remove_google_client_secret(manager: StorageMana
 
 
 @pytest.mark.asyncio
-async def test_directory_api_returns_connection_context_and_keeps_preview_disabled(manager: StorageManager, monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_directory_api_returns_connection_context_and_preview_remains_read_only(manager: StorageManager, monkeypatch: pytest.MonkeyPatch) -> None:
     from app.providers.google_drive import FOLDER_MIME
 
     storage_id, auth = google_connection(manager)
@@ -473,8 +480,47 @@ async def test_directory_api_returns_connection_context_and_keeps_preview_disabl
             assert listing["breadcrumbs"] == [{"name": "My Drive", "location": {"kind": "root"}}]
             assert listing["items"][0]["mime_type"] == "text/plain"
             before = list(reads)
-            preview = await client.post(f"/storages/{storage_id}/rename/preview", json={"file_ids": ["file"], "rules": []})
-            assert preview.status_code == 422 and preview.json()["error"]["code"] == "VALIDATION_ERROR"
-            assert reads == before
+            preview = await client.post(f"/storages/{storage_id}/rename/preview", json={"location": {"kind": "root"}, "file_ids": ["file"], "rules": []})
+            assert preview.status_code == 200 and preview.json()["valid"]
+            assert len(reads) > len(before)
+    finally:
+        await manager.aclose()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("change", [None, "source", "credentials"])
+async def test_google_api_executes_server_snapshot_or_rejects_changes(manager: StorageManager, monkeypatch: pytest.MonkeyPatch, change: str | None) -> None:
+    from test_google_drive_provider import WritableDriveServer, drive_file
+
+    storage_id, auth = google_connection(manager)
+    mock_google(monkeypatch, google_response)
+    await authorize(auth)
+    server = WritableDriveServer([drive_file("file", "old.txt")])
+    mock_google(monkeypatch, server)
+    try:
+        async with ASYNC_CLIENT(transport=httpx.ASGITransport(app=api(manager).app), base_url="http://test") as client:
+            response = await client.post(f"/storages/{storage_id}/rename/preview", json={
+                "location": {"kind": "root"}, "file_ids": ["file"],
+                "rules": [{"type": "replace", "config": {"search": "old", "replacement": "new"}}],
+            })
+            assert response.status_code == 200 and response.json()["valid"]
+            assert not server.writes
+            preview_id = response.json()["preview_id"]
+            if change == "source":
+                server.files["file"]["name"] = "external.txt"
+            elif change == "credentials":
+                updated = await client.put(f"/storages/{storage_id}", json={"client_secret": "replacement-fixture-secret"})
+                assert updated.status_code == 200
+            response = await client.post("/rename/execute", json={
+                "preview_id": preview_id,
+                "items": [{"file_id": "file", "new_name": "tampered.txt"}],
+            })
+            if change is not None:
+                assert response.status_code == 409 and not server.writes
+            else:
+                assert response.status_code == 200 and response.json()["status"] == "completed"
+                assert server.writes == [[("file", "new.txt")]]
+                assert (await client.get(f"/rename/progress/{preview_id}")).json()["phase"] == "finished"
+                assert (await client.post("/rename/execute", json={"preview_id": preview_id})).status_code == 404
     finally:
         await manager.aclose()

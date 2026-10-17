@@ -1,8 +1,8 @@
 # Google Drive 接入交接
 
-阶段二在已有连接/OAuth 上增加 My Drive 只读 Provider：目录分页、单项/批量元数据、范围校验与祖先 ID 链，并同步前端类型。注册信息为 `provider_type=google_drive`、`browser_auth=true`、`locations=["root","id"]`、`can_rename=false`。预览入口及 Provider 写入仍明确拒绝；Google 设置表单和工作区尚未适配。
+阶段三在已有连接/OAuth 和 My Drive 读取能力上接入名称校验、预览、防重名与单项/批量重命名。注册信息为 `provider_type=google_drive`、`browser_auth=true`、`locations=["root","id"]`、`can_rename=true`。继续复用现有服务端快照、执行互斥、名称依赖分阶段处理、回滚及未知写入核查；Google 设置表单和工作区适配留到阶段四。
 
-验收记录：2026-10-18 用户确认阶段一、阶段二均已完成并通过验收，并批准提交代码。验收结论由用户提供；Codex 未代为执行测试或真实云盘验收。
+验收记录：2026-10-18 用户确认阶段一、阶段二均已完成并通过验收，已提交 `33e8e9e`。同日用户确认阶段三已完成并通过验收，批准提交代码。验收结论由用户提供；Codex 未代为执行测试或真实云盘验收。
 
 ## 配置与授权契约
 
@@ -56,7 +56,9 @@
 
 8. 授权后通过 `POST /storages/{storage_id}/files/list` 读取 `{ "location": { "kind": "root" } }`；应返回完整根目录及 `storage_id`、`revision`、`location`、`parent_location`、`breadcrumbs`。进入子目录使用响应中的 `item.location`，返回上级使用 `parent_location`，祖先导航使用 `breadcrumbs`；不能从显示 path 拼接路径。
 9. 在已准备的测试目录检查：超过 1000 个直接子项不漏页；多层、同名和包含分隔符的目录按 ID 定位正确；普通文件、文件夹、Google 文档标题、可空大小/修改时间和权限标记正确；快捷方式只展示且不读取其目标。路径形式（包括空 path）、My Drive 外 ID、共享盘、垃圾箱和快捷方式目录导航应被拒绝或返回真实的不可访问错误。
-10. Google 预览请求仍应返回 422，Provider 单项/批量重命名也应被拒绝；本阶段不修改文件。回归 Local/OneDrive 目录、预览与执行，确认新增可选字段不影响已有流程。
+10. ；确认预览前后真实名称不变。普通文件、文件夹和 Google 文档使用原始标题；根目录和快捷方式不能重命名。空白名称、NUL 和新产生的同目录重名应被阻止；原有重名项保持不变可通过，大小写不同名称按不同目标处理。
+
+13. 回归 Local/OneDrive 目录、预览与执行，特别检查重复目标、未选中项占用、循环依赖和失败回滚。阶段三没有调整前端表单和导航；当前验收通过 API 完成。
 
 阶段二的单项/批量元数据沿用 Provider 接口，没有新增 HTTP 路由。可在 `backend/` 下用以下人工脚本核对已知目录；请替换连接 ID，目录不在根目录时使用对应 `IdLocation`。该脚本只读取，不输出令牌：
 
@@ -87,17 +89,25 @@ asyncio.run(check_metadata())
 建议在 `backend/` 下执行：
 
 ```powershell
-.\.venv\Scripts\python.exe -m pytest tests/test_google_drive_provider.py tests/test_google_drive_auth.py tests/test_storage_connections.py tests/test_onedrive_provider.py tests/test_onedrive_auth.py tests/test_storage_rename_contract.py tests/test_api.py
+.\.venv\Scripts\python.exe -m pytest tests/test_google_drive_provider.py tests/test_google_drive_auth.py tests/test_storage_connections.py tests/test_onedrive_provider.py tests/test_onedrive_auth.py tests/test_storage_rename_contract.py tests/test_preview_service.py tests/test_execute_service.py tests/test_api.py
 ```
 
-前端本阶段仅增加类型字段；按现有流程由用户执行 `frontend/` 下的 `npm run check`。测试源码、静态检查与历史通过记录都不构成本阶段运行通过的证据。
+阶段三没有前端改动；需要整体验证时按现有流程由用户执行 `frontend/` 下的 `npm run check`。测试源码、静态检查与历史通过记录都不构成本阶段运行通过的证据。
 
 ## 后续依赖与验证状态
 
-下一阶段接入 Google 名称校验、防重名策略、预览与 batch 写入；之后再适配前端工作区和面包屑消费。已确认首期不展开快捷方式，继续阻止本次操作产生重名。
+阶段四依赖本阶段验收，负责前端配置、工作区与面包屑消费。首期不展开/改名快捷方式、不开放共享云端硬盘、不新增历史/撤销实现、不扩大 OAuth scope，也不迁移持久化格式。
+
+名称按原字符串比较，不折叠大小写或 Unicode 形式。应用拒绝空白和 NUL，不套用本地文件系统保留字/字符及猜测长度限制，其余限制由 Google 返回。仅保持不变的既有重名获准通过；改变后的目标仍与所有选中目标和未选中同目录项比较。
+
+单项与批量写入复用 multipart 解析及现有执行服务；每批最多 20 项、并发一批，PATCH 请求只带 `name`。写前重新读取源项与祖先，防止已移出 My Drive、共享盘、垃圾箱或失去改名权限的项被写入。401/限流明确拒绝可有限重试；已成功子项不重放。传输失败、5xx、缺失/畸形响应、成功响应身份或位置异常统一作为未知结果交由引擎按 ID 核查。查证目标已达成则继续，无法查证则停止后续组并保留未知状态；不会盲目回滚未知项。
+
+Google 不提供“同目录冲突检查 + 重命名”事务，也不原生禁止重名。执行前重校验只能减少竞态，其他客户端仍可能在检查后新建重名、移动文件或改变权限；回滚同样尽力而为，可能留下临时名或部分完成。发生这些情况按执行响应、进度及实际目录处理。阶段三测试源码覆盖元数据 PATCH 边界、逐项重试/部分失败、范围权限、重名策略、依赖与回滚、快照失效，以及未知写入核查不重放；阶段三已由用户确认完成并通过验收，具体运行结果以用户验收为准。
 
 阶段二新增/调整回归测试源码，覆盖目录分页、空页、同名目录与真实祖先 ID、元数据批处理及顺序、范围越界、快捷方式、异常响应、逐项重试、权限映射与 API 只读边界。阶段一、二均已由用户确认验收通过；静态检查不单独构成运行证据。当前凭据存储沿用本地 JSON，没有新增加密存储；文档中的实际客户端凭据已恢复为占位符。
 
 只读实现按本轮读取结果核验祖先，没有云端事务快照；外部移动、分页期间增删和权限变化可能要求刷新。读取失败不返回部分目录。缓存仅在一次操作内复用；祖先层级较深时仍需额外元数据请求。bulk 元数据每批最多 100 项、串行发送批次，逐项解析响应，失败重试不重读已成功子项。没有递归扫描整个云盘或全局目录缓存。
 
 阶段二官方依据：[files.list](https://developers.google.com/workspace/drive/api/reference/rest/v3/files/list)、[files.get](https://developers.google.com/workspace/drive/api/reference/rest/v3/files/get)、[File 字段与能力](https://developers.google.com/workspace/drive/api/reference/rest/v3/files)、[multipart batch](https://developers.google.com/workspace/drive/api/guides/performance)、[错误与限流](https://developers.google.com/workspace/drive/api/guides/handle-errors)。
+
+阶段三官方依据：[files.update（元数据 PATCH）](https://developers.google.com/workspace/drive/api/reference/rest/v3/files/update)、[multipart 批次与非事务语义](https://developers.google.com/workspace/drive/api/guides/performance)、[权限与错误分类](https://developers.google.com/workspace/drive/api/guides/handle-errors)。Google 单批上限为 100 个子请求；本项目写入使用现有执行服务的 20 项批次以复用调度与故障处理。

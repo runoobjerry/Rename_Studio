@@ -141,7 +141,8 @@ class PreviewService:
                 error = provider.validate_target_name(item, new_name)
                 if (not supports_rename or item.can_rename is False) and item.name != new_name:
                     error = "This item cannot be renamed with the current permissions"
-                conflict = (
+                # Pre-existing duplicate names may remain unchanged; only new targets create conflicts.
+                conflict = item.name != new_name and (
                     normalized_target in duplicate_targets
                     or normalized_target in occupied_names
                 )

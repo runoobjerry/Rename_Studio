@@ -1,4 +1,5 @@
 import asyncio
+import json
 import logging
 import random
 from datetime import UTC, datetime
@@ -13,7 +14,7 @@ from uuid import uuid4
 import httpx
 from pydantic import BaseModel, Field, ValidationError as ModelValidationError
 
-from app.core.errors import AppError, AuthenticationError, NotFoundError, PermissionDeniedError, ProviderError, RateLimitError, ValidationError
+from app.core.errors import AppError, AuthenticationError, NotFoundError, PermissionDeniedError, ProviderError, RateLimitError, RenameConflictError, RenameOutcomeUnknownError, ValidationError
 from app.core.log_context import request_id_context
 from app.providers.base import RenameRequest, StorageProvider
 from app.schemas.files import DirectoryBreadcrumb, DirectoryListing, FileItem
@@ -29,7 +30,6 @@ FILE_FIELDS = "id,name,mimeType,parents,trashed,driveId,size,modifiedTime,capabi
 READ_BATCH_SIZE = 100
 MAX_RETRIES = 3
 RATE_REASONS = {"rateLimitExceeded", "userRateLimitExceeded"}
-READ_ONLY_MESSAGE = "Google Drive renaming is not available yet"
 logger = logging.getLogger("rename_studio.google_drive")
 
 
@@ -319,7 +319,7 @@ class GoogleDriveProvider(StorageProvider):
             raise ProviderError("Google Drive omitted a metadata batch response")
         return [outcomes[f"response-{index}"] for index in range(count)]
 
-    async def _request(self, method: str, url: str, *, params: dict[str, str] | None = None, content: bytes | None = None, headers: dict[str, str] | None = None) -> httpx.Response:
+    async def _request(self, method: str, url: str, *, params: dict[str, str] | None = None, content: bytes | None = None, headers: dict[str, str] | None = None, writing: bool = False) -> httpx.Response:
         refreshed = False
         attempt = 0
         while True:
@@ -328,22 +328,26 @@ class GoogleDriveProvider(StorageProvider):
             try:
                 response = await self._http_client().request(method, url, params=params, content=content, headers={**(headers or {}), "Authorization": f"Bearer {token}"})
             except httpx.HTTPError as exc:
-                logger.info("drive_read provider=google_drive request_id=%s method=%s status=transport_error duration_ms=%.2f", request_id_context.get(), method, (perf_counter() - started) * 1000)
+                logger.info("drive_request provider=google_drive request_id=%s method=%s writing=%s status=transport_error duration_ms=%.2f", request_id_context.get(), method, writing, (perf_counter() - started) * 1000)
+                if writing:
+                    raise RenameOutcomeUnknownError("Google Drive write outcome is unknown; verify metadata before continuing") from exc
                 if attempt < MAX_RETRIES:
                     await asyncio.sleep(min(2**attempt + random.random(), 8))
                     attempt += 1
                     continue
                 raise ProviderError("Google Drive is unavailable") from exc
-            logger.info("drive_read provider=google_drive request_id=%s method=%s status=%s duration_ms=%.2f", request_id_context.get(), method, response.status_code, (perf_counter() - started) * 1000)
+            logger.info("drive_request provider=google_drive request_id=%s method=%s writing=%s status=%s duration_ms=%.2f", request_id_context.get(), method, writing, response.status_code, (perf_counter() - started) * 1000)
             if response.is_success:
                 return response
+            if writing and response.status_code >= 500:
+                raise RenameOutcomeUnknownError("Google Drive write outcome is unknown; verify metadata before continuing")
             error = self._response_error(response)
             if response.status_code == 401 and not refreshed and attempt < MAX_RETRIES:
                 await self.auth.access_token(force_refresh=True)
                 refreshed = True
                 attempt += 1
                 continue
-            # POST is safe to retry here: this provider only posts batches containing metadata GETs.
+            # Read batches can be replayed; write batches only retry explicit auth/throttle refusals.
             if self._retryable(response, error) and attempt < MAX_RETRIES:
                 await asyncio.sleep(self._retry_delay(response, attempt))
                 attempt += 1
@@ -368,8 +372,10 @@ class GoogleDriveProvider(StorageProvider):
                 return RateLimitError("Google Drive rate limit reached", details=details)
             return PermissionDeniedError("Google Drive permission denied", details=details)
         if response.status_code == 400:
-            return ValidationError("Google Drive rejected the read request; refresh the directory", details=details)
-        return ProviderError("Google Drive read request failed", details=details)
+            return ValidationError("Google Drive rejected the request; refresh before continuing", details=details)
+        if response.status_code in (409, 412):
+            return RenameConflictError("Google Drive rejected the rename because the file changed", details=details)
+        return ProviderError("Google Drive request failed", details=details)
 
     @staticmethod
     def _retryable(response: httpx.Response, error: AppError) -> bool:
@@ -398,10 +404,132 @@ class GoogleDriveProvider(StorageProvider):
             await self._client.aclose()
 
     async def rename(self, file_id: str, new_name: str) -> FileItem:
-        raise ValidationError(READ_ONLY_MESSAGE)
+        outcome = (await self.rename_many([RenameRequest(file_id, new_name)]))[file_id]
+        if isinstance(outcome, AppError):
+            raise outcome
+        return outcome
 
     async def rename_many(self, requests: list[RenameRequest]) -> dict[str, FileItem | AppError]:
-        raise ValidationError(READ_ONLY_MESSAGE)
+        results: dict[str, FileItem | AppError] = {}
+        for offset in range(0, len(requests), self.execution_batch_size):
+            batch = requests[offset:offset + self.execution_batch_size]
+            outcomes = await self._rename_batch(batch)
+            results.update(outcomes)
+            if any(isinstance(outcome, RenameOutcomeUnknownError) for outcome in outcomes.values()):
+                for request in requests[offset + len(batch):]:
+                    results[request.file_id] = ProviderError("Rename was not attempted after an unknown write outcome")
+                break
+        return results
+
+    async def _rename_batch(self, requests: list[RenameRequest]) -> dict[str, FileItem | AppError]:
+        results: dict[str, FileItem | AppError] = {}
+        try:
+            root, cache = await self._root_context()
+            await self._load_files([request.file_id for request in requests], cache)
+            sources = {request.file_id: cache[request.file_id] for request in requests}
+            await self._load_ancestors(list(sources.values()), root, cache)
+        except AppError as exc:
+            return {request.file_id: exc for request in requests}
+
+        pending: list[RenameRequest] = []
+        for request in requests:
+            source = self._to_item(self._chain(sources[request.file_id], root, cache))
+            error = self.validate_target_name(source, request.new_name)
+            if error is not None:
+                results[request.file_id] = ValidationError(error)
+            elif source.can_rename is False:
+                results[request.file_id] = PermissionDeniedError("This Google Drive item cannot be renamed")
+            else:
+                pending.append(request)
+
+        refreshed = False
+        attempt = 0
+        while pending:
+            boundary = f"rename-studio-{uuid4().hex}"
+            query = urlencode({"fields": FILE_FIELDS, "supportsAllDrives": "false"})
+            parts: list[str] = []
+            for index, request in enumerate(pending):
+                body = json.dumps({"name": request.new_name}, ensure_ascii=True)
+                parts.append(
+                    f"--{boundary}\r\nContent-Type: application/http\r\nContent-ID: {index}\r\n\r\n"
+                    f"PATCH /drive/v3/files/{quote(request.file_id, safe='')}?{query} HTTP/1.1\r\n"
+                    f"Content-Type: application/json\r\n\r\n{body}\r\n"
+                )
+            content = ("".join(parts) + f"--{boundary}--\r\n").encode("utf-8")
+            try:
+                response = await self._request("POST", BATCH_URL, content=content, headers={"Content-Type": f"multipart/mixed; boundary={boundary}"}, writing=True)
+            except AppError as exc:
+                results.update({request.file_id: exc for request in pending})
+                break
+            try:
+                responses = self._batch_responses(response, len(pending))
+            except ProviderError:
+                # An incomplete envelope can include committed writes. Reconcile by ID, never replay it.
+                results.update({request.file_id: RenameOutcomeUnknownError("Google Drive returned an incomplete write batch response") for request in pending})
+                break
+
+            retry: list[RenameRequest] = []
+            retry_delay = 0.0
+            refresh = False
+            for request, outcome in zip(pending, responses, strict=True):
+                if outcome.is_success:
+                    try:
+                        current = self._parse_file(outcome, request.file_id)
+                    except ProviderError:
+                        results[request.file_id] = RenameOutcomeUnknownError("Google Drive returned invalid write metadata")
+                        continue
+                    source = sources[request.file_id]
+                    if current.parents != source.parents or current.mimeType != source.mimeType or current.trashed or current.driveId is not None:
+                        results[request.file_id] = RenameOutcomeUnknownError("Google Drive item changed location or type during the write")
+                    elif current.name != request.new_name:
+                        results[request.file_id] = ProviderError("Google Drive did not confirm the requested name", details={"actual_name": current.name})
+                    else:
+                        cache[current.id] = current
+                        results[request.file_id] = self._to_item(self._chain(current, root, cache))
+                    continue
+                if outcome.status_code >= 500:
+                    results[request.file_id] = RenameOutcomeUnknownError("Google Drive write outcome is unknown")
+                    continue
+                error = self._response_error(outcome)
+                if outcome.status_code == 401 and not refreshed and attempt < MAX_RETRIES:
+                    refresh = True
+                elif isinstance(error, RateLimitError) and attempt < MAX_RETRIES:
+                    retry_delay = max(retry_delay, self._retry_delay(outcome, attempt))
+                else:
+                    results[request.file_id] = error
+                    continue
+                retry.append(request)
+            if any(isinstance(outcome, RenameOutcomeUnknownError) for outcome in results.values()):
+                for request in retry:
+                    results[request.file_id] = ProviderError("Rename retry was not attempted after an unknown write outcome")
+                break
+            if refresh:
+                try:
+                    await self.auth.access_token(force_refresh=True)
+                except AppError as exc:
+                    results.update({request.file_id: exc for request in retry})
+                    break
+                refreshed = True
+            if retry_delay:
+                await asyncio.sleep(retry_delay)
+            pending = retry
+            attempt += 1
+        return results
 
     def validate_name(self, name: str) -> str | None:
-        raise ValidationError(READ_ONLY_MESSAGE)
+        # Application policy for metadata titles; do not impose Windows names or a guessed length limit.
+        if not name or not name.strip():
+            return "Google Drive name cannot be empty"
+        if "\x00" in name:
+            return "Google Drive name cannot contain a null character"
+        return None
+
+    def validate_target_name(self, item: FileItem, name: str) -> str | None:
+        if isinstance(item.location, RootLocation):
+            return "The My Drive root cannot be renamed"
+        if item.mime_type == SHORTCUT_MIME:
+            return "Google Drive shortcuts cannot be renamed by this application"
+        return self.validate_name(name)
+
+    def normalize_name(self, name: str) -> str:
+        return name

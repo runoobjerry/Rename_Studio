@@ -9,11 +9,21 @@ from urllib.parse import parse_qs, unquote, urlsplit
 import httpx
 import pytest
 import pytest_asyncio
+from pydantic import BaseModel
 
-from app.core.errors import AuthenticationError, NotFoundError, PermissionDeniedError, ProviderError, RateLimitError, ValidationError
+from app.core.errors import AuthenticationError, NotFoundError, PermissionDeniedError, PreviewExpiredError, PreviewNotFoundError, ProviderError, RateLimitError, RenameOutcomeUnknownError, ValidationError
 from app.providers.base import RenameRequest
 from app.providers.google_drive import BATCH_URL, FOLDER_MIME, READ_BATCH_SIZE, SHORTCUT_MIME, GoogleDriveProvider
+from app.rules.base import RenameRule, RuleContext
+from app.rules.registry import RuleRegistry
+from app.schemas.rename import RenamePreviewRequest
+from app.schemas.rules import RuleSpec
 from app.schemas.storage import AuthorizationStart, AuthorizationStatus, IdLocation, PathLocation, RootLocation
+from app.services.execute_service import ExecuteService
+from app.services.preview_service import PreviewService
+from app.services.preview_store import PreviewStore
+from app.services.rename_engine import RenameEngine
+from provider_fixtures import registry_for
 
 
 class FakeAuth:
@@ -113,6 +123,54 @@ class DriveServer:
         return httpx.Response(200, json=self.files[file_id])
 
 
+class WritableDriveServer(DriveServer):
+    def __init__(self, files: list[dict]) -> None:
+        super().__init__(files)
+        self.writes: list[list[tuple[str, str]]] = []
+        self.reject_once: dict[str, int] = {}
+        self.fail_targets: set[str] = set()
+
+    def __call__(self, request: httpx.Request) -> httpx.Response:
+        if request.method == "GET" and request.url.path == "/drive/v3/files":
+            parent = re.search(r"'([^']+)' in parents", request.url.params["q"])
+            assert parent is not None
+            self.pages[None] = file_page([item for item in self.files.values() if item["parents"] == [parent[1]]])
+        if request.method != "POST" or b"\r\nPATCH " not in request.content:
+            return super().__call__(request)
+        self.requests.append(request)
+        assert str(request.url) == BATCH_URL
+        message = BytesParser(policy=policy.default).parsebytes(
+            f'Content-Type: {request.headers["Content-Type"]}\r\n\r\n'.encode() + request.content
+        )
+        writes: list[tuple[str, str]] = []
+        outcomes = []
+        for index, part in enumerate(message.iter_parts()):
+            assert part["Content-ID"] == str(index)
+            head, _, body = part.get_payload(decode=True).partition(b"\r\n\r\n")
+            method, url, _ = head.split(b"\r\n", 1)[0].decode().split(" ", 2)
+            assert method == "PATCH" and url.startswith("/drive/v3/files/")
+            parsed = urlsplit(url)
+            assert set(parse_qs(parsed.query)) == {"fields", "supportsAllDrives"}
+            assert parse_qs(parsed.query)["supportsAllDrives"] == ["false"]
+            file_id = unquote(parsed.path.removeprefix("/drive/v3/files/"))
+            data = json.loads(body)
+            assert set(data) == {"name"}
+            writes.append((file_id, data["name"]))
+            status = self.reject_once.pop(file_id, 200)
+            if data["name"] in self.fail_targets:
+                status = 403
+            if status == 200:
+                self.files[file_id] = {**self.files[file_id], "name": data["name"], "modifiedTime": "2026-10-18T02:00:00Z"}
+                result = self.files[file_id]
+            else:
+                reason = "insufficientFilePermissions" if data["name"] in self.fail_targets else "rateLimitExceeded"
+                result = {"error": {"errors": [{"reason": reason}]}}
+            outcomes.append((index, status, result))
+        assert 0 < len(writes) <= 20
+        self.writes.append(writes)
+        return batch_response(outcomes, reverse=True)
+
+
 @pytest_asyncio.fixture
 async def provider_factory() -> AsyncIterator[Callable]:
     clients: list[httpx.AsyncClient] = []
@@ -197,18 +255,14 @@ async def test_directory_boundary_rejects_unsupported_locations_before_listing(p
 
 
 @pytest.mark.asyncio
-async def test_paths_and_writes_are_rejected_without_network(provider_factory: Callable) -> None:
+async def test_paths_are_rejected_without_network(provider_factory: Callable) -> None:
     def unexpected(request: httpx.Request) -> httpx.Response:
-        raise AssertionError("Unsupported path/write must not contact Google")
+        raise AssertionError("Unsupported paths must not contact Google")
 
     provider = provider_factory(unexpected)
     for location in (PathLocation(value=""), PathLocation(value="same/child")):
         with pytest.raises(ValidationError):
             await provider.list_directory(location)
-    with pytest.raises(ValidationError):
-        await provider.rename("file", "renamed")
-    with pytest.raises(ValidationError):
-        await provider.rename_many([RenameRequest("file", "renamed")])
 
 
 @pytest.mark.asyncio
@@ -387,3 +441,276 @@ async def test_listing_permission_denied_locally_and_unknown_rename_permission_p
     folder["capabilities"] = {"canListChildren": True}
     server.pages[None] = file_page([drive_file("unknown", "unknown.txt", parent="folder", capabilities={})])
     assert (await provider.list_directory(IdLocation(value="folder"))).items[0].can_rename is None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("mime", ["text/plain", FOLDER_MIME, "application/vnd.google-apps.spreadsheet"])
+async def test_name_policy_and_single_rename(provider_factory: Callable, mime: str) -> None:
+    server = WritableDriveServer([drive_file("doc/?", "Budget", mime=mime)])
+    provider = provider_factory(server)
+    for name in ("", " \t", "bad\x00name"):
+        assert provider.validate_name(name) is not None
+    for name in ("CON", "a/b\\c:*?", "trailing. ", "文" * 300):
+        assert provider.validate_name(name) is None
+        assert provider.normalize_name(name) == name
+    assert provider.normalize_name("A") != provider.normalize_name("a")
+    item = await provider.rename("doc/?", "预算/2026")
+    assert item.id == "doc/?" and item.name == "预算/2026"
+    assert item.location == IdLocation(value="doc/?") and item.parent_location == RootLocation()
+    assert item.mime_type == mime
+    assert item.modified_at is not None
+    assert server.writes == [[("doc/?", "预算/2026")]]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("status", [401, 403, 429])
+async def test_write_batch_retries_only_explicitly_refused_parts(provider_factory: Callable, status: int) -> None:
+    server = WritableDriveServer([drive_file("a", "A"), drive_file("b", "B")])
+    server.reject_once["b"] = status
+    auth = FakeAuth()
+    result = await provider_factory(server, auth).rename_many([RenameRequest("a", "AA"), RenameRequest("b", "BB")])
+    assert result["a"].name == "AA" and result["b"].name == "BB"
+    assert server.writes == [[("a", "AA"), ("b", "BB")], [("b", "BB")]]
+    assert auth.refreshes == (1 if status == 401 else 0)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(("status", "error_type", "attempts"), [(401, AuthenticationError, 2), (429, RateLimitError, 4), (503, RenameOutcomeUnknownError, 1)])
+async def test_write_part_retry_is_bounded(provider_factory: Callable, status: int, error_type: type[Exception], attempts: int) -> None:
+    server = WritableDriveServer([drive_file("a", "A")])
+
+    def respond(request: httpx.Request) -> httpx.Response:
+        if request.method == "POST" and b"\r\nPATCH " in request.content:
+            server.reject_once["a"] = status
+        return server(request)
+
+    with pytest.raises(error_type):
+        await provider_factory(respond).rename("a", "AA")
+    assert len(server.writes) == attempts
+    assert server.files["a"]["name"] == "A"
+
+
+@pytest.mark.asyncio
+async def test_unknown_part_prevents_retry_of_other_refused_parts(provider_factory: Callable) -> None:
+    server = WritableDriveServer([drive_file("a", "A"), drive_file("b", "B")])
+    server.reject_once = {"a": 503, "b": 429}
+    result = await provider_factory(server).rename_many([RenameRequest("a", "AA"), RenameRequest("b", "BB")])
+    assert isinstance(result["a"], RenameOutcomeUnknownError)
+    assert isinstance(result["b"], ProviderError)
+    assert len(server.writes) == 1
+
+
+@pytest.mark.asyncio
+async def test_write_batches_keep_successes_and_permanent_failures(provider_factory: Callable) -> None:
+    server = WritableDriveServer([drive_file(str(index), f"old-{index}") for index in range(21)])
+    server.fail_targets.add("new-1")
+    result = await provider_factory(server).rename_many([RenameRequest(str(index), f"new-{index}") for index in range(21)])
+    assert [len(batch) for batch in server.writes] == [20, 1]
+    assert isinstance(result["1"], PermissionDeniedError)
+    assert all(result[str(index)].name == f"new-{index}" for index in range(21) if index != 1)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("kind", ["root", "shortcut", "readonly", "outside", "shared", "trashed"])
+async def test_write_preflight_enforces_scope_and_permissions(provider_factory: Callable, kind: str) -> None:
+    item = drive_file("item", "Old")
+    if kind == "shortcut":
+        item["mimeType"] = SHORTCUT_MIME
+    elif kind == "readonly":
+        item["capabilities"] = {"canRename": False}
+    elif kind == "outside":
+        item["parents"] = []
+    elif kind == "shared":
+        item["driveId"] = "shared-drive"
+    elif kind == "trashed":
+        item["trashed"] = True
+    server = WritableDriveServer([item])
+    with pytest.raises((ValidationError, PermissionDeniedError, NotFoundError)):
+        await provider_factory(server).rename("root-id" if kind == "root" else "item", "New")
+    assert not server.writes
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("fault", ["timeout", "outer_503", "part_503", "malformed", "missing_part", "wrong_id", "moved"])
+async def test_ambiguous_write_response_is_never_replayed(provider_factory: Callable, fault: str) -> None:
+    server = WritableDriveServer([drive_file("a", "A"), drive_file("b", "B")])
+
+    def respond(request: httpx.Request) -> httpx.Response:
+        response = server(request)
+        if request.method != "POST" or b"\r\nPATCH " not in request.content:
+            return response
+        if fault == "timeout":
+            raise httpx.ReadTimeout("Response lost", request=request)
+        if fault == "outer_503":
+            return httpx.Response(503)
+        if fault == "malformed":
+            return httpx.Response(200, text="Response lost")
+        if fault == "part_503":
+            return batch_response([(0, 503, {}), (1, 200, server.files["b"])])
+        if fault == "missing_part":
+            return batch_response([(1, 200, server.files["b"])])
+        data = {**server.files["a"], **({"id": "other"} if fault == "wrong_id" else {"parents": ["elsewhere"]})}
+        return batch_response([(0, 200, data), (1, 200, server.files["b"])])
+
+    result = await provider_factory(respond).rename_many([RenameRequest("a", "AA"), RenameRequest("b", "BB")])
+    assert isinstance(result["a"], RenameOutcomeUnknownError)
+    assert len(server.writes) == 1
+
+
+@pytest.mark.asyncio
+async def test_unexpected_returned_name_is_reported_as_actual_name(provider_factory: Callable) -> None:
+    server = WritableDriveServer([drive_file("a", "A")])
+
+    def respond(request: httpx.Request) -> httpx.Response:
+        response = server(request)
+        if request.method == "POST" and b"\r\nPATCH " in request.content:
+            server.files["a"]["name"] = "External"
+            return batch_response([(0, 200, server.files["a"])])
+        return response
+
+    with pytest.raises(ProviderError) as caught:
+        await provider_factory(respond).rename("a", "AA")
+    assert caught.value.details["actual_name"] == "External"
+    assert len(server.writes) == 1
+
+
+class MappingConfig(BaseModel):
+    names: dict[str, str]
+
+
+class MappingRule(RenameRule[MappingConfig]):
+    type = "mapping"
+    display_name = "Mapping"
+    description = "Exercise Google name dependencies"
+    config_model = MappingConfig
+
+    def apply(self, filename: str, context: RuleContext, config: MappingConfig) -> str:
+        return config.names.get(filename, filename)
+
+
+def rename_services(provider: GoogleDriveProvider, *, ttl_seconds: int = 600) -> tuple[PreviewService, ExecuteService]:
+    registry = registry_for([provider])
+    rules = RuleRegistry()
+    rules.register(MappingRule())
+    preview = PreviewService(registry, RenameEngine(rules), PreviewStore(ttl_seconds))
+    return preview, ExecuteService(registry, preview.store, preview)
+
+
+def rename_request(provider: GoogleDriveProvider, ids: list[str], names: dict[str, str]) -> RenamePreviewRequest:
+    return RenamePreviewRequest(storage_id=provider.id, location=RootLocation(), file_ids=ids,
+                                rules=[RuleSpec(type="mapping", config={"names": names})])
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(("names", "valid"), [({}, True), ({"Old": "New"}, True), ({"Old": "Same"}, False), ({"Old": "same"}, True), ({"Same": "New", "Old": "New"}, False)])
+async def test_preview_preserves_existing_duplicates_but_blocks_new_conflicts(provider_factory: Callable, names: dict[str, str], valid: bool) -> None:
+    server = WritableDriveServer([drive_file("a", "Same"), drive_file("b", "Same"), drive_file("c", "Old")])
+    provider = provider_factory(server)
+    preview, execute = rename_services(provider)
+    result = await preview.preview(rename_request(provider, ["a", "b", "c"], names))
+    assert result.valid is valid
+    assert not server.writes
+    if valid:
+        executed = await execute.execute(result.preview_id)
+        assert executed.status == "completed"
+        assert all(item.status == "skipped" for item in executed.items[:2])
+        assert server.files["a"]["name"] == server.files["b"]["name"] == "Same"
+        with pytest.raises(PreviewNotFoundError):
+            await execute.execute(result.preview_id)
+
+
+@pytest.mark.asyncio
+async def test_changed_target_cannot_take_unselected_duplicate_name(provider_factory: Callable) -> None:
+    server = WritableDriveServer([drive_file("a", "Same"), drive_file("b", "Same"), drive_file("c", "Old")])
+    provider = provider_factory(server)
+    preview, _ = rename_services(provider)
+    result = await preview.preview(rename_request(provider, ["a", "c"], {"Same": "Free", "Old": "Same"}))
+    assert not result.valid and result.items[1].conflict
+    assert not server.writes
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("names", [{"A": "B", "B": "A"}, {"A": "B", "B": "C"}])
+@pytest.mark.parametrize("fail", [False, True])
+async def test_google_dependency_staging_and_known_failure_rollback(provider_factory: Callable, names: dict[str, str], fail: bool) -> None:
+    server = WritableDriveServer([drive_file("a", "A"), drive_file("b", "B")])
+    provider = provider_factory(server)
+    preview, execute = rename_services(provider)
+    snapshot = await preview.preview(rename_request(provider, ["a", "b"], names))
+    assert snapshot.valid and not server.writes
+    if fail:
+        server.fail_targets.add(names["B"])
+    result = await execute.execute(snapshot.preview_id)
+    if not fail:
+        assert result.status == "completed"
+        assert [server.files[key]["name"] for key in ("a", "b")] == [names["A"], names["B"]]
+    else:
+        assert result.status in ("failed", "partial")
+        # Any successfully restored item must report its actual restored name.
+        for item in result.items:
+            if item.actual_name is not None:
+                assert item.actual_name == server.files[item.file_id]["name"]
+        assert server.files["b"]["name"] == "B"
+    assert any(target not in {"A", "B", "C"} for batch in server.writes for _, target in batch)
+
+
+@pytest.mark.asyncio
+async def test_google_rollback_failure_reports_remaining_temporary_name(provider_factory: Callable) -> None:
+    server = WritableDriveServer([drive_file("a", "A"), drive_file("b", "B")])
+    provider = provider_factory(server)
+    preview, execute = rename_services(provider)
+    snapshot = await preview.preview(rename_request(provider, ["a", "b"], {"A": "B", "B": "C"}))
+    server.fail_targets = {"C", "A"}
+    result = await execute.execute(snapshot.preview_id)
+    assert result.status == "failed"
+    failed = next(item for item in result.items if item.file_id == "a")
+    assert "rollback failed" in failed.error
+    assert failed.actual_name == server.files["a"]["name"]
+    assert failed.actual_name not in {"A", "B", "C"}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("change", ["source", "permission", "occupied", "expired"])
+async def test_execute_revalidates_google_snapshot_before_any_write(provider_factory: Callable, change: str) -> None:
+    server = WritableDriveServer([drive_file("a", "A")])
+    provider = provider_factory(server)
+    preview, execute = rename_services(provider, ttl_seconds=-1 if change == "expired" else 600)
+    snapshot = await preview.preview(rename_request(provider, ["a"], {"A": "B"}))
+    if change == "source":
+        server.files["a"]["name"] = "Changed externally"
+    elif change == "permission":
+        server.files["a"]["capabilities"]["canRename"] = False
+    elif change == "occupied":
+        server.files["other"] = drive_file("other", "B")
+    with pytest.raises(PreviewExpiredError):
+        await execute.execute(snapshot.preview_id)
+    assert not server.writes
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("unreadable", [False, True])
+async def test_engine_reconciles_lost_google_write_without_replay(provider_factory: Callable, unreadable: bool) -> None:
+    server = WritableDriveServer([drive_file(str(index), f"old-{index}") for index in range(21)])
+
+    def respond(request: httpx.Request) -> httpx.Response:
+        if unreadable and server.writes:
+            return httpx.Response(503, headers={"Retry-After": "0"})
+        response = server(request)
+        if len(server.writes) == 1 and request.method == "POST" and b"\r\nPATCH " in request.content:
+            raise httpx.ReadTimeout("Response lost after commit", request=request)
+        return response
+
+    provider = provider_factory(respond)
+    preview, execute = rename_services(provider)
+    names = {f"old-{index}": f"new-{index}" for index in range(21)}
+    snapshot = await preview.preview(rename_request(provider, [str(index) for index in range(21)], names))
+    result = await execute.execute(snapshot.preview_id)
+    counts = Counter(file_id for batch in server.writes for file_id, _ in batch)
+    assert all(count == 1 for count in counts.values())
+    if unreadable:
+        assert len(server.writes) == 1 and result.status != "completed"
+        assert all(item.error_code == "RENAME_OUTCOME_UNKNOWN" and item.actual_name is None for item in result.items[:20])
+        assert server.files["20"]["name"] == "old-20"
+    else:
+        assert result.status == "completed" and [len(batch) for batch in server.writes] == [20, 1]
+    assert execute.progress(snapshot.preview_id).processed == 21
