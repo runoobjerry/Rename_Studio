@@ -20,7 +20,7 @@ class ProviderDefinition:
     name: str
     config_model: type[BaseModel]
     locations: tuple[str, ...]
-    factory: Callable[[StorageRecord, ConnectionAuth | None], StorageProvider]
+    factory: Callable[[StorageRecord, ConnectionAuth | None], StorageProvider] | None
     auth_factory: Callable[[StorageRecord, Callable[[dict[str, object], dict[str, str]], None], Callable[[], None]], ConnectionAuth] | None = None
     local_picker: bool = False
     can_rename: bool = True

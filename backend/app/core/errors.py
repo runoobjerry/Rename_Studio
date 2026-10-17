@@ -31,6 +31,11 @@ class RateLimitError(AppError):
     status_code = 429
 
 
+class PermissionDeniedError(AppError):
+    code = "PERMISSION_DENIED"
+    status_code = 403
+
+
 class ValidationError(AppError):
     code = "VALIDATION_ERROR"
     status_code = 422

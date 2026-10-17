@@ -6,10 +6,10 @@ Frontend-facing contract verified against `backend/app/api/router.py`, `backend/
 
 - Backend routes have no `/api` prefix. Vite proxies frontend `/api/*` requests to backend `/*` in development.
 - JSON uses `snake_case`; datetimes are ISO 8601 strings; HTTP 204 has no body.
-- `provider_type` identifies the driver (`local` or `onedrive`); `storage_id` identifies the independent connection. DirectoryListing.provider remains the driver type for display.
+- `provider_type` identifies the driver (`local`, `onedrive`, or `google_drive`); `storage_id` identifies the independent connection. Google Drive supports connection/OAuth and My Drive read operations; rename remains disabled. DirectoryListing.provider remains the driver type for display.
 - Storage APIs use `storage_id` and `location`. Only `default-local` is created automatically; cloud connections are added by the user.
 - `file_id` is provider-owned and must be treated as opaque. Local IDs are relative paths and change after rename; OneDrive IDs are Graph item IDs.
-- The connection-scoped directory API has no pagination, search, sort, or filter parameters. OneDrive Graph pages are aggregated by the backend before one response is returned.
+- The connection-scoped directory API has no pagination, search, sort, or filter parameters. OneDrive/Google Drive pages are aggregated by the backend before one response is returned.
 
 Except for the OAuth HTML callback, application errors use:
 
@@ -27,12 +27,13 @@ Common errors:
 
 | HTTP | Code | Meaning |
 | --- | --- | --- |
-| 401 | `AUTHENTICATION_ERROR` | OneDrive is disconnected or authorization refresh failed. |
+| 401 | `AUTHENTICATION_ERROR` | Cloud storage is disconnected or authorization was rejected/expired. |
+| 403 | `PERMISSION_DENIED` | Google Drive denied a metadata or directory read; distinct from authentication and throttling. |
 | 404 | `NOT_FOUND`, `PREVIEW_NOT_FOUND` | Item/directory missing, or preview missing/already consumed. |
 | 409 | `RENAME_CONFLICT`, `PREVIEW_EXPIRED` | Rename conflict, expired preview, or changed source state. |
 | 422 | `REQUEST_VALIDATION_ERROR` | Pydantic request validation failed. |
 | 422 | `VALIDATION_ERROR`, `RULE_CONFIGURATION_ERROR` | Path, selection, name, or rule validation failed. |
-| 429 | `RATE_LIMIT_ERROR` | Graph throttling remained after retry. |
+| 429 | `RATE_LIMIT_ERROR` | Cloud provider throttling remained after retry. |
 | 502 | `PROVIDER_ERROR` | Local filesystem, Graph, identity service, or connection state persistence failed. |
 | 500 | `INTERNAL_ERROR` | Unexpected error; `details.request_id` identifies the server log entry. |
 
@@ -47,6 +48,7 @@ interface FileItem {
   is_directory: boolean;
   size: number | null;
   modified_at: string | null;
+  mime_type?: string | null;
 }
 
 interface DirectoryListing {
@@ -54,6 +56,7 @@ interface DirectoryListing {
   path: string;
   parent_path: string | null;
   items: FileItem[];
+  breadcrumbs?: Array<{name: string; location: StorageLocation}> | null;
 }
 
 interface RuleSpec {
@@ -225,7 +228,7 @@ Preferences allow at most 100 cloud-default records, connection/account identifi
 
 ## Multiple Storage Connections
 
-The backend registers only Local and OneDrive. Provider types describe implementations; storage IDs identify independent configuration/account instances. Google Drive is not implemented.
+The backend registers Local, OneDrive, and Google Drive. Provider types describe implementations; storage IDs identify independent configuration/account instances. Google Drive stage two adds My Drive directory listing and single/batch metadata: its definition returns `browser_auth: true`, `locations: ["root", "id"]`, and `can_rename: false`. Google preview requests are rejected with `VALIDATION_ERROR` before any remote read; Provider writes are also disabled. See [Google Drive handoff and manual acceptance](GOOGLE_DRIVE.md).
 
 ```ts
 type StorageLocation = { kind: "root" } | { kind: "id" | "path"; value: string };
@@ -236,21 +239,24 @@ interface StorageInfo {
   config: { root_path?: string; client_id?: string | null };
   revision: number;
   busy: boolean;
+  has_client_secret: boolean;
   account_id: string | null;
   account_display_name: string | null;
   account_email: string | null;
 }
 ```
 
-Storage connection create/update requests reject the removed `enabled` field. The UI displays authorization status instead of an enable/disable control. Credentials are never included in StorageInfo. Local config requires an existing backend-machine `root_path`; OneDrive config has nullable `client_id`. Unsupported config fields are rejected. IDs are opaque, paths are normalized at the input boundary, and root locations do not carry a value.
+Storage connection create/update requests reject the removed `enabled` field. The UI displays authorization status instead of an enable/disable control. Credentials are never included in StorageInfo. Local config requires an existing backend-machine `root_path`; OneDrive and Google Drive configs have nullable `client_id`. Google Drive additionally accepts a top-level, write-only `client_secret`; it is stored in internal credentials, never in `config`. Omitted/null secrets preserve the saved value on update; empty/whitespace secrets are rejected. Local/OneDrive reject non-null client secrets. `has_client_secret` reports presence only. Both Google client fields are required to start authorization, but incomplete draft connections may be saved. Unsupported config fields are rejected. IDs are opaque, paths are normalized at the input boundary, and root locations do not carry a value.
+
+Google client ID/secret changes clear account tokens, increment the connection revision, and invalidate old authorization objects/previews. Name-only edits and submitting the same client secret preserve authorization. Disconnect retains both client credentials; deleting the connection or factory reset removes them. Credential edits, account credentials, and revision are committed in one atomic state save; failed saves do not publish new state. Storage create/update validation errors omit input/context values so secret-bearing bodies cannot be echoed.
 
 | Method / route | Request | Response |
 | --- | --- | --- |
 | `GET /storage-providers` | none | Definitions: provider_type, name, config_schema, locations, can_rename, browser_auth, local_picker |
 | `GET /storages` | none | `StorageInfo[]` |
-| `POST /storages` | `{provider_type,name,config}` | 201 `StorageInfo` |
+| `POST /storages` | `{provider_type,name,config,client_secret?:string|null}` | 201 `StorageInfo` |
 | `GET /storages/{storage_id}` | none | `StorageInfo` |
-| `PUT /storages/{storage_id}` | `{name?:string,config?:object}` | `StorageInfo`; config replaces the previous config when supplied |
+| `PUT /storages/{storage_id}` | `{name?:string,config?:object,client_secret?:string|null}` | `StorageInfo`; config replaces the previous config when supplied |
 | `DELETE /storages/{storage_id}` | none | 204; only default-local cannot be deleted |
 | `POST /storages/{storage_id}/files/list` | `{location?:StorageLocation}`; default root | Extended `DirectoryListing` |
 | `POST /storages/{storage_id}/local/pick` | none | `{root_path,selected}`; Local connections only |
@@ -263,6 +269,12 @@ Storage connection create/update requests reject the removed `enabled` field. Th
 
 Extended listings add `storage_id`, `revision`, `location`, `parent_location`; items add `location`, `parent_location`, `can_rename`. Display path fields remain available. Root listing parent_location is null. Unknown permission is null, not a guarantee that remote writes will succeed. Folder navigation uses item.location; parent navigation uses listing.parent_location.
 
+Google listings additionally provide `breadcrumbs: [{name,location}, ...]` from My Drive root through the current directory. They are ID-based navigation data; display `path` is never parsed into identity, including duplicate folder names and names containing `/`. Other providers keep `breadcrumbs: null`. `mime_type` carries the Google MIME type (null for other providers). Google native documents keep their real titles without synthetic extensions. File sizes may be null, and folder size is always null. `can_rename` reflects per-item Google capability, except roots/shortcuts are false; the provider-level `can_rename: false` still disables all renaming in stage two.
+
+Google `path` locations are rejected, including the empty path form; use `{kind:"root"}`. ID reads verify ancestry reaches the current account's My Drive root, reject shared-drive/trashed/outside-root items, and never follow shortcuts. Directory results include all visible direct children without an ownership filter; a regular folder under My Drive need not be owned by the user. Shortcuts are ordinary non-directory rows with `can_rename:false`; they are not silently omitted from the sibling set. Root parents are consistently represented by `RootLocation` in both listing and metadata responses.
+
+Google pages continue until `nextPageToken` is absent, including empty intermediate pages. An invalid/repeated token, incomplete search, duplicate item ID, wrong parent, malformed data or later-page failure aborts the whole response; clients must refresh from the beginning. Metadata reads batch up to 100 GETs per HTTP multipart request, preserve requested order and share ancestor reads within that operation. Ancestors are not cached across reads. 401 triggers bounded authorization refresh; throttling (429 or supported 403 reasons), transport errors and 5xx reads have bounded retries with Retry-After/backoff. Successful batch parts are retained while only retryable failures are re-requested. Any permanent/malformed/missing part fails the whole metadata call, without a partial return. Google error bodies are not reflected in responses.
+
 Config/account changes invalidate old previews with `STORAGE_CONNECTION_CHANGED` (409); normal token rotation does not change revision. Active rename connections reject configuration, authorization and deletion with `STORAGE_BUSY` (409). Unknown connections return 404; invalid locations or configuration return 422. Complete listing failures return provider errors rather than partial directories.
 
 `GET /auth/storage/callback` is an HTML callback with code/state/error query parameters. Configure `STORAGE_REDIRECT_URI` in the Microsoft application. OAuth state is single use, expiring, and bound to connection/revision. It posts:
@@ -272,6 +284,8 @@ Config/account changes invalidate old previews with `STORAGE_CONNECTION_CHANGED`
 ```
 
 The frontend validates the callback origin from redirect_uri, popup window source, message shape and storage_id.
+
+Google uses the same callback and authorization endpoints, with a user-provided Desktop OAuth client, PKCE S256, offline access and the fixed `https://www.googleapis.com/auth/drive.metadata` scope. Token exchange and refresh include both client ID and secret. The callback verifies the granted scope and reads Drive `about.user.permissionId` as the opaque account ID before publishing a connected session. Account names/emails are optional. Access tokens remain in memory; refresh tokens, client secret, scope and account identity are saved in the v3 document. Refresh responses may omit a replacement refresh token or scope; those omissions preserve the previous grant. Normal refresh/rotation keeps the connection revision, while rejected authorization clears account credentials and changes the revision. Temporary transport/429/5xx failures preserve the saved grant. Status is local session state, not an online token-validity probe. Google settings/workspace UI adaptation is deferred; use the API acceptance procedure.
 
 Execute still accepts only preview_id and progress polling remains read-only. Result items optionally include error_code/actual_name/current_file. current_file preserves Provider-confirmed identity after successful rename or rollback, including changed Local path IDs; file_id remains the original request ID. Null does not mean a write succeeded or failed. Preview requests are limited to 1000 files and 20 rules (including disabled rules); execute also checks the snapshot size. Directory loading and overall UI selection remain unlimited. `RENAME_OUTCOME_UNKNOWN` means a write could have happened but its current state could not be verified; actual_name is null. Known successful writes are not replayed after a missing response. Rollback errors report remaining names when they can be confirmed. Existing completed/partial/failed and renamed/skipped/failed enums retain their meaning.
 

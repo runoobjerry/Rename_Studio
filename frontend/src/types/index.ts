@@ -26,6 +26,12 @@ export interface FileItem {
   location?: StorageLocation | null;
   parent_location?: StorageLocation | null;
   can_rename?: boolean | null;
+  mime_type?: string | null;
+}
+
+export interface DirectoryBreadcrumb {
+  name: string;
+  location: StorageLocation;
 }
 
 export interface DirectoryListing {
@@ -37,6 +43,7 @@ export interface DirectoryListing {
   revision?: number;
   location?: StorageLocation;
   parent_location?: StorageLocation | null;
+  breadcrumbs?: DirectoryBreadcrumb[] | null;
 }
 
 export interface RuleSpec {
@@ -125,6 +132,7 @@ export interface StorageInfo {
   name: string;
   revision: number;
   busy: boolean;
+  has_client_secret?: boolean;
   config: { root_path?: string; client_id?: string | null };
   account_id: string | null;
   account_display_name: string | null;
@@ -145,11 +153,13 @@ export interface StorageCreate {
   provider_type: string;
   name: string;
   config: StorageInfo["config"];
+  client_secret?: string | null;
 }
 
 export interface StorageUpdate {
   name?: string;
   config?: StorageInfo["config"];
+  client_secret?: string | null;
 }
 
 // 展示快照与任务记录独立；before 在创建后不再修改，版本标识留待 Provider 支持。

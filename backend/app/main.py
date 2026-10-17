@@ -94,7 +94,8 @@ def create_app() -> FastAPI:
         request: Request, exc: RequestValidationError
     ) -> JSONResponse:
         errors = exc.errors()
-        if request.scope["route"].path == "/app-settings":
+        if request.scope["route"].path in ("/app-settings", "/storages", "/storages/{storage_id}"):
+            # Storage bodies may contain a secret even when another field fails validation.
             errors = [{key: value for key, value in error.items() if key not in ("input", "ctx")}
                       for error in errors]
         return JSONResponse(

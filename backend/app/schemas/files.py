@@ -16,6 +16,12 @@ class FileItem(BaseModel):
     location: StorageLocation | None = None
     parent_location: StorageLocation | None = None
     can_rename: bool | None = None
+    mime_type: str | None = None
+
+
+class DirectoryBreadcrumb(BaseModel):
+    name: str
+    location: StorageLocation
 
 
 class DirectoryListing(BaseModel):
@@ -27,3 +33,4 @@ class DirectoryListing(BaseModel):
     revision: int | None = None
     location: StorageLocation | None = None
     parent_location: StorageLocation | None = None
+    breadcrumbs: list[DirectoryBreadcrumb] | None = None

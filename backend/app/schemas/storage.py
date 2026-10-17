@@ -2,7 +2,7 @@ import json
 from typing import Annotated, Literal
 from pathlib import Path
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_validator, model_validator
 
 from app.core.paths import normalize_storage_path
 from app.schemas.rules import RuleSpec
@@ -113,14 +113,42 @@ class OneDriveConfig(BaseModel):
         return value.strip()
 
 
-class StorageCreate(BaseModel):
+class GoogleDriveConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    client_id: str | None = Field(default=None, max_length=200)
+
+    @field_validator("client_id")
+    @classmethod
+    def normalize_client(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        if not value.strip():
+            raise ValueError("Google OAuth Client ID cannot be blank")
+        return value.strip()
+
+
+class StorageClientSecret(BaseModel):
+    client_secret: SecretStr | None = Field(default=None, min_length=1, max_length=4096)
+
+    @field_validator("client_secret")
+    @classmethod
+    def normalize_secret(cls, value: SecretStr | None) -> SecretStr | None:
+        if value is None:
+            return None
+        secret = value.get_secret_value().strip()
+        if not secret:
+            raise ValueError("OAuth client secret cannot be blank")
+        return SecretStr(secret)
+
+
+class StorageCreate(StorageClientSecret):
     model_config = ConfigDict(extra="forbid")
     provider_type: str
     name: str = Field(min_length=1, max_length=200)
     config: dict[str, object]
 
 
-class StorageUpdate(BaseModel):
+class StorageUpdate(StorageClientSecret):
     model_config = ConfigDict(extra="forbid")
     name: str | None = Field(default=None, min_length=1, max_length=200)
     config: dict[str, object] | None = None
@@ -162,6 +190,7 @@ class StorageInfo(BaseModel):
     config: dict[str, object]
     revision: int
     busy: bool = False
+    has_client_secret: bool = False
     account_id: str | None = None
     account_display_name: str | None = None
     account_email: str | None = None

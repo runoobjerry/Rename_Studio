@@ -150,7 +150,9 @@ async def callback(manager: Manager, code: str | None = Query(default=None), sta
 @router.post("/storages/{storage_id}/rename/preview", response_model=RenamePreviewResponse)
 async def preview(storage_id: str, request: StoragePreviewRequest, manager: Manager,
                   service: Annotated[PreviewService, Depends(get_preview_service)]) -> RenamePreviewResponse:
-    manager.record(storage_id)
+    record = manager.record(storage_id)
+    if not manager.registry.definition(record.provider_type).can_rename:
+        raise ValidationError("This storage does not support rename previews")
     return await service.preview(RenamePreviewRequest(storage_id=storage_id, location=request.location,
                                                       file_ids=request.file_ids, rules=request.rules),
                                  previous_preview_id=request.previous_preview_id)

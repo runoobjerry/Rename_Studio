@@ -5,6 +5,8 @@ from uuid import uuid4
 from datetime import datetime
 from pathlib import Path
 
+from pydantic import SecretStr
+
 from app.core.errors import NotFoundError, StorageBusyError, StorageConnectionChangedError, ValidationError
 from app.providers.base import StorageProvider
 from app.providers.registry import ProviderRegistry
@@ -34,6 +36,7 @@ class StorageManager:
     def info(self, storage_id: str) -> StorageInfo:
         record = self.record(storage_id)
         return StorageInfo(**record.model_dump(exclude={"credentials"}), busy=record.storage_id in self._busy,
+                           has_client_secret=bool(record.credentials.get("client_secret")),
                            account_id=record.credentials.get("account_id"),
                            account_display_name=record.credentials.get("account_display_name"),
                            account_email=record.credentials.get("account_email"))
@@ -116,8 +119,10 @@ class StorageManager:
 
     def create(self, request: StorageCreate) -> StorageInfo:
         config = self.validate_config(request.provider_type, request.config)
+        secret = self._client_secret(request.provider_type, request.client_secret)
         record = StorageRecord(storage_id=uuid4().hex, provider_type=request.provider_type,
-                               name=request.name, config=config)
+                               name=request.name, config=config,
+                               credentials={"client_secret": secret} if secret is not None else {})
         self._commit(record, record.storage_id)
         return self.info(record.storage_id)
 
@@ -125,7 +130,10 @@ class StorageManager:
         self.ensure_mutable(storage_id)
         before = self.record(storage_id)
         config = before.config if request.config is None else self.validate_config(before.provider_type, request.config)
-        changed = config != before.config
+        secret = self._client_secret(before.provider_type, request.client_secret)
+        if secret is None:
+            secret = before.credentials.get("client_secret")
+        changed = config != before.config or secret != before.credentials.get("client_secret")
         name = before.name if request.name is None else request.name
         if not changed and name == before.name:
             return self.info(storage_id)
@@ -134,11 +142,20 @@ class StorageManager:
         record.config = config
         if changed:
             record.revision += 1
-            record.credentials = {}
+            # Client credentials survive account disconnect/configuration changes; tokens do not.
+            record.credentials = {"client_secret": secret} if secret is not None else {}
         self._commit(record, record.storage_id)
         if changed:
             await self._invalidate(record.storage_id)
         return self.info(record.storage_id)
+
+    @staticmethod
+    def _client_secret(provider_type: str, secret: SecretStr | None) -> str | None:
+        if secret is None:
+            return None
+        if provider_type != "google_drive":
+            raise ValidationError("This storage does not accept an OAuth client secret")
+        return secret.get_secret_value()
 
     async def delete(self, storage_id: str) -> None:
         self.ensure_mutable(storage_id)
@@ -153,7 +170,10 @@ class StorageManager:
         cached = self._clients.get(record.storage_id)
         if cached is not None and cached[0] == record.revision:
             return cached[1]
-        provider = self.registry.definition(record.provider_type).factory(record, self.auth(record.storage_id, required=False))
+        factory = self.registry.definition(record.provider_type).factory
+        if factory is None:
+            raise ValidationError("File operations are not available for this storage provider")
+        provider = factory(record, self.auth(record.storage_id, required=False))
         self._clients[record.storage_id] = (record.revision, provider)
         return provider
 
@@ -187,7 +207,7 @@ class StorageManager:
         # Refresh-token rotation does not change the connection's account identity.
         changed = record.config != before.config or any(
             record.credentials.get(key) != before.credentials.get(key)
-            for key in ("account_id",)
+            for key in ("account_id", "client_secret")
         ) or bool(record.credentials.get("refresh_token")) != bool(before.credentials.get("refresh_token"))
         if changed:
             record.revision += 1
