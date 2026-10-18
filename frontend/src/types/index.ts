@@ -133,16 +133,32 @@ export interface StorageInfo {
   revision: number;
   busy: boolean;
   has_client_secret?: boolean;
-  config: { root_path?: string; client_id?: string | null };
+  config: Record<string, unknown>;
   account_id: string | null;
   account_display_name: string | null;
   account_email: string | null;
+}
+
+export interface StorageConfigField {
+  key: string;
+  label: string;
+  create_label: string | null;
+  input_type: "text" | "password" | "directory";
+  target: "config" | "client_secret";
+  required: boolean;
+  nullable: boolean;
+  help_text: string | null;
+  create_help_text: string | null;
+  saved_help_text: string | null;
 }
 
 export interface StorageProviderDefinition {
   provider_type: string;
   name: string;
   config_schema: Record<string, unknown>;
+  config_fields: StorageConfigField[];
+  account_label: string;
+  icon: "computer" | "cloud";
   locations: Array<StorageLocation["kind"]>;
   can_rename: boolean;
   browser_auth: boolean;

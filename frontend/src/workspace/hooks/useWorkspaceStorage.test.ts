@@ -5,17 +5,134 @@ import { describe, expect, it, vi } from "vitest";
 import * as api from "../../api/client";
 import { useRenameStore } from "../../stores/useRenameStore";
 import { client, listing, notify, openCloud, preview, serverSettings, setupWorkspace, status } from "../../test/workspaceHarness";
-import type { DirectoryListing, StorageInfo } from "../../types";
+import type { DirectoryListing, StorageInfo, StorageProviderDefinition } from "../../types";
 import { useWorkspaceStorage } from "./useWorkspaceStorage";
 import { readWorkspaceSession, workspaceSessionKey } from "../workspaceSession";
 
 // 在测试入口注册，确保 API 导入和共享 Hook 使用同一份 mock。
 vi.mock("../../api/client", async (importOriginal) => ({
   ...await importOriginal<typeof import("../../api/client")>(),
-  fetchStorages: vi.fn(), fetchStorageAuthStatus: vi.fn(), fetchStorageFiles: vi.fn(),
+  fetchStorages: vi.fn(), fetchStorageProviders: vi.fn(), fetchStorageAuthStatus: vi.fn(), fetchStorageFiles: vi.fn(),
   pickStorageFolder: vi.fn(), fetchAppSettings: vi.fn(), patchAppSettings: vi.fn(),
   createStoragePreview: vi.fn(), releaseStoragePreview: vi.fn(), executePreview: vi.fn(),
 }));
+
+describe("workspace provider capabilities", () => {
+  it.each(["pending", "failed", "missing"] as const)("blocks auth and files while provider metadata is %s, then restores the remembered directory", async (state) => {
+    const definitions = await api.fetchStorageProviders();
+    let finish!: (value: StorageProviderDefinition[]) => void;
+    if (state === "pending") vi.mocked(api.fetchStorageProviders).mockReturnValueOnce(new Promise((resolve) => { finish = resolve; }));
+    else if (state === "failed") vi.mocked(api.fetchStorageProviders).mockRejectedValueOnce(new Error("Metadata unavailable"));
+    else vi.mocked(api.fetchStorageProviders).mockResolvedValueOnce([]);
+    window.sessionStorage.setItem(workspaceSessionKey, JSON.stringify({
+      version: 1, activeStorageId: "user-onedrive", locations: { "user-onedrive": {
+        revision: 1, accountId: "account-a", location: { kind: "id", value: "remembered-directory" },
+      } },
+    }));
+    const hook = mountStorage();
+    await waitFor(() => expect(hook.result.current.providers.isSuccess).toBe(true));
+    if (state !== "pending") await waitFor(() => expect(hook.result.current.providerDefinitions.isPending).toBe(false));
+    expect(hook.result.current.locationReady).toBe(false);
+    act(() => hook.result.current.refreshFiles());
+    expect(api.fetchStorageAuthStatus).not.toHaveBeenCalled();
+    expect(api.fetchStorageFiles).not.toHaveBeenCalled();
+    expect(readWorkspaceSession().session.locations["user-onedrive"].location)
+      .toEqual({ kind: "id", value: "remembered-directory" });
+    if (state === "pending") await act(async () => { finish(definitions); });
+    else await act(async () => { await client.invalidateQueries({ queryKey: ["storage-providers"] }); });
+    await waitFor(() => expect(hook.result.current.cloudConnected).toBe(true));
+    await waitFor(() => expect(hook.result.current.appSettingsReady).toBe(true));
+    act(() => hook.result.current.restoreDefaultCloudPath());
+    await waitFor(() => expect(hook.result.current.files.isSuccess).toBe(true));
+    expect(api.fetchStorageFiles).toHaveBeenCalledTimes(1);
+    expect(api.fetchStorageFiles).toHaveBeenCalledWith("user-onedrive", { kind: "id", value: "remembered-directory" });
+  });
+
+  it("restores ID locations for a non-local provider without browser auth, and blocks unsupported path requests", async () => {
+    const definitions = await api.fetchStorageProviders();
+    vi.mocked(api.fetchStorageProviders).mockResolvedValue([{
+      ...definitions[0], provider_type: "fixture_direct", name: "直连服务", local_picker: false, locations: ["root", "id"],
+    }]);
+    const storages = await api.fetchStorages();
+    vi.mocked(api.fetchStorages).mockResolvedValue([{
+      ...storages[0], storage_id: "direct", provider_type: "fixture_direct", revision: 7,
+    }]);
+    window.sessionStorage.setItem(workspaceSessionKey, JSON.stringify({
+      version: 1, activeStorageId: "direct", locations: { direct: {
+        revision: 7, accountId: null, location: { kind: "id", value: "remembered-id" },
+      } },
+    }));
+    const hook = mountStorage();
+    await waitFor(() => expect(hook.result.current.files.isSuccess).toBe(true));
+    expect(hook.result.current.requiresAuth).toBe(false);
+    expect(hook.result.current.supportsLocalPicker).toBe(false);
+    expect(api.fetchStorageAuthStatus).not.toHaveBeenCalled();
+    expect(api.fetchStorageFiles).toHaveBeenCalledWith("direct", { kind: "id", value: "remembered-id" });
+    act(() => hook.result.current.setPath("unsupported-path"));
+    expect(hook.result.current.locationReady).toBe(false);
+    act(() => hook.result.current.refreshFiles());
+    expect(api.fetchStorageFiles).toHaveBeenCalledTimes(1);
+    act(() => hook.result.current.setLocation({ kind: "id", value: "next-id" }));
+    await waitFor(() => expect(readWorkspaceSession().session.locations.direct.location)
+      .toEqual({ kind: "id", value: "next-id" }));
+    hook.unmount();
+    client.clear();
+    const remounted = mountStorage();
+    await waitFor(() => expect(remounted.result.current.files.isSuccess).toBe(true));
+    expect(api.fetchStorageFiles).toHaveBeenLastCalledWith("direct", { kind: "id", value: "next-id" });
+    expect(api.patchAppSettings).not.toHaveBeenCalled();
+  });
+
+  it("requires auth for an unfamiliar provider and ignores a default location kind it does not support", async () => {
+    const definitions = await api.fetchStorageProviders();
+    vi.mocked(api.fetchStorageProviders).mockResolvedValue([{
+      ...definitions[1], provider_type: "fixture_oauth", name: "授权服务", locations: ["root", "id"],
+    }]);
+    const storages = await api.fetchStorages();
+    vi.mocked(api.fetchStorages).mockResolvedValue([{
+      ...storages[1], storage_id: "oauth", provider_type: "fixture_oauth",
+    }]);
+    window.sessionStorage.setItem(workspaceSessionKey, JSON.stringify({ version: 1, activeStorageId: "oauth", locations: {} }));
+    serverSettings.preferences.cloud_default_locations.oauth = {
+      account_id: "account-a", location: { kind: "path", value: "unsupported-default" },
+    };
+    vi.mocked(api.fetchStorageAuthStatus).mockResolvedValue({ ...status("account-a"), connected: false });
+    const hook = mountStorage();
+    await waitFor(() => expect(hook.result.current.cloudStatus.isSuccess).toBe(true));
+    expect(hook.result.current.requiresAuth).toBe(true);
+    expect(hook.result.current.locationReady).toBe(false);
+    expect(api.fetchStorageFiles).not.toHaveBeenCalled();
+    act(() => client.setQueryData(["storage-auth", "oauth", 1], status("account-a")));
+    await waitFor(() => expect(hook.result.current.cloudConnected).toBe(true));
+    await waitFor(() => expect(hook.result.current.appSettingsReady).toBe(true));
+    act(() => hook.result.current.restoreDefaultCloudPath());
+    await waitFor(() => expect(hook.result.current.files.isSuccess).toBe(true));
+    expect(api.fetchStorageFiles).toHaveBeenCalledTimes(1);
+    expect(api.fetchStorageFiles).toHaveBeenCalledWith("oauth", { kind: "root" });
+  });
+
+  it("pauses on a metadata refresh failure without losing the known account, task or selection", async () => {
+    const hook = await setupWorkspace(1);
+    await openCloud(hook);
+    act(() => hook.result.current.workflow.selectAllFiles(["file-0.txt"]));
+    await preview(hook);
+    const task = useRenameStore.getState().task;
+    const selected = useRenameStore.getState().selectedIds;
+    const cloudSession = hook.result.current.storage.cloudSession;
+    const definitions = hook.result.current.storage.providerDefinitions.data!;
+    vi.mocked(api.fetchStorageProviders).mockRejectedValueOnce(new Error("Metadata refresh failed"));
+    await act(async () => { await client.invalidateQueries({ queryKey: ["storage-providers"] }); });
+    await waitFor(() => expect(hook.result.current.storage.providerDefinitions.isError).toBe(true));
+    expect(hook.result.current.storage.locationReady).toBe(false);
+    expect(hook.result.current.storage.cloudSession).toBe(cloudSession);
+    expect(useRenameStore.getState().task).toBe(task);
+    expect(useRenameStore.getState().selectedIds).toEqual(selected);
+    vi.mocked(api.fetchStorageProviders).mockResolvedValue(definitions);
+    await act(async () => { await client.invalidateQueries({ queryKey: ["storage-providers"] }); });
+    await waitFor(() => expect(hook.result.current.storage.locationReady).toBe(true));
+    expect(useRenameStore.getState().task).toBe(task);
+  });
+});
 
 describe("workspace storage", () => {
 

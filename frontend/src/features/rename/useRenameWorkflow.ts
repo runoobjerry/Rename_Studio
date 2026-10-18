@@ -12,8 +12,7 @@ interface RenameWorkflowOptions {
   location: StorageLocation;
   workspaceKey: string;
   cloudSession: string | null;
-  providerId: string;
-  cloudReady: boolean;
+  locationReady: boolean;
   activeStorage?: Pick<StorageInfo, "revision" | "busy">;
   task: RenameTask | null;
   sort: FileSort;
@@ -28,7 +27,7 @@ interface RenameWorkflowOptions {
 }
 
 export function useRenameWorkflow({
-  storageId, location, workspaceKey, cloudSession, providerId, cloudReady, activeStorage, task, files, sort, onSortChange,
+  storageId, location, workspaceKey, cloudSession, locationReady, activeStorage, task, files, sort, onSortChange,
 }: RenameWorkflowOptions) {
   const notify = useNotification();
   const queryClient = useQueryClient();
@@ -153,7 +152,7 @@ export function useRenameWorkflow({
 
   useEffect(() => {
     // 刷新失败时保留选择；成功读取后移除消失或已明确不能改名的项，不自动选择新增项。
-    if (!files.isSuccess || (providerId !== "local" && !cloudReady)) return;
+    if (!files.isSuccess || !locationReady) return;
     if (currentSelectedIds.length === selectedIds.length) return;
     setSelectedIds(currentSelectedIds);
     // 不因目录后台变化丢失正在执行的请求和进度。
@@ -161,7 +160,7 @@ export function useRenameWorkflow({
       preview.reset();
       execution.reset();
     }
-  }, [files.isSuccess, files.dataUpdatedAt, cloudReady, providerId, currentSelectedIds, selectedIds.length,
+  }, [files.isSuccess, files.dataUpdatedAt, locationReady, currentSelectedIds, selectedIds.length,
     setSelectedIds, preview.reset, execution.reset, execution.isPending]);
 
   const requestBatchPreview = () => {

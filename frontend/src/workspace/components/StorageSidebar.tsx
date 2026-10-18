@@ -1,13 +1,15 @@
 import AutoFixHighRoundedIcon from "@mui/icons-material/AutoFixHighRounded";
 import CloudQueueRoundedIcon from "@mui/icons-material/CloudQueueRounded";
 import ComputerRoundedIcon from "@mui/icons-material/ComputerRounded";
+import StorageRoundedIcon from "@mui/icons-material/StorageRounded";
 import SettingsRoundedIcon from "@mui/icons-material/SettingsRounded";
 import { Box, Divider, List, ListItemButton, ListItemIcon, ListItemText, Skeleton, Stack, Tooltip, Typography } from "@mui/material";
 import { useLayoutEffect, useRef, useState } from "react";
-import type { StorageInfo } from "../../types";
+import type { StorageInfo, StorageProviderDefinition } from "../../types";
 
 interface StorageSidebarProps {
   storages: StorageInfo[];
+  providerDefinitions: StorageProviderDefinition[];
   isLoading: boolean;
   disabled: boolean;
   view: "workspace" | "settings";
@@ -15,6 +17,8 @@ interface StorageSidebarProps {
   onSelectStorage: (storageId: string) => void;
   onOpenSettings: () => void;
 }
+
+const providerIcons = { computer: ComputerRoundedIcon, cloud: CloudQueueRoundedIcon };
 
 function StorageName({ name }: { name: string }) {
   const nameRef = useRef<HTMLSpanElement>(null);
@@ -40,7 +44,7 @@ function StorageName({ name }: { name: string }) {
 }
 
 // Drawer 的响应式容器与开关由父组件负责。
-export function StorageSidebar({ storages, isLoading, disabled, view, storageId, onSelectStorage, onOpenSettings }: StorageSidebarProps) {
+export function StorageSidebar({ storages, providerDefinitions, isLoading, disabled, view, storageId, onSelectStorage, onOpenSettings }: StorageSidebarProps) {
   return (
     <Box
       sx={{
@@ -73,19 +77,23 @@ export function StorageSidebar({ storages, isLoading, disabled, view, storageId,
       </Typography>
       <List disablePadding>
         {isLoading && <Skeleton variant="rounded" height={80} aria-label="正在加载存储位置" />}
-        {storages.map((provider) => (
-          <ListItemButton
-            disabled={disabled}
-            key={provider.storage_id}
-            selected={view === "workspace" && provider.storage_id === storageId}
-            onClick={() => onSelectStorage(provider.storage_id)}
-          >
-            <ListItemIcon>
-              {provider.provider_type !== "local" ? <CloudQueueRoundedIcon /> : <ComputerRoundedIcon />}
-            </ListItemIcon>
-            <StorageName name={provider.name} />
-          </ListItemButton>
-        ))}
+        {storages.map((storage) => {
+          const definition = providerDefinitions.find((entry) => entry.provider_type === storage.provider_type);
+          const Icon = definition ? providerIcons[definition.icon] : StorageRoundedIcon;
+          return (
+            <ListItemButton
+              disabled={disabled}
+              key={storage.storage_id}
+              selected={view === "workspace" && storage.storage_id === storageId}
+              onClick={() => onSelectStorage(storage.storage_id)}
+            >
+              <ListItemIcon>
+                <Icon />
+              </ListItemIcon>
+              <StorageName name={storage.name} />
+            </ListItemButton>
+          );
+        })}
       </List>
       <Box sx={{ flex: 1 }} />
       <Divider sx={{ my: 0.5, borderColor: "var(--app-border)" }} />

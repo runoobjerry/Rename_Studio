@@ -7,12 +7,28 @@ import { client, listing, preview, serverSettings, setupWorkspace } from "../../
 // 在测试入口注册，确保 API 导入和共享 Hook 使用同一份 mock。
 vi.mock("../../api/client", async (importOriginal) => ({
   ...await importOriginal<typeof import("../../api/client")>(),
-  fetchStorages: vi.fn(), fetchStorageAuthStatus: vi.fn(), fetchStorageFiles: vi.fn(),
+  fetchStorages: vi.fn(), fetchStorageProviders: vi.fn(), fetchStorageAuthStatus: vi.fn(), fetchStorageFiles: vi.fn(),
   pickStorageFolder: vi.fn(), fetchAppSettings: vi.fn(), patchAppSettings: vi.fn(),
   createStoragePreview: vi.fn(), releaseStoragePreview: vi.fn(), executePreview: vi.fn(),
 }));
 
 describe("rename workflow", () => {
+
+  it("reconciles selection for a ready provider that does not use browser auth", async () => {
+    const definitions = await api.fetchStorageProviders();
+    const storages = await api.fetchStorages();
+    vi.mocked(api.fetchStorageProviders).mockResolvedValue([{ ...definitions[0], provider_type: "fixture_direct" }]);
+    vi.mocked(api.fetchStorages).mockResolvedValue([{ ...storages[0], provider_type: "fixture_direct" }]);
+    const hook = await setupWorkspace();
+    expect(hook.result.current.storage.locationReady).toBe(true);
+    expect(hook.result.current.storage.cloudReady).toBe(false);
+    act(() => client.setQueryData(["files", "default-local", 1, { kind: "root" }], {
+      ...listing(), items: [listing().items[1]],
+    }));
+    await waitFor(() => expect(useRenameStore.getState().selectedIds).toEqual(["file-1.txt"]));
+    expect(api.fetchStorageAuthStatus).not.toHaveBeenCalled();
+  });
+
   it("removes explicitly non-renamable rows from stale selections and preview requests", async () => {
     const hook = await setupWorkspace();
     act(() => client.setQueryData(["files", "default-local", 1, { kind: "root" }], {

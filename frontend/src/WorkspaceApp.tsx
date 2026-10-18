@@ -83,7 +83,8 @@ function Workspace({ preference, setPreference, settingsError }: {
   const task = useRenameStore((state) => state.task);
   const {
     storageId, location, setLocation, setPath, selectStorage, resetWorkspaceSession, locationReady,
-    providers, activeStorage, providerId, providerName, cloudStatus, localSettings,
+    providers, activeStorage, providerId, providerName, cloudStatus,
+    providerDefinitions, providerDefinition, providerError, metadataReady, requiresAuth, supportsLocalPicker, supportsLocation,
     cloudAccountId, cloudConnected, cloudSession, cloudReady, restoredCloudSession, appSettingsReady,
     files, workspaceKey, settingsLoading, pickLocalRoot,
     restoreDefaultCloudPath, setDefaultCloudPath, refreshFiles,
@@ -102,7 +103,7 @@ function Workspace({ preference, setPreference, settingsError }: {
     reconcileSelection, endTask, toggleFile, selectAllFiles, clearFiles, invertFiles,
     resetForStorageChange,
   } = useRenameWorkflow({
-    storageId, location, workspaceKey, cloudSession, providerId, cloudReady, task,
+    storageId, location, workspaceKey, cloudSession, locationReady, task,
     sort: fileSort, onSortChange: setFileSort,
     activeStorage: activeStorage && { revision: activeStorage.revision, busy: activeStorage.busy },
     files: {
@@ -111,12 +112,12 @@ function Workspace({ preference, setPreference, settingsError }: {
     },
   });
   useEffect(() => {
-    if (isExecuting || providerId === "local" || !appSettingsReady || restoredCloudSession === cloudSession) return;
+    if (isExecuting || !metadataReady || !requiresAuth || !appSettingsReady || restoredCloudSession === cloudSession) return;
     restoreDefaultCloudPath();
     resetForStorageChange();
-  }, [isExecuting, providerId, cloudSession, restoredCloudSession, appSettingsReady]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [isExecuting, metadataReady, requiresAuth, cloudSession, restoredCloudSession, appSettingsReady]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const loadError = providers.error ?? definitions.error ?? cloudStatus.error ?? localSettings.error;
+  const loadError = providers.error ?? providerError ?? definitions.error ?? (requiresAuth ? cloudStatus.error : null);
   const { factoryReset, resetDisabledReason, resetPending, resetEpoch } = useFactoryReset({
     task, isExecuting, isPreviewing,
     storageBusy: providers.data?.some((storage) => storage.busy) ?? false,
@@ -124,14 +125,15 @@ function Workspace({ preference, setPreference, settingsError }: {
   });
 
   const navigate = useCallback((nextPath: string) => {
-    if (!locationReady || isExecuting || pickLocalRoot.isPending || activeStorage?.busy) return;
+    if (!locationReady || !supportsLocation(nextPath ? { kind: "path", value: nextPath } : { kind: "root" }) ||
+      isExecuting || pickLocalRoot.isPending || activeStorage?.busy) return;
     setPath(nextPath);
-  }, [locationReady, isExecuting, pickLocalRoot.isPending, activeStorage?.busy, setPath]);
+  }, [locationReady, supportsLocation, isExecuting, pickLocalRoot.isPending, activeStorage?.busy, setPath]);
 
   const navigateLocation = useCallback((next: StorageLocation) => {
-    if (!locationReady || isExecuting || pickLocalRoot.isPending || activeStorage?.busy) return;
+    if (!locationReady || !supportsLocation(next) || isExecuting || pickLocalRoot.isPending || activeStorage?.busy) return;
     setLocation(next);
-  }, [locationReady, isExecuting, pickLocalRoot.isPending, activeStorage?.busy, setLocation]);
+  }, [locationReady, supportsLocation, isExecuting, pickLocalRoot.isPending, activeStorage?.busy, setLocation]);
 
   const selectProvider = (nextProviderId: string) => {
     if (isExecuting || pickLocalRoot.isPending) return;
@@ -173,6 +175,7 @@ function Workspace({ preference, setPreference, settingsError }: {
         >
           <StorageSidebar
             storages={providers.data ?? []}
+            providerDefinitions={providerDefinitions.data ?? []}
             isLoading={providers.isPending}
             disabled={isExecuting || pickLocalRoot.isPending}
             view={view}
@@ -195,7 +198,7 @@ function Workspace({ preference, setPreference, settingsError }: {
             sx={{ width: "100%", maxWidth: 1680, mx: "auto", p: 1.5 }}
           >
             {loadError && <Alert severity="error" sx={{ mb: 2 }}>无法连接后端：{loadError.message}</Alert>}
-            {(providers.isPending || definitions.isPending) && (
+            {(providers.isPending || providerDefinitions.isPending || definitions.isPending) && (
               <LinearProgress aria-label="正在加载工作台配置" sx={{ flexShrink: 0, mb: 1 }} />
             )}
 
@@ -214,7 +217,9 @@ function Workspace({ preference, setPreference, settingsError }: {
                   compactNavigation={compactNavigation}
                   listing={locationReady ? files.data : undefined}
                   rootLabel={providerName}
-                  providerId={providerId}
+                  serviceName={providerDefinition?.name ?? providerId}
+                  requiresAuth={metadataReady && requiresAuth}
+                  supportsLocalPicker={supportsLocalPicker}
                   navigationDisabled={!locationReady || !activeStorage || isExecuting || pickLocalRoot.isPending || activeStorage.busy}
                   defaultPathDisabled={!cloudAccountId || !cloudReady || !files.isSuccess || files.isFetching || Boolean(files.error) || cloudStatus.isError}
                   browseDisabled={!activeStorage || pickLocalRoot.isPending || isExecuting || activeStorage.busy}
@@ -222,7 +227,7 @@ function Workspace({ preference, setPreference, settingsError }: {
                   storageMissing={!activeStorage && !providers.isPending}
                   accountIdMissing={cloudConnected && !cloudAccountId}
                   pickerError={pickLocalRoot.error}
-                  cloudDisconnected={cloudStatus.isSuccess && !cloudStatus.data.connected}
+                  cloudDisconnected={metadataReady && requiresAuth && cloudStatus.isSuccess && !cloudStatus.data.connected}
                   onOpenNavigation={() => setMobileNavOpen(true)}
                   onNavigate={navigateLocation}
                   onSetDefaultPath={setDefaultCloudPath}
@@ -271,8 +276,8 @@ function Workspace({ preference, setPreference, settingsError }: {
                             </Box>
                           ) : (
                             <p className="empty-state">
-                              {providerId !== "local" && cloudStatus.isSuccess && !cloudStatus.data.connected
-                                ? `连接 ${providerId === "google_drive" ? "Google Drive" : "OneDrive"} 后可浏览云端目录。`
+                              {metadataReady && requiresAuth && cloudStatus.isSuccess && !cloudStatus.data.connected
+                                ? `连接 ${providerDefinition?.name} 后可浏览云端目录。`
                                 : "目录暂不可用，请检查存储设置。"}
                             </p>
                           )

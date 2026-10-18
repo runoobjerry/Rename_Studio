@@ -62,9 +62,13 @@ beforeEach(() => {
   });
   vi.mocked(api.fetchStorageProviders).mockResolvedValue([
     { provider_type: "local", name: "Local", locations: ["root", "path", "id"], can_rename: true,
-      browser_auth: false, local_picker: true, config_schema: {} },
+      browser_auth: false, local_picker: true, config_schema: {}, account_label: "用户", icon: "computer",
+      config_fields: [{ key: "root_path", label: "本地根目录", create_label: null, input_type: "directory", target: "config",
+        required: true, nullable: false, help_text: null, create_help_text: null, saved_help_text: null }] },
     { provider_type: "onedrive", name: "OneDrive", locations: ["root", "path", "id"], can_rename: true,
-      browser_auth: true, local_picker: false, config_schema: {} },
+      browser_auth: true, local_picker: false, config_schema: {}, account_label: "Microsoft 用户", icon: "cloud",
+      config_fields: [{ key: "client_id", label: "OneDrive App ID", create_label: "OneDrive App ID（可稍后配置）", input_type: "text", target: "config",
+        required: false, nullable: true, help_text: null, create_help_text: null, saved_help_text: null }] },
   ]);
   useRenameStore.setState({ selectedIds: [], rules: [], task: null });
   vi.stubGlobal("matchMedia", vi.fn((query: string) => ({
@@ -96,6 +100,50 @@ afterEach(() => {
   vi.restoreAllMocks();
   vi.clearAllMocks();
   vi.unstubAllGlobals();
+});
+
+it.each([
+  { browserAuth: false, localPicker: false, icon: "computer" as const },
+  { browserAuth: false, localPicker: true, icon: "cloud" as const },
+  { browserAuth: true, localPicker: false, icon: "computer" as const },
+  { browserAuth: true, localPicker: true, icon: "cloud" as const },
+])("uses provider capabilities for directory actions: browserAuth=$browserAuth localPicker=$localPicker", async ({ browserAuth, localPicker, icon }) => {
+  const definitions = await api.fetchStorageProviders();
+  const storages = await api.fetchStorages();
+  vi.mocked(api.fetchStorageProviders).mockResolvedValue([{
+    ...definitions[0], provider_type: "fixture_service", name: "Fixture Service",
+    browser_auth: browserAuth, local_picker: localPicker, icon,
+  }]);
+  vi.mocked(api.fetchStorages).mockResolvedValue([{
+    ...storages[0], provider_type: "fixture_service", account_id: browserAuth ? "account-a" : null,
+  }]);
+  render(<QueryClientProvider client={client}><WorkspaceApp /></QueryClientProvider>);
+  await waitFor(() => expect(api.fetchStorageFiles).toHaveBeenCalledWith("default-local", { kind: "root" }));
+  const panel = within(screen.getByRole("region", { name: "目录位置" }));
+  expect(screen.getByTestId(icon === "computer" ? "ComputerRoundedIcon" : "CloudQueueRoundedIcon")).toBeInTheDocument();
+  if (localPicker) expect(panel.getByRole("button", { name: "浏览…" })).toBeInTheDocument();
+  else expect(panel.queryByRole("button", { name: "浏览…" })).not.toBeInTheDocument();
+  if (browserAuth) {
+    expect(panel.getByRole("button", { name: "设为默认路径" })).toBeInTheDocument();
+    expect(api.fetchStorageAuthStatus).toHaveBeenCalledWith("default-local");
+  } else {
+    expect(panel.queryByRole("button", { name: "设为默认路径" })).not.toBeInTheDocument();
+    expect(api.fetchStorageAuthStatus).not.toHaveBeenCalled();
+  }
+});
+
+it("uses the provider name in disconnected guidance without requesting its files", async () => {
+  const definitions = await api.fetchStorageProviders();
+  const storages = await api.fetchStorages();
+  vi.mocked(api.fetchStorageProviders).mockResolvedValue([{
+    ...definitions[1], provider_type: "fixture_service", name: "Fixture Service",
+  }]);
+  vi.mocked(api.fetchStorages).mockResolvedValue([{ ...storages[0], provider_type: "fixture_service" }]);
+  vi.mocked(api.fetchStorageAuthStatus).mockResolvedValue(status(null, false));
+  render(<QueryClientProvider client={client}><WorkspaceApp /></QueryClientProvider>);
+  expect(await screen.findByText("请先前往设置页面连接 Fixture Service 账号。")).toBeInTheDocument();
+  expect(screen.getByText("连接 Fixture Service 后可浏览云端目录。")).toBeInTheDocument();
+  expect(api.fetchStorageFiles).not.toHaveBeenCalled();
 });
 
 async function openCloud() {

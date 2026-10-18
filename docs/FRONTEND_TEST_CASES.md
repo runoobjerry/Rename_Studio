@@ -16,6 +16,9 @@
 | 场景 | 自动化承接位置 |
 |---|---|
 | 连接/账号/目录隔离，旧目录与旧预览不能污染新工作区 | [WorkspaceApp](../frontend/src/WorkspaceApp.test.tsx)、[默认云目录](../frontend/src/features/files/defaultCloudLocation.test.ts) |
+| 工作区按 browser_auth 判定授权；元数据 pending/error/missing 不读取授权或文件，恢复后使用原目录；元数据刷新失败保留账号身份、任务与选择 | [存储 Hook](../frontend/src/workspace/hooks/useWorkspaceStorage.test.ts) |
+| 非 Local 且无需浏览器授权的服务恢复 ID 位置，不发授权请求；未知 OAuth 服务等待授权，不支持的位置类型不请求 | 存储 Hook |
+| 目录按钮分别按 browser_auth/local_picker 展示，侧栏图标按 icon 展示，未授权提示使用 Provider 名称；无浏览器授权服务的选择随成功列表同步 | WorkspaceApp、工作流 Hook |
 | 选择及规则变化使旧预览失效；保留替换 ID、释放迟到或结束任务的预览 | [工作流 Hook](../frontend/src/features/rename/useRenameWorkflow.test.ts)、WorkspaceApp 代表性 UI 接线 |
 | 排序与完整列表、预览、1001 项分批保持一致；草稿可重排且旧预览不能复活，执行后冻结顺序并保留 Local 新 ID 与已有记录 | 工作流 Hook、[Rename Store](../frontend/src/stores/useRenameStore.test.ts)、WorkspaceApp、[虚拟列表](../frontend/src/features/files/FileBrowser.virtual.test.tsx) |
 | 刷新只移除已消失的选择，失败保留选择；过滤隐藏项不恢复旧选择 | 工作流 Hook、WorkspaceApp、[FileBrowser](../frontend/src/features/files/FileBrowser.test.tsx) |
@@ -39,7 +42,9 @@
 | 核对选择保留部分执行结果，普通选择清除旧结果 | 工作流 Hook；[PreviewPanel](../frontend/src/features/rename/PreviewPanel.test.tsx) 验证结果和筛选展示 |
 | 主题跟随系统、服务器偏好恢复、保存失败回退、连续编辑串行、迟到读取不覆盖保存 | [主题偏好 Hook](../frontend/src/features/settings/useThemePreference.test.ts) |
 | 连接创建/编辑/关闭草稿、本地选择器、授权状态与失败保留输入 | StorageSettingsPanel |
-| Google 创建时以顶层字段提交密码式密钥，切换类型及创建后清空；配置不完整禁用登录，复用弹窗来源与连接校验 | StorageSettingsPanel |
+| 未硬编码的 Provider 根据字段元数据渲染、校验必填、按字段 key 回填目录、提交多个配置及 nullable 空值；无 browser_auth 不请求授权，定义缺失禁止编辑和创建 | StorageSettingsPanel |
+| 编辑密钥留空不提交；失败保留新密钥、重试成功后清空，密码不回显 | StorageSettingsPanel |
+| 任意 Provider 通过元数据定义配置字段、账号缺省文案和密码式顶层密钥；创建/切换/重开清空，配置不完整禁用登录，授权弹窗校验来源和连接 | StorageSettingsPanel |
 | 明确不可重命名项在权限变化后退出旧选择和预览请求，未知权限项保留 | 工作流 Hook |
 | 目录语义导航、文本选择不误导航、任务过滤、目录折叠与键盘/滚动访问 | FileBrowser、虚拟列表、[LocationBreadcrumbs](../frontend/src/features/files/LocationBreadcrumbs.test.tsx) |
 | MUI 表头升降序、选择不随排序变化、锁定提示；中文数字名称自然排序、等价名称稳定比较、真实时间/时区、同时间及缺失值分组置后、不修改源数组 | FileBrowser、[文件排序](../frontend/src/features/files/fileSort.test.ts) |

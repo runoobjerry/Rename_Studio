@@ -1,13 +1,13 @@
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal
 
 from pydantic import BaseModel, ValidationError as ModelValidationError
 
 from app.core.errors import ValidationError
 from app.providers.base import StorageProvider
-from app.schemas.storage import StorageRecord
+from app.schemas.storage import StorageConfigField, StorageRecord
 from app.services.connection_auth import ConnectionAuth
 
 if TYPE_CHECKING:
@@ -24,6 +24,9 @@ class ProviderDefinition:
     auth_factory: Callable[[StorageRecord, Callable[[dict[str, object], dict[str, str]], None], Callable[[], None]], ConnectionAuth] | None = None
     local_picker: bool = False
     can_rename: bool = True
+    config_fields: tuple[StorageConfigField, ...] = ()
+    account_label: str = "用户"
+    icon: Literal["computer", "cloud"] = "cloud"
 
 
 class ProviderRegistry:

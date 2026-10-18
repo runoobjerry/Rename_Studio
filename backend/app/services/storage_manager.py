@@ -149,11 +149,11 @@ class StorageManager:
             await self._invalidate(record.storage_id)
         return self.info(record.storage_id)
 
-    @staticmethod
-    def _client_secret(provider_type: str, secret: SecretStr | None) -> str | None:
+    def _client_secret(self, provider_type: str, secret: SecretStr | None) -> str | None:
         if secret is None:
             return None
-        if provider_type != "google_drive":
+        fields = self.registry.definition(provider_type).config_fields
+        if not any(field.target == "client_secret" for field in fields):
             raise ValidationError("This storage does not accept an OAuth client secret")
         return secret.get_secret_value()
 

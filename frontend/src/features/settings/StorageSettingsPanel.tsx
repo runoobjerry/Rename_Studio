@@ -15,7 +15,7 @@ import {
   fetchStorageProviders, fetchStorages, pickLocalFolderDraft, pickStorageFolder,
   startStorageAuth, updateStorage,
 } from "../../api/client";
-import type { StorageInfo } from "../../types";
+import type { StorageConfigField, StorageInfo, StorageProviderDefinition } from "../../types";
 import { errorMessage, useNotification } from "../../components/NotificationProvider";
 import { PanelIconButton } from "../../components/PanelIconButton";
 
@@ -28,35 +28,102 @@ const connectionBodySx = {
   },
 };
 
-function ConnectionRow({ storage, executing, providerName }: {
+type ConfigDraft = Record<string, string>;
+
+function readConfigDraft(fields: StorageConfigField[], config: StorageInfo["config"]): ConfigDraft {
+  return Object.fromEntries(fields.filter((field) => field.target === "config").map((field) => {
+    const value = config[field.key];
+    return [field.key, typeof value === "string" ? value : ""];
+  }));
+}
+
+function buildConfig(fields: StorageConfigField[], draft: ConfigDraft): StorageInfo["config"] {
+  return Object.fromEntries(fields.filter((field) => field.target === "config").map((field) => {
+    const value = (draft[field.key] ?? "").trim();
+    return [field.key, field.nullable && !value ? null : value];
+  }));
+}
+
+function missingRequiredConfig(fields: StorageConfigField[], draft: ConfigDraft): boolean {
+  return fields.some((field) => field.target === "config" && field.required && !draft[field.key]?.trim());
+}
+
+function secretPayload(fields: StorageConfigField[], secret: string): { client_secret?: string } {
+  // 密钥保持顶层只写语义；编辑时留空不提交，交由服务端保留已有凭据。
+  return fields.some((field) => field.target === "client_secret") && secret.trim()
+    ? { client_secret: secret.trim() } : {};
+}
+
+function ConfigFields({ definition, draft, clientSecret, disabled, creating = false, hasClientSecret = false,
+  onChange, onSecretChange, onPick }: {
+  definition: StorageProviderDefinition;
+  draft: ConfigDraft;
+  clientSecret: string;
+  disabled: boolean;
+  creating?: boolean;
+  hasClientSecret?: boolean;
+  onChange: (key: string, value: string) => void;
+  onSecretChange: (value: string) => void;
+  onPick: (key: string) => void;
+}) {
+  return <>{definition.config_fields.map((field) => {
+    const secret = field.target === "client_secret";
+    const pickable = definition.local_picker && field.input_type === "directory";
+    let helpText = field.help_text;
+    if (creating) helpText = field.create_help_text ?? helpText;
+    else if (secret && hasClientSecret) helpText = field.saved_help_text ?? helpText;
+    const input = (
+      <TextField key={field.key} variant="standard" size="small"
+        label={creating ? field.create_label ?? field.label : field.label}
+        type={field.input_type === "password" ? "password" : "text"}
+        value={secret ? clientSecret : draft[field.key] ?? ""} disabled={disabled}
+        autoComplete={field.input_type === "password" ? "new-password" : undefined}
+        helperText={helpText}
+        onChange={(event) => secret ? onSecretChange(event.target.value) : onChange(field.key, event.target.value)}
+        sx={pickable ? { flex: 1, minWidth: 0 } : undefined} />
+    );
+    return pickable ? (
+      <Stack key={field.key} direction="row" spacing={1} sx={{ alignItems: "flex-end" }}>
+        {input}
+        <Tooltip title={creating ? "浏览本地目录（在后端电脑打开，仅填入路径）" : "浏览本地目录"}
+          slotProps={{ tooltip: { sx: { fontSize: "caption.fontSize" } } }}>
+          <span>
+            <PanelIconButton aria-label="浏览本地目录" disabled={disabled} onClick={() => onPick(field.key)}>
+              <FolderOpenIcon />
+            </PanelIconButton>
+          </span>
+        </Tooltip>
+      </Stack>
+    ) : input;
+  })}</>;
+}
+
+function ConnectionRow({ storage, executing, definition }: {
   storage: StorageInfo;
   executing: boolean;
-  providerName: string;
+  definition: StorageProviderDefinition;
 }) {
   const notify = useNotification();
   const queryClient = useQueryClient();
   const [name, setName] = useState(storage.name);
-  const [root, setRoot] = useState(storage.config.root_path ?? "");
-  const [clientId, setClientId] = useState(storage.config.client_id ?? "");
+  const [draft, setDraft] = useState(() => readConfigDraft(definition.config_fields, storage.config));
   const [clientSecret, setClientSecret] = useState("");
   const [editing, setEditing] = useState(false);
   const [awaitingAuth, setAwaitingAuth] = useState(false);
   const [authError, setAuthError] = useState<string>();
   const popup = useRef<Window | null>(null);
   const callbackOrigin = useRef<string>();
-  const local = storage.provider_type === "local";
-  const google = storage.provider_type === "google_drive";
+  const requiresAuth = definition.browser_auth;
   const status = useQuery({
     queryKey: ["storage-auth", storage.storage_id, storage.revision],
     queryFn: () => fetchStorageAuthStatus(storage.storage_id),
-    enabled: !local,
+    enabled: requiresAuth,
   });
   useEffect(() => {
     setName(storage.name);
-    setRoot(storage.config.root_path ?? "");
-    setClientId(storage.config.client_id ?? "");
+    setDraft(readConfigDraft(definition.config_fields, storage.config));
     setClientSecret("");
-  }, [storage.name, storage.config.root_path, storage.config.client_id, storage.revision]);
+  }, [storage.name, storage.config, storage.revision, definition]);
   const refresh = () => {
     void queryClient.invalidateQueries({ queryKey: ["app-settings"] });
     void queryClient.invalidateQueries({ queryKey: ["storages"] });
@@ -74,10 +141,10 @@ function ConnectionRow({ storage, executing, providerName }: {
     onError: (error) => notify(errorMessage(error), "error"),
   });
   const pick = useMutation({
-    mutationFn: () => pickStorageFolder(storage.storage_id),
-    onSuccess: (result) => {
+    mutationFn: (_fieldKey: string) => pickStorageFolder(storage.storage_id),
+    onSuccess: (result, fieldKey) => {
       if (!result.selected) return;
-      setRoot(result.root_path);
+      setDraft((current) => ({ ...current, [fieldKey]: result.root_path }));
       refresh();
       notify("已选择本地根文件夹。");
     },
@@ -133,7 +200,7 @@ function ConnectionRow({ storage, executing, providerName }: {
   const busy = renaming || operation.isPending || pick.isPending || connect.isPending || awaitingAuth;
   const isDefault = storage.storage_id === "default-local";
   const requestError = operation.error ?? pick.error ?? connect.error ?? status.error;
-  const saveDisabled = busy || !name.trim() || (local && !root.trim());
+  const saveDisabled = busy || !name.trim() || missingRequiredConfig(definition.config_fields, draft);
   const statusErrorMessage = authError ?? (status.error ? errorMessage(status.error) : "");
   const requestErrorMessage = authError ?? (requestError ? errorMessage(requestError) : "");
   const save = () => {
@@ -144,16 +211,15 @@ function ConnectionRow({ storage, executing, providerName }: {
     operation.mutate({
       run: () => updateStorage(storage.storage_id, {
         name: name.trim(),
-        config: local ? { root_path: root.trim() } : { client_id: clientId.trim() || null },
-        ...(google && clientSecret.trim() ? { client_secret: clientSecret.trim() } : {}),
+        config: buildConfig(definition.config_fields, draft),
+        ...secretPayload(definition.config_fields, clientSecret),
       }),
       message: "存储连接设置已更新。",
     });
   };
   const openEditor = () => {
     setName(storage.name);
-    setRoot(storage.config.root_path ?? "");
-    setClientId(storage.config.client_id ?? "");
+    setDraft(readConfigDraft(definition.config_fields, storage.config));
     setClientSecret("");
     operation.reset();
     pick.reset();
@@ -189,7 +255,7 @@ function ConnectionRow({ storage, executing, providerName }: {
   };
 
   let statusLabel: string;
-  if (local) {
+  if (!requiresAuth) {
     statusLabel = "已连接";
   } else if (status.isPending) {
     statusLabel = "正在读取…";
@@ -208,7 +274,7 @@ function ConnectionRow({ storage, executing, providerName }: {
     authTitle = "授权状态读取失败";
     authDescription = "暂时无法确认授权状态，请稍后重试。";
   } else if (status.data?.connected) {
-    authTitle = status.data.account_display_name ?? (google ? "Google 用户" : "Microsoft 用户");
+    authTitle = status.data.account_display_name ?? definition.account_label;
     authDescription = status.data.account_email ?? "未提供邮箱";
   } else {
     authTitle = "未授权";
@@ -219,9 +285,9 @@ function ConnectionRow({ storage, executing, providerName }: {
   return <>
     <TableRow hover>
       <TableCell sx={{ maxWidth: 240, overflowWrap: "anywhere", color: "text.primary" }}>{storage.name}</TableCell>
-      <TableCell>{providerName}</TableCell>
+      <TableCell>{definition.name}</TableCell>
       <TableCell>
-        <Chip size="small" variant="outlined" color={local || status.data?.connected ? "success" : "default"}
+        <Chip size="small" variant="outlined" color={!requiresAuth || status.data?.connected ? "success" : "default"}
           label={statusLabel} />
         {renaming && (
           <Typography variant="caption" component="div" color="text.secondary" sx={{ mt: 0.5 }}>
@@ -253,33 +319,14 @@ function ConnectionRow({ storage, executing, providerName }: {
         <Stack spacing={2}>
           <TextField variant="standard" label="连接名称" size="small" value={name} disabled={busy}
             onChange={(event) => setName(event.target.value)} />
-          {local ? (
-            <Stack direction="row" spacing={1} sx={{ alignItems: "flex-end" }}>
-              <TextField variant="standard" label="本地根目录" size="small" value={root} disabled={busy}
-                onChange={(event) => setRoot(event.target.value)} sx={{ flex: 1, minWidth: 0 }} />
-              <Tooltip title="浏览本地目录"
-                slotProps={{ tooltip: { sx: { fontSize: "caption.fontSize" } } }}>
-                <span>
-                  <PanelIconButton aria-label="浏览本地目录" disabled={busy} onClick={() => pick.mutate()}>
-                    <FolderOpenIcon />
-                  </PanelIconButton>
-                </span>
-              </Tooltip>
-            </Stack>
-          ) : (
-            <>
-              <TextField variant="standard" label={google ? "Google Client ID" : "OneDrive App ID"} size="small" value={clientId}
-                disabled={busy} onChange={(event) => setClientId(event.target.value)} />
-              {google && <TextField variant="standard" label="Google Client Secret" type="password" size="small"
-                value={clientSecret} autoComplete="new-password" disabled={busy}
-                helperText={storage.has_client_secret ? "已保存密钥；留空保留原值。更改客户端配置后需重新登录。" : "请填写 Desktop OAuth 客户端的密钥，保存后登录 Google 账号。"}
-                onChange={(event) => setClientSecret(event.target.value)} />}
-            </>
-          )}
+          <ConfigFields definition={definition} draft={draft} clientSecret={clientSecret}
+            disabled={busy} hasClientSecret={storage.has_client_secret}
+            onChange={(key, value) => setDraft((current) => ({ ...current, [key]: value }))}
+            onSecretChange={setClientSecret} onPick={(key) => pick.mutate(key)} />
           <Box sx={{ display: "flex", justifyContent: "flex-end" }}>
             <Button variant="text" disabled={saveDisabled} onClick={save}>保存</Button>
           </Box>
-          {!local && (
+          {requiresAuth && (
             <>
               <Divider />
               <Stack direction="row" spacing={1.5} sx={{ alignItems: "center" }}>
@@ -337,21 +384,21 @@ export function StorageSettingsPanel({ executingStorageId }: { executingStorageI
   const queryClient = useQueryClient();
   const storages = useQuery({ queryKey: ["storages"], queryFn: fetchStorages });
   const providers = useQuery({ queryKey: ["storage-providers"], queryFn: fetchStorageProviders });
-  const [provider, setProvider] = useState("local");
+  const [provider, setProvider] = useState("");
   const [name, setName] = useState("");
-  const [config, setConfig] = useState("");
+  const [draft, setDraft] = useState<ConfigDraft>({});
   const [clientSecret, setClientSecret] = useState("");
   const [adding, setAdding] = useState(false);
   const create = useMutation({
     gcTime: 0,
-    mutationFn: () => createStorage({
-      provider_type: provider, name: name.trim(),
-      config: provider === "local" ? { root_path: config.trim() } : { client_id: config.trim() || null },
-      ...(provider === "google_drive" && clientSecret.trim() ? { client_secret: clientSecret.trim() } : {}),
+    mutationFn: (definition: StorageProviderDefinition) => createStorage({
+      provider_type: definition.provider_type, name: name.trim(),
+      config: buildConfig(definition.config_fields, draft),
+      ...secretPayload(definition.config_fields, clientSecret),
     }),
     onSuccess: () => {
       setName("");
-      setConfig("");
+      setDraft({});
       setClientSecret("");
       setAdding(false);
       void queryClient.invalidateQueries({ queryKey: ["storages"] });
@@ -360,23 +407,22 @@ export function StorageSettingsPanel({ executingStorageId }: { executingStorageI
     onError: (error) => notify(errorMessage(error), "error"),
   });
   const pickDraft = useMutation({
-    mutationFn: pickLocalFolderDraft,
-    onSuccess: (result) => {
-      if (result.selected) setConfig(result.root_path);
+    mutationFn: (_fieldKey: string) => pickLocalFolderDraft(),
+    onSuccess: (result, fieldKey) => {
+      if (result.selected) setDraft((current) => ({ ...current, [fieldKey]: result.root_path }));
     },
     onError: (error) => notify(errorMessage(error), "error"),
   });
   const addingBusy = create.isPending || pickDraft.isPending;
   const createError = create.error ?? pickDraft.error ?? providers.error;
-  const createDisabled = addingBusy || providers.isPending || providers.isError ||
-    !name.trim() || (provider === "local" && !config.trim());
-  const selectedProvider = providers.data?.some(
-    (definition) => definition.provider_type === provider,
-  ) ? provider : "";
+  const activeProvider = providers.data?.find((definition) => definition.provider_type === provider);
+  const createDisabled = addingBusy || !activeProvider || providers.isError || !name.trim() ||
+    missingRequiredConfig(activeProvider.config_fields, draft);
+  const selectedProvider = activeProvider?.provider_type ?? "";
   const openAddDialog = () => {
-    setProvider("local");
+    setProvider(providers.data?.[0]?.provider_type ?? "");
     setName("");
-    setConfig("");
+    setDraft({});
     setClientSecret("");
     create.reset();
     pickDraft.reset();
@@ -390,16 +436,17 @@ export function StorageSettingsPanel({ executingStorageId }: { executingStorageI
   };
   const changeProvider = (providerType: string) => {
     setProvider(providerType);
-    setConfig("");
+    setDraft({});
     setClientSecret("");
     pickDraft.reset();
   };
   const saveConnection = () => {
+    if (!activeProvider) return;
     if (Array.from(name.trim()).length > 20) {
       notify("连接名称最多为 20 个字符。", "error");
       return;
     }
-    create.mutate();
+    create.mutate(activeProvider);
   };
   return <>
     <Card variant="outlined" sx={connectionBodySx}>
@@ -444,12 +491,21 @@ export function StorageSettingsPanel({ executingStorageId }: { executingStorageI
             </TableHead>
             <TableBody>
               {(storages.data ?? []).map((storage) => {
-                const providerName = providers.data?.find(
-                  (definition) => definition.provider_type === storage.provider_type,
-                )?.name ?? (storage.provider_type === "local" ? "本地文件" : storage.provider_type === "google_drive" ? "Google Drive" : "OneDrive");
+                const definition = providers.data?.find(
+                  (entry) => entry.provider_type === storage.provider_type,
+                );
+                if (!definition) return (
+                  <TableRow key={storage.storage_id}>
+                    <TableCell>{storage.name}</TableCell>
+                    <TableCell>{storage.provider_type}</TableCell>
+                    <TableCell colSpan={2}>
+                      <Typography variant="caption" color="text.secondary">服务定义尚未就绪，暂时无法编辑。</Typography>
+                    </TableCell>
+                  </TableRow>
+                );
                 return (
                   <ConnectionRow key={storage.storage_id} storage={storage}
-                    executing={storage.storage_id === executingStorageId} providerName={providerName} />
+                    executing={storage.storage_id === executingStorageId} definition={definition} />
                 );
               })}
               {storages.isSuccess && storages.data.length === 0 && (
@@ -478,28 +534,11 @@ export function StorageSettingsPanel({ executingStorageId }: { executingStorageI
           </TextField>
           <TextField variant="standard" label="连接名称" size="small" value={name} disabled={addingBusy}
             onChange={(event) => setName(event.target.value)} />
-          {provider === "local" ? (
-            <Stack direction="row" spacing={1} sx={{ alignItems: "flex-end" }}>
-              <TextField variant="standard" label="本地根目录" size="small" value={config} disabled={addingBusy}
-                onChange={(event) => setConfig(event.target.value)} sx={{ flex: 1, minWidth: 0 }} />
-              <Tooltip title="浏览本地目录（在后端电脑打开，仅填入路径）"
-                slotProps={{ tooltip: { sx: { fontSize: "caption.fontSize" } } }}>
-                <span>
-                  <PanelIconButton aria-label="浏览本地目录" disabled={addingBusy} onClick={() => pickDraft.mutate()}>
-                    <FolderOpenIcon />
-                  </PanelIconButton>
-                </span>
-              </Tooltip>
-            </Stack>
-          ) : (
-            <>
-              <TextField variant="standard" label={provider === "google_drive" ? "Google Client ID（可稍后配置）" : "OneDrive App ID（可稍后配置）"} size="small" value={config}
-                disabled={addingBusy} onChange={(event) => setConfig(event.target.value)} />
-              {provider === "google_drive" && <TextField variant="standard" label="Google Client Secret" type="password" size="small"
-                value={clientSecret} autoComplete="new-password" disabled={addingBusy}
-                helperText="使用自行创建的 Desktop OAuth 客户端 ID 和密钥；两项保存后才能登录。首期支持我的云端硬盘。"
-                onChange={(event) => setClientSecret(event.target.value)} />}
-            </>
+          {activeProvider && (
+            <ConfigFields definition={activeProvider} draft={draft} clientSecret={clientSecret}
+              disabled={addingBusy} creating
+              onChange={(key, value) => setDraft((current) => ({ ...current, [key]: value }))}
+              onSecretChange={setClientSecret} onPick={(key) => pickDraft.mutate(key)} />
           )}
           {createError && <Alert severity="error">{errorMessage(createError)}</Alert>}
         </Stack>

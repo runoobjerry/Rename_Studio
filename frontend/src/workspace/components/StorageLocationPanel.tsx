@@ -7,7 +7,9 @@ interface StorageLocationPanelProps {
   compactNavigation: boolean;
   listing?: DirectoryListing;
   rootLabel: string;
-  providerId: string;
+  serviceName: string;
+  requiresAuth: boolean;
+  supportsLocalPicker: boolean;
   navigationDisabled: boolean;
   defaultPathDisabled: boolean;
   browseDisabled: boolean;
@@ -23,7 +25,7 @@ interface StorageLocationPanelProps {
 }
 
 export function StorageLocationPanel({
-  compactNavigation, listing, rootLabel, providerId, navigationDisabled,
+  compactNavigation, listing, rootLabel, serviceName, requiresAuth, supportsLocalPicker, navigationDisabled,
   defaultPathDisabled, browseDisabled, isPickingFolder, storageMissing,
   accountIdMissing, pickerError, cloudDisconnected, onOpenNavigation,
   onNavigate, onSetDefaultPath, onBrowse,
@@ -43,7 +45,7 @@ export function StorageLocationPanel({
             disabled={navigationDisabled}
             onNavigate={onNavigate}
           />
-          {providerId !== "local" ? (
+          {requiresAuth && (
             <Button
               type="button"
               variant="outlined"
@@ -53,7 +55,8 @@ export function StorageLocationPanel({
             >
               设为默认路径
             </Button>
-          ) : (
+          )}
+          {supportsLocalPicker && (
             <Button
               type="button"
               variant="outlined"
@@ -71,11 +74,11 @@ export function StorageLocationPanel({
         {accountIdMissing && (
           <Alert severity="info">当前账号缺少账号 ID，仍可浏览文件；请重新登录后设置默认路径。</Alert>
         )}
-        {providerId === "local" && pickerError && (
+        {supportsLocalPicker && pickerError && (
           <Alert severity="error">无法打开文件夹选择器：{pickerError.message}</Alert>
         )}
-        {providerId !== "local" && cloudDisconnected && (
-          <Alert severity="warning">请先前往设置页面连接 {providerId === "google_drive" ? "Google Drive" : "OneDrive"} 账号。</Alert>
+        {requiresAuth && cloudDisconnected && (
+          <Alert severity="warning">请先前往设置页面连接 {serviceName} 账号。</Alert>
         )}
       </div>
     </section>

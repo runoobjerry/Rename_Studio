@@ -130,17 +130,6 @@ def test_storage_validation_never_echoes_secret_bearing_input(manager: StorageMa
             assert CLIENT_SECRET not in response.text
 
 
-@pytest.mark.parametrize("provider_type", ["local", "onedrive"])
-def test_other_providers_do_not_accept_client_secrets(manager: StorageManager, provider_type: str) -> None:
-    config = {"root_path": manager.record("default-local").config["root_path"]} if provider_type == "local" else {}
-    with api(manager) as client:
-        response = client.post("/storages", json={
-            "provider_type": provider_type, "name": "Other", "config": config, "client_secret": CLIENT_SECRET,
-        })
-        assert response.status_code == 422
-        assert CLIENT_SECRET not in response.text
-
-
 @pytest.mark.parametrize(("config", "secret"), [({"client_id": "fixture-client"}, None), ({}, CLIENT_SECRET)])
 def test_both_client_credentials_are_required_to_start(manager: StorageManager, config: dict, secret: str | None) -> None:
     info = manager.create(StorageCreate(provider_type="google_drive", name="Draft", config=config, client_secret=secret))

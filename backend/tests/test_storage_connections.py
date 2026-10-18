@@ -1,5 +1,6 @@
 import asyncio
 from datetime import UTC, datetime
+from dataclasses import replace
 from pathlib import Path
 from typing import cast
 
@@ -18,7 +19,7 @@ from app.providers.registry import ProviderDefinition, ProviderRegistry
 from app.repositories.storage_repository import JsonStorageRepository
 from app.schemas.rename import RenamePreviewRequest
 from app.schemas.rules import RuleSpec
-from app.schemas.storage import LocalConfig, OneDriveConfig, RootLocation, StorageCreate, StorageUpdate
+from app.schemas.storage import StorageConfigField, LocalConfig, OneDriveConfig, RootLocation, StorageCreate, StorageUpdate
 from app.services.connection_auth import ConnectionAuth
 from app.services.execute_service import ExecuteService
 from app.services.onedrive_auth import OneDriveAuthService
@@ -50,6 +51,67 @@ def services(manager: StorageManager) -> tuple[PreviewService, ExecuteService]:
     store = PreviewStore()
     preview = PreviewService(manager.registry, RenameEngine(rules), store)
     return preview, ExecuteService(manager.registry, store, preview)
+
+
+def test_provider_metadata_exposes_form_fields_without_connection_secrets(tmp_path: Path) -> None:
+    manager = make_manager(tmp_path)
+    definition = manager.registry.definition("onedrive")
+    manager.registry.definitions["onedrive"] = replace(
+        definition, account_label="测试用户", icon="computer", config_fields=(
+            StorageConfigField(key="client_id", label="客户端 ID", nullable=True),
+            StorageConfigField(key="client_secret", label="客户端密钥", input_type="password", target="client_secret"),
+        ),
+    )
+    app = FastAPI()
+    app.include_router(storage_router.router)
+    app.dependency_overrides[get_storage_manager] = lambda: manager
+    with TestClient(app) as client:
+        response = client.get("/storage-providers")
+    assert response.status_code == 200
+    provider = next(item for item in response.json() if item["provider_type"] == "onedrive")
+    assert provider["account_label"] == "测试用户"
+    assert provider["icon"] == "computer"
+    assert provider["browser_auth"] is True
+    assert provider["config_schema"] == OneDriveConfig.model_json_schema()
+    fields = provider["config_fields"]
+    assert fields[0]["key"] == "client_id" and fields[0]["nullable"] is True
+    assert fields[1]["input_type"] == "password" and fields[1]["target"] == "client_secret"
+    assert "value" not in fields[1] and "credentials" not in provider
+
+
+@pytest.mark.parametrize("provider_type", ["fixture_service", "google_drive"])
+@pytest.mark.parametrize("accepts_secret", [False, True])
+def test_client_secret_acceptance_follows_provider_fields(tmp_path: Path, provider_type: str, accepts_secret: bool) -> None:
+    manager = make_manager(tmp_path)
+    manager.registry.register(replace(
+        manager.registry.definition("onedrive"), provider_type=provider_type, name="Fixture Service",
+        config_fields=(StorageConfigField(
+            key="client_secret", label="密钥", target="client_secret", input_type="password",
+        ),) if accepts_secret else (),
+    ))
+    app = create_app()
+    app.dependency_overrides[get_storage_manager] = lambda: manager
+    with TestClient(app) as client:
+        response = client.post("/storages", json={
+            "provider_type": provider_type, "name": "Fixture", "config": {}, "client_secret": "fixture-secret",
+        })
+        assert response.status_code == (201 if accepts_secret else 422)
+        assert "fixture-secret" not in response.text
+        if accepts_secret:
+            storage_id = response.json()["storage_id"]
+            assert response.json()["has_client_secret"] is True
+            assert "client_secret" not in response.json()["config"]
+            assert manager.record(storage_id).credentials["client_secret"] == "fixture-secret"
+        else:
+            assert len(manager.state.connections) == 1
+            storage_id = manager.create(StorageCreate(provider_type=provider_type, name="Fixture", config={})).storage_id
+        updated = client.put(f"/storages/{storage_id}", json={"client_secret": "replacement-secret"})
+        assert updated.status_code == (200 if accepts_secret else 422)
+        assert "replacement-secret" not in updated.text
+        if accepts_secret:
+            assert manager.record(storage_id).credentials["client_secret"] == "replacement-secret"
+        else:
+            assert manager.record(storage_id).credentials == {}
 
 
 def test_new_install_only_creates_local_and_restores_it(tmp_path: Path) -> None:

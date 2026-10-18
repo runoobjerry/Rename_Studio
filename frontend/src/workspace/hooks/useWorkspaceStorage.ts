@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { fetchStorageFiles, fetchStorageAuthStatus, fetchStorages, pickStorageFolder } from "../../api/client";
+import { fetchStorageFiles, fetchStorageAuthStatus, fetchStorageProviders, fetchStorages, pickStorageFolder } from "../../api/client";
 import { errorMessage, useNotification } from "../../components/NotificationProvider";
 import { readDefaultCloudLocation } from "../../features/files/defaultCloudLocation";
 import { useAppSettings } from "../../features/settings/useAppSettings";
@@ -23,7 +23,7 @@ export function useWorkspaceStorage({ hasTask, onLocalRootSelected }: WorkspaceS
   const [location, setLocation] = useState<StorageLocation>({ kind: "root" });
   const setPath = useCallback((value: string) => setLocation(value ? { kind: "path", value } : { kind: "root" }), []);
   const [restoredCloudSession, setRestoredCloudSession] = useState<string | null>(null);
-  const [restoredLocalSession, setRestoredLocalSession] = useState<string | null>(null);
+  const [restoredDirectSession, setRestoredDirectSession] = useState<string | null>(null);
 
   const warnSessionUnavailable = useCallback(() => {
     if (sessionWarningShown.current) return;
@@ -39,32 +39,36 @@ export function useWorkspaceStorage({ hasTask, onLocalRootSelected }: WorkspaceS
 
   const providers = useQuery({ queryKey: ["storages"], queryFn: fetchStorages, refetchInterval: 3000 });
   const activeStorage = providers.data?.find((storage) => storage.storage_id === storageId);
-  const providerId = activeStorage?.provider_type ?? "local";
+  const providerId = activeStorage?.provider_type ?? "";
+  const providerDefinitions = useQuery({ queryKey: ["storage-providers"], queryFn: fetchStorageProviders });
+  const providerDefinition = providerDefinitions.data?.find((entry) => entry.provider_type === providerId);
+  const metadataReady = providerDefinitions.isSuccess && Boolean(providerDefinition);
+  const requiresAuth = providerDefinition?.browser_auth === true;
+  const supportsLocalPicker = metadataReady && providerDefinition?.local_picker === true;
+  const supportsLocation = useCallback((value: StorageLocation) =>
+    providerDefinition?.locations.includes(value.kind) === true, [providerDefinition]);
+  const providerError = providerDefinitions.error ?? (activeStorage && providerDefinitions.isSuccess && !providerDefinition
+    ? new Error(`未找到存储服务 ${providerId} 的定义。`) : null);
   const cloudStatus = useQuery({
     queryKey: ["storage-auth", storageId, activeStorage?.revision],
     queryFn: () => fetchStorageAuthStatus(storageId),
-    enabled: providerId !== "local" && Boolean(activeStorage),
+    enabled: metadataReady && requiresAuth && Boolean(activeStorage),
   });
-  const localSettings = {
-    data: activeStorage?.config.root_path ? { root_path: activeStorage.config.root_path } : undefined,
-    isSuccess: providerId === "local" && Boolean(activeStorage),
-    isPending: providers.isPending,
-    error: providers.error,
-  };
-  const cloudAccountId = providerId !== "local" ? cloudStatus.data?.account_id : null;
-  const cloudConnected = providerId !== "local" && cloudStatus.data?.connected === true;
+  // 保留已知账号身份；元数据刷新失败只暂停读取，不把它误判为账号断开。
+  const cloudAccountId = requiresAuth ? cloudStatus.data?.account_id : null;
+  const cloudConnected = requiresAuth && cloudStatus.data?.connected === true;
   const cloudSession = cloudConnected ? JSON.stringify([storageId, activeStorage?.revision, cloudAccountId ?? null]) : null;
-  const cloudReady = cloudConnected && restoredCloudSession === cloudSession;
-  const localSession = providerId === "local" && activeStorage
+  const cloudReady = metadataReady && cloudConnected && restoredCloudSession === cloudSession;
+  const directSession = providerDefinition?.browser_auth === false && activeStorage
     ? JSON.stringify([storageId, activeStorage.revision]) : null;
-  const localReady = localSession !== null && restoredLocalSession === localSession;
-  const locationReady = localReady || cloudReady;
+  const directReady = directSession !== null && restoredDirectSession === directSession;
+  const locationReady = metadataReady && supportsLocation(location) && (directReady || cloudReady);
 
   useEffect(() => {
     if (!providers.isSuccess || activeStorage) return;
     setStorageId("default-local");
     setPath("");
-    setRestoredLocalSession(null);
+    setRestoredDirectSession(null);
     setRestoredCloudSession(null);
   }, [providers.isSuccess, activeStorage, setPath]);
 
@@ -73,25 +77,33 @@ export function useWorkspaceStorage({ hasTask, onLocalRootSelected }: WorkspaceS
     let changed = false;
     for (const [id, saved] of Object.entries(session.current.locations)) {
       const storage = providers.data.find((entry) => entry.storage_id === id);
-      // 当前连接优先采用对应版本的授权查询；未激活连接由连接列表判断身份。
-      const hasAuthStatus = id === storageId && storage?.provider_type !== "local" && cloudStatus.isSuccess;
-      const accountId = storage?.provider_type === "local" ? null
-        : hasAuthStatus ? cloudAccountId ?? null : storage?.account_id;
-      if (!storage || saved.revision !== storage.revision || saved.accountId !== accountId || (hasAuthStatus && !cloudConnected)) {
+      if (!storage || saved.revision !== storage.revision) {
+        delete session.current.locations[id];
+        changed = true;
+        continue;
+      }
+      const definition = providerDefinitions.data?.find((entry) => entry.provider_type === storage.provider_type);
+      // 元数据未就绪时保留记忆，不能把未知能力当成无需授权。
+      if (!providerDefinitions.isSuccess || !definition) continue;
+      const hasAuthStatus = id === storageId && definition.browser_auth && cloudStatus.isSuccess;
+      const accountId = definition.browser_auth
+        ? hasAuthStatus ? cloudAccountId ?? null : storage.account_id : null;
+      if (!definition.locations.includes(saved.location.kind) || saved.accountId !== accountId || (hasAuthStatus && !cloudConnected)) {
         delete session.current.locations[id];
         changed = true;
       }
     }
     if (changed) saveSession();
-  }, [providers.isSuccess, providers.data, storageId, cloudStatus.isSuccess, cloudAccountId, cloudConnected, saveSession]);
+  }, [providers.isSuccess, providers.data, providerDefinitions.isSuccess, providerDefinitions.data,
+    storageId, cloudStatus.isSuccess, cloudAccountId, cloudConnected, saveSession]);
 
   useEffect(() => {
-    if (!activeStorage || localSession === null || restoredLocalSession === localSession) return;
+    if (!metadataReady || !activeStorage || directSession === null || restoredDirectSession === directSession) return;
     const saved = session.current.locations[storageId];
-    setLocation(saved?.revision === activeStorage.revision && saved.accountId === null
+    setLocation(saved?.revision === activeStorage.revision && saved.accountId === null && supportsLocation(saved.location)
       ? saved.location : { kind: "root" });
-    setRestoredLocalSession(localSession);
-  }, [activeStorage, storageId, localSession, restoredLocalSession]);
+    setRestoredDirectSession(directSession);
+  }, [metadataReady, activeStorage, storageId, directSession, restoredDirectSession, supportsLocation]);
 
   useEffect(() => {
     if (!activeStorage) return;
@@ -116,7 +128,8 @@ export function useWorkspaceStorage({ hasTask, onLocalRootSelected }: WorkspaceS
   }, [activeStorage, storageId, locationReady, cloudAccountId, files.isSuccess, files.isFetching, files.data, saveSession]);
   const workspaceKey = useMemo(() => JSON.stringify([storageId, activeStorage?.revision, location]), [storageId, activeStorage?.revision, location]);
   const providerName = activeStorage?.name ?? storageId;
-  const settingsLoading = providerId === "local" ? localSettings.isPending : cloudStatus.isPending;
+  const settingsLoading = providers.isPending || providerDefinitions.isPending ||
+    (metadataReady && requiresAuth && cloudStatus.isPending);
 
   const pickLocalRoot = useMutation({
     mutationFn: () => pickStorageFolder(storageId),
@@ -137,7 +150,7 @@ export function useWorkspaceStorage({ hasTask, onLocalRootSelected }: WorkspaceS
     setStorageId(nextStorageId);
     setPath("");
     setRestoredCloudSession(null);
-    setRestoredLocalSession(null);
+    setRestoredDirectSession(null);
   }, [storageId, setPath]);
 
   const resetWorkspaceSession = useCallback(() => {
@@ -147,21 +160,24 @@ export function useWorkspaceStorage({ hasTask, onLocalRootSelected }: WorkspaceS
     setStorageId("default-local");
     setPath("");
     setRestoredCloudSession(null);
-    setRestoredLocalSession(null);
+    setRestoredDirectSession(null);
   }, [setPath, warnSessionUnavailable]);
 
   const restoreDefaultCloudPath = useCallback(() => {
+    if (!metadataReady || !requiresAuth) return;
     const saved = session.current.locations[storageId];
     const rememberedLocation = cloudConnected && activeStorage && saved?.revision === activeStorage.revision &&
-      saved.accountId === (cloudAccountId ?? null) ? saved.location : undefined;
+      saved.accountId === (cloudAccountId ?? null) && supportsLocation(saved.location) ? saved.location : undefined;
     const defaultLocation = cloudConnected && cloudAccountId && appSettings.data
       ? readDefaultCloudLocation(appSettings.data.preferences, storageId, cloudAccountId)
       : { kind: "root" } as StorageLocation;
     if (!rememberedLocation && appSettings.isError) notify("无法读取默认路径，将打开云盘根目录。", "warning");
     // 由工作区在原 effect 位置调用；恢复完成前 cloudReady 阻止目录请求。
-    setLocation(rememberedLocation ?? defaultLocation);
+    const restoredLocation = rememberedLocation ?? defaultLocation;
+    setLocation(supportsLocation(restoredLocation) ? restoredLocation : { kind: "root" });
     setRestoredCloudSession(cloudSession);
-  }, [cloudConnected, cloudAccountId, activeStorage, appSettings.data, appSettings.isError, storageId, cloudSession, notify]);
+  }, [metadataReady, requiresAuth, supportsLocation, cloudConnected, cloudAccountId, activeStorage,
+    appSettings.data, appSettings.isError, storageId, cloudSession, notify]);
 
   const setDefaultCloudPath = useCallback(() => {
     if (!cloudAccountId || !cloudReady || !files.isSuccess || files.isFetching || files.error) return;
@@ -181,7 +197,8 @@ export function useWorkspaceStorage({ hasTask, onLocalRootSelected }: WorkspaceS
   // 执行保护与重命名重置仍由工作区协调，Hook 不依赖任务 Store 或重命名 mutation。
   return {
     storageId, location, setLocation, setPath, selectStorage, resetWorkspaceSession, locationReady,
-    providers, activeStorage, providerId, providerName, cloudStatus, localSettings,
+    providers, activeStorage, providerId, providerName, cloudStatus,
+    providerDefinitions, providerDefinition, providerError, metadataReady, requiresAuth, supportsLocalPicker, supportsLocation,
     cloudAccountId, cloudConnected, cloudSession, cloudReady, restoredCloudSession,
     appSettingsReady: appSettings.isSuccess || appSettings.isError,
     files, workspaceKey, settingsLoading, pickLocalRoot,

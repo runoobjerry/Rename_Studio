@@ -55,6 +55,12 @@ beforeEach(() => {
     { storage_id: "user-onedrive", provider_type: "onedrive", name: "OneDrive", revision: 1, busy: false,
       config: { client_id: "app" }, account_id: "account-a", account_display_name: null, account_email: null },
   ]);
+  vi.mocked(api.fetchStorageProviders).mockResolvedValue([
+    { provider_type: "local", name: "Local", locations: ["root", "path", "id"], can_rename: true,
+      browser_auth: false, local_picker: true, config_schema: {}, config_fields: [], account_label: "用户", icon: "computer" },
+    { provider_type: "onedrive", name: "OneDrive", locations: ["root", "path", "id"], can_rename: true,
+      browser_auth: true, local_picker: false, config_schema: {}, config_fields: [], account_label: "Microsoft 用户", icon: "cloud" },
+  ]);
   vi.mocked(api.fetchStorageAuthStatus).mockResolvedValue(status("account-a"));
   vi.mocked(api.fetchStorageFiles).mockImplementation(async (provider, location) => ({
     ...listing(), provider, location, path: location.kind === "root" ? "" : location.value,
