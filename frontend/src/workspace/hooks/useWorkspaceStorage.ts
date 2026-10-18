@@ -40,10 +40,10 @@ export function useWorkspaceStorage({ hasTask, onLocalRootSelected }: WorkspaceS
   const providers = useQuery({ queryKey: ["storages"], queryFn: fetchStorages, refetchInterval: 3000 });
   const activeStorage = providers.data?.find((storage) => storage.storage_id === storageId);
   const providerId = activeStorage?.provider_type ?? "local";
-  const oneDriveStatus = useQuery({
+  const cloudStatus = useQuery({
     queryKey: ["storage-auth", storageId, activeStorage?.revision],
     queryFn: () => fetchStorageAuthStatus(storageId),
-    enabled: providerId === "onedrive" && Boolean(activeStorage),
+    enabled: providerId !== "local" && Boolean(activeStorage),
   });
   const localSettings = {
     data: activeStorage?.config.root_path ? { root_path: activeStorage.config.root_path } : undefined,
@@ -51,8 +51,8 @@ export function useWorkspaceStorage({ hasTask, onLocalRootSelected }: WorkspaceS
     isPending: providers.isPending,
     error: providers.error,
   };
-  const cloudAccountId = providerId === "onedrive" ? oneDriveStatus.data?.account_id : null;
-  const cloudConnected = providerId === "onedrive" && oneDriveStatus.data?.connected === true;
+  const cloudAccountId = providerId !== "local" ? cloudStatus.data?.account_id : null;
+  const cloudConnected = providerId !== "local" && cloudStatus.data?.connected === true;
   const cloudSession = cloudConnected ? JSON.stringify([storageId, activeStorage?.revision, cloudAccountId ?? null]) : null;
   const cloudReady = cloudConnected && restoredCloudSession === cloudSession;
   const localSession = providerId === "local" && activeStorage
@@ -74,7 +74,7 @@ export function useWorkspaceStorage({ hasTask, onLocalRootSelected }: WorkspaceS
     for (const [id, saved] of Object.entries(session.current.locations)) {
       const storage = providers.data.find((entry) => entry.storage_id === id);
       // 当前连接优先采用对应版本的授权查询；未激活连接由连接列表判断身份。
-      const hasAuthStatus = id === storageId && storage?.provider_type === "onedrive" && oneDriveStatus.isSuccess;
+      const hasAuthStatus = id === storageId && storage?.provider_type !== "local" && cloudStatus.isSuccess;
       const accountId = storage?.provider_type === "local" ? null
         : hasAuthStatus ? cloudAccountId ?? null : storage?.account_id;
       if (!storage || saved.revision !== storage.revision || saved.accountId !== accountId || (hasAuthStatus && !cloudConnected)) {
@@ -83,7 +83,7 @@ export function useWorkspaceStorage({ hasTask, onLocalRootSelected }: WorkspaceS
       }
     }
     if (changed) saveSession();
-  }, [providers.isSuccess, providers.data, storageId, oneDriveStatus.isSuccess, cloudAccountId, cloudConnected, saveSession]);
+  }, [providers.isSuccess, providers.data, storageId, cloudStatus.isSuccess, cloudAccountId, cloudConnected, saveSession]);
 
   useEffect(() => {
     if (!activeStorage || localSession === null || restoredLocalSession === localSession) return;
@@ -116,7 +116,7 @@ export function useWorkspaceStorage({ hasTask, onLocalRootSelected }: WorkspaceS
   }, [activeStorage, storageId, locationReady, cloudAccountId, files.isSuccess, files.isFetching, files.data, saveSession]);
   const workspaceKey = useMemo(() => JSON.stringify([storageId, activeStorage?.revision, location]), [storageId, activeStorage?.revision, location]);
   const providerName = activeStorage?.name ?? storageId;
-  const settingsLoading = providerId === "local" ? localSettings.isPending : oneDriveStatus.isPending;
+  const settingsLoading = providerId === "local" ? localSettings.isPending : cloudStatus.isPending;
 
   const pickLocalRoot = useMutation({
     mutationFn: () => pickStorageFolder(storageId),
@@ -181,7 +181,7 @@ export function useWorkspaceStorage({ hasTask, onLocalRootSelected }: WorkspaceS
   // 执行保护与重命名重置仍由工作区协调，Hook 不依赖任务 Store 或重命名 mutation。
   return {
     storageId, location, setLocation, setPath, selectStorage, resetWorkspaceSession, locationReady,
-    providers, activeStorage, providerId, providerName, oneDriveStatus, localSettings,
+    providers, activeStorage, providerId, providerName, cloudStatus, localSettings,
     cloudAccountId, cloudConnected, cloudSession, cloudReady, restoredCloudSession,
     appSettingsReady: appSettings.isSuccess || appSettings.isError,
     files, workspaceKey, settingsLoading, pickLocalRoot,

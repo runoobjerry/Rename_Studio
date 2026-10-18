@@ -25,6 +25,45 @@ const listing: DirectoryListing = {
 };
 
 describe("LocationBreadcrumbs", () => {
+  it("uses server IDs for duplicate Google folder names and names containing slashes", () => {
+    const onNavigate = vi.fn();
+    const google: DirectoryListing = { ...listing, provider: "google_drive", path: "misleading/display/path",
+      breadcrumbs: [
+        { name: "我的云端硬盘", location: { kind: "root" } },
+        { name: "same/name", location: { kind: "id", value: "first" } },
+        { name: "same/name", location: { kind: "id", value: "second" } },
+      ] };
+    const { rerender } = render(<LocationBreadcrumbs listing={google} rootLabel="连接名" disabled={false} onNavigate={onNavigate} />);
+    const nav = within(screen.getByRole("navigation", { name: "文件路径" }));
+    const folders = nav.getAllByRole("button", { name: "same/name" });
+    fireEvent.click(folders[0]);
+    expect(onNavigate).toHaveBeenLastCalledWith({ kind: "id", value: "first" });
+    fireEvent.click(folders[1]);
+    expect(onNavigate).toHaveBeenLastCalledWith({ kind: "id", value: "second" });
+    expect(folders[1]).toHaveAttribute("aria-current", "page");
+    expect(nav.queryByRole("button", { name: "misleading" })).not.toBeInTheDocument();
+    rerender(<LocationBreadcrumbs listing={{ ...google, breadcrumbs: [google.breadcrumbs![0],
+      { name: "已改名的祖先", location: { kind: "id", value: "first" } }, google.breadcrumbs![2]] }}
+      rootLabel="连接名" disabled={false} onNavigate={onNavigate} />);
+    fireEvent.click(nav.getByRole("button", { name: "已改名的祖先" }));
+    expect(onNavigate).toHaveBeenLastCalledWith({ kind: "id", value: "first" });
+  });
+
+  it("keeps Google IDs when ancestors fold into the narrow-screen menu", () => {
+    available = 100;
+    const onNavigate = vi.fn();
+    render(<LocationBreadcrumbs listing={{ ...listing, provider: "google_drive", breadcrumbs: [
+      { name: "我的云端硬盘", location: { kind: "root" } },
+      { name: "含/分隔符", location: { kind: "id", value: "opaque-parent" } },
+      { name: "当前目录", location: { kind: "id", value: "opaque-current" } },
+    ] }} rootLabel="连接名" disabled={false} onNavigate={onNavigate} />);
+    const nav = within(screen.getByRole("navigation", { name: "文件路径" }));
+    expect(nav.getByRole("button", { name: "当前目录" })).toHaveAttribute("aria-current", "page");
+    fireEvent.click(nav.getByRole("button", { name: "显示父级目录" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "含/分隔符" }));
+    expect(onNavigate).toHaveBeenCalledWith({ kind: "id", value: "opaque-parent" });
+  });
+
   it("navigates to root, ancestors and the canonical parent/current locations", () => {
     const onNavigate = vi.fn();
     render(<LocationBreadcrumbs listing={listing} rootLabel="根目录" disabled={false} onNavigate={onNavigate} />);

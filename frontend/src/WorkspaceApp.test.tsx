@@ -104,6 +104,69 @@ async function openCloud() {
   await waitFor(() => expect(screen.getByRole("button", { name: "设为默认路径" })).toBeEnabled());
 }
 
+describe("Google Drive workspace", () => {
+  const google: StorageInfo = { storage_id: "google", provider_type: "google_drive", name: "Google Drive", revision: 1,
+    busy: false, config: { client_id: "desktop-id" }, has_client_secret: true,
+    account_id: "account-a", account_display_name: null, account_email: null };
+
+  it("browses by ID and sends a server preview ID through the existing confirmation flow", async () => {
+    vi.mocked(api.fetchStorages).mockResolvedValue([google]);
+    const document = { id: "doc", name: "Budget.2026", path: "same/name/Budget.2026", parent_path: "same/name",
+      is_directory: false, size: null, modified_at: null, can_rename: true,
+      mime_type: "application/vnd.google-apps.spreadsheet", location: { kind: "id" as const, value: "doc" },
+      parent_location: { kind: "id" as const, value: "folder-id" } };
+    vi.mocked(api.fetchStorageFiles).mockImplementation(async (_storage, location) => ({
+      provider: "google_drive", location, path: location.kind === "root" ? "" : "same/name",
+      parent_path: location.kind === "root" ? null : "", parent_location: location.kind === "root" ? null : { kind: "root" },
+      breadcrumbs: [{ name: "我的云端硬盘", location: { kind: "root" } },
+        ...(location.kind === "root" ? [] : [{ name: "same/name", location: { kind: "id" as const, value: "folder-id" } }])],
+      items: location.kind === "root" ? [{ ...document, id: "folder-id", name: "same/name", is_directory: true, mime_type: "application/vnd.google-apps.folder",
+        location: { kind: "id", value: "folder-id" }, parent_location: { kind: "root" } }] : [document,
+        { ...document, id: "shortcut", name: "Folder link", can_rename: false, mime_type: "application/vnd.google-apps.shortcut" }],
+    }));
+    vi.mocked(api.createStoragePreview).mockResolvedValue({ preview_id: "google-preview", expires_at: "2099-01-01T00:00:00Z", valid: true,
+      items: [{ file_id: "doc", original_name: "Budget.2026", new_name: "New title", changed: true, valid: true, conflict: false, error: null }] });
+    vi.mocked(api.fetchRenameProgress).mockResolvedValue({ preview_id: "google-preview", total: 1, processed: 1, phase: "finished", error: null });
+    vi.mocked(api.executePreview).mockResolvedValue({ preview_id: "google-preview", status: "completed",
+      items: [{ file_id: "doc", original_name: "Budget.2026", new_name: "New title", status: "renamed", error: null,
+        current_file: { ...document, name: "New title" } }] });
+    render(<QueryClientProvider client={client}><WorkspaceApp /></QueryClientProvider>);
+    fireEvent.click(await screen.findByRole("button", { name: "Google Drive" }));
+    fireEvent.click(await screen.findByRole("button", { name: "same/name" }));
+    await screen.findByRole("checkbox", { name: "选择文件 Budget.2026" });
+    expect(api.fetchStorageFiles).toHaveBeenCalledWith("google", { kind: "id", value: "folder-id" });
+    expect(screen.getByRole("button", { name: "设为默认路径" })).toBeEnabled();
+    expect(screen.queryByRole("button", { name: "浏览…" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("checkbox", { name: "选择当前显示的全部项目" }));
+    fireEvent.click(screen.getByRole("button", { name: "刷新预览" }));
+    await waitFor(() => expect(api.createStoragePreview).toHaveBeenCalledWith("google", { kind: "id", value: "folder-id" }, ["doc"], [], undefined));
+    await waitFor(() => expect(screen.getByRole("button", { name: "开始修改" })).toBeEnabled());
+    fireEvent.click(screen.getByRole("button", { name: "开始修改" }));
+    expect(api.executePreview).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "应用" }));
+    await waitFor(() => expect(api.executePreview).toHaveBeenCalledWith("google-preview"));
+    expect(api.pickStorageFolder).not.toHaveBeenCalled();
+  });
+
+  it("shows a failed saved Google directory and recovers at root without guessing a display path", async () => {
+    vi.mocked(api.fetchStorages).mockResolvedValue([google]);
+    serverSettings.preferences.cloud_default_locations.google = { account_id: "account-a", location: { kind: "id", value: "deleted-id" } };
+    vi.mocked(api.fetchStorageFiles).mockImplementation(async (_storage, location) => {
+      if (location.kind === "id") throw new Error("目录已删除或失去访问权限");
+      return { provider: "google_drive", path: "", parent_path: null, location, items: [],
+        breadcrumbs: [{ name: "我的云端硬盘", location: { kind: "root" } }] };
+    });
+    render(<QueryClientProvider client={client}><WorkspaceApp /></QueryClientProvider>);
+    fireEvent.click(await screen.findByRole("button", { name: "Google Drive" }));
+    expect(await screen.findByText(/目录读取失败：目录已删除或失去访问权限/)).toBeInTheDocument();
+    const navigation = within(screen.getByRole("navigation", { name: "文件路径" }));
+    fireEvent.click(navigation.getByRole("button", { name: "Google Drive" }));
+    await waitFor(() => expect(api.fetchStorageFiles).toHaveBeenCalledWith("google", { kind: "root" }));
+    expect(await navigation.findByRole("button", { name: "我的云端硬盘" })).toBeInTheDocument();
+    expect(api.createStoragePreview).not.toHaveBeenCalled();
+  });
+});
+
 it("connects MUI sorting to preview order and clears execution confirmation when the sort changes", async () => {
   const items = ["001.jpg", "002.jpg"].map((name) => ({ id: name, name, path: name,
     parent_path: "", is_directory: false, size: 1, modified_at: null }));

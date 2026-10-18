@@ -81,7 +81,7 @@ export function StorageSidebar({ storages, isLoading, disabled, view, storageId,
             onClick={() => onSelectStorage(provider.storage_id)}
           >
             <ListItemIcon>
-              {provider.provider_type === "onedrive" ? <CloudQueueRoundedIcon /> : <ComputerRoundedIcon />}
+              {provider.provider_type !== "local" ? <CloudQueueRoundedIcon /> : <ComputerRoundedIcon />}
             </ListItemIcon>
             <StorageName name={provider.name} />
           </ListItemButton>

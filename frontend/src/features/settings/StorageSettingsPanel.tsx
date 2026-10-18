@@ -38,12 +38,14 @@ function ConnectionRow({ storage, executing, providerName }: {
   const [name, setName] = useState(storage.name);
   const [root, setRoot] = useState(storage.config.root_path ?? "");
   const [clientId, setClientId] = useState(storage.config.client_id ?? "");
+  const [clientSecret, setClientSecret] = useState("");
   const [editing, setEditing] = useState(false);
   const [awaitingAuth, setAwaitingAuth] = useState(false);
   const [authError, setAuthError] = useState<string>();
   const popup = useRef<Window | null>(null);
   const callbackOrigin = useRef<string>();
   const local = storage.provider_type === "local";
+  const google = storage.provider_type === "google_drive";
   const status = useQuery({
     queryKey: ["storage-auth", storage.storage_id, storage.revision],
     queryFn: () => fetchStorageAuthStatus(storage.storage_id),
@@ -53,7 +55,8 @@ function ConnectionRow({ storage, executing, providerName }: {
     setName(storage.name);
     setRoot(storage.config.root_path ?? "");
     setClientId(storage.config.client_id ?? "");
-  }, [storage.name, storage.config.root_path, storage.config.client_id]);
+    setClientSecret("");
+  }, [storage.name, storage.config.root_path, storage.config.client_id, storage.revision]);
   const refresh = () => {
     void queryClient.invalidateQueries({ queryKey: ["app-settings"] });
     void queryClient.invalidateQueries({ queryKey: ["storages"] });
@@ -61,8 +64,10 @@ function ConnectionRow({ storage, executing, providerName }: {
     void queryClient.invalidateQueries({ queryKey: ["files", storage.storage_id] });
   };
   const operation = useMutation({
+    gcTime: 0,
     mutationFn: (action: { run: () => Promise<unknown>; message: string }) => action.run(),
     onSuccess: (_result, action) => {
+      setClientSecret("");
       refresh();
       notify(action.message);
     },
@@ -140,6 +145,7 @@ function ConnectionRow({ storage, executing, providerName }: {
       run: () => updateStorage(storage.storage_id, {
         name: name.trim(),
         config: local ? { root_path: root.trim() } : { client_id: clientId.trim() || null },
+        ...(google && clientSecret.trim() ? { client_secret: clientSecret.trim() } : {}),
       }),
       message: "存储连接设置已更新。",
     });
@@ -148,6 +154,7 @@ function ConnectionRow({ storage, executing, providerName }: {
     setName(storage.name);
     setRoot(storage.config.root_path ?? "");
     setClientId(storage.config.client_id ?? "");
+    setClientSecret("");
     operation.reset();
     pick.reset();
     setEditing(true);
@@ -162,7 +169,11 @@ function ConnectionRow({ storage, executing, providerName }: {
     connect.mutate();
   };
   const closeEditor = () => {
-    if (!busy) setEditing(false);
+    if (!busy) {
+      setClientSecret("");
+      operation.reset();
+      setEditing(false);
+    }
   };
   const disconnectAccount = () => {
     operation.mutate({
@@ -197,7 +208,7 @@ function ConnectionRow({ storage, executing, providerName }: {
     authTitle = "授权状态读取失败";
     authDescription = "暂时无法确认授权状态，请稍后重试。";
   } else if (status.data?.connected) {
-    authTitle = status.data.account_display_name ?? "Microsoft 用户";
+    authTitle = status.data.account_display_name ?? (google ? "Google 用户" : "Microsoft 用户");
     authDescription = status.data.account_email ?? "未提供邮箱";
   } else {
     authTitle = "未授权";
@@ -256,8 +267,14 @@ function ConnectionRow({ storage, executing, providerName }: {
               </Tooltip>
             </Stack>
           ) : (
-            <TextField variant="standard" label="OneDrive App ID" size="small" value={clientId}
-              disabled={busy} onChange={(event) => setClientId(event.target.value)} />
+            <>
+              <TextField variant="standard" label={google ? "Google Client ID" : "OneDrive App ID"} size="small" value={clientId}
+                disabled={busy} onChange={(event) => setClientId(event.target.value)} />
+              {google && <TextField variant="standard" label="Google Client Secret" type="password" size="small"
+                value={clientSecret} autoComplete="new-password" disabled={busy}
+                helperText={storage.has_client_secret ? "已保存密钥；留空保留原值。更改客户端配置后需重新登录。" : "请填写 Desktop OAuth 客户端的密钥，保存后登录 Google 账号。"}
+                onChange={(event) => setClientSecret(event.target.value)} />}
+            </>
           )}
           <Box sx={{ display: "flex", justifyContent: "flex-end" }}>
             <Button variant="text" disabled={saveDisabled} onClick={save}>保存</Button>
@@ -309,7 +326,7 @@ function ConnectionRow({ storage, executing, providerName }: {
           </span>
         </Tooltip>
         <Box sx={{ flex: 1 }} />
-        <Button disabled={busy} onClick={() => setEditing(false)}>关闭</Button>
+        <Button disabled={busy} onClick={closeEditor}>关闭</Button>
       </DialogActions>
     </Dialog>
   </>;
@@ -323,15 +340,19 @@ export function StorageSettingsPanel({ executingStorageId }: { executingStorageI
   const [provider, setProvider] = useState("local");
   const [name, setName] = useState("");
   const [config, setConfig] = useState("");
+  const [clientSecret, setClientSecret] = useState("");
   const [adding, setAdding] = useState(false);
   const create = useMutation({
+    gcTime: 0,
     mutationFn: () => createStorage({
       provider_type: provider, name: name.trim(),
       config: provider === "local" ? { root_path: config.trim() } : { client_id: config.trim() || null },
+      ...(provider === "google_drive" && clientSecret.trim() ? { client_secret: clientSecret.trim() } : {}),
     }),
     onSuccess: () => {
       setName("");
       setConfig("");
+      setClientSecret("");
       setAdding(false);
       void queryClient.invalidateQueries({ queryKey: ["storages"] });
       notify("存储连接已创建。");
@@ -356,16 +377,21 @@ export function StorageSettingsPanel({ executingStorageId }: { executingStorageI
     setProvider("local");
     setName("");
     setConfig("");
+    setClientSecret("");
     create.reset();
     pickDraft.reset();
     setAdding(true);
   };
   const closeAddDialog = () => {
-    if (!addingBusy) setAdding(false);
+    if (!addingBusy) {
+      setClientSecret("");
+      setAdding(false);
+    }
   };
   const changeProvider = (providerType: string) => {
     setProvider(providerType);
     setConfig("");
+    setClientSecret("");
     pickDraft.reset();
   };
   const saveConnection = () => {
@@ -420,7 +446,7 @@ export function StorageSettingsPanel({ executingStorageId }: { executingStorageI
               {(storages.data ?? []).map((storage) => {
                 const providerName = providers.data?.find(
                   (definition) => definition.provider_type === storage.provider_type,
-                )?.name ?? (storage.provider_type === "local" ? "本地文件" : "OneDrive");
+                )?.name ?? (storage.provider_type === "local" ? "本地文件" : storage.provider_type === "google_drive" ? "Google Drive" : "OneDrive");
                 return (
                   <ConnectionRow key={storage.storage_id} storage={storage}
                     executing={storage.storage_id === executingStorageId} providerName={providerName} />
@@ -466,14 +492,20 @@ export function StorageSettingsPanel({ executingStorageId }: { executingStorageI
               </Tooltip>
             </Stack>
           ) : (
-            <TextField variant="standard" label="OneDrive App ID（可稍后配置）" size="small" value={config}
-              disabled={addingBusy} onChange={(event) => setConfig(event.target.value)} />
+            <>
+              <TextField variant="standard" label={provider === "google_drive" ? "Google Client ID（可稍后配置）" : "OneDrive App ID（可稍后配置）"} size="small" value={config}
+                disabled={addingBusy} onChange={(event) => setConfig(event.target.value)} />
+              {provider === "google_drive" && <TextField variant="standard" label="Google Client Secret" type="password" size="small"
+                value={clientSecret} autoComplete="new-password" disabled={addingBusy}
+                helperText="使用自行创建的 Desktop OAuth 客户端 ID 和密钥；两项保存后才能登录。首期支持我的云端硬盘。"
+                onChange={(event) => setClientSecret(event.target.value)} />}
+            </>
           )}
           {createError && <Alert severity="error">{errorMessage(createError)}</Alert>}
         </Stack>
       </DialogContent>
       <DialogActions sx={{ px: 3, py: 2 }}>
-        <Button disabled={addingBusy} onClick={() => setAdding(false)}>取消</Button>
+        <Button disabled={addingBusy} onClick={closeAddDialog}>取消</Button>
         <Button variant="text" disabled={createDisabled} onClick={saveConnection}>保存连接</Button>
       </DialogActions>
     </Dialog>

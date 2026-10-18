@@ -83,7 +83,7 @@ function Workspace({ preference, setPreference, settingsError }: {
   const task = useRenameStore((state) => state.task);
   const {
     storageId, location, setLocation, setPath, selectStorage, resetWorkspaceSession, locationReady,
-    providers, activeStorage, providerId, providerName, oneDriveStatus, localSettings,
+    providers, activeStorage, providerId, providerName, cloudStatus, localSettings,
     cloudAccountId, cloudConnected, cloudSession, cloudReady, restoredCloudSession, appSettingsReady,
     files, workspaceKey, settingsLoading, pickLocalRoot,
     restoreDefaultCloudPath, setDefaultCloudPath, refreshFiles,
@@ -111,12 +111,12 @@ function Workspace({ preference, setPreference, settingsError }: {
     },
   });
   useEffect(() => {
-    if (isExecuting || providerId !== "onedrive" || !appSettingsReady || restoredCloudSession === cloudSession) return;
+    if (isExecuting || providerId === "local" || !appSettingsReady || restoredCloudSession === cloudSession) return;
     restoreDefaultCloudPath();
     resetForStorageChange();
   }, [isExecuting, providerId, cloudSession, restoredCloudSession, appSettingsReady]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const loadError = providers.error ?? definitions.error ?? oneDriveStatus.error ?? localSettings.error;
+  const loadError = providers.error ?? definitions.error ?? cloudStatus.error ?? localSettings.error;
   const { factoryReset, resetDisabledReason, resetPending, resetEpoch } = useFactoryReset({
     task, isExecuting, isPreviewing,
     storageBusy: providers.data?.some((storage) => storage.busy) ?? false,
@@ -216,13 +216,13 @@ function Workspace({ preference, setPreference, settingsError }: {
                   rootLabel={providerName}
                   providerId={providerId}
                   navigationDisabled={!locationReady || !activeStorage || isExecuting || pickLocalRoot.isPending || activeStorage.busy}
-                  defaultPathDisabled={!cloudAccountId || !cloudReady || !files.isSuccess || files.isFetching || Boolean(files.error) || oneDriveStatus.isError}
+                  defaultPathDisabled={!cloudAccountId || !cloudReady || !files.isSuccess || files.isFetching || Boolean(files.error) || cloudStatus.isError}
                   browseDisabled={!activeStorage || pickLocalRoot.isPending || isExecuting || activeStorage.busy}
                   isPickingFolder={pickLocalRoot.isPending}
                   storageMissing={!activeStorage && !providers.isPending}
                   accountIdMissing={cloudConnected && !cloudAccountId}
                   pickerError={pickLocalRoot.error}
-                  cloudDisconnected={oneDriveStatus.isSuccess && !oneDriveStatus.data.connected}
+                  cloudDisconnected={cloudStatus.isSuccess && !cloudStatus.data.connected}
                   onOpenNavigation={() => setMobileNavOpen(true)}
                   onNavigate={navigateLocation}
                   onSetDefaultPath={setDefaultCloudPath}
@@ -271,8 +271,8 @@ function Workspace({ preference, setPreference, settingsError }: {
                             </Box>
                           ) : (
                             <p className="empty-state">
-                              {providerId === "onedrive" && oneDriveStatus.isSuccess && !oneDriveStatus.data.connected
-                                ? "连接 OneDrive 后可浏览云端目录。"
+                              {providerId !== "local" && cloudStatus.isSuccess && !cloudStatus.data.connected
+                                ? `连接 ${providerId === "google_drive" ? "Google Drive" : "OneDrive"} 后可浏览云端目录。`
                                 : "目录暂不可用，请检查存储设置。"}
                             </p>
                           )

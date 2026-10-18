@@ -39,6 +39,9 @@
 | 核对选择保留部分执行结果，普通选择清除旧结果 | 工作流 Hook；[PreviewPanel](../frontend/src/features/rename/PreviewPanel.test.tsx) 验证结果和筛选展示 |
 | 主题跟随系统、服务器偏好恢复、保存失败回退、连续编辑串行、迟到读取不覆盖保存 | [主题偏好 Hook](../frontend/src/features/settings/useThemePreference.test.ts) |
 | 连接创建/编辑/关闭草稿、本地选择器、授权状态与失败保留输入 | StorageSettingsPanel |
+| Google 配置顶层密钥、留空保留、保存/关闭/切换清空；配置不完整禁用登录，复用弹窗来源与连接校验 | StorageSettingsPanel |
+| Google 服务端 ID 面包屑、同名和含分隔符名称、祖先改名、窄屏折叠菜单；只读/快捷方式不参与选择但保留目录导航 | LocationBreadcrumbs、FileBrowser、工作流 Hook |
+| Google 默认/会话位置按账号及版本恢复、断开清理；目录失败返回根目录；ID 浏览到预览确认执行的 UI 接线 | 存储 Hook、WorkspaceApp |
 | 目录语义导航、文本选择不误导航、任务过滤、目录折叠与键盘/滚动访问 | FileBrowser、虚拟列表、[LocationBreadcrumbs](../frontend/src/features/files/LocationBreadcrumbs.test.tsx) |
 | MUI 表头升降序、选择不随排序变化、锁定提示；中文数字名称自然排序、等价名称稳定比较、真实时间/时区、同时间及缺失值分组置后、不修改源数组 | FileBrowser、[文件排序](../frontend/src/features/files/fileSort.test.ts) |
 | 规则添加、编辑、移动、复制、删除及数字草稿归属；加载时禁止添加，溢出菜单仍可访问 | [RuleEditor](../frontend/src/features/rules/RuleEditor.test.tsx)、[RuleFields](../frontend/src/features/rules/RuleFields.test.tsx) |

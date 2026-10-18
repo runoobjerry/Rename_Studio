@@ -13,6 +13,17 @@ vi.mock("../../api/client", async (importOriginal) => ({
 }));
 
 describe("rename workflow", () => {
+  it("removes explicitly non-renamable rows from stale selections and preview requests", async () => {
+    const hook = await setupWorkspace();
+    act(() => client.setQueryData(["files", "default-local", 1, { kind: "root" }], {
+      ...listing(), items: listing().items.map((item, index) => ({ ...item, can_rename: index === 0 ? false : null })),
+    }));
+    await waitFor(() => expect(useRenameStore.getState().selectedIds).toEqual(["file-1.txt"]));
+    act(() => hook.result.current.workflow.requestPreview());
+    await waitFor(() => expect(api.createStoragePreview).toHaveBeenCalled());
+    expect(vi.mocked(api.createStoragePreview).mock.calls[0][2]).toEqual(["file-1.txt"]);
+  });
+
   it.each(["toggle", "select-all", "clear", "invert"] as const)("invalidates an old preview after %s selection", async (operation) => {
     const hook = await setupWorkspace();
     if (operation === "select-all") act(() => hook.result.current.workflow.selectAllFiles(["file-0.txt"]));

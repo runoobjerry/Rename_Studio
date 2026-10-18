@@ -43,7 +43,7 @@ export function StorageLocationPanel({
             disabled={navigationDisabled}
             onNavigate={onNavigate}
           />
-          {providerId === "onedrive" ? (
+          {providerId !== "local" ? (
             <Button
               type="button"
               variant="outlined"
@@ -74,8 +74,8 @@ export function StorageLocationPanel({
         {providerId === "local" && pickerError && (
           <Alert severity="error">无法打开文件夹选择器：{pickerError.message}</Alert>
         )}
-        {providerId === "onedrive" && cloudDisconnected && (
-          <Alert severity="warning">请先前往设置页面连接 OneDrive 账号。</Alert>
+        {providerId !== "local" && cloudDisconnected && (
+          <Alert severity="warning">请先前往设置页面连接 {providerId === "google_drive" ? "Google Drive" : "OneDrive"} 账号。</Alert>
         )}
       </div>
     </section>

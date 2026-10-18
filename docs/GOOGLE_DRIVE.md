@@ -1,8 +1,8 @@
 # Google Drive 接入交接
 
-阶段三在已有连接/OAuth 和 My Drive 读取能力上接入名称校验、预览、防重名与单项/批量重命名。注册信息为 `provider_type=google_drive`、`browser_auth=true`、`locations=["root","id"]`、`can_rename=true`。继续复用现有服务端快照、执行互斥、名称依赖分阶段处理、回滚及未知写入核查；Google 设置表单和工作区适配留到阶段四。
+阶段三在已有连接/OAuth 和 My Drive 读取能力上接入名称校验、预览、防重名与单项/批量重命名。注册信息为 `provider_type=google_drive`、`browser_auth=true`、`locations=["root","id"]`、`can_rename=true`。继续复用现有服务端快照、执行互斥、名称依赖分阶段处理、回滚及未知写入核查；阶段四已补充 Google 设置表单、工作区云盘流程和服务端 ID 面包屑，并由用户确认完成与验收通过。
 
-验收记录：2026-10-18 用户确认阶段一、阶段二均已完成并通过验收，已提交 `33e8e9e`。同日用户确认阶段三已完成并通过验收，批准提交代码。验收结论由用户提供；Codex 未代为执行测试或真实云盘验收。
+验收记录：2026-10-18 用户确认阶段一、阶段二均已完成并通过验收，已提交 `33e8e9e`。同日用户确认阶段三已完成并通过验收，批准提交代码。同日用户确认阶段四已完成并通过验收，批准提交代码。验收结论由用户提供；Codex 未代为执行测试或真实云盘验收。
 
 ## 配置与授权契约
 
@@ -35,7 +35,7 @@
 3. 检查创建/查询响应：`has_client_secret=true`，公开 config 只有 client ID，不出现密钥或令牌。保存不完整草稿应成功，但 `/auth/status` 的 `configured=false`，`/auth/start` 被拒绝。
 4. 调用 `POST /storages/{storage_id}/auth/start`，在浏览器打开返回的 `authorization_url`。确认 Google 同意屏幕和账号选择；完成后查询 `/auth/status`，检查 `connected=true` 与正确账号资料。URL 和回调页面不应含密钥/令牌。取消、重放旧回调和错误客户端密钥均不能产生已连接账号。
 5. 修改连接名称应保留授权；修改 client ID 或密钥应清除账号授权并提高 revision。只提交名称或省略密钥应保留原密钥；同值密钥不触发失效。断开后 `configured=true`、`connected=false`，可以重新连接。
-6. 创建两个独立 Google 连接，分别授权不同账号；断开或修改一个连接不影响另一个。重启后应恢复各自账号状态。当前前端表单尚未适配，不通过现有 OneDrive 字段配置 Google 密钥。
+6. 创建两个独立 Google 连接，分别授权不同账号；断开或修改一个连接不影响另一个。重启后应恢复各自账号状态。阶段四可通过设置页添加/编辑 Google 连接，分别填写 Google Client ID 和 Google Client Secret；不使用 OneDrive 字段配置密钥。
 7. 验证实际刷新时，可在 `backend/` 的交互脚本中使用下面代码，替换连接 ID；不打印返回令牌。重启后调用会刷新，`force_refresh=True` 可验证后续刷新。确认正常刷新不增加 revision。撤销 Google 授权后刷新应要求重连；网络/服务临时失败应保留已保存的授权。
 
    ```python
@@ -56,9 +56,10 @@
 
 8. 授权后通过 `POST /storages/{storage_id}/files/list` 读取 `{ "location": { "kind": "root" } }`；应返回完整根目录及 `storage_id`、`revision`、`location`、`parent_location`、`breadcrumbs`。进入子目录使用响应中的 `item.location`，返回上级使用 `parent_location`，祖先导航使用 `breadcrumbs`；不能从显示 path 拼接路径。
 9. 在已准备的测试目录检查：超过 1000 个直接子项不漏页；多层、同名和包含分隔符的目录按 ID 定位正确；普通文件、文件夹、Google 文档标题、可空大小/修改时间和权限标记正确；快捷方式只展示且不读取其目标。路径形式（包括空 path）、My Drive 外 ID、共享盘、垃圾箱和快捷方式目录导航应被拒绝或返回真实的不可访问错误。
-10. ；确认预览前后真实名称不变。普通文件、文件夹和 Google 文档使用原始标题；根目录和快捷方式不能重命名。空白名称、NUL 和新产生的同目录重名应被阻止；原有重名项保持不变可通过，大小写不同名称按不同目标处理。
-
-13. 回归 Local/OneDrive 目录、预览与执行，特别检查重复目标、未选中项占用、循环依赖和失败回滚。阶段三没有调整前端表单和导航；当前验收通过 API 完成。
+10. 阶段三写入仅在专用测试目录验收：使用 `POST /storages/{storage_id}/rename/preview` 提交目录 `location`、所选 `file_ids` 和规则；确认预览前后真实名称不变。普通文件、文件夹和 Google 文档使用原始标题；根目录和快捷方式不能重命名。空白名称、NUL 和新产生的同目录重名应被阻止；原有重名项保持不变可通过，大小写不同名称按不同目标处理。
+11. 确认预览后，仅以 `{ "preview_id": "SERVER_ISSUED_ID" }` 调用 `POST /rename/execute`；通过 `GET /rename/progress/{preview_id}` 及重新列举目录核对实际名称、位置和文档内容。覆盖超过 20 个项目、名称占用链及交换；重放已执行快照应失败。每次写入使用新预览，UI/API 不同时触发同一批。
+12. 创建预览后，在云盘外部修改源名、移动源项或新增占用目标，执行应失效且不继续写入；修改连接客户端配置或断开授权也应使旧预览失效。多连接互不影响。故障注入测试覆盖部分拒绝、回滚和未知结果；真实请求超时或结果未知时先查进度和实际文件，不直接重放旧批次。
+13. 回归 Local/OneDrive 目录、预览与执行，特别检查重复目标、未选中项占用、循环依赖和失败回滚。阶段三通过 API 验收；阶段四前端流程已由用户确认验收通过，下方保留复验步骤。
 
 阶段二的单项/批量元数据沿用 Provider 接口，没有新增 HTTP 路由。可在 `backend/` 下用以下人工脚本核对已知目录；请替换连接 ID，目录不在根目录时使用对应 `IdLocation`。该脚本只读取，不输出令牌：
 
@@ -92,11 +93,11 @@ asyncio.run(check_metadata())
 .\.venv\Scripts\python.exe -m pytest tests/test_google_drive_provider.py tests/test_google_drive_auth.py tests/test_storage_connections.py tests/test_onedrive_provider.py tests/test_onedrive_auth.py tests/test_storage_rename_contract.py tests/test_preview_service.py tests/test_execute_service.py tests/test_api.py
 ```
 
-阶段三没有前端改动；需要整体验证时按现有流程由用户执行 `frontend/` 下的 `npm run check`。测试源码、静态检查与历史通过记录都不构成本阶段运行通过的证据。
+阶段四修改前端；由用户在 `frontend/` 下执行 `npm run check`，覆盖测试、类型检查与生产构建。测试源码、静态检查与历史通过记录都不构成本阶段运行通过的证据。
 
 ## 后续依赖与验证状态
 
-阶段四依赖本阶段验收，负责前端配置、工作区与面包屑消费。首期不展开/改名快捷方式、不开放共享云端硬盘、不新增历史/撤销实现、不扩大 OAuth scope，也不迁移持久化格式。
+阶段一至四均已由用户确认完成并通过验收；阶段四前端配置、工作区与面包屑消费的结论由用户提供，Codex 仅执行静态检查。首期不展开/改名快捷方式、不开放共享云端硬盘、不新增历史/撤销实现、不扩大 OAuth scope，也不迁移持久化格式。
 
 名称按原字符串比较，不折叠大小写或 Unicode 形式。应用拒绝空白和 NUL，不套用本地文件系统保留字/字符及猜测长度限制，其余限制由 Google 返回。仅保持不变的既有重名获准通过；改变后的目标仍与所有选中目标和未选中同目录项比较。
 
@@ -111,3 +112,19 @@ Google 不提供“同目录冲突检查 + 重命名”事务，也不原生禁�
 阶段二官方依据：[files.list](https://developers.google.com/workspace/drive/api/reference/rest/v3/files/list)、[files.get](https://developers.google.com/workspace/drive/api/reference/rest/v3/files/get)、[File 字段与能力](https://developers.google.com/workspace/drive/api/reference/rest/v3/files)、[multipart batch](https://developers.google.com/workspace/drive/api/guides/performance)、[错误与限流](https://developers.google.com/workspace/drive/api/guides/handle-errors)。
 
 阶段三官方依据：[files.update（元数据 PATCH）](https://developers.google.com/workspace/drive/api/reference/rest/v3/files/update)、[multipart 批次与非事务语义](https://developers.google.com/workspace/drive/api/guides/performance)、[权限与错误分类](https://developers.google.com/workspace/drive/api/guides/handle-errors)。Google 单批上限为 100 个子请求；本项目写入使用现有执行服务的 20 项批次以复用调度与故障处理。
+
+## 阶段四前端与人工验收
+
+复用连接 API 和现有工作流，没有新增路由、API 字段、浏览器凭据持久化或后端状态迁移。Google 密钥以密码字段输入，只通过请求顶层 `client_secret` 提交；响应仅用 `has_client_secret` 提示已保存，编辑留空不发送该字段。保存成功、关闭编辑/新增对话框或切换新增类型会清空密钥草稿；保存失败保留输入以便修正。未配置完整时可以保存连接草稿，登录按钮依照服务端 `configured` 禁用。
+
+Google 与 OneDrive 共用连接授权状态、账号/版本隔离、默认目录、标签会话记忆、Preview First 和未知结果锁定；会话与默认位置均保存规范 `StorageLocation`。Google 面包屑使用完整服务端 ID 链，显示名不拆解成路径；Local/OneDrive 没有提供 `breadcrumbs` 时保留原有导航逻辑。`can_rename=false` 的快捷方式和只读项展示但不可选择，`null` 不视为明确禁止；只读文件夹仍可进入。规则继续按现有文件名规则处理 Google 原始标题，不为原生文档添加导出扩展名。
+
+由用户在专用测试目录检查：
+
+1. 设置页选择 Google Drive，填写 Desktop Client ID 与 Client Secret；可先保存缺少任一项的草稿，此时不能登录。编辑已保存连接不回显密钥，留空保存保留旧密钥；修改 ID/密钥后要求重新授权。切换新增类型、取消/关闭、保存成功后再次进入时密钥字段为空；失败保留输入。Local/OneDrive 表单无 Google 密钥字段。
+2. 完成浏览器授权，核对 Google 账号显示、取消/关闭弹窗、浏览器拦截和错误客户端配置提示。断开与删除不影响其他连接；执行中不能修改连接。前端不保存 access/refresh token 或密钥到 sessionStorage/localStorage。
+3. 在两个 Google 连接及 Local/OneDrive 间切换；恢复各连接最后成功位置，刷新标签后仍恢复当前连接与 ID。保存默认目录后，新会话按账号匹配使用该目录；换号、断开或配置版本变化不复用旧位置。读取失败时显示错误，可点击根目录恢复，不寻找同名目录替代。
+4. 多层目录包含同名文件夹及名称中的 `/`，点击祖先、上级与根目录均到正确 ID；祖先外部改名后刷新显示新名称。窄屏折叠菜单和键盘仍使用对应 ID；目录删除或失去权限给出明确错误。
+5. 快捷方式不可进入/选择，已知只读项不参与全选/反选；只读文件夹可浏览，未知权限仍可选择并由后端判定。普通文件、文件夹、Google 文档保留真实标题；原有重名保持不变可通过，新重名目标被阻止。
+6. 选择、规则、预览、确认后执行与逐项结果沿用原流程；覆盖超过 20 项以及 1000 项分批边界。目录/连接切换使旧预览失效；未知或缺失执行响应维持待核对锁定，不重放。真实云端执行只使用最新预览，UI/API 不同时执行同一批。
+7. 浅色/深色和窄屏检查配置对话框、长目录面包屑、列表与授权状态；回归 Local 文件夹选择、OneDrive 登录/默认路径/导航及现有预览执行。当前新增测试源码不替代真实 OAuth、浏览器或云盘验收。

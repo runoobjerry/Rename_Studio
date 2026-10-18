@@ -61,7 +61,7 @@ export function useRenameWorkflow({
   // 请求使用列表顺序，并与真实目录取交集；执行后的任务保留冻结顺序。
   const currentSelectedIds = useMemo(() => {
     const selected = new Set(selectedIds);
-    return orderedFiles.filter((item) => selected.has(item.id)).map((item) => item.id);
+    return orderedFiles.filter((item) => item.can_rename !== false && selected.has(item.id)).map((item) => item.id);
   }, [orderedFiles, selectedIds]);
   const browserTask = useMemo(() => task ? { taskId: task.taskId, items: task.items } : null, [task?.taskId, task?.items]);
   const previewContext = useMemo(() => JSON.stringify([workspaceKey, currentSelectedIds, rules, sort]),
@@ -151,8 +151,8 @@ export function useRenameWorkflow({
   }, [workspaceKey, cloudSession]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
-    // 刷新失败时保留选择；成功读取后仅移除不存在的项，不自动选择新增项。
-    if (!files.isSuccess || (providerId === "onedrive" && !cloudReady)) return;
+    // 刷新失败时保留选择；成功读取后移除消失或已明确不能改名的项，不自动选择新增项。
+    if (!files.isSuccess || (providerId !== "local" && !cloudReady)) return;
     if (currentSelectedIds.length === selectedIds.length) return;
     setSelectedIds(currentSelectedIds);
     // 不因目录后台变化丢失正在执行的请求和进度。
@@ -166,7 +166,8 @@ export function useRenameWorkflow({
   const requestBatchPreview = () => {
     if (!files.data || files.isFetching || files.error || execution.isPending || preview.isPending || activeStorage?.busy) return;
     const selected = new Set(useRenameStore.getState().selectedIds);
-    const fileIds = orderedFiles.filter((item) => selected.has(item.id)).map((item) => item.id);
+    const renamableFiles = orderedFiles.filter((item) => item.can_rename !== false);
+    const fileIds = renamableFiles.filter((item) => selected.has(item.id)).map((item) => item.id);
     if (task && !taskCurrent && task.items.some((item) => item.status === "unknown")) {
       notify("旧任务仍有待核对项，请先恢复原规则并核对执行结果。", "warning");
       return;
@@ -178,7 +179,7 @@ export function useRenameWorkflow({
         return;
       }
     }
-    const batch = useRenameStore.getState().prepareBatch(taskContext, storageId, location, orderedFiles);
+    const batch = useRenameStore.getState().prepareBatch(taskContext, storageId, location, renamableFiles);
     if (!batch.fileIds.length) {
       notify("没有可处理的任务文件；失败项可单独选择重试，待核对项须先核对。", "warning");
       return;

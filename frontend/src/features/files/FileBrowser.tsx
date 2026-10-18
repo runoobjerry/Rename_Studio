@@ -125,7 +125,7 @@ export const FileBrowser = memo(function FileBrowser({
   const selectedSet = useMemo(() => new Set(selectedIds), [selectedIds]);
   const selectedCount = useMemo(() => panelItems.filter((item) => selectedSet.has(item.id)).length, [panelItems, selectedSet]);
   const visibleSelectedCount = useMemo(() => visibleItems.filter((item) => selectedSet.has(item.id)).length, [visibleItems, selectedSet]);
-  const selectableIds = useMemo(() => visibleIds.filter((id) => listedItems.has(id) &&
+  const selectableIds = useMemo(() => visibleIds.filter((id) => listedItems.has(id) && listedItems.get(id)!.can_rename !== false &&
     taskItems.get(id)?.status !== "completed" && taskItems.get(id)?.status !== "unknown"), [visibleIds, listedItems, taskItems]);
   const scrollKey = useMemo(() => [listing.items, task?.taskId, filters, sort], [listing.items, task?.taskId, filters, sort]);
   const columnValues = useMemo(() => [visibleItems.map(() => ""), visibleItems.map((item) => item.name),
@@ -265,7 +265,7 @@ export const FileBrowser = memo(function FileBrowser({
             {visibleItems.slice(virtual.start, virtual.end).map((item, offset) => (
               <FileBrowserRow key={taskItems.get(item.id)?.taskItemId ?? item.id}
                 item={item} rowIndex={virtual.start + offset} selected={selectedSet.has(item.id)}
-                disabled={disabled || (hasTask && (!taskCurrent || !listedItems.has(item.id))) || taskItems.get(item.id)?.status === "completed" || taskItems.get(item.id)?.status === "unknown"}
+                disabled={disabled || listedItems.get(item.id)?.can_rename === false || (hasTask && (!taskCurrent || !listedItems.has(item.id))) || taskItems.get(item.id)?.status === "completed" || taskItems.get(item.id)?.status === "unknown"}
                 navigationDisabled={hasTask || disabled} onToggle={onToggle}
                 onNavigate={onNavigate} onNavigateLocation={onNavigateLocation} />
             ))}
