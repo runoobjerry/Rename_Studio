@@ -13,8 +13,8 @@ from app.api import app_settings_router, storage_router
 from app.core.errors import ProviderError, StorageBusyError, StorageConnectionChangedError, ValidationError
 from app.core import config as app_config
 from app.main import create_app
-from app.providers.local import LocalProvider
-from app.providers.onedrive import OneDriveProvider
+from app.providers.local.driver import LocalProvider
+from app.providers.onedrive.driver import OneDriveProvider
 from app.providers.registry import ProviderDefinition, ProviderRegistry
 from app.repositories.storage_repository import JsonStorageRepository
 from app.schemas.rename import RenamePreviewRequest
@@ -22,7 +22,7 @@ from app.schemas.rules import RuleSpec
 from app.schemas.storage import StorageConfigField, LocalConfig, OneDriveConfig, RootLocation, StorageCreate, StorageUpdate
 from app.services.connection_auth import ConnectionAuth
 from app.services.execute_service import ExecuteService
-from app.services.onedrive_auth import OneDriveAuthService
+from app.providers.onedrive.auth import OneDriveAuthService
 from app.services.preview_service import PreviewService
 from app.services.preview_store import PreviewStore
 from app.services.rename_engine import RenameEngine

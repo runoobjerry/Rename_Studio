@@ -7,7 +7,7 @@ import pytest
 from pydantic import BaseModel
 
 from app.core.errors import PreviewExpiredError, PreviewNotFoundError, ValidationError
-from app.providers.local import LocalProvider
+from app.providers.local.driver import LocalProvider
 from app.rules.base import EmptyRuleConfig, RenameRule, RuleContext
 from app.rules.registry import RuleRegistry
 from app.schemas.files import FileItem

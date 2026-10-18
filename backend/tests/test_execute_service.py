@@ -12,7 +12,7 @@ from app.core.errors import (
     ProviderError,
     ValidationError,
 )
-from app.providers.local import LocalProvider
+from app.providers.local.driver import LocalProvider
 from app.providers.base import RenameRequest
 from app.rules.base import RenameRule, RuleContext
 from app.rules.registry import RuleRegistry

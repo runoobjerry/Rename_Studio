@@ -4,7 +4,7 @@ import os
 import pytest
 
 from app.core.errors import NotFoundError, RenameConflictError, ValidationError
-from app.providers.local import LocalProvider
+from app.providers.local.driver import LocalProvider
 
 
 @pytest.mark.asyncio

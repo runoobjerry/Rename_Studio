@@ -13,7 +13,7 @@ from pydantic import BaseModel
 
 from app.core.errors import AuthenticationError, NotFoundError, PermissionDeniedError, PreviewExpiredError, ProviderError, RateLimitError, RenameOutcomeUnknownError, ValidationError
 from app.providers.base import RenameRequest
-from app.providers.google_drive import BATCH_URL, FOLDER_MIME, READ_BATCH_SIZE, SHORTCUT_MIME, GoogleDriveProvider
+from app.providers.google_drive.driver import BATCH_URL, FOLDER_MIME, READ_BATCH_SIZE, SHORTCUT_MIME, GoogleDriveProvider
 from app.rules.base import RenameRule, RuleContext
 from app.rules.registry import RuleRegistry
 from app.schemas.rename import RenamePreviewRequest

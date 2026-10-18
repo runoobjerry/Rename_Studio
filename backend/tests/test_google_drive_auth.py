@@ -19,7 +19,7 @@ from app.main import create_app
 from app.rules.registry import RuleRegistry
 from app.rules.text_operations import ReplaceRule
 from app.schemas.storage import AppSettingsPatch, StorageCreate, StorageUpdate
-from app.services.google_drive_auth import ABOUT_URL, SCOPE, TOKEN_URL, GoogleDriveAuthService
+from app.providers.google_drive.auth import ABOUT_URL, SCOPE, TOKEN_URL, GoogleDriveAuthService
 from app.services.preview_service import PreviewService
 from app.services.preview_store import PreviewStore
 from app.services.execute_service import ExecuteService

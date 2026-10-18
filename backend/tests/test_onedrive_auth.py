@@ -3,7 +3,7 @@ from urllib.parse import parse_qs, urlparse
 import httpx
 import pytest
 
-from app.services.onedrive_auth import OneDriveAuthService
+from app.providers.onedrive.auth import OneDriveAuthService
 
 
 def auth(state: dict[str, str], persist) -> OneDriveAuthService:

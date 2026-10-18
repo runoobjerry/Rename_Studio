@@ -3,9 +3,9 @@ from pathlib import Path
 from typing import cast
 
 from app.core.config import get_settings
-from app.providers.local import LocalProvider
-from app.providers.onedrive import OneDriveProvider
-from app.providers.google_drive import GoogleDriveProvider
+from app.providers.local.driver import LocalProvider
+from app.providers.onedrive.driver import OneDriveProvider
+from app.providers.google_drive.driver import GoogleDriveProvider
 from app.providers.registry import ProviderDefinition, ProviderRegistry
 from app.repositories.storage_repository import JsonStorageRepository
 from app.schemas.storage import GoogleDriveConfig, LocalConfig, OneDriveConfig, StorageConfigField
@@ -19,8 +19,8 @@ from app.services.execute_service import ExecuteService
 from app.services.preview_service import PreviewService
 from app.services.preview_store import PreviewStore
 from app.services.rename_engine import RenameEngine
-from app.services.onedrive_auth import OneDriveAuthService
-from app.services.google_drive_auth import GoogleDriveAuthService
+from app.providers.onedrive.auth import OneDriveAuthService
+from app.providers.google_drive.auth import GoogleDriveAuthService
 
 
 @lru_cache

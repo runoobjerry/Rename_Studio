@@ -5,10 +5,10 @@ import pytest
 
 from app.core.errors import ProviderError, ValidationError
 from app.providers.base import RenameRequest
-from app.providers.onedrive import GRAPH_ROOT, OneDriveProvider
+from app.providers.onedrive.driver import GRAPH_ROOT, OneDriveProvider
 from app.schemas.files import FileItem
 from app.schemas.storage import IdLocation, PathLocation, RootLocation
-from app.services.onedrive_auth import OneDriveAuthService
+from app.providers.onedrive.auth import OneDriveAuthService
 from app.services.execute_service import ExecuteService
 
 
