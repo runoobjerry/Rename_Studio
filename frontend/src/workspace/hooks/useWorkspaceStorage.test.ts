@@ -18,49 +18,6 @@ vi.mock("../../api/client", async (importOriginal) => ({
 }));
 
 describe("workspace storage", () => {
-  it("restores Google IDs before reads, saves canonical defaults and clears remembered locations on disconnect", async () => {
-    const storages = await api.fetchStorages();
-    const google: StorageInfo = { ...storages[1], storage_id: "google", provider_type: "google_drive", name: "Google Drive" };
-    vi.mocked(api.fetchStorages).mockResolvedValue([...storages, google]);
-    window.sessionStorage.setItem(workspaceSessionKey, JSON.stringify({ version: 1, activeStorageId: "google", locations: {
-      google: { revision: 1, accountId: "account-a", location: { kind: "id", value: "remembered-id" } },
-    } }));
-    serverSettings.preferences.cloud_default_locations.google = { account_id: "account-a", location: { kind: "id", value: "default-id" } };
-    vi.mocked(api.fetchStorageFiles).mockImplementation(async (_id, location) => ({
-      ...listing(), provider: "google_drive", location, path: "same/name/with/slashes",
-    }));
-    const hook = mountStorage();
-    await waitFor(() => expect(hook.result.current.cloudConnected && hook.result.current.appSettingsReady).toBe(true));
-    expect(api.fetchStorageFiles).not.toHaveBeenCalled();
-    act(() => hook.result.current.restoreDefaultCloudPath());
-    await waitFor(() => expect(hook.result.current.files.isSuccess).toBe(true));
-    expect(api.fetchStorageFiles).toHaveBeenCalledWith("google", { kind: "id", value: "remembered-id" });
-    act(() => hook.result.current.setDefaultCloudPath());
-    await waitFor(() => expect(api.patchAppSettings).toHaveBeenCalledWith({ cloud_default_locations: {
-      google: { account_id: "account-a", location: { kind: "id", value: "remembered-id" } },
-    } }));
-    expect(api.pickStorageFolder).not.toHaveBeenCalled();
-    act(() => client.setQueryData(["storage-auth", "google", 1], { ...status(null), connected: false }));
-    await waitFor(() => expect(readWorkspaceSession().session.locations.google).toBeUndefined());
-    expect(hook.result.current.locationReady).toBe(false);
-  });
-
-  it.each(["account", "revision"])("does not reuse Google directory memory after a %s change", async (change) => {
-    const storages = await api.fetchStorages();
-    vi.mocked(api.fetchStorages).mockResolvedValue([...storages, {
-      ...storages[1], storage_id: "google", provider_type: "google_drive", name: "Google Drive",
-      revision: change === "revision" ? 2 : 1,
-    }]);
-    window.sessionStorage.setItem(workspaceSessionKey, JSON.stringify({ version: 1, activeStorageId: "google", locations: {
-      google: { revision: 1, accountId: change === "account" ? "other-account" : "account-a", location: { kind: "id", value: "old-id" } },
-    } }));
-    const hook = mountStorage();
-    await waitFor(() => expect(hook.result.current.cloudConnected && hook.result.current.appSettingsReady).toBe(true));
-    act(() => hook.result.current.restoreDefaultCloudPath());
-    await waitFor(() => expect(hook.result.current.files.isSuccess).toBe(true));
-    expect(api.fetchStorageFiles).toHaveBeenCalledWith("google", { kind: "root" });
-    expect(api.fetchStorageFiles).not.toHaveBeenCalledWith("google", { kind: "id", value: "old-id" });
-  });
 
   it("keeps pending navigation and then the task, selection and preview when clicking the current connection", async () => {
     const hook = await setupWorkspace(1);

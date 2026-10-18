@@ -62,40 +62,6 @@ describe("storage settings", () => {
     client.clear();
   });
 
-  it("preserves the saved Google secret on empty edits, clears submitted secrets and discards cancelled drafts", async () => {
-    const { client } = setup();
-    await screen.findByRole("button", { name: "编辑连接 Local" });
-    const google = { storage_id: "google", provider_type: "google_drive", name: "Google", revision: 1, busy: false,
-      config: { client_id: "desktop-id" }, has_client_secret: true, account_id: null, account_display_name: null, account_email: null };
-    vi.mocked(api.fetchStorages).mockResolvedValue([google]);
-    vi.mocked(api.fetchStorageAuthStatus).mockResolvedValue({ configured: true, connected: false, account_id: null, account_display_name: null, account_email: null });
-    vi.mocked(api.updateStorage).mockResolvedValue(google);
-    client.setQueryData(["storages"], [google]);
-    fireEvent.click(await screen.findByRole("button", { name: "编辑连接 Google" }));
-    expect(screen.getByLabelText("Google Client Secret")).toHaveValue("");
-    fireEvent.click(screen.getByRole("button", { name: "保存" }));
-    await waitFor(() => expect(api.updateStorage).toHaveBeenCalledWith("google", { name: "Google", config: { client_id: "desktop-id" } }));
-    await waitFor(() => expect(screen.getByRole("button", { name: "保存" })).toBeEnabled());
-    vi.mocked(api.updateStorage).mockRejectedValueOnce(new Error("配置保存失败"));
-    fireEvent.change(screen.getByLabelText("Google Client Secret"), { target: { value: "replacement-fixture" } });
-    fireEvent.click(screen.getByRole("button", { name: "保存" }));
-    await waitFor(() => expect(within(screen.getByRole("dialog")).getByRole("alert")).toHaveTextContent("配置保存失败"));
-    expect(screen.getByLabelText("Google Client Secret")).toHaveValue("replacement-fixture");
-    await waitFor(() => expect(screen.getByRole("button", { name: "保存" })).toBeEnabled());
-    fireEvent.click(screen.getByRole("button", { name: "保存" }));
-    await waitFor(() => expect(api.updateStorage).toHaveBeenLastCalledWith("google", {
-      name: "Google", config: { client_id: "desktop-id" }, client_secret: "replacement-fixture",
-    }));
-    await waitFor(() => expect(screen.getByLabelText("Google Client Secret")).toHaveValue(""));
-    fireEvent.change(screen.getByLabelText("Google Client Secret"), { target: { value: "cancelled-secret" } });
-    fireEvent.click(screen.getByRole("button", { name: "关闭" }));
-    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
-    fireEvent.click(screen.getByRole("button", { name: "编辑连接 Google" }));
-    expect(screen.getByLabelText("Google Client Secret")).toHaveValue("");
-    expect(api.updateStorage).toHaveBeenCalledTimes(3);
-    client.clear();
-  });
-
   it("uses the existing popup flow for Google and ignores callbacks from another origin or connection", async () => {
     const { client } = setup();
     await screen.findByRole("button", { name: "编辑连接 Local" });

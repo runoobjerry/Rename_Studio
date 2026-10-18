@@ -23,7 +23,7 @@
 - StorageSettingsPanel 补充 Google Desktop Client ID、只写密钥与账号显示，沿用连接创建/编辑和来源校验的授权弹窗。
 - useWorkspaceStorage、WorkspaceApp 和目录/侧栏展示复用云盘授权、位置恢复、默认目录及隔离逻辑；LocationBreadcrumbs 消费服务端 ID 链，Local/OneDrive 原有路径逻辑保留。
 - FileBrowser 与 useRenameWorkflow 排除 can_rename=false 项；不进入快捷方式，只读文件夹仍可浏览。预览/执行及未知结果保护复用现有实现。
-- 测试源码与覆盖范围见 [测试清单](FRONTEND_TEST_CASES.md)，具体人工步骤见 [Google Drive 交接](GOOGLE_DRIVE.md)。没有修改后端接口或持久化格式。
+- 测试源码与覆盖范围见 [测试清单](FRONTEND_TEST_CASES.md)，用户配置与操作见 [README](../README.md#连接-google-drive)。没有修改后端接口或持久化格式。
 
 ## 验证状态
 

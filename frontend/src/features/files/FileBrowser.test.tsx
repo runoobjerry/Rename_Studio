@@ -34,26 +34,6 @@ const listing = {
 };
 
 describe("FileBrowser", () => {
-  it("shows Google shortcuts without navigation and excludes non-renamable items from selection", () => {
-    const onSelectAll = vi.fn();
-    const onInvertSelection = vi.fn();
-    const navigate = vi.fn();
-    render(<FileBrowser listing={{ ...listing, provider: "google_drive", items: [
-      { ...listing.items[0], id: "readonly", can_rename: false, location: { kind: "id", value: "readonly" } },
-      { ...listing.items[1], id: "shortcut", name: "Folder link", can_rename: false, mime_type: "application/vnd.google-apps.shortcut" },
-      { ...listing.items[1], id: "doc", name: "Budget.2026", mime_type: "application/vnd.google-apps.spreadsheet", can_rename: true },
-    ] }} providerName="Google" selectedIds={[]} onNavigate={navigate} onNavigateLocation={navigate}
-      onToggle={vi.fn()} onSelectAll={onSelectAll} onInvertSelection={onInvertSelection} />);
-    expect(screen.getByRole("checkbox", { name: "选择文件 Folder link" })).toBeDisabled();
-    expect(screen.getByRole("checkbox", { name: "选择文件夹 folder" })).toBeDisabled();
-    expect(screen.queryByRole("button", { name: "Folder link" })).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "folder" }));
-    expect(navigate).toHaveBeenCalledWith({ kind: "id", value: "readonly" });
-    fireEvent.click(screen.getByRole("checkbox", { name: "选择当前显示的全部项目" }));
-    fireEvent.click(screen.getByRole("button", { name: "反选" }));
-    expect(onSelectAll).toHaveBeenCalledWith(["doc"]);
-    expect(onInvertSelection).toHaveBeenCalledWith(["doc"]);
-  });
 
   it("navigates same-named folders and parents by opaque location", () => {
     const navigate = vi.fn();

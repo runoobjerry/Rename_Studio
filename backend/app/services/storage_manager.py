@@ -171,8 +171,6 @@ class StorageManager:
         if cached is not None and cached[0] == record.revision:
             return cached[1]
         factory = self.registry.definition(record.provider_type).factory
-        if factory is None:
-            raise ValidationError("File operations are not available for this storage provider")
         provider = factory(record, self.auth(record.storage_id, required=False))
         self._clients[record.storage_id] = (record.revision, provider)
         return provider

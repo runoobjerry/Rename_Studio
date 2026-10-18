@@ -518,7 +518,7 @@ class GoogleDriveProvider(StorageProvider):
 
     def validate_name(self, name: str) -> str | None:
         # Application policy for metadata titles; do not impose Windows names or a guessed length limit.
-        if not name or not name.strip():
+        if not name.strip():
             return "Google Drive name cannot be empty"
         if "\x00" in name:
             return "Google Drive name cannot contain a null character"

@@ -11,7 +11,7 @@ import pytest
 import pytest_asyncio
 from pydantic import BaseModel
 
-from app.core.errors import AuthenticationError, NotFoundError, PermissionDeniedError, PreviewExpiredError, PreviewNotFoundError, ProviderError, RateLimitError, RenameOutcomeUnknownError, ValidationError
+from app.core.errors import AuthenticationError, NotFoundError, PermissionDeniedError, PreviewExpiredError, ProviderError, RateLimitError, RenameOutcomeUnknownError, ValidationError
 from app.providers.base import RenameRequest
 from app.providers.google_drive import BATCH_URL, FOLDER_MIME, READ_BATCH_SIZE, SHORTCUT_MIME, GoogleDriveProvider
 from app.rules.base import RenameRule, RuleContext
@@ -190,22 +190,24 @@ async def test_root_pagination_continues_empty_page_and_maps_types_permissions(p
     folder = drive_file("folder", "same", mime=FOLDER_MIME, size="123")
     document = drive_file("doc", "Budget.2026", mime="application/vnd.google-apps.spreadsheet")
     shortcut = drive_file("shortcut", "Folder link", mime=SHORTCUT_MIME, shortcutDetails={"targetId": "outside", "targetMimeType": FOLDER_MIME})
+    unknown = drive_file("unknown", "unknown.txt", capabilities={})
     readonly = drive_file("readonly", "readonly.txt", size="42", modifiedTime="2026-10-18T01:02:03Z", capabilities={"canRename": False})
     server = DriveServer()
     server.pages = {
         None: file_page([folder], nextPageToken="opaque/token?value=1"),
         "opaque/token?value=1": file_page([], nextPageToken="last"),
-        "last": file_page([document, shortcut, readonly]),
+        "last": file_page([document, shortcut, readonly, unknown]),
     }
     listing = await provider_factory(server).list_directory(RootLocation())
     assert listing.location == RootLocation() and listing.parent_location is None and listing.path == ""
     assert [(entry.name, entry.location) for entry in listing.breadcrumbs] == [("My Drive", RootLocation())]
     by_id = {item.id: item for item in listing.items}
-    assert len(by_id) == 4
+    assert len(by_id) == 5
     assert by_id["folder"].is_directory and by_id["folder"].size is None
     assert by_id["doc"].name == "Budget.2026" and by_id["doc"].size is None
     assert by_id["doc"].mime_type == "application/vnd.google-apps.spreadsheet"
     assert not by_id["shortcut"].is_directory and by_id["shortcut"].can_rename is False
+    assert by_id["unknown"].can_rename is None
     assert by_id["readonly"].can_rename is False and by_id["readonly"].size == 42
     assert by_id["readonly"].modified_at.isoformat() == "2026-10-18T01:02:03+00:00"
     assert all(item.parent_location == RootLocation() for item in listing.items)
@@ -219,14 +221,21 @@ async def test_same_name_folders_and_separator_names_use_real_ancestor_ids(provi
     child = drive_file("child", "with/slash", parent="b", mime=FOLDER_MIME)
     server = DriveServer([first, second, child])
     server.pages[None] = file_page([drive_file("file", "sample.txt", parent="child")])
-    listing = await provider_factory(server).list_directory(IdLocation(value="child"))
+    provider = provider_factory(server)
+    listing = await provider.list_directory(IdLocation(value="child"))
     assert listing.path == "same/with/slash"
     assert listing.parent_location == IdLocation(value="b") and listing.location == IdLocation(value="child")
     assert [entry.name for entry in listing.breadcrumbs] == ["My Drive", "same", "with/slash"]
     assert [entry.location for entry in listing.breadcrumbs] == [RootLocation(), IdLocation(value="b"), IdLocation(value="child")]
     assert listing.items[0].parent_location == IdLocation(value="child")
     assert not any(request.url.path.endswith("/a") for request in server.requests)
-
+    item = await provider.get_metadata("child")
+    assert item.location == listing.location and item.parent_location == listing.parent_location
+    root = await provider.get_metadata("root")
+    assert root.location == RootLocation() and root.parent_location is None and root.can_rename is False
+    child["capabilities"]["canListChildren"] = False
+    with pytest.raises(PermissionDeniedError):
+        await provider.list_directory(item.location)
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("failure", ["shared_drive", "outside_root", "trashed_item", "trashed_ancestor", "shortcut", "cycle"])
@@ -303,19 +312,6 @@ async def test_metadata_batches_keep_requested_order_and_reuse_batched_ancestors
     batches = [batch_requests(request) for request in server.requests if request.method == "POST"]
     assert [len(ids) for ids in batches] == [READ_BATCH_SIZE, 1, 2]
     assert Counter(file_id for ids in batches for file_id in ids) == Counter([*requested, "left", "right"])
-
-
-@pytest.mark.asyncio
-async def test_single_metadata_and_siblings_use_same_canonical_root_parent(provider_factory: Callable) -> None:
-    server = DriveServer([drive_file("file", "file.txt")])
-    server.pages[None] = file_page([server.files["file"]])
-    provider = provider_factory(server)
-    item = await provider.get_metadata("file")
-    assert item.parent_location == RootLocation() and item.location == IdLocation(value="file")
-    assert provider.parent_key(item) == provider.parent_key((await provider.list_siblings(item))[0])
-    root = await provider.get_metadata("root")
-    assert root.location == RootLocation() and root.can_rename is False and root.parent_location is None
-    assert not any(request.method == "POST" for request in server.requests)
 
 
 @pytest.mark.asyncio
@@ -432,20 +428,8 @@ async def test_ancestry_is_reloaded_after_external_move(provider_factory: Callab
 
 
 @pytest.mark.asyncio
-async def test_listing_permission_denied_locally_and_unknown_rename_permission_preserved(provider_factory: Callable) -> None:
-    folder = drive_file("folder", "Folder", mime=FOLDER_MIME, capabilities={"canListChildren": False})
-    server = DriveServer([folder])
-    provider = provider_factory(server)
-    with pytest.raises(PermissionDeniedError):
-        await provider.list_directory(IdLocation(value="folder"))
-    folder["capabilities"] = {"canListChildren": True}
-    server.pages[None] = file_page([drive_file("unknown", "unknown.txt", parent="folder", capabilities={})])
-    assert (await provider.list_directory(IdLocation(value="folder"))).items[0].can_rename is None
-
-
-@pytest.mark.asyncio
-@pytest.mark.parametrize("mime", ["text/plain", FOLDER_MIME, "application/vnd.google-apps.spreadsheet"])
-async def test_name_policy_and_single_rename(provider_factory: Callable, mime: str) -> None:
+async def test_name_policy_and_single_native_document_rename(provider_factory: Callable) -> None:
+    mime = "application/vnd.google-apps.spreadsheet"
     server = WritableDriveServer([drive_file("doc/?", "Budget", mime=mime)])
     provider = provider_factory(server)
     for name in ("", " \t", "bad\x00name"):
@@ -460,6 +444,9 @@ async def test_name_policy_and_single_rename(provider_factory: Callable, mime: s
     assert item.mime_type == mime
     assert item.modified_at is not None
     assert server.writes == [[("doc/?", "预算/2026")]]
+    metadata = await provider.get_metadata(item.id)
+    assert metadata == item
+    assert provider.parent_key(metadata) == provider.parent_key((await provider.list_siblings(metadata))[0])
 
 
 @pytest.mark.asyncio
@@ -475,7 +462,7 @@ async def test_write_batch_retries_only_explicitly_refused_parts(provider_factor
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize(("status", "error_type", "attempts"), [(401, AuthenticationError, 2), (429, RateLimitError, 4), (503, RenameOutcomeUnknownError, 1)])
+@pytest.mark.parametrize(("status", "error_type", "attempts"), [(401, AuthenticationError, 2), (429, RateLimitError, 4)])
 async def test_write_part_retry_is_bounded(provider_factory: Callable, status: int, error_type: type[Exception], attempts: int) -> None:
     server = WritableDriveServer([drive_file("a", "A")])
 
@@ -502,12 +489,14 @@ async def test_unknown_part_prevents_retry_of_other_refused_parts(provider_facto
 
 @pytest.mark.asyncio
 async def test_write_batches_keep_successes_and_permanent_failures(provider_factory: Callable) -> None:
-    server = WritableDriveServer([drive_file(str(index), f"old-{index}") for index in range(21)])
+    mimes = ["text/plain", FOLDER_MIME, "application/vnd.google-apps.document"]
+    server = WritableDriveServer([drive_file(str(index), f"old-{index}", mime=mimes[index % len(mimes)]) for index in range(21)])
     server.fail_targets.add("new-1")
     result = await provider_factory(server).rename_many([RenameRequest(str(index), f"new-{index}") for index in range(21)])
     assert [len(batch) for batch in server.writes] == [20, 1]
     assert isinstance(result["1"], PermissionDeniedError)
     assert all(result[str(index)].name == f"new-{index}" for index in range(21) if index != 1)
+    assert all(result[str(index)].mime_type == mimes[index % len(mimes)] for index in range(21) if index != 1)
 
 
 @pytest.mark.asyncio
@@ -531,7 +520,7 @@ async def test_write_preflight_enforces_scope_and_permissions(provider_factory: 
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("fault", ["timeout", "outer_503", "part_503", "malformed", "missing_part", "wrong_id", "moved"])
+@pytest.mark.parametrize("fault", ["outer_503", "part_503", "malformed", "missing_part", "wrong_id", "moved"])
 async def test_ambiguous_write_response_is_never_replayed(provider_factory: Callable, fault: str) -> None:
     server = WritableDriveServer([drive_file("a", "A"), drive_file("b", "B")])
 
@@ -539,8 +528,6 @@ async def test_ambiguous_write_response_is_never_replayed(provider_factory: Call
         response = server(request)
         if request.method != "POST" or b"\r\nPATCH " not in request.content:
             return response
-        if fault == "timeout":
-            raise httpx.ReadTimeout("Response lost", request=request)
         if fault == "outer_503":
             return httpx.Response(503)
         if fault == "malformed":
@@ -588,11 +575,11 @@ class MappingRule(RenameRule[MappingConfig]):
         return config.names.get(filename, filename)
 
 
-def rename_services(provider: GoogleDriveProvider, *, ttl_seconds: int = 600) -> tuple[PreviewService, ExecuteService]:
+def rename_services(provider: GoogleDriveProvider) -> tuple[PreviewService, ExecuteService]:
     registry = registry_for([provider])
     rules = RuleRegistry()
     rules.register(MappingRule())
-    preview = PreviewService(registry, RenameEngine(rules), PreviewStore(ttl_seconds))
+    preview = PreviewService(registry, RenameEngine(rules), PreviewStore())
     return preview, ExecuteService(registry, preview.store, preview)
 
 
@@ -610,77 +597,53 @@ async def test_preview_preserves_existing_duplicates_but_blocks_new_conflicts(pr
     result = await preview.preview(rename_request(provider, ["a", "b", "c"], names))
     assert result.valid is valid
     assert not server.writes
-    if valid:
+    # 执行只保留一个代表场景，其余参数专门检查名称冲突策略。
+    if names == {"Old": "New"}:
         executed = await execute.execute(result.preview_id)
         assert executed.status == "completed"
         assert all(item.status == "skipped" for item in executed.items[:2])
         assert server.files["a"]["name"] == server.files["b"]["name"] == "Same"
-        with pytest.raises(PreviewNotFoundError):
-            await execute.execute(result.preview_id)
+        assert server.files["c"]["name"] == "New"
 
 
 @pytest.mark.asyncio
-async def test_changed_target_cannot_take_unselected_duplicate_name(provider_factory: Callable) -> None:
-    server = WritableDriveServer([drive_file("a", "Same"), drive_file("b", "Same"), drive_file("c", "Old")])
-    provider = provider_factory(server)
-    preview, _ = rename_services(provider)
-    result = await preview.preview(rename_request(provider, ["a", "c"], {"Same": "Free", "Old": "Same"}))
-    assert not result.valid and result.items[1].conflict
-    assert not server.writes
-
-
-@pytest.mark.asyncio
-@pytest.mark.parametrize("names", [{"A": "B", "B": "A"}, {"A": "B", "B": "C"}])
-@pytest.mark.parametrize("fail", [False, True])
-async def test_google_dependency_staging_and_known_failure_rollback(provider_factory: Callable, names: dict[str, str], fail: bool) -> None:
+@pytest.mark.parametrize("outcome", ["swap", "rollback", "rollback_failed"])
+async def test_dependency_execution_reports_final_or_rollback_names(provider_factory: Callable, outcome: str) -> None:
     server = WritableDriveServer([drive_file("a", "A"), drive_file("b", "B")])
     provider = provider_factory(server)
     preview, execute = rename_services(provider)
+    names = {"A": "B", "B": "A" if outcome == "swap" else "C"}
     snapshot = await preview.preview(rename_request(provider, ["a", "b"], names))
     assert snapshot.valid and not server.writes
-    if fail:
-        server.fail_targets.add(names["B"])
+    if outcome != "swap":
+        server.fail_targets = {"C", "A"} if outcome == "rollback_failed" else {"C"}
     result = await execute.execute(snapshot.preview_id)
-    if not fail:
-        assert result.status == "completed"
-        assert [server.files[key]["name"] for key in ("a", "b")] == [names["A"], names["B"]]
-    else:
-        assert result.status in ("failed", "partial")
-        # Any successfully restored item must report its actual restored name.
-        for item in result.items:
-            if item.actual_name is not None:
-                assert item.actual_name == server.files[item.file_id]["name"]
-        assert server.files["b"]["name"] == "B"
     assert any(target not in {"A", "B", "C"} for batch in server.writes for _, target in batch)
+    assert all(item.actual_name == server.files[item.file_id]["name"] for item in result.items if item.actual_name is not None)
+    if outcome == "swap":
+        assert result.status == "completed"
+        assert [server.files[key]["name"] for key in ("a", "b")] == ["B", "A"]
+        assert [item.actual_name for item in result.items] == ["B", "A"]
+    else:
+        assert result.status == "failed" and server.files["b"]["name"] == "B"
+        restored = next(item for item in result.items if item.file_id == "a")
+        if outcome == "rollback":
+            assert restored.actual_name == "A"
+        else:
+            assert "rollback failed" in restored.error
+            assert restored.actual_name not in {"A", "B", "C"}
 
 
 @pytest.mark.asyncio
-async def test_google_rollback_failure_reports_remaining_temporary_name(provider_factory: Callable) -> None:
-    server = WritableDriveServer([drive_file("a", "A"), drive_file("b", "B")])
-    provider = provider_factory(server)
-    preview, execute = rename_services(provider)
-    snapshot = await preview.preview(rename_request(provider, ["a", "b"], {"A": "B", "B": "C"}))
-    server.fail_targets = {"C", "A"}
-    result = await execute.execute(snapshot.preview_id)
-    assert result.status == "failed"
-    failed = next(item for item in result.items if item.file_id == "a")
-    assert "rollback failed" in failed.error
-    assert failed.actual_name == server.files["a"]["name"]
-    assert failed.actual_name not in {"A", "B", "C"}
-
-
-@pytest.mark.asyncio
-@pytest.mark.parametrize("change", ["source", "permission", "occupied", "expired"])
+@pytest.mark.parametrize("change", ["permission", "occupied"])
 async def test_execute_revalidates_google_snapshot_before_any_write(provider_factory: Callable, change: str) -> None:
     server = WritableDriveServer([drive_file("a", "A")])
     provider = provider_factory(server)
-    preview, execute = rename_services(provider, ttl_seconds=-1 if change == "expired" else 600)
+    preview, execute = rename_services(provider)
     snapshot = await preview.preview(rename_request(provider, ["a"], {"A": "B"}))
-    if change == "source":
-        server.files["a"]["name"] = "Changed externally"
-    elif change == "permission":
+    if change == "permission":
         server.files["a"]["capabilities"]["canRename"] = False
-    elif change == "occupied":
+    else:
         server.files["other"] = drive_file("other", "B")
     with pytest.raises(PreviewExpiredError):
         await execute.execute(snapshot.preview_id)

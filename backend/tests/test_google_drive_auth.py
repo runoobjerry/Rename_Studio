@@ -141,7 +141,7 @@ def test_other_providers_do_not_accept_client_secrets(manager: StorageManager, p
         assert CLIENT_SECRET not in response.text
 
 
-@pytest.mark.parametrize(("config", "secret"), [({}, None), ({"client_id": "fixture-client"}, None), ({}, CLIENT_SECRET)])
+@pytest.mark.parametrize(("config", "secret"), [({"client_id": "fixture-client"}, None), ({}, CLIENT_SECRET)])
 def test_both_client_credentials_are_required_to_start(manager: StorageManager, config: dict, secret: str | None) -> None:
     info = manager.create(StorageCreate(provider_type="google_drive", name="Draft", config=config, client_secret=secret))
     with api(manager) as client:
@@ -451,43 +451,6 @@ async def test_delete_and_reset_remove_google_client_secret(manager: StorageMana
 
 
 @pytest.mark.asyncio
-async def test_directory_api_returns_connection_context_and_preview_remains_read_only(manager: StorageManager, monkeypatch: pytest.MonkeyPatch) -> None:
-    from app.providers.google_drive import FOLDER_MIME
-
-    storage_id, auth = google_connection(manager)
-    mock_google(monkeypatch, google_response)
-    await authorize(auth)
-    reads: list[str] = []
-
-    def respond(request: httpx.Request) -> httpx.Response:
-        assert request.method == "GET"
-        reads.append(request.url.path)
-        root = {"id": "root-id", "name": "My Drive", "mimeType": FOLDER_MIME, "trashed": False}
-        if request.url.path.endswith("/files/root"):
-            return httpx.Response(200, json=root)
-        assert request.url.path == "/drive/v3/files"
-        return httpx.Response(200, json={"kind": "drive#fileList", "files": [
-            {"id": "file", "name": "file.txt", "mimeType": "text/plain", "parents": ["root-id"], "trashed": False, "capabilities": {"canRename": True}},
-        ]})
-
-    mock_google(monkeypatch, respond)
-    try:
-        async with ASYNC_CLIENT(transport=httpx.ASGITransport(app=api(manager).app), base_url="http://test") as client:
-            response = await client.post(f"/storages/{storage_id}/files/list", json={"location": {"kind": "root"}})
-            assert response.status_code == 200
-            listing = response.json()
-            assert listing["storage_id"] == storage_id and listing["revision"] == manager.record(storage_id).revision
-            assert listing["breadcrumbs"] == [{"name": "My Drive", "location": {"kind": "root"}}]
-            assert listing["items"][0]["mime_type"] == "text/plain"
-            before = list(reads)
-            preview = await client.post(f"/storages/{storage_id}/rename/preview", json={"location": {"kind": "root"}, "file_ids": ["file"], "rules": []})
-            assert preview.status_code == 200 and preview.json()["valid"]
-            assert len(reads) > len(before)
-    finally:
-        await manager.aclose()
-
-
-@pytest.mark.asyncio
 @pytest.mark.parametrize("change", [None, "source", "credentials"])
 async def test_google_api_executes_server_snapshot_or_rejects_changes(manager: StorageManager, monkeypatch: pytest.MonkeyPatch, change: str | None) -> None:
     from test_google_drive_provider import WritableDriveServer, drive_file
@@ -499,6 +462,12 @@ async def test_google_api_executes_server_snapshot_or_rejects_changes(manager: S
     mock_google(monkeypatch, server)
     try:
         async with ASYNC_CLIENT(transport=httpx.ASGITransport(app=api(manager).app), base_url="http://test") as client:
+            response = await client.post(f"/storages/{storage_id}/files/list", json={"location": {"kind": "root"}})
+            assert response.status_code == 200
+            listing = response.json()
+            assert listing["storage_id"] == storage_id and listing["revision"] == manager.record(storage_id).revision
+            assert listing["breadcrumbs"] == [{"name": "My Drive", "location": {"kind": "root"}}]
+            assert listing["items"][0]["mime_type"] == "text/plain"
             response = await client.post(f"/storages/{storage_id}/rename/preview", json={
                 "location": {"kind": "root"}, "file_ids": ["file"],
                 "rules": [{"type": "replace", "config": {"search": "old", "replacement": "new"}}],

@@ -58,11 +58,12 @@ export function useRenameWorkflow({
     // 非任务成员仍参与提交前校验，不能因任务面板隐藏它们而绕过固定成员检查。
     return [...browserItems.filter((item) => availableIds.has(item.id)), ...sortedFiles.filter((item) => !members.has(item.id))];
   }, [taskCurrent, browserItems, sortedFiles]);
+  const renamableFiles = useMemo(() => orderedFiles.filter((item) => item.can_rename !== false), [orderedFiles]);
   // 请求使用列表顺序，并与真实目录取交集；执行后的任务保留冻结顺序。
   const currentSelectedIds = useMemo(() => {
     const selected = new Set(selectedIds);
-    return orderedFiles.filter((item) => item.can_rename !== false && selected.has(item.id)).map((item) => item.id);
-  }, [orderedFiles, selectedIds]);
+    return renamableFiles.filter((item) => selected.has(item.id)).map((item) => item.id);
+  }, [renamableFiles, selectedIds]);
   const browserTask = useMemo(() => task ? { taskId: task.taskId, items: task.items } : null, [task?.taskId, task?.items]);
   const previewContext = useMemo(() => JSON.stringify([workspaceKey, currentSelectedIds, rules, sort]),
     [workspaceKey, currentSelectedIds, rules, sort]);
@@ -166,7 +167,6 @@ export function useRenameWorkflow({
   const requestBatchPreview = () => {
     if (!files.data || files.isFetching || files.error || execution.isPending || preview.isPending || activeStorage?.busy) return;
     const selected = new Set(useRenameStore.getState().selectedIds);
-    const renamableFiles = orderedFiles.filter((item) => item.can_rename !== false);
     const fileIds = renamableFiles.filter((item) => selected.has(item.id)).map((item) => item.id);
     if (task && !taskCurrent && task.items.some((item) => item.status === "unknown")) {
       notify("旧任务仍有待核对项，请先恢复原规则并核对执行结果。", "warning");
