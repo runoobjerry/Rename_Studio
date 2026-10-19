@@ -18,7 +18,7 @@ Frontend -> FastAPI API -> Rename Engine / Rule Engine / Provider Layer / Servic
 ```
 
 - UI 不包含业务规则；API 层不直接实现重命名；Rule 不访问云盘；Provider 不实现重命名规则。
-- `StorageManager` 负责独立连接的生命周期、连接版本和执行互斥；`ProviderRegistry` 只注册 Provider 类型、配置 Schema 与实例工厂。
+- `StorageManager` 负责独立连接的生命周期、连接版本和执行互斥；`ProviderRegistry` 保存 Provider 定义并按定义校验配置，不承担连接状态管理。
 - 持久化模型和 Repository 只读写状态，不承载业务逻辑；Rename Engine 不绑定具体存储实现。
 
 ## Rename Engine 与 Preview First
@@ -46,11 +46,13 @@ class RenameRule:
 - 使用 Registry 注册规则，禁止通过不断增长的 `if/elif` 分发。新增规则应只需创建 Rule 和 Config、注册，并添加对应前端配置 UI；避免修改 Rename Engine 核心。
 - 规则编辑器必须支持添加、删除、启用/禁用、排序和复制，并明确展示执行顺序。
 
-## Providers 与 OneDrive
+## Providers 与认证
 
 所有存储经统一 `StorageProvider` 访问，至少覆盖目录列举、单项/批量元数据与单项/批量重命名。`provider_type` 是实现类型，`storage_id` 是独立连接配置和账号，两者不得混用或为 Local/OneDrive 设置别名。
 
 - Provider 负责目录定位、名称校验与规范化、目标名限制、执行批大小和可用的批量语义；服务层据此做冲突检测和执行规划。逐项重命名仅是无批量 API 时的兼容回退。
+- 每个 Provider 在自身模块维护配置 Model、Provider/认证工厂及 `ProviderDefinition`，经 `providers/builtin.py` 显式注册；认证实现遵守 `ConnectionAuth`。公共 Schema、依赖装配和业务层不重复维护各 Provider 的配置或类型分支。
+- 配置字段、授权需求、位置类型和选择器等能力由 Provider 元数据声明，前端据此渲染和启用操作；元数据未就绪或缺失时暂停依赖操作，不以 Provider 名称推断能力。元数据不包含连接凭据，配置校验仍由服务端执行。
 - `StorageLocation` 为根目录、Provider 不透明 ID 或边界规范化路径。前端和服务层将位置及文件 ID 视为不透明值；显示路径不是云资源身份，不假定重命名后文件 ID 不变。
 - 业务层经 `Service -> StorageProvider -> OneDriveProvider -> Microsoft Graph API` 调用 Graph，不直接调用 Graph。
 - OneDrive 使用 OAuth 2.0 授权码/浏览器登录；不硬编码 Token、不提交 Token、不保存账号密码。处理分页、批量、限流、重试、超时、401 刷新和 429 `Retry-After`，优先 batch、async 与有界并发，避免逐项串行请求。
@@ -73,6 +75,9 @@ class RenameRule:
 
 前端负责文件浏览/选择、规则编辑、预览与冲突展示、执行确认和历史。Server State 使用 TanStack Query，UI State 使用 Zustand；不要将所有业务状态塞进单一全局 Store。具体前端模块边界由 `frontend/AGENTS.md` 约束。
 
+- 服务端偏好、标签页浏览会话和重命名任务分开管理；位置记忆只保存成功打开后 Provider 返回的 `StorageLocation`，恢复前校验 `storage_id`、连接版本、账号身份和 Provider 位置能力。不得将显示路径当作 ID，也不得恢复旧预览或执行任务。
+- 云默认目录以连接和稳定 `account_id` 隔离，不以邮箱或显示名代替；位置恢复完成前暂停目录读取。
+
 ## Persistence
 
 - 连接状态以版本化 JSON 状态文档持久化；每次写入原子提交完整状态，配置、凭据和连接版本不得分离提交。
@@ -94,6 +99,7 @@ class RenameRule:
 - 新 Rule 至少覆盖正常输入、空输入、边界值、Unicode、扩展名和异常配置。
 - Preview/Execute 改动覆盖：服务端快照不可被客户端篡改、执行前重校验、过期/重复执行、连接版本变化、名称依赖链安全执行与失败回滚、未知写入结果。
 - 新 Provider 覆盖单项与批量元数据/重命名、位置语义、名称规则和特有错误映射。
+- Provider 元数据改动覆盖配置/凭据隔离和能力驱动行为，使用非内置类型的测试定义验证公共流程不依赖类型名；位置恢复覆盖连接版本/账号变化、不支持的位置及存储不可用。
 - 存储连接改动覆盖多连接隔离、配置/授权变更导致的快照失效、执行互斥、持久化升级或失败不损坏既有状态。
 
 ## AI Coding与验证

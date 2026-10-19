@@ -1,146 +1,104 @@
 # Rename Studio
 
-本地优先、规则驱动的批量重命名 WebUI，支持本地文件、OneDrive 个人账号和 Google Drive 的“我的云端硬盘”。先预览名称与冲突，再确认执行；支持多个独立存储连接。
+本地优先、规则驱动的批量重命名 WebUI，支持本地文件、OneDrive 个人账号和 Google Drive“我的云端硬盘”。先预览，再确认执行。
 
-## 如何使用
+## 特性
 
-### 功能与限制
+- **多存储连接**：Local Files、OneDrive 和 Google Drive 独立配置与授权。
+- **有序规则链**：填充、替换、移除、插入，支持复制、排序与启用/禁用。
+- **预览与冲突检查**：展示原名、新名、名称合法性及冲突；执行前服务端重新校验。
+- **批次与进度**：文件/子文件夹多选、筛选与排序，逐批确认，展示进度和逐项结果。
+- **工作台偏好**：明暗主题、账号默认目录、标签页浏览位置恢复与恢复默认设置。
 
-- 浏览本地、OneDrive 或 Google Drive 目录，选择当前目录中的文件和子文件夹，支持全选、反选与筛选。
-- 按顺序组合填充、替换、移除、插入四类规则，支持添加、删除、启用/禁用、排序和复制。
-- 预览原名、新名、名称合法性与冲突，确认后执行，并展示进度和逐项结果。
-- 管理多个独立连接，保存主题、云盘默认目录和分批提示偏好，支持恢复默认设置。
+每批最多 **1000 项**，最多 **20 条规则**；只处理同一目录的直接子项，不递归修改子文件夹内容。目前没有历史撤销/重做功能，操作前请备份重要数据。
 
-每批最多处理 **1000 项**，最多组合 **20 条规则**。选择超过 1000 项时，先预览并处理首批，完成后可通过“待处理”筛选继续操作。每批只处理同一目录的直接子项：可以重命名子文件夹，但不会递归修改其中的文件。
+## 兼容性
 
-| 规则 | 用法 |
+目前仅正式支持 **Windows 和 macOS**，不提供 Linux 或移动端的正式支持。
+
+| 项目 | 最低要求或支持范围 |
 | --- | --- |
-| 填充 | 对每段连续数字补零，或用单个字符从左/右填充文本。例如长度为 3 时，`episode1-part12.mp4` 变为 `episode001-part012.mp4`。 |
-| 替换 / 移除 | 按字面量匹配全部、首个或末个结果，可设置大小写、全字匹配及是否忽略扩展名；输入不作为正则表达式。 |
-| 插入 | 在前缀、后缀、指定字符位置或指定文本前后插入；文本定位使用区分大小写的首个匹配，找不到时保持原名。 |
+| 后端 Python | **3.12+**；发布自动检查基线为 Python 3.12。 |
+| 前端浏览器 | **Chrome 117+、Edge 121+、Firefox 121+、Safari 17.0+（macOS）**。 |
+| Windows 启动 | 交互式 PowerShell **5.1+**，已安装 Python，项目目录可写。 |
+| macOS 启动 | 交互式终端、系统 Bash 与已安装的 Python，项目目录可写。 |
+| 自动发布检查平台 | Windows x64、macOS Apple Silicon（ARM64）；其他架构需另行验证。 |
+| 网络 | 首次安装依赖及云盘功能需要联网；依赖就绪后，本地文件操作可离线使用。 |
 
-填充和插入保留文件的最后一个扩展名；文件夹按完整名称处理，不将句点后的文本视为扩展名。空规则链保持原名。
+浏览器最低要求依据当前 MUI 9 的[官方支持基线](https://mui.com/material-ui/migration/upgrade-to-v9/#supported-browsers-and-versions)，同时满足项目使用的现代浏览器 API；这是依赖与代码要求，不代表已逐版本实测。建议使用当前稳定版；不支持 Internet Explorer。通过默认的 `http://localhost:8000` 访问，以满足 `crypto.randomUUID()` 等 API 的安全上下文要求。
 
-### 启动发布包
+使用发布包**不需要 Node.js**。开发前端需要 Node.js 20+，仓库 CI 使用 Node.js 22。
 
-要求预先安装 **Python 3.12+**，项目目录可写，首次安装依赖需要联网。包含完整 `frontend/dist` 的发布包不需要 Node.js；从源码下载的仓库需先由开发者构建前端。
+## 快速开始
 
-**Windows：** 在发布包根目录打开交互式 PowerShell 5.1+，执行：
+### 1. 安装与解压
+
+安装 [Python 3.12 或更新版本](https://www.python.org/downloads/)（建议使用发布检查基线 3.12），从项目 [Releases](https://github.com/runoobjerry/Rename_Studio/releases) 下载对应系统的发布 ZIP，完整解压到可写目录。不要使用 GitHub 自动生成的源码 ZIP 代替发布包；源码运行方式见下方“开发”。
+
+### 2. 启动
+
+**Windows：** 在发布包目录打开 PowerShell，运行：
 
 ```powershell
 .\Start.ps1
 ```
 
-也可右键脚本选择“使用 PowerShell 运行”。保持启动窗口打开，按 **Q 或 Ctrl+C** 退出。
+也可右键脚本选择“使用 PowerShell 运行”。保持窗口打开，按 **Q 或 Ctrl+C** 退出。
 
-**macOS：** 在交互式终端执行，路径含空格时保留引号：
+**macOS：** 在终端运行：
 
 ```bash
 bash "/项目完整路径/Start.sh"
 ```
 
-保持终端打开，输入 **Q 后按 Enter**，或按 **Ctrl+C** 退出。macOS 启动脚本和固定依赖安装仍需实机验收，详见[启动与验收](docs/LAUNCHER.md)。
+保持终端打开，输入 **Q 后按 Enter**，或按 **Ctrl+C** 退出。
 
-启动脚本创建独立的 `.runtime/venv`，按需安装运行依赖，并打开 [本地页面](http://localhost:8000)。服务仅监听 `127.0.0.1:8000`；关闭浏览器不会停止服务。日志位于 `.runtime/logs`。指定 Python、关闭自动打开浏览器、端口冲突和环境修复等说明见[启动与验收](docs/LAUNCHER.md)。
+脚本创建独立的 `.runtime/venv` 并按需安装依赖，随后打开 [本地页面](http://localhost:8000)。服务仅监听 `127.0.0.1:8000`，关闭浏览器不会停止后端。启动失败可先查看 `.runtime/logs`，再查阅[常见问题](https://github.com/runoobjerry/Rename_Studio/wiki/FAQ)。
 
-### 第一次重命名
+### 3. 预览并执行
 
-1. 选择存储连接。首次启动仅创建 `Local Files`，默认根目录为运行后端的系统用户的 Documents 文件夹；可在工作台或连接设置中更换目录。
-2. 进入目标目录，选择文件或子文件夹。建议先使用少量测试副本。
-3. 添加并排列规则，生成预览，核对新名称与冲突提示。
-4. 确认有效预览后执行，等待完成并检查逐项结果。修改文件、连接配置或授权后，需要重新预览。
+1. 选择默认 `Local Files` 连接，通过“浏览…”选择测试目录；也可在设置中添加本地或云盘连接。
+2. 选择当前目录中的文件或子文件夹，添加规则并排列顺序。
+3. 生成预览，检查新名称与冲突，确认后执行并核对逐项结果。
 
-系统目录选择器操作的是**运行后端的电脑**，需要可用的桌面会话；Linux 还需 Zenity 或 KDialog。不可用时可在连接设置中手动输入已有目录的绝对路径。本地浏览受所配置根目录限制。
+默认本地目录为后端系统用户的 Documents 文件夹。超过 1000 项时分批预览和处理，完成后通过“待处理”筛选继续。遇到超时或未知结果先核对进度和真实文件，不要盲目重试整批。
 
-预览默认有效期为 10 分钟，后端重启后失效。执行期间不要强制结束后端或覆盖程序文件。遇到超时、部分失败或结果不确定时，先检查进度和真实文件名称，再决定后续操作，避免重复改名。
+## 用户文档
 
-云盘连接需要联网。进入目录使用文件夹、面包屑和“返回上级”；点击“设为默认路径”可保存当前账号的起始目录。同一标签页刷新时优先恢复上次成功打开的位置，没有有效记录时使用账号默认目录。目录删除或失去访问权限时会显示错误，可点击面包屑根目录返回。
+详细使用与配置说明见[项目 Wiki](https://github.com/runoobjerry/Rename_Studio/wiki)。
 
-### 连接 OneDrive 个人账号
+| 文档 | 内容 |
+| --- | --- |
+| [使用帮助](https://github.com/runoobjerry/Rename_Studio/wiki/Usage-Guide) | 文件选择、规则参数、预览执行、分批处理、目录记忆、更新与重置 |
+| [配置说明](https://github.com/runoobjerry/Rename_Studio/wiki/Configuration) | 启动参数、环境变量、本地与云服务的配置与授权 |
+| [常见问题](https://github.com/runoobjerry/Rename_Studio/wiki/FAQ) | 安装失败、端口占用、目录权限、授权失败、密钥与执行结果 |
+| [隐私政策](https://github.com/runoobjerry/Rename_Studio/wiki/Privacy-Policy) | 数据处理、本地凭据、浏览器会话、第三方请求、日志与数据清理 |
 
-1. 在 Microsoft Entra 管理中心注册支持个人 Microsoft 账户的应用。
-2. 在“身份验证”的移动和桌面应用程序配置中添加回调 `http://localhost:8000/auth/storage/callback`，启用“允许公共客户端流”。
-3. 配置 Microsoft Graph 委托权限 `Files.ReadWrite` 和 `User.Read`。
-4. 在应用“设置”中点击“添加连接”，选择 OneDrive，填写连接名称与 App ID 并保存。编辑该连接，点击“登录账号”完成授权；若浏览器拦截弹窗，先允许此站点打开登录窗口。OneDrive 无需客户端密钥，每个连接独立授权。
-5. 在侧栏选择已连接的 OneDrive，通过文件夹、面包屑和上级按钮浏览。
+云盘需自行配置 OAuth 客户端。`backend/settings.json` 是含长期登录凭据的**未加密 JSON**，不要公开或随发布包分发。完整说明见上述配置与隐私文档。
 
-当前授权使用个人账户端点、授权码流程与 PKCE，请求 `offline_access`、`Files.ReadWrite` 和 `User.Read`。断开账号会清除该连接的登录凭据并保留 App ID；重新登录可选择其他账号。云盘操作需要联网。
+## 开发
 
-### 连接 Google Drive
+### 技术栈
 
-需要自行创建 Google Desktop OAuth 客户端，并同时配置 **Client ID 和 Client Secret**：
+| 范围 | 技术 |
+| --- | --- |
+| 后端 | Python 3.12+、FastAPI、Pydantic / pydantic-settings、httpx、Uvicorn |
+| 前端 | React、TypeScript、Vite、MUI；TanStack Query 管理服务端状态，Zustand 管理工作台 UI 与批次状态 |
+| 持久化 | v3 JSON 状态文档，原子保存连接配置、凭据和应用偏好；当前未使用数据库存储这些状态 |
+| 测试 | pytest / pytest-asyncio、Vitest、Testing Library、JSDOM |
+| 发布 | PowerShell / Bash 启动入口，Python 发布脚本，GitHub Actions |
 
-1. 在 [Google Cloud 控制台](https://console.cloud.google.com/) 创建或选择项目，启用 **Google Drive API**。
-2. 在 Google Auth platform 配置应用信息和 OAuth 同意屏幕。个人使用选择 External（外部）；处于 Testing（测试）状态时，在 Audience 的 Test users 中添加准备登录的 Google 账号。详细设置见 [Google 官方同意屏幕说明](https://developers.google.com/workspace/guides/configure-oauth-consent)。
-3. 在 Data Access 中添加 `https://www.googleapis.com/auth/drive.metadata`。应用固定请求该权限，用于读取目录与名称等元数据并重命名，不读取或修改文件内容。Google 将它归为受限权限，授权仍受项目发布状态及账号策略限制，见 [Drive 权限说明](https://developers.google.com/workspace/drive/api/guides/api-specific-auth)。
-4. 在 Clients 中创建 OAuth 客户端，应用类型选择 **Desktop app（桌面应用）**，下载客户端 JSON。从其中的 `installed.client_id` 和 `installed.client_secret` 取得两项值；创建步骤见 [Google 官方桌面客户端说明](https://developers.google.com/workspace/drive/api/quickstart/python#authorize_credentials_for_a_desktop_application)。
-5. 在 Rename Studio“设置”中添加 Google Drive 连接，填写连接名称、Google Client ID 与 Google Client Secret，点击“保存连接”。可以先保存不完整草稿，补齐两项并保存后才能登录。
-6. 编辑刚保存的连接，点击“登录账号”，在浏览器选择 Google 账号并完成授权；允许登录弹窗。应用默认回调为 `http://localhost:8000/auth/storage/callback`，授权期间保持应用运行。完成后在侧栏选择该连接。
-
-编辑连接时不会回显已保存密钥，**留空保存会保留原密钥**。更改 Client ID 或密钥后需要重新登录；“退出登录”保留客户端配置，各连接独立授权。外部项目处于 Testing 时，该权限的刷新令牌会在七天后过期，届时重新登录，见 [Google 令牌有效期说明](https://developers.google.com/identity/protocols/oauth2#expiration)。
-
-使用范围与名称约定：
-
-- 仅支持“我的云端硬盘”及其普通子文件夹，不提供“与我共享”独立入口或共享云端硬盘。
-- 普通文件、文件夹及 Google 文档/表格/演示文稿按真实标题重命名，不生成导出扩展名；标题含句点时仍遵循前述规则的扩展名处理方式，请核对预览。
-- 快捷方式仅展示，不进入、不重命名，也不修改其目标。已知不能重命名的项目不可选择，只读文件夹仍可进入浏览。
-- Google 目标名区分大小写；已有同名项目可以保持不变，本次操作新产生的同目录重名会被阻止。Google 允许重名，其他客户端在检查后产生的并发变化仍可能导致冲突或部分失败。
-
-### 配置、更新与数据保护
-
-连接配置、Google 客户端密钥、刷新令牌和应用偏好统一保存在 `backend/settings.json`。**状态文件是未加密的 JSON，包含长期登录凭据**：请限制访问，不要提交到 Git、公开上传或随发布包分发。下载的 Google 客户端 JSON 也应妥善保管。访问令牌仅保存在内存中，前端不会将密钥或令牌写入浏览器存储。
-
-更新前退出应用并备份 `backend/settings.json`，替换程序文件及完整 `frontend/dist`，保留状态文件、用户 `.env` 与 `.runtime`。不要跨系统或 CPU 架构复制虚拟环境；项目移动或 Python 变化后按启动提示重建运行环境。
-
-“恢复默认设置”会清除额外连接、已保存授权、偏好和当前工作台状态，重新建立默认 Local 连接；不会撤销已经执行的重命名，也不会删除真实文件。执行中的批次完成后才能重置。
-
-## 开发者
-
-### 环境与启动
-
-后端使用 Python 3.12+、FastAPI、Pydantic 和 httpx；前端使用 React、TypeScript、Vite、MUI、TanStack Query 和 Zustand。连接与应用偏好当前使用版本为 3 的 JSON 状态文档持久化。
-
-需要 Python 3.12+ 与 Node.js 20+；仓库前端 CI 使用 Node.js 22。以下命令在仓库根目录开始执行。
-
-如需覆盖首次初始化的本地根目录，先将 `.env.example` 复制为根目录 `.env`，取消 `LOCAL_STORAGE_ROOT` 的注释并设置已有目录：
-
-```dotenv
-LOCAL_STORAGE_ROOT=D:/rename-test
-FRONTEND_ORIGIN=http://localhost:5173
-STORAGE_REDIRECT_URI=http://localhost:8000/auth/storage/callback
-```
-
-`LOCAL_STORAGE_ROOT` 用于首次初始化和恢复默认设置，不覆盖已保存的连接目录。无效的已保存状态会报错，不会静默回退。旧版独立设置文件及 v1/v2 状态文档不再读取。
-
-**启动后端（PowerShell）：**
-
-```powershell
-cd backend
-python -m venv .venv
-.\.venv\Scripts\python -m pip install -e ".[dev]"
-.\.venv\Scripts\python -m uvicorn app.main:app --reload
-```
-
-API 默认位于 [127.0.0.1:8000](http://127.0.0.1:8000)，交互文档位于 [/docs](http://127.0.0.1:8000/docs)。macOS 可使用 `.venv/bin/python` 替换上述虚拟环境解释器路径。
-
-**另开终端启动前端：**
-
-```powershell
-cd frontend
-npm ci
-npm run dev
-```
-
-访问 [localhost:5173](http://localhost:5173)。Vite 将 `/api` 请求代理到后端并移除此前缀。开发模式无需 `frontend/dist`；发布模式使用单进程后端提供静态页面，同时保留根路径 API 和 `/api` 挂载。发布启动器固定本地端口、前端 Origin 和 OAuth 回调；修改开发环境回调时需同步应用注册配置。
-
-### 目录与职责
+### 目录结构
 
 ```text
 backend/
   app/
     api/           HTTP 路由与依赖组装
     core/          配置、错误、路径与日志上下文
-    providers/     统一存储接口及 Local / OneDrive / Google Drive 适配
+    providers/     统一存储接口、注册表与 builtin.py 内置注册
+      local/       本地存储配置、定义与驱动
+      onedrive/    OneDrive 配置、定义、认证与驱动
+      google_drive/ Google Drive 配置、定义、认证与驱动
     repositories/  JSON 状态读写与原子提交
     rules/         规则实现、配置与注册表
     schemas/       Pydantic 输入输出契约
@@ -152,72 +110,75 @@ backend/
 frontend/
   src/
     api/           API 客户端
+    assets/        静态资源
     components/    共享 UI 组件
     features/      文件、规则、重命名与设置功能
+    hooks/         通用 hooks
     stores/        工作台 UI 与批次状态
-    workspace/     工作台组件与编排 hooks
+    test/          测试环境与交互 harness
     types/         前端契约类型
-  AGENTS.md        前端模块边界
-
+    utils/         通用工具
+    workspace/     工作台组件、编排 hooks 与浏览会话
 docs/              API、交接、测试与人工验收文档
+scripts/           版本同步、发布包组装与服务检查
+.github/workflows/ 前端 CI 与发布工作流
 Start.ps1          Windows 发布入口
 Start.sh           macOS 发布入口
 ```
 
-- Rule 负责名称转换；Provider 负责存储访问和名称限制；服务层负责预览、冲突校验与执行规划；UI 负责交互。
-- 新规则实现 `RenameRule` 和 Pydantic 配置，在注册表中注册，并补充前端默认配置与编辑控件，无需修改 Rename Engine。
-- 新存储实现 `StorageProvider`，提供配置 Schema 并注册。`provider_type` 表示实现类型，`storage_id` 表示独立连接；位置和文件 ID 按不透明值传递。
-- `StorageManager` 管理连接生命周期、版本和执行互斥；Repository 原子提交完整状态，API 响应不暴露凭据。
+### 环境与开发启动
 
-具体约束见 [AGENTS.md](AGENTS.md)、[前端约束](frontend/AGENTS.md)和[前端交接](docs/FRONTEND_HANDOFF.md)。
+需要 Python 3.12+ 和 Node.js 20+（CI 使用 22）。以下分别在仓库根目录新开的两个终端执行。
 
-### API 与执行契约
-
-完整接口、请求示例和错误码见 [API 参考](docs/API_REFERENCE.md)，运行时 Schema 见后端 `/docs`。主要接口按职责分组如下：
-
-| 职责 | 接口 |
-| --- | --- |
-| 健康检查与定义 | `GET /health`、`GET /rules`、`GET /storage-providers` |
-| 连接管理与浏览 | `/storages`、`/storages/{storage_id}`、`POST /storages/{storage_id}/files/list` |
-| 本地目录选择 | `POST /local/folder-picker`、`POST /storages/{storage_id}/local/pick` |
-| 预览与执行 | `POST /storages/{storage_id}/rename/preview`、`DELETE /storages/{storage_id}/rename/previews/{preview_id}`、`POST /rename/execute`、`GET /rename/progress/{preview_id}` |
-| 授权 | `GET /storages/{storage_id}/auth/status`、`POST /storages/{storage_id}/auth/start`、`DELETE /storages/{storage_id}/auth/session`、`GET /auth/storage/callback` |
-| 应用设置 | `GET/PATCH /app-settings`、`POST /app-settings/factory-reset` |
-
-所有批量重命名必须先预览。服务端保存不可变快照，绑定连接版本、目录、源项和规则；执行只接收 `preview_id`，重新读取源项与冲突集合并校验。过期、已消费或不再匹配当前状态的预览被拒绝。快照与执行进度位于单进程内存中，不能据此部署多 worker。
-
-交换、循环和名称占用链通过唯一临时名称分阶段处理，失败时尽力回滚并返回逐项结果。未知写入结果先查询真实状态，不能盲目重放整批。OneDrive 与 Google Drive Provider 分别封装 Graph / Drive API 的分页、批量请求、认证刷新及限流处理，业务服务不直接调用云盘 API。
-
-### 测试、构建与发布
-
-由开发者或维护者手动执行以下命令；静态文档核对不能替代测试、浏览器操作和真实云盘验收。
+**后端（PowerShell）：**
 
 ```powershell
-# 后端：在 backend 目录执行
-.\.venv\Scripts\python -m pytest
-
-# 前端：在 frontend 目录执行
-npm ci
-npm run check
+cd backend
+python -m venv .venv
+.\.venv\Scripts\python -m pip install -e ".[dev]"
+.\.venv\Scripts\python -m uvicorn app.main:app --reload
 ```
 
-`npm run check` 依次运行 Vitest、TypeScript 检查与 Vite 构建；单独构建使用 `npm run build`。Frontend CI 在涉及前端或对应工作流文件的 PR，以及手动触发时运行前端测试与构建；普通分支推送（包括 `main`）不触发该工作流。
+macOS 使用 `python3` 创建环境，并将虚拟环境解释器路径替换为 `.venv/bin/python`。API 默认位于 `http://127.0.0.1:8000`，交互文档位于 [/docs](http://127.0.0.1:8000/docs)。
 
-发布使用独立的 **Release ZIPs** 工作流：推送 `v*` 标签后校验版本，使用 `npm run build` 进行前端类型检查与构建，在 Windows x64 / macOS ARM64 的 Python 3.12 全新环境检查运行依赖与解压包服务，全部成功后上传两个系统 ZIP 和校验和至 **Release 草稿**，由维护者最后公开。预发布版本自动标记 Pre-release。手动触发只生成 Actions 构建产物，不创建 Release。发布工作流不运行 Vitest 或后端 pytest 检查。
+**前端：**
 
-发布包需包含完整前端构建产物、后端程序、运行依赖清单及对应平台启动文件，不包含用户状态、凭据、开发环境或 `node_modules`。固定运行依赖的全新安装和 macOS 实机启动仍需人工验收，不能仅依据脚本存在宣称验证通过。
+```powershell
+cd frontend
+npm ci
+npm run dev
+```
 
-- [版本更新、构建工作流程图与发布操作](docs/RELEASING.md)
-- [启动、发布包与人工验收](docs/LAUNCHER.md)
-- [前端测试与 CI](docs/FRONTEND_TESTING.md)
-- [前端测试用例](docs/FRONTEND_TEST_CASES.md)
-- [UI 人工验收](docs/UI_MANUAL_ACCEPTANCE.md)
-- [当前前端状态](docs/UI_STATE.md)与[待办](docs/UI_TODO.md)
+访问 [开发页面](http://localhost:5173)。Vite 将 `/api` 代理到后端并移除前缀；开发模式无需构建产物。可复制 `.env.example` 为根目录 `.env`，环境变量含义见[具体配置说明](https://github.com/runoobjerry/Rename_Studio/wiki/Configuration)。
 
-### 免责声明
+### 构建、测试与发布
 
-本项目按仓库 [LICENSE](LICENSE) 中的 GNU AGPL v3 许可条款提供，不作适销性、特定用途适用性或无错误运行的保证；责任限制以该许可证为准。
+```powershell
+# 在 frontend 目录：单独构建
+npm run build
 
-批量重命名会修改真实文件或云端项目。预览、冲突检测与回滚机制不能替代备份，也不能保证在网络中断、第三方服务异常、外部并发修改或进程被强制终止时完整恢复。请仅操作自己拥有或获授权的文件，使用前备份重要数据，并先在测试副本上验证规则。当前没有历史撤销功能，执行前请自行确认结果。
+# 在 frontend 目录：Vitest、TypeScript 检查与 Vite 构建
+npm run check
 
-本项目为独立工具，与 Microsoft、Google 等第三方服务提供商无隶属或官方背书关系。第三方服务的可用性、限制及使用条款由其提供方决定；请妥善保护本地凭据和账号授权。
+# 在 backend 目录：后端测试（macOS 使用 .venv/bin/python）
+.\.venv\Scripts\python -m pytest
+```
+
+构建生成完整 `frontend/dist` 后，可从仓库根目录使用 `Start.ps1` / `Start.sh` 验证发布模式。发布启动器使用单进程后端提供静态页面，保留根路径 API 和 `/api` 挂载；预览和执行状态位于进程内存中，不支持多 worker 部署。
+
+Frontend CI 在相关 PR 或手动触发时运行前端测试和构建。Release ZIPs 在 `v*` 标签推送时构建、按白名单组装 ZIP，并在 Windows x64 / macOS ARM64 的全新 Python 3.12 环境检查依赖和解压包服务，成功后创建 Release 草稿；手动触发只生成 Actions 产物。发布工作流不运行 Vitest 或 pytest，也不代替启动交互、浏览器、OAuth 和真实改名验收。
+
+### 模块边界与维护文档
+
+规则位于 `backend/app/rules`；各 Provider 的配置、定义、认证与驱动位于 `backend/app/providers`，经 `builtin.py` 显式注册。前端依据 Provider 元数据渲染连接配置与操作；`StorageManager` 管理连接生命周期、版本和执行互斥，Repository 原子保存完整状态。新增规则或 Provider 不应将具体存储逻辑引入 Rename Engine。
+
+- [项目约束](AGENTS.md)、[前端边界](frontend/AGENTS.md)、[前端交接](docs/FRONTEND_HANDOFF.md)
+- [API 参考](docs/API_REFERENCE.md)、[版本发布](docs/RELEASING.md)、[启动与人工验收](docs/LAUNCHER.md)
+- [前端测试与 CI](docs/FRONTEND_TESTING.md)、[测试用例](docs/FRONTEND_TEST_CASES.md)、[UI 人工验收](docs/UI_MANUAL_ACCEPTANCE.md)
+- [当前前端状态](docs/UI_STATE.md)、[待办](docs/UI_TODO.md)
+
+### 许可与免责声明
+
+本项目按 [GNU AGPL v3](LICENSE) 提供，不保证无错误运行，责任限制以许可证为准。批量重命名会修改真实文件，预览与回滚不能替代备份；目前没有历史撤销功能，请仅操作自己拥有或获授权的数据，先在测试副本验证规则。
+
+项目与 Microsoft、Google 无官方关联。第三方服务的可用性与条款由其提供方决定；请妥善保护本地凭据与账号授权。完整说明见[隐私政策](https://github.com/runoobjerry/Rename_Studio/wiki/Privacy-Policy)。
