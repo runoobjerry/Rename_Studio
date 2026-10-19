@@ -33,7 +33,7 @@ def get_definition(settings: Settings) -> ProviderDefinition:
                 key="client_id", label="Google Client ID", create_label="Google Client ID（可稍后配置）", nullable=True,
             ),
             StorageConfigField(
-                key="client_secret", label="Google Client Secret", input_type="password", target="client_secret",
+                key="client_secret", label="Google Client Secret", input_type="text", target="client_secret",
                 help_text="请填写 Desktop OAuth 客户端的密钥，保存后登录 Google 账号。",
                 create_help_text="使用自行创建的 Desktop OAuth 客户端 ID 和密钥；两项保存后才能登录。",
                 saved_help_text="已保存密钥；留空保留原值。更改客户端配置后需重新登录。",
