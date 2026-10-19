@@ -1,6 +1,5 @@
 import json
 from typing import Annotated, Literal
-from pathlib import Path
 
 from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_validator, model_validator
 
@@ -84,47 +83,6 @@ class AppSettingsPatch(BaseModel):
     def check_size(self) -> "AppSettingsPatch":
         validate_preferences_size(self)
         return self
-
-
-class LocalConfig(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-    root_path: str = Field(min_length=1, max_length=4096)
-
-    @field_validator("root_path")
-    @classmethod
-    def existing_root(cls, value: str) -> str:
-        root = Path(value).expanduser().resolve()
-        if not root.is_dir():
-            raise ValueError("Local root must be an existing directory")
-        return str(root)
-
-
-class OneDriveConfig(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-    client_id: str | None = Field(default=None, max_length=200)
-
-    @field_validator("client_id")
-    @classmethod
-    def normalize_client(cls, value: str | None) -> str | None:
-        if value is None:
-            return None
-        if not value.strip():
-            raise ValueError("OneDrive App ID cannot be blank")
-        return value.strip()
-
-
-class GoogleDriveConfig(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-    client_id: str | None = Field(default=None, max_length=200)
-
-    @field_validator("client_id")
-    @classmethod
-    def normalize_client(cls, value: str | None) -> str | None:
-        if value is None:
-            return None
-        if not value.strip():
-            raise ValueError("Google OAuth Client ID cannot be blank")
-        return value.strip()
 
 
 class StorageClientSecret(BaseModel):

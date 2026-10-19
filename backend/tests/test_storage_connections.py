@@ -13,13 +13,13 @@ from app.api import app_settings_router, storage_router
 from app.core.errors import ProviderError, StorageBusyError, StorageConnectionChangedError, ValidationError
 from app.core import config as app_config
 from app.main import create_app
-from app.providers.local.driver import LocalProvider
-from app.providers.onedrive.driver import OneDriveProvider
-from app.providers.registry import ProviderDefinition, ProviderRegistry
+from app.providers.local.definition import get_definition as local_definition
+from app.providers.onedrive.definition import OneDriveConfig, get_definition as onedrive_definition
+from app.providers.registry import ProviderRegistry
 from app.repositories.storage_repository import JsonStorageRepository
 from app.schemas.rename import RenamePreviewRequest
 from app.schemas.rules import RuleSpec
-from app.schemas.storage import StorageConfigField, LocalConfig, OneDriveConfig, RootLocation, StorageCreate, StorageUpdate
+from app.schemas.storage import StorageConfigField, RootLocation, StorageCreate, StorageUpdate
 from app.services.connection_auth import ConnectionAuth
 from app.services.execute_service import ExecuteService
 from app.providers.onedrive.auth import OneDriveAuthService
@@ -36,11 +36,12 @@ def make_manager(tmp_path: Path) -> StorageManager:
     root.mkdir(exist_ok=True)
     repository = JsonStorageRepository(tmp_path / "storages.json")
     registry = ProviderRegistry()
-    registry.register(ProviderDefinition("local", "Local", LocalConfig, ("root", "path", "id"), lambda record, auth: LocalProvider(Path(str(record.config["root_path"]))), local_picker=True))
-    registry.register(ProviderDefinition("onedrive", "OneDrive", OneDriveConfig, ("root", "id", "path"), lambda record, auth: OneDriveProvider(cast(ConnectionAuth, auth)),
-        auth_factory=lambda record, persist, guard: OneDriveAuthService("http://localhost/auth/storage/callback",
-            initial_state={**record.credentials, **({"client_id": str(record.config["client_id"])} if record.config["client_id"] else {})},
-            persist=lambda payload: persist({"client_id": payload.get("client_id")}, {key: value for key, value in payload.items() if key != "client_id"}), before_change=guard)))
+    settings = app_config.Settings(
+        _env_file=None, local_storage_root=root,
+        storage_redirect_uri="http://localhost/auth/storage/callback",
+    )
+    registry.register(local_definition(settings))
+    registry.register(onedrive_definition(settings))
     state = repository.load_or_initialize(root, registry.validate_config)
     return StorageManager(registry, repository, state)
 

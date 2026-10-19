@@ -88,7 +88,9 @@ def api(manager: StorageManager) -> TestClient:
 
 def test_connection_api_separates_secret_and_advertises_rename_capability(manager: StorageManager) -> None:
     with api(manager) as client:
-        definition = next(item for item in client.get("/storage-providers").json() if item["provider_type"] == "google_drive")
+        definitions = client.get("/storage-providers").json()
+        assert [item["provider_type"] for item in definitions] == ["local", "onedrive", "google_drive"]
+        definition = next(item for item in definitions if item["provider_type"] == "google_drive")
         assert definition["browser_auth"] and definition["can_rename"]
         assert definition["locations"] == ["root", "id"]
         assert "client_secret" not in definition["config_schema"]["properties"]
