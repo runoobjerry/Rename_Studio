@@ -1,7 +1,7 @@
 import { useState } from "react";
 import ArrowBackRoundedIcon from "@mui/icons-material/ArrowBackRounded";
 import KeyboardArrowRightIcon from "@mui/icons-material/KeyboardArrowRight";
-import AutoFixHighRoundedIcon from "@mui/icons-material/AutoFixHighRounded";
+import brandMark from "../../assets/brand-mark.svg";
 import GitHubIcon from "@mui/icons-material/GitHub";
 import { version } from "../../../package.json";
 import { Box, Button, Card, Divider, Dialog, DialogActions, DialogContent, DialogContentText, DialogTitle, MenuItem, Stack, TextField, Typography } from "@mui/material";
@@ -73,8 +73,8 @@ export function SettingsPage({ preference, onPreferenceChange, onBack, executing
           <Card variant="outlined">
             <Stack direction="row" sx={{ alignItems: "center", justifyContent: "space-between", gap: 2, p: { xs: 2, sm: 2.5 } }}>
               <Stack direction="row" spacing={1.25} sx={{ alignItems: "center", minWidth: 0 }}>
-                <Box className="brand-mark" sx={{ flexShrink: 0 }}><AutoFixHighRoundedIcon fontSize="small" /></Box>
-                <Typography variant="body2" sx={{ fontWeight: 500 }}>Rename Studio</Typography>
+                <Box component="img" src={brandMark} alt="" width={36} height={36} sx={{ display: "block", flexShrink: 0 }} />
+                <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>Rename Studio</Typography>
               </Stack>
               <Box sx={{ flexShrink: 0, textAlign: "right" }}>
                 <Typography variant="body2" color="text.secondary">v{version}</Typography>

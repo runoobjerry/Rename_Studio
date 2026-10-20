@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" role="img" aria-label="OneDrive">
+  <title>OneDrive</title>
+  <!-- Three overlapping cloud forms, simplified from the original OneDrive logo. -->
+  <path d="M7.65 18.7C4.52 18.7 2 16.18 2 13.05c0-3.13 2.45-5.65 5.58-5.7A6.66 6.66 0 0 1 12.48 5.3c2.63 0 4.68 1.7 5.02 4.29C20.04 9.65 22 11.63 22 14.15c0 2.52-2.04 4.55-4.56 4.55H7.65Z"/>
+  <path d="M7.58 7.35C6.3 8.93 5.32 11.28 4.3 12.83c-.76 1.16-1.95 1.04-2.26.13"/>
+  <path d="M7.65 18.7c1.77-.05 3.3-2.51 4.63-5.14 1.28-2.52 2.7-4.04 5.22-3.97"/>
+</svg>

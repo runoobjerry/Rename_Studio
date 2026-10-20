@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" role="img" aria-label="Google Drive">
+  <title>Google Drive</title>
+  <!-- Source silhouette transformed uniformly into the 24px coordinate system. -->
+  <defs><path id="google-drive-material-shape" d="M8.3141 5.5040 c1.63811 -2.83730 5.73362 -2.83741 7.37173 0 l5.04370 8.73600 c1.63811 2.83741 -0.40958 6.38411 -3.68592 6.38411 H6.95630 c-3.27634 0 -5.32403 -3.54670 -3.68592 -6.38411Z"/>
+    <clipPath id="google-drive-material-clip"><use href="#google-drive-material-shape"/></clipPath></defs>
+    <g clip-path="url(#google-drive-material-clip)">
+       <!-- The outer stroke is clipped inward: exact original rounded silhouette, 1.8px visible line. -->
+       <use href="#google-drive-material-shape" stroke-width="3.6"/>
+       <!-- Three internal boundaries, sharing the 1.8px rounded stroke style with OneDrive. -->
+       <path d="M4.7249 11.7117 H15.0177 M8.9819 11.7117 L12.0003 16.9381 L15.0177 11.7117 M15.0177 11.7117 L17.1468 8.0240 M12.0003 16.9381 L14.1297 20.6241"/>
+  </g>
+</svg>

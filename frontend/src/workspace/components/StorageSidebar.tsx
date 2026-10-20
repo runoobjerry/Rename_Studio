@@ -1,4 +1,4 @@
-import AutoFixHighRoundedIcon from "@mui/icons-material/AutoFixHighRounded";
+import brandMark from "../../assets/brand-mark.svg";
 import CloudQueueRoundedIcon from "@mui/icons-material/CloudQueueRounded";
 import ComputerRoundedIcon from "@mui/icons-material/ComputerRounded";
 import StorageRoundedIcon from "@mui/icons-material/StorageRounded";
@@ -60,12 +60,11 @@ export function StorageSidebar({ storages, providerDefinitions, isLoading, disab
         spacing={1.25}
         sx={{ alignItems: "center", px: 1, py: 1.25, mb: 1 }}
       >
-        <Box className="brand-mark"><AutoFixHighRoundedIcon fontSize="small" /></Box>
+        <Box component="img" src={brandMark} alt="" width={36} height={36} sx={{ display: "block", flexShrink: 0 }} />
         <Box>
-          <Typography variant="subtitle1" sx={{ fontWeight: 800, lineHeight: 1.1 }}>
+          <Typography variant="subtitle1" sx={{ fontWeight: 600, lineHeight: 1.1 }}>
             Rename Studio
           </Typography>
-          <Typography variant="caption" color="textPrimary">批量重命名工作台</Typography>
         </Box>
       </Stack>
       <Typography
