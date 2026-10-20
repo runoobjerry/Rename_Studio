@@ -45,7 +45,7 @@ def create_app() -> FastAPI:
             if get_storage_manager.cache_info().currsize:
                 await get_storage_manager().aclose()
 
-    app = FastAPI(title=settings.app_name, version="1.0.0-alpha2", lifespan=lifespan)
+    app = FastAPI(title=settings.app_name, version="1.0.0-alpha3", lifespan=lifespan)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=[settings.frontend_origin],
