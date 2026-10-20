@@ -17,6 +17,7 @@ __pycache__/
 
 # Frontend dependencies and generated files
 node_modules/
+/frontend/.npm-cache/
 dist/
 coverage/
 *.tsbuildinfo

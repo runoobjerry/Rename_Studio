@@ -1,12 +1,13 @@
 import { alpha, createTheme } from "@mui/material/styles";
 import type { PaletteMode } from "@mui/material";
+import * as muiLocales from "@mui/material/locale";
 
 const accent = "#00ff9d";
 
 // 菜单共享几何参数；有可见条数限制的菜单也按这些值计算滚动高度。
 export const MENU_METRICS = { itemHeight: 34, inset: 4, gap: 2 } as const;
 
-export function createAppTheme(mode: PaletteMode) {
+export function createAppTheme(mode: PaletteMode, locale = "en-US") {
   const dark = mode === "dark";
   const textPrimary = dark ? "#f1f7f4" : "#14231d";
   const textSecondary = dark ? "#a5b8b0" : "#586a62";
@@ -235,5 +236,5 @@ export function createAppTheme(mode: PaletteMode) {
         },
       },
     },
-  });
+  }, muiLocales[locale.replaceAll("-", "") as keyof typeof muiLocales] ?? muiLocales.enUS);
 }

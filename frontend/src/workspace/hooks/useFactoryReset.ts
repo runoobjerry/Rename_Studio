@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { useIsMutating, useQueryClient } from "@tanstack/react-query";
 
-import { errorMessage, useNotification } from "../../components/NotificationProvider";
+import { useNotification } from "../../components/NotificationProvider";
+import { useTranslation } from "react-i18next";
 import { useAppSettings } from "../../features/settings/useAppSettings";
 import { useRenameStore } from "../../stores/useRenameStore";
 import type { RenameTask } from "../../types";
@@ -19,6 +20,7 @@ export function useFactoryReset({
   task, isExecuting, isPreviewing, storageBusy, endTask, resetWorkspaceSession,
 }: FactoryResetOptions) {
   const notify = useNotification();
+  const { t } = useTranslation("settings");
   const queryClient = useQueryClient();
   const appSettings = useAppSettings();
   const activeMutations = useIsMutating();
@@ -27,11 +29,11 @@ export function useFactoryReset({
 
   let resetDisabledReason: string | undefined;
   if (task?.items.some((item) => item.status === "unknown")) {
-    resetDisabledReason = "请先核对待核对项并结束当前任务。";
+    resetDisabledReason = t("resetUnknown");
   } else if (isExecuting || isPreviewing || storageBusy) {
-    resetDisabledReason = "重命名操作进行中，完成后才能重置。";
+    resetDisabledReason = t("resetBusy");
   } else if (activeMutations > 0) {
-    resetDisabledReason = "连接正在保存，请稍后重试。";
+    resetDisabledReason = t("resetSaving");
   }
   const factoryReset = async () => {
     if (resetPending || resetDisabledReason) return false;
@@ -40,7 +42,7 @@ export function useFactoryReset({
       try {
         await appSettings.factoryReset();
       } catch (error) {
-        notify(`恢复出厂设置失败：${errorMessage(error as Error)}`, "error");
+        notify({ key: "settings:resetFailed", values: { message: (error as Error).message } }, "error");
         return false;
       }
       // Clear the workspace only after the backend reset succeeds.
@@ -51,7 +53,7 @@ export function useFactoryReset({
       setResetEpoch((current) => current + 1);
       queryClient.removeQueries({ predicate: (query) => query.queryKey[0] !== "app-settings" && query.queryKey[0] !== "rules" });
       void queryClient.invalidateQueries({ queryKey: ["storages"] });
-      notify("已重置应用", "success");
+      notify({ key: "settings:resetDone" }, "success");
       return true;
     } finally {
       setResetPending(false);

@@ -36,7 +36,7 @@ const status = (accountId: string | null, connected = true): AuthorizationStatus
 beforeEach(() => {
   window.sessionStorage.clear();
   serverSettings = { preferences: {
-    theme: "system", hide_batch_limit_hint: false, cloud_default_locations: {},
+    language: "auto", theme: "system", hide_batch_limit_hint: false, cloud_default_locations: {},
   } };
   vi.mocked(api.fetchAppSettings).mockImplementation(async () => serverSettings);
   vi.mocked(api.patchAppSettings).mockImplementation(async (patch) => {
@@ -52,7 +52,7 @@ beforeEach(() => {
   });
   vi.mocked(api.factoryResetAppSettings).mockImplementation(async () => {
     serverSettings = { preferences: {
-      theme: "system", hide_batch_limit_hint: false, cloud_default_locations: {},
+      language: "auto", theme: "system", hide_batch_limit_hint: false, cloud_default_locations: {},
     } };
     vi.mocked(api.fetchStorages).mockResolvedValue([{
       storage_id: "default-local", provider_type: "local", name: "本地文件", revision: 2, busy: false,
@@ -330,6 +330,47 @@ describe("workspace path navigation", () => {
   });
 });
 
+describe("language settings", () => {
+  it("switches through the menu, preserves workspace state, and reports a failed save", async () => {
+    vi.mocked(api.fetchStorageFiles).mockResolvedValue({
+      provider: "local", path: "", parent_path: null, location: { kind: "root" },
+      items: [{ id: "keep.txt", name: "keep.txt", path: "keep.txt", parent_path: "", is_directory: false, size: 1, modified_at: null }],
+    });
+    render(<QueryClientProvider client={client}><WorkspaceApp /></QueryClientProvider>);
+    fireEvent.click(await screen.findByRole("checkbox", { name: "选择文件 keep.txt" }));
+    fireEvent.click(screen.getByRole("button", { name: "设置" }));
+    const menu = await screen.findByRole("combobox", { name: "界面语言" });
+    const filesRequests = vi.mocked(api.fetchStorageFiles).mock.calls.length;
+    const metadataRequests = vi.mocked(api.fetchStorageProviders).mock.calls.length;
+    fireEvent.mouseDown(menu);
+    fireEvent.click(screen.getByRole("option", { name: "English" }));
+    await screen.findByRole("button", { name: "Back to workspace" });
+    await waitFor(() => expect(serverSettings.preferences.language).toBe("en-US"));
+    expect(document.documentElement.lang).toBe("en-US");
+    expect(api.fetchStorageFiles).toHaveBeenCalledTimes(filesRequests);
+    expect(api.fetchStorageProviders).toHaveBeenCalledTimes(metadataRequests);
+    expect(useRenameStore.getState().selectedIds).toEqual(["keep.txt"]);
+
+    vi.mocked(api.patchAppSettings).mockRejectedValueOnce(new Error("Offline"));
+    fireEvent.mouseDown(screen.getByRole("combobox", { name: "Interface language" }));
+    fireEvent.click(screen.getByRole("option", { name: "简体中文" }));
+    expect(await screen.findByText("Could not save the language. The change was reverted: Offline")).toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: "Interface language" })).toHaveTextContent("English");
+    expect(document.documentElement.lang).toBe("en-US");
+    fireEvent.click(screen.getByRole("button", { name: "Back to workspace" }));
+    expect(await screen.findByRole("checkbox", { name: "选择文件 keep.txt" })).toBeChecked();
+  });
+
+  it("uses browser auto and a localized warning when settings cannot be read", async () => {
+    vi.spyOn(navigator, "languages", "get").mockReturnValue(["en-GB"]);
+    vi.mocked(api.fetchAppSettings).mockRejectedValue(new Error("Offline"));
+    render(<QueryClientProvider client={client}><WorkspaceApp /></QueryClientProvider>);
+    expect(await screen.findByText("Could not load app settings. Using default preferences: Offline")).toBeInTheDocument();
+    expect(document.documentElement.lang).toBe("en-US");
+    expect(api.patchAppSettings).not.toHaveBeenCalled();
+  });
+});
+
 describe("factory reset", () => {
   const openSettings = async () => {
     render(<QueryClientProvider client={client}><WorkspaceApp /></QueryClientProvider>);
@@ -364,7 +405,7 @@ describe("factory reset", () => {
     await waitFor(() => expect(api.factoryResetAppSettings).toHaveBeenCalledTimes(1));
     await waitFor(() => expect(useRenameStore.getState().rules).toEqual([]));
     expect(useRenameStore.getState().selectedIds).toEqual([]);
-    expect(serverSettings.preferences).toEqual({ theme: "system", hide_batch_limit_hint: false, cloud_default_locations: {} });
+    expect(serverSettings.preferences).toEqual({ language: "auto", theme: "system", hide_batch_limit_hint: false, cloud_default_locations: {} });
     expect(await screen.findByText("已重置应用")).toBeInTheDocument();
     await waitFor(() => expect(screen.queryByRole("dialog", { name: "确认重置？" })).not.toBeInTheDocument());
     await waitFor(() => expect(screen.getByRole("combobox", { name: "外观主题" })).toHaveTextContent("跟随系统"));

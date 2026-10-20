@@ -3,13 +3,18 @@ import type { ReactNode } from "react";
 import Alert from "@mui/material/Alert";
 import Snackbar from "@mui/material/Snackbar";
 import { ApiError } from "../api/client";
+import { useTranslation } from "react-i18next";
 
 type Severity = "success" | "info" | "warning" | "error";
-type Notify = (message: string, severity?: Severity) => void;
+interface LocalizedMessage {
+  key: string;
+  values?: Record<string, string | number>;
+}
+type Notify = (message: string | LocalizedMessage, severity?: Severity) => void;
 const NotificationContext = createContext<Notify | null>(null);
 interface Notification {
   id: number;
-  message: string;
+  message: string | LocalizedMessage;
   severity: Severity;
   open: boolean;
   replaced: boolean;
@@ -25,6 +30,7 @@ export function errorMessage(error: Error): string {
 }
 
 export function NotificationProvider({ children }: { children: ReactNode }) {
+  const { t } = useTranslation();
   const nextId = useRef(0);
   const enteredIds = useRef(new Set<number>());
   const [messages, setMessages] = useState<Notification[]>([]);
@@ -75,7 +81,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
             // 被替换时覆盖 Grow 的缩放，只在原地淡出；正常关闭保留反向 Grow。
             sx={{ width: "100%", ...(item.replaced && { transform: "none !important" }) }}
           >
-            {item.message}
+            {typeof item.message === "string" ? item.message : t(item.message.key, item.message.values)}
           </Alert>
         </Snackbar>
       ))}

@@ -1,4 +1,5 @@
 import { memo, useCallback, useEffect, useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
 import ArrowBackRoundedIcon from "@mui/icons-material/ArrowBackRounded";
 import FolderRoundedIcon from "@mui/icons-material/FolderRounded";
 import InsertDriveFileOutlinedIcon from "@mui/icons-material/InsertDriveFileOutlined";
@@ -74,16 +75,11 @@ function getExtension(name: string, isDirectory: boolean): string {
   return dotIndex > 0 && dotIndex < name.length - 1 ? name.slice(dotIndex + 1) : "—";
 }
 
-const modifiedAtFormatter = new Intl.DateTimeFormat("zh-CN", {
-  year: "numeric", month: "2-digit", day: "2-digit",
-  hour: "2-digit", minute: "2-digit", hour12: false,
-});
-
-function formatModifiedAt(value: string | null): string {
+function formatModifiedAt(value: string | null, formatter: Intl.DateTimeFormat): string {
   if (!value) return "—";
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
-  return modifiedAtFormatter.format(date);
+  return formatter.format(date);
 }
 
 export const FileBrowser = memo(function FileBrowser({
@@ -101,6 +97,11 @@ export const FileBrowser = memo(function FileBrowser({
   onClearSelection,
   onInvertSelection,
 }: FileBrowserProps) {
+  const { i18n } = useTranslation();
+  const modifiedAtFormatter = useMemo(() => new Intl.DateTimeFormat(i18n.resolvedLanguage, {
+    year: "numeric", month: "2-digit", day: "2-digit",
+    hour: "2-digit", minute: "2-digit", hour12: false,
+  }), [i18n.resolvedLanguage]);
   const [filters, setFilters] = useState<FileFilter[]>([]);
   useEffect(() => {
     setFilters((current) => [...current.filter((filter) => filter === "file" || filter === "folder"), ...(task ? ["pending" as const] : [])]);
@@ -130,7 +131,7 @@ export const FileBrowser = memo(function FileBrowser({
   const scrollKey = useMemo(() => [listing.items, task?.taskId, filters, sort], [listing.items, task?.taskId, filters, sort]);
   const columnValues = useMemo(() => [visibleItems.map(() => ""), visibleItems.map((item) => item.name),
     visibleItems.map((item) => getExtension(item.name, item.is_directory)),
-    visibleItems.map((item) => formatModifiedAt(item.modified_at))], [visibleItems]);
+    visibleItems.map((item) => formatModifiedAt(item.modified_at, modifiedAtFormatter))], [visibleItems, modifiedAtFormatter]);
   const virtual = useVirtualTable(visibleItems.length, scrollKey, columnValues, fixedColumnWidths);
   const allSelected = selectableIds.length > 0 && selectableIds.every((id) => selectedSet.has(id));
   // 任务结果改变状态后，隐藏的失败/完成项退出选择，记录仍留在任务中。
@@ -264,7 +265,7 @@ export const FileBrowser = memo(function FileBrowser({
             <VirtualTableSpacer height={virtual.top} columns={4} />
             {visibleItems.slice(virtual.start, virtual.end).map((item, offset) => (
               <FileBrowserRow key={taskItems.get(item.id)?.taskItemId ?? item.id}
-                item={item} rowIndex={virtual.start + offset} selected={selectedSet.has(item.id)}
+                item={item} rowIndex={virtual.start + offset} selected={selectedSet.has(item.id)} modifiedAtFormatter={modifiedAtFormatter}
                 disabled={disabled || listedItems.get(item.id)?.can_rename === false || (hasTask && (!taskCurrent || !listedItems.has(item.id))) || taskItems.get(item.id)?.status === "completed" || taskItems.get(item.id)?.status === "unknown"}
                 navigationDisabled={hasTask || disabled} onToggle={onToggle}
                 onNavigate={onNavigate} onNavigateLocation={onNavigateLocation} />
@@ -285,6 +286,7 @@ export const FileBrowser = memo(function FileBrowser({
 });
 
 interface FileBrowserRowProps {
+  modifiedAtFormatter: Intl.DateTimeFormat;
   item: FileItem;
   rowIndex: number;
   selected: boolean;
@@ -295,9 +297,9 @@ interface FileBrowserRowProps {
   onNavigateLocation: FileBrowserProps["onNavigateLocation"];
 }
 
-const FileBrowserRow = memo(function FileBrowserRow({ item, rowIndex, selected, disabled, navigationDisabled,
+const FileBrowserRow = memo(function FileBrowserRow({ item, rowIndex, selected, disabled, navigationDisabled, modifiedAtFormatter,
   onToggle, onNavigate, onNavigateLocation }: FileBrowserRowProps) {
-  const modifiedAt = formatModifiedAt(item.modified_at);
+  const modifiedAt = formatModifiedAt(item.modified_at, modifiedAtFormatter);
   return <TableRow hover selected={selected} data-row-index={rowIndex} aria-rowindex={rowIndex + 2} tabIndex={-1}>
     <TableCell padding="checkbox">
       <Checkbox size="small" sx={fileCheckboxSx} checked={selected} disabled={disabled} onChange={() => onToggle(item.id)}

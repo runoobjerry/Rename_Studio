@@ -35,7 +35,7 @@ beforeEach(() => {
   window.sessionStorage.clear();
   useRenameStore.setState({ selectedIds: [], rules: [], task: null });
   client = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } });
-  serverSettings = { preferences: { theme: "system", hide_batch_limit_hint: false, cloud_default_locations: {} } };
+  serverSettings = { preferences: { language: "auto", theme: "system", hide_batch_limit_hint: false, cloud_default_locations: {} } };
   vi.mocked(api.fetchAppSettings).mockImplementation(async () => serverSettings);
   vi.mocked(api.patchAppSettings).mockImplementation(async (patch) => {
     const locations = { ...serverSettings.preferences.cloud_default_locations };

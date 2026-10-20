@@ -31,6 +31,11 @@ class PathLocation(BaseModel):
 
 StorageLocation = Annotated[RootLocation | IdLocation | PathLocation, Field(discriminator="kind")]
 
+# Accept future locale identifiers without a backend language registry.
+LanguagePreference = Annotated[
+    str, Field(min_length=2, max_length=63, pattern=r"^[A-Za-z]{2,8}(?:-[A-Za-z0-9]{1,8})*$"),
+]
+
 
 class CloudDefaultLocation(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -58,6 +63,7 @@ def validate_preferences_size(preferences: "AppPreferences | AppSettingsPatch") 
 
 class AppPreferences(BaseModel):
     model_config = ConfigDict(extra="forbid")
+    language: LanguagePreference = "auto"
     theme: Literal["light", "dark", "system"] = "system"
     hide_batch_limit_hint: bool = False
     cloud_default_locations: dict[str, CloudDefaultLocation] = Field(default_factory=dict)
@@ -74,6 +80,7 @@ class AppSettingsResponse(BaseModel):
 
 class AppSettingsPatch(BaseModel):
     model_config = ConfigDict(extra="forbid")
+    language: LanguagePreference = "auto"
     theme: Literal["light", "dark", "system"] = "system"
     hide_batch_limit_hint: bool = False
     # Replace one connection's current-account default; null removes it.

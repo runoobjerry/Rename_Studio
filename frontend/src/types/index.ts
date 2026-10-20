@@ -60,6 +60,7 @@ export interface CloudDefaultLocation {
 }
 
 export interface AppPreferences {
+  language: string;
   theme: ThemePreference;
   hide_batch_limit_hint: boolean;
   cloud_default_locations: Record<string, CloudDefaultLocation>;
@@ -70,6 +71,7 @@ export interface AppSettings {
 }
 
 export interface AppSettingsPatch {
+  language?: string;
   theme?: ThemePreference;
   hide_batch_limit_hint?: boolean;
   cloud_default_locations?: Record<string, CloudDefaultLocation | null>;

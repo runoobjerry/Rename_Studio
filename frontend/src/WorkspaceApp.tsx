@@ -13,6 +13,8 @@ import {
   useTheme,
 } from "@mui/material";
 import { useQuery } from "@tanstack/react-query";
+import { useTranslation } from "react-i18next";
+import { LanguageProvider, useLanguagePreference } from "./i18n/LanguageProvider";
 
 import { fetchRules } from "./api/client";
 import { BatchLimitDialog } from "./workspace/components/BatchLimitDialog";
@@ -30,7 +32,7 @@ import { createAppTheme } from "./theme";
 import { useThemePreference } from "./features/settings/useThemePreference";
 import { useFactoryReset } from "./workspace/hooks/useFactoryReset";
 import type { ThemePreference } from "./features/settings/useThemePreference";
-import { NotificationProvider, errorMessage, useNotification } from "./components/NotificationProvider";
+import { NotificationProvider, useNotification } from "./components/NotificationProvider";
 
 const SettingsPage = lazy(() =>
   import("./features/settings/SettingsPage").then((module) => ({
@@ -45,16 +47,22 @@ type AppView = "workspace" | "settings";
 const drawerWidth = 244;
 
 function SecondaryPageFallback() {
+  const { t } = useTranslation();
   return (
     <Box sx={{ display: "grid", minHeight: 240, placeItems: "center" }}>
-      <CircularProgress size={28} aria-label="正在加载页面" />
+      <CircularProgress size={28} aria-label={t("loadingPage")} />
     </Box>
   );
 }
 
 export default function WorkspaceApp() {
+  return <LanguageProvider><ThemedWorkspace /></LanguageProvider>;
+}
+
+function ThemedWorkspace() {
+  const { locale } = useLanguagePreference();
   const { mode, preference, setPreference, settingsError } = useThemePreference();
-  const theme = useMemo(() => createAppTheme(mode), [mode]);
+  const theme = useMemo(() => createAppTheme(mode, locale), [mode, locale]);
   return (
     <ThemeProvider theme={theme}>
       <NotificationProvider><Workspace preference={preference} setPreference={setPreference} settingsError={settingsError} /></NotificationProvider>
@@ -69,10 +77,10 @@ function Workspace({ preference, setPreference, settingsError }: {
 }) {
   const notify = useNotification();
   useEffect(() => {
-    if (settingsError) notify(`读取应用设置失败，暂用默认偏好：${errorMessage(settingsError)}`, "warning");
+    if (settingsError) notify({ key: "settings:readFailed", values: { message: settingsError.message } }, "warning");
   }, [settingsError, notify]);
   const changeTheme = (next: ThemePreference) => {
-    void setPreference(next).catch((error: Error) => notify(`主题保存失败，已撤销本次更改：${errorMessage(error)}`, "error"));
+    void setPreference(next).catch((error: Error) => notify({ key: "settings:themeSaveFailed", values: { message: error.message } }, "error"));
   };
   const theme = useTheme();
   const compactNavigation = useMediaQuery(theme.breakpoints.down("md"));

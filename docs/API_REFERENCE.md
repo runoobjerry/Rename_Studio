@@ -300,6 +300,7 @@ Array<{
 
 ```ts
 interface AppPreferences {
+  language: string; // "auto" 或语言代码，例如 "zh-CN"、"en-US"
   theme: "light" | "dark" | "system";
   hide_batch_limit_hint: boolean;
   cloud_default_locations: Record<string, { account_id: string; location: StorageLocation }>;
@@ -315,6 +316,8 @@ interface AppPreferences {
 云默认目录 patch 按传入的 storage ID 整体替换记录；`null` 删除该连接默认值，省略的连接保持不变。每个连接仅保留当前账号的默认目录；保存其他账号记录返回 `STORAGE_CONNECTION_CHANGED`（409）。账号变化、disconnect、配置变化或连接删除时，默认目录随连接更新原子移除；正常 Token rotation 保留默认目录。
 
 patch 合并到当前偏好，保留省略的偏好、连接及最新凭据；每个字段最后一次成功处理的修改生效。完整状态原子保存，保存成功后才更新内存和前端 cache；失败返回错误并保留原状态。
+
+`language` 默认 `auto`，恢复出厂设置同样恢复 `auto`；后端只校验语言标识长度（2–63）和连字符分段格式，不维护前端支持语言列表。旧 v3 文档缺省该字段时正常加载；已保存但当前前端不支持的标识保留原值，界面回退 `en-US`。增加字段后，使用 `extra="forbid"` 的旧版程序不能直接读取新版写出的偏好文档。
 
 偏好限制：最多 100 条云默认目录记录；连接/账号标识长 1–200 字符；目录值最长 4096 字符；JSON 大小最多 128 KiB。factory reset 等待前端排队保存完成，重置期间拒绝新保存；后端存在活动重命名时返回 `STORAGE_BUSY`（409）。默认 Local 保留，真实文件不受影响；规则仍为前端内存状态。
 

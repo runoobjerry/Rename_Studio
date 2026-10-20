@@ -19,6 +19,7 @@
 | `workspace/hooks/useFactoryReset.ts` | 重置禁用条件、请求状态、成功后的缓存和工作区清理 |
 | `features/settings/{SettingsPage,StorageSettingsPanel}.tsx` | 外观、多连接配置、授权与重置确认 |
 | `features/settings/{useAppSettings,useThemePreference}.ts` | 后端设置读取/串行保存、主题草稿与系统外观订阅 |
+| `i18n/`、`locales/` | i18next 初始化、Vite 自动发现语言资源、浏览器语言解析、语言偏好及初次显示门控；日期/数字格式化 |
 | `features/files/{FileBrowser,LocationBreadcrumbs}.tsx`、`fileSort.ts`、`defaultCloudLocation.ts` | 文件/任务成员表、排序比较、筛选与选择、路径导航、默认目录账号匹配 |
 | `features/rules/{RuleEditor,RuleFields}.tsx` | 顺序规则链、添加菜单和显式字段配置 |
 | `features/rename/{PreviewPanel,RenameActions,RenameActionsWithProgress}.tsx` | 预览/结果展示、确认执行、局部进度订阅 |
@@ -66,6 +67,7 @@ TanStack Query 管理服务端状态，Zustand 管理选择、规则与页面内
 - 点击当前连接仅返回工作区，不重新初始化目录、选择或任务；设置页返回保留路径。连接删除、revision 或账号变化、确认断开授权时清理失效记忆；当前连接被删除后返回默认 Local。目录读取失败保留最后成功位置和错误；旧连接或旧版本的迟到响应不写入当前会话位置。
 - 设置保存只发送修改字段，在同一 QueryClient 内串行处理；前一次失败不阻断后续保存，成功才更新缓存。设置 PATCH 不携带偏好版本字段；连接 revision 与预览校验继续保留。
 - 后端是主题、分批提示和默认云目录的持久化来源，不导入旧 localStorage。system 跟随系统外观，不把解析后的明暗模式写回偏好。
+- 界面语言同样由后端偏好持久化：`auto` 按浏览器候选顺序匹配，显式选择即时生效；缺失翻译与不可用语言回退 `en-US`，不可用的已存标识不自动改写。首次设置请求完成前只显示骨架，后续语言变化不重挂载工作区、不改变查询键、排序、选择、规则或任务；保存复用同一队列，失败回退，重置恢复 `auto`。语言目录通过 `meta.json` 与命名空间 JSON 自动发现。
 - 默认云目录按连接与 `account_id` 匹配，不用邮箱或显示名替代身份。缺失 account_id 仍可浏览但不能保存默认目录；换号、断开、配置变化或删除连接清理旧默认值，同账号令牌轮换保留。恢复前暂停目录查询；目录失效保留错误和根目录恢复入口。
 - OneDrive/Google 授权弹窗校验来源、窗口、消息结构与连接身份，前端不保存令牌。列表只展示连接状态，账号信息在编辑授权区；换号先断开再登录，读取中/失败不能误报未授权。
 - 连接配置表单由 Provider 的 `config_fields` 驱动，支持文本、密码、目录字段；字段标签、必填/空值和帮助文案集中在 Provider 定义。服务名、账号缺省文案与侧栏 icon 读取元数据，不按 Provider 类型推断；设置页以 `browser_auth`/`local_picker` 控制授权与目录选择。服务端同样按字段 target 判断密钥准入；仅适配现有字符串配置及顶层 `client_secret`，不实现完整 JSON Schema 表单；工作区同样消费 Provider 能力：browser_auth 控制授权和账号默认目录，local_picker 控制目录选择，locations 约束导航/恢复。元数据未就绪或失败暂停目录读取；无浏览器授权服务按连接版本恢复，需授权服务继续按账号/版本恢复，刷新失败保留已知任务和账号身份。
