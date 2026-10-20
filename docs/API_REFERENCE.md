@@ -1,17 +1,19 @@
-# API Reference
+# API Reference（API 契约参考）
 
-Frontend-facing contract verified against `backend/app/api/router.py`, `backend/app/api/storage_router.py`, Pydantic schemas, and `frontend/src/api/client.ts`.
+面向 Python 后端与 React 前端的 API 契约，依据 `backend/app/api/router.py`、`backend/app/api/storage_router.py`、Pydantic schemas 和 `frontend/src/api/client.ts` 核对。路由、字段、枚举值与错误码保留原有英文标识符。
 
-## Conventions
+## 通用约定
 
-- Backend routes have no `/api` prefix. Vite proxies frontend `/api/*` requests to backend `/*` in development.
-- JSON uses `snake_case`; datetimes are ISO 8601 strings; HTTP 204 has no body.
-- `provider_type` identifies the driver (`local`, `onedrive`, or `google_drive`); `storage_id` identifies the independent connection. Google Drive supports connection/OAuth, My Drive reads and Preview First renaming. DirectoryListing.provider remains the driver type for display.
-- Storage APIs use `storage_id` and `location`. Only `default-local` is created automatically; cloud connections are added by the user.
-- `file_id` is provider-owned and must be treated as opaque. Local IDs are relative paths and change after rename; OneDrive IDs are Graph item IDs.
-- The connection-scoped directory API has no pagination, search, sort, or filter parameters. OneDrive/Google Drive pages are aggregated by the backend before one response is returned.
+- 后端路由不带 `/api` 前缀；开发环境由 Vite 将前端 `/api/*` 请求代理到后端 `/*`。
+- JSON 使用 `snake_case`；日期时间为 ISO 8601 字符串；HTTP 204 无响应体。
+- `provider_type` 标识驱动类型（`local`、`onedrive`、`google_drive`），`storage_id` 标识独立配置与账号连接。`DirectoryListing.provider` 仍为用于展示的驱动类型。
+- Storage APIs 以 `storage_id` 和 `location` 为边界。仅自动创建 `default-local`，云连接由用户添加。Google Drive 支持连接、OAuth、My Drive 读取与 Preview First 重命名，没有直接重命名的 HTTP endpoint。
+- `file_id` 由 Provider 定义，客户端须视为不透明值。Local ID 为相对路径，重命名后会变化；OneDrive ID 为 Graph item ID。显示路径不能作为资源身份。
+- 目录 API 不接受分页、搜索、排序或筛选参数；后端聚合 OneDrive / Google Drive 分页后一次返回完整结果。目录加载和整体 UI 选择数量不设上限，单次预览仍受批次限制。
 
-Except for the OAuth HTML callback, application errors use:
+## 错误与客户端兼容
+
+除 OAuth HTML callback 外，应用错误统一为：
 
 ```ts
 {
@@ -23,23 +25,27 @@ Except for the OAuth HTML callback, application errors use:
 }
 ```
 
-Common errors:
-
-| HTTP | Code | Meaning |
+| HTTP | Code | 含义 |
 | --- | --- | --- |
-| 401 | `AUTHENTICATION_ERROR` | Cloud storage is disconnected or authorization was rejected/expired. |
-| 403 | `PERMISSION_DENIED` | Google Drive denied a metadata or directory read; distinct from authentication and throttling. |
-| 404 | `NOT_FOUND`, `PREVIEW_NOT_FOUND` | Item/directory missing, or preview missing/already consumed. |
-| 409 | `RENAME_CONFLICT`, `PREVIEW_EXPIRED` | Rename conflict, expired preview, or changed source state. |
-| 422 | `REQUEST_VALIDATION_ERROR` | Pydantic request validation failed. |
-| 422 | `VALIDATION_ERROR`, `RULE_CONFIGURATION_ERROR` | Path, selection, name, or rule validation failed. |
-| 429 | `RATE_LIMIT_ERROR` | Cloud provider throttling remained after retry. |
-| 502 | `PROVIDER_ERROR` | Local filesystem, Graph, identity service, or connection state persistence failed. |
-| 500 | `INTERNAL_ERROR` | Unexpected error; `details.request_id` identifies the server log entry. |
+| 401 | `AUTHENTICATION_ERROR` | 云连接未授权，或授权被拒绝、已过期。 |
+| 403 | `PERMISSION_DENIED` | Google Drive 拒绝元数据或目录读取，与认证失败和限流区分。 |
+| 404 | `NOT_FOUND`, `PREVIEW_NOT_FOUND` | 项目、目录或预览不存在，或预览已消费。 |
+| 409 | `RENAME_CONFLICT`, `PREVIEW_EXPIRED` | 重命名冲突、预览过期或源状态变化。 |
+| 409 | `STORAGE_CONNECTION_CHANGED` | 连接配置或账号变化使旧预览失效，或云默认目录记录属于其他账号。 |
+| 409 | `STORAGE_BUSY` | 正在重命名的连接拒绝配置、授权和删除；恢复默认设置也拒绝活动重命名。 |
+| 422 | `REQUEST_VALIDATION_ERROR` | Pydantic 请求校验失败。 |
+| 422 | `VALIDATION_ERROR`, `RULE_CONFIGURATION_ERROR` | 路径、选择、名称或规则校验失败。 |
+| 429 | `RATE_LIMIT_ERROR` | 重试后仍受到云 Provider 限流。 |
+| 502 | `PROVIDER_ERROR` | 本地文件系统、Graph、身份服务或连接状态持久化失败。 |
+| 500 | `INTERNAL_ERROR` | 未预期错误；`details.request_id` 可定位服务端日志。 |
 
-## Shared Types
+原文核对记录未发现 route / schema / client 字段不一致。前端将 HTTP 错误暴露为 `ApiError`，保留 `status`、`code`、`message`、`details`；非标准响应保留 HTTP status，使用 fallback message、`code: null` 和空 `details`。网络失败保留原始错误。现有 UI 可继续读取 `error.message`；按错误码恢复的专用交互仍由 `UI_TODO.md` 跟踪。
+
+## 公共类型
 
 ```ts
+type StorageLocation = { kind: "root" } | { kind: "id" | "path"; value: string };
+
 interface FileItem {
   id: string;
   name: string;
@@ -76,162 +82,19 @@ interface PreviewItem {
 }
 ```
 
-`parent_path === null` only for a provider root listing. Directory `size` is `null`. `conflict` is only one invalid-state category; UI must prefer the item `error` text.
+- 路径在输入边界规范化；ID 视为不透明值；`{kind:"root"}` 不携带 `value`。
+- `parent_path === null` 仅用于 Provider 根目录列表；目录的 `size` 为 `null`。
+- 连接级扩展列表增加 `storage_id`、`revision`、`location`、`parent_location`；列表项增加 `location`、`parent_location`、`can_rename`，原有显示路径字段保留。根目录列表的 `parent_location` 为 `null`。
+- `can_rename: null` 表示权限未知，不保证远端写入成功。文件夹导航使用 `item.location`，返回上级使用 `listing.parent_location`。
+- `conflict` 只是无效状态的一类，UI 应优先展示项目的 `error` 文本。
 
-## Rules
+## 存储连接与 Provider 元数据
 
-### `GET /rules`
+### 连接类型与字段
 
-- Response:
-
-```ts
-Array<{
-  type: string;
-  name: string;
-  description: string;
-  config_schema: Record<string, unknown>;
-}>
-```
-
-Supported rule configs:
-
-| Type | Config |
-| --- | --- |
-| `padding` | Required `mode: "number" | "text"`, `length: 1..255`; `fill_character` defaults to `_`, max one character; empty text fill skips the rule; `side` defaults to `left`. |
-| `replace` | Required `search: 0..255`; empty search skips the rule. `replacement` max 255, default empty (deletes matches); `occurrence: all | first | last`; `case_sensitive=true`; `whole_word=false`; `ignore_extension=true`. |
-| `remove` | Same matching fields as replace, without `replacement`. |
-| `insert` | Required `text: 0..255`; empty text skips the rule. `position: prefix | suffix | index | before_text | after_text`; `index: 1..255`; `from_right=false`; text-relative positions with empty `anchor` skip the rule (max 255). |
-
-Rules execute in array order; disabled rules are skipped. The frontend only renders fields for these four known types.
-
-Empty means exactly `""`; whitespace remains meaningful text. Skipped rules preserve the current filename and allow later rules to run. Missing required fields, wrong types, invalid enum values and out-of-range lengths still return `RULE_CONFIGURATION_ERROR`.
-
-## Rename Preview
-
-### `POST /storages/{storage_id}/rename/preview`
-
-- Body:
+后端注册 Local、OneDrive 和 Google Drive。Google Drive 的 `browser_auth: true`、`locations: ["root", "id"]`、`can_rename: true`；其设置和工作台复用连接与重命名契约，通过服务端返回的 ID-based breadcrumbs 导航。用户配置见 [Google Drive setup and usage](https://github.com/runoobjerry/Rename_Studio/wiki/Configuration)。
 
 ```ts
-{
-  location?: StorageLocation; // default root; use backend-returned locations for navigation
-  file_ids: string[];      // 1..1000 items, no duplicates
-  rules?: RuleSpec[];      // default [], at most 20 rules
-  previous_preview_id?: string; // non-empty; release this connection's old preview after saving the new one
-}
-```
-
-- Response:
-
-```ts
-{
-  preview_id: string;
-  expires_at: string;
-  items: PreviewItem[];
-  valid: boolean;
-}
-```
-
-- No files are modified. Unchanged items remain in `items`; `valid` is true only when every item is valid.
-- `file_ids` is ordered: rule context indices and response `items` follow that order. The server snapshot preserves it; execution revalidation does not sort the files again.
-- Errors: 422 more than 1000 files/more than 20 rules/empty/duplicate/cross-directory/out-of-path/root selection, invalid path, or rule config; 404 missing item/directory; provider errors as above.
-- Preview snapshots live in the current backend process for 10 minutes. Expired snapshots are removed on new saves, on access to an expired ID, and by a lifecycle-managed sweep every 60 seconds. A backend restart invalidates them. No global capacity limit is applied.
-- A successfully saved preview replaces only the explicitly supplied `previous_preview_id` belonging to the same storage connection; unrelated previews are retained. A failed preview request preserves the old snapshot. A saved response with `valid: false` still replaces the old snapshot. Replacement does not change execution revalidation or consume semantics.
-
-### `DELETE /storages/{storage_id}/rename/previews/{preview_id}`
-
-- Releases only the specified preview belonging to this connection; returns 204, including when missing, expired, consumed, or already released. A different connection's preview is unaffected. Cleanup remains available after connection deletion.
-- Does not access the Provider, cancel an execution already in progress, or clear execution progress. The frontend releases its retained preview on task end or workspace change, and discards late preview responses from an obsolete context. Failed cleanup requests fall back to expiry cleanup.
-- Preview display resets caused by rule/selection changes retain the cleanup ID for the next replacement or task end. Releasing execution snapshots does not clear directory metadata caches.
-
-## Rename Execute
-
-### `POST /rename/execute`
-
-- Body: `{ preview_id: string }`, non-empty.
-- Response:
-
-```ts
-{
-  preview_id: string;
-  status: "completed" | "partial" | "failed";
-  items: Array<{
-    file_id: string;
-    original_name: string;
-    new_name: string;
-    status: "renamed" | "skipped" | "failed";
-    error: string | null;
-    error_code?: string | null;
-    actual_name?: string | null;
-    current_file?: FileItem | null; // Provider-confirmed metadata after success or successful rollback
-  }>;
-}
-```
-
-- Errors: 404 missing/already-consumed preview; 409 expired or changed source state; 422 invalid preview; provider errors during revalidation.
-- The backend revalidates before mutation, consumes the preview before real execution, and will not execute it twice.
-- Response `items` follow the saved preview order. Actual writes may use temporary-name stages and concurrent Provider batches; completion order is not guaranteed.
-- Item failures can be returned in an HTTP 200 response with overall `partial` or `failed`; inspect response status and every item.
-
-## Rename Execution Progress
-
-### `GET /rename/progress/{preview_id}`
-
-- Read-only progress query; it does not start, consume, cancel, or retry an execution. POST `/rename/execute` remains a single request returning the existing final response.
-- Response:
-
-```ts
-{
-  preview_id: string;
-  total: number;     // changed preview items only, excludes unchanged/skipped items
-  processed: number; // finalized items, including failures; not a success count
-  phase: "waiting" | "validating" | "staging" | "renaming" | "rollback" | "finished" | "failed";
-  error: string | null;
-}
-```
-
-- Before execution, a valid preview returns `waiting` with zero processed. Execution publishes real counts after batches sized by the provider (currently 20 for Local/OneDrive). Staging is not counted; dependent direct renames are counted only after their phase succeeds, and final staged items only after final rename/rollback handling.
-- `finished` means the execution response is ready, including `partial`/`failed` responses. All items finalized as failed/not attempted after batch abort are counted as processed. 100% does not mean all renames succeeded; consult POST response and per-item results.
-- Request-level failure/cancellation reports `failed` and retains the known count; validation failure stays at zero. Unexpected errors use a generic message without exposing internal exception details.
-- Progress is process-local, uses the same singleton execution service, and is retained for 10 minutes after termination. Restart, expiry, or an unknown/consumed preview without a retained record yields 404; an expired unexecuted preview yields 409. This does not provide durable jobs, history, or reconnect/resume semantics.
-- Frontend polls every 500ms only while POST is pending; fast batches may appear as 0% → 100%. Polling failure never triggers another execute request.
-
-## App Settings
-
-Application preferences share the v3 `backend/settings.json` document with connection configuration and credentials. Settings responses expose only `{preferences}`. Preference updates have no revision field; connection revisions and Preview/Execute checks remain unchanged.
-
-```ts
-interface AppPreferences {
-  theme: "light" | "dark" | "system";
-  hide_batch_limit_hint: boolean;
-  cloud_default_locations: Record<string, { account_id: string; location: StorageLocation }>;
-}
-```
-
-| Route | Request | Response |
-| --- | --- | --- |
-| `GET /app-settings` | none | Current preferences |
-| `PATCH /app-settings` | Only changed preference fields | Updated preferences; unchanged values do not cause a write |
-| `POST /app-settings/factory-reset` | none | Default preferences; clears cloud connections, credentials and previews |
-
-A cloud-default patch replaces the whole record for each supplied storage ID; `null` deletes that connection's default, and omitted connections remain unchanged. Each connection retains only its current account's default. Saving another account's record is rejected with `STORAGE_CONNECTION_CHANGED` (409). Account changes, disconnects, configuration changes and connection deletion remove the default atomically with the connection update. Normal token rotation preserves the default.
-
-The frontend serializes saves within one QueryClient and submits only changed fields, without reading settings before each save. A failed save does not block later queued saves. The backend merges each patch into current in-memory preferences and atomically saves the complete state document, preserving omitted preferences, connections and current credentials. The last successfully processed change to each field takes effect. Memory and frontend cache update only after a successful save; failures return errors and retain prior state. After a successful save, older in-flight settings reads are cancelled before the cache is updated.
-
-Preferences allow at most 100 cloud-default records, connection/account identifiers of 1–200 characters, directory values up to 4096 characters, and JSON size up to 128 KiB. Factory reset waits for queued frontend saves, rejects new saves while resetting, and rejects active backend renames with `STORAGE_BUSY` (409); default Local remains, and real files are untouched. Rules remain frontend memory state.
-
-## Not Implemented
-
-- RuleSet API or persistence.
-- History, Undo, or Redo API/persistence.
-- Server-side file selection, pagination, search, sorting, or filtering.
-
-## Multiple Storage Connections
-
-The backend registers Local, OneDrive, and Google Drive. Provider types describe implementations; storage IDs identify independent configuration/account instances. Google Drive returns `browser_auth: true`, `locations: ["root", "id"]`, and `can_rename: true`. It uses the existing storage preview route and `POST /rename/execute` with a server-issued `preview_id`; there is no direct rename HTTP endpoint. Google settings/workspace UI uses the same connection and rename contracts, with ID-based server breadcrumbs. See [Google Drive setup and usage](../README.md#连接-google-drive).
-
-```ts
-type StorageLocation = { kind: "root" } | { kind: "id" | "path"; value: string };
 interface StorageInfo {
   storage_id: string;
   provider_type: string;
@@ -246,60 +109,234 @@ interface StorageInfo {
 }
 ```
 
-Provider definitions additionally expose ordered `config_fields` for the connection form an `account_label` for profiles without a display name, and an `icon` (`computer` or `cloud`) for sidebar presentation. Icons are declared explicitly, not inferred from authorization or picker capabilities. Each field contains `key`, `label`, optional `create_label`, `input_type` (`text`, `password`, or `directory`), `target` (`config` or the existing top-level `client_secret`), `required`, `nullable`, and optional `help_text`/`create_help_text`/`saved_help_text`. Nullable empty config inputs submit null; an empty secret is omitted. The descriptor contains no credential values. Directory picker buttons require both a directory field and `local_picker`; settings authorization uses `browser_auth`. `config_schema` remains the backend validation schema, not a general-purpose frontend form engine. Frontend and backend must be upgraded together to consume these additive metadata fields.
+Provider definitions 提供有序 `config_fields`、账号无显示名时使用的 `account_label`，以及侧栏 `icon`（`computer` 或 `cloud`）。图标显式声明，不从授权或选择器能力推断。每个字段描述包含：
 
-Storage connection create/update requests reject the removed `enabled` field. The UI displays authorization status instead of an enable/disable control. Credentials are never included in StorageInfo. Local config requires an existing backend-machine `root_path`; OneDrive and Google Drive configs have nullable `client_id`. Google Drive additionally accepts a top-level, write-only `client_secret`; it is stored in internal credentials, never in `config`. Omitted/null secrets preserve the saved value on update; empty/whitespace secrets are rejected. Non-null client secrets are accepted only when the registered Provider declares a field targeting `client_secret`; the built-in Google definition declares this capability, while Local/OneDrive do not. `has_client_secret` reports presence only. Both Google client fields are required to start authorization, but incomplete draft connections may be saved. Unsupported config fields are rejected. IDs are opaque, paths are normalized at the input boundary, and root locations do not carry a value.
+| 字段 | 含义或取值 |
+| --- | --- |
+| `key`, `label` | 配置字段标识与显示标签 |
+| `create_label` | 可选的新建标签 |
+| `input_type` | `text`、`password` 或 `directory` |
+| `target` | `config` 或既有的请求顶层 `client_secret` |
+| `required`, `nullable` | 必填与可空标记 |
+| `help_text`, `create_help_text`, `saved_help_text` | 可选的帮助、新建帮助与已保存帮助文本 |
 
-Google client ID/secret changes clear account tokens, increment the connection revision, and invalidate old authorization objects/previews. Name-only edits and submitting the same client secret preserve authorization. Disconnect retains both client credentials; deleting the connection or factory reset removes them. Credential edits, account credentials, and revision are committed in one atomic state save; failed saves do not publish new state. Storage create/update validation errors omit input/context values so secret-bearing bodies cannot be echoed.
+可空配置输入为空时提交 `null`，密钥输入为空时省略该字段。描述符不包含凭据值；目录选择按钮同时依赖 `directory` 字段和 `local_picker`，授权操作依赖 `browser_auth`。`config_schema` 仍为后端校验 Schema，不是通用前端表单引擎。前后端须同步升级以使用这些新增元数据字段。
 
-| Method / route | Request | Response |
+### 路由
+
+| Method / route | 请求 | 响应 |
 | --- | --- | --- |
-| `GET /storage-providers` | none | Definitions: provider_type, name, config_schema, config_fields, account_label, icon, locations, can_rename, browser_auth, local_picker |
-| `GET /storages` | none | `StorageInfo[]` |
+| `GET /storage-providers` | 无 | Definitions：`provider_type`、`name`、`config_schema`、`config_fields`、`account_label`、`icon`、`locations`、`can_rename`、`browser_auth`、`local_picker` |
+| `GET /storages` | 无 | `StorageInfo[]` |
 | `POST /storages` | `{provider_type,name,config,client_secret?:string|null}` | 201 `StorageInfo` |
-| `GET /storages/{storage_id}` | none | `StorageInfo` |
-| `PUT /storages/{storage_id}` | `{name?:string,config?:object,client_secret?:string|null}` | `StorageInfo`; config replaces the previous config when supplied |
-| `DELETE /storages/{storage_id}` | none | 204; only default-local cannot be deleted |
-| `POST /storages/{storage_id}/files/list` | `{location?:StorageLocation}`; default root | Extended `DirectoryListing` |
-| `POST /storages/{storage_id}/local/pick` | none | `{root_path,selected}`; Local connections only |
-| `POST /local/folder-picker` | none | `{root_path,selected}`; draft-only directory picker on the backend machine; no connection required and no state persisted. Starts at configured `local_storage_root`; when cancelled, `selected=false` and the initial path is returned (clients must keep their draft). |
-| `GET /storages/{storage_id}/auth/status` | none | `{configured,connected,account_id,account_display_name,account_email}`; profile fields are nullable |
-| `POST /storages/{storage_id}/auth/start` | none | `{authorization_url,redirect_uri}` |
-| `DELETE /storages/{storage_id}/auth/session` | none | 204; preserves client configuration |
-| `POST /storages/{storage_id}/rename/preview` | `{location?:StorageLocation,file_ids,rules?:RuleSpec[],previous_preview_id?:string}` | Existing `RenamePreviewResponse` |
-| `DELETE /storages/{storage_id}/rename/previews/{preview_id}` | none | 204 |
+| `GET /storages/{storage_id}` | 无 | `StorageInfo` |
+| `PUT /storages/{storage_id}` | `{name?:string,config?:object,client_secret?:string|null}` | `StorageInfo`；提供 `config` 时整体替换旧配置 |
+| `DELETE /storages/{storage_id}` | 无 | 204；仅 `default-local` 不可删除 |
+| `POST /storages/{storage_id}/files/list` | `{location?:StorageLocation}`，默认 root | 扩展 `DirectoryListing` |
+| `POST /storages/{storage_id}/local/pick` | 无 | `{root_path,selected}`；仅用于 Local 连接 |
+| `POST /local/folder-picker` | 无 | `{root_path,selected}`；后端电脑上的草稿目录选择器，无需连接且不持久化状态。初始位置为 `local_storage_root`；取消时 `selected=false`，返回初始路径，客户端须保留草稿 |
 
-Extended listings add `storage_id`, `revision`, `location`, `parent_location`; items add `location`, `parent_location`, `can_rename`. Display path fields remain available. Root listing parent_location is null. Unknown permission is null, not a guarantee that remote writes will succeed. Folder navigation uses item.location; parent navigation uses listing.parent_location.
+### 配置、凭据与状态变化
 
-Google listings additionally provide `breadcrumbs: [{name,location}, ...]` from My Drive root through the current directory. They are ID-based navigation data; display `path` is never parsed into identity, including duplicate folder names and names containing `/`. Other providers keep `breadcrumbs: null`. `mime_type` carries the Google MIME type (null for other providers). Google native documents keep their real titles without synthetic extensions. File sizes may be null, and folder size is always null. `can_rename` reflects per-item Google capability, except roots/shortcuts are false.
+- create / update 拒绝已删除的 `enabled` 字段；UI 展示授权状态，不提供连接启用/禁用控件。`StorageInfo` 不包含凭据。
+- Local 配置要求后端电脑上已有的 `root_path`；OneDrive / Google Drive 配置使用可空 `client_id`。不支持的配置字段会被拒绝。
+- Google Drive 另接受顶层 write-only `client_secret`，保存到内部 credentials，不放入 `config`。更新时省略或传 `null` 保留旧密钥；空串或纯空白密钥被拒绝。仅声明 `target: "client_secret"` 的 Provider 接受非空密钥，内置 Google 声明该能力，Local / OneDrive 未声明。
+- `has_client_secret` 仅表示是否存在密钥。Google 的 Client ID 和 Secret 均就绪后才能授权，但允许保存不完整连接草稿。
+- Google Client ID / Secret 变化会清除账号 Token、递增连接 `revision`，使旧授权对象和预览失效；仅改名或提交相同密钥保留授权。disconnect 保留两项客户端凭据，删除连接或 factory reset 才移除。
+- 凭据编辑、账号凭据和 `revision` 原子提交；保存失败不发布新状态。create / update 校验错误省略 input / context 值，避免回显含密钥请求体。
+- 配置或账号变化使旧预览返回 `STORAGE_CONNECTION_CHANGED`（409）；正常 Token rotation 不改变 `revision`。活动重命名期间拒绝配置、授权和删除，返回 `STORAGE_BUSY`（409）。未知连接返回 404，无效位置或配置返回 422；完整目录读取失败返回 Provider 错误，不返回部分目录。
 
-Google `path` locations are rejected, including the empty path form; use `{kind:"root"}`. ID reads verify ancestry reaches the current account's My Drive root, reject shared-drive/trashed/outside-root items, and never follow shortcuts. Directory results include all visible direct children without an ownership filter; a regular folder under My Drive need not be owned by the user. Shortcuts are ordinary non-directory rows with `can_rename:false`; they are not silently omitted from the sibling set. Root parents are consistently represented by `RootLocation` in both listing and metadata responses.
+### Google Drive 目录与名称语义
 
-Google pages continue until `nextPageToken` is absent, including empty intermediate pages. An invalid/repeated token, incomplete search, duplicate item ID, wrong parent, malformed data or later-page failure aborts the whole response; clients must refresh from the beginning. Metadata reads batch up to 100 GETs per HTTP multipart request, preserve requested order and share ancestor reads within that operation. Ancestors are not cached across reads. 401 triggers bounded authorization refresh; throttling (429 or supported 403 reasons), transport errors and 5xx reads have bounded retries with Retry-After/backoff. Successful batch parts are retained while only retryable failures are re-requested. Any permanent/malformed/missing part fails the whole metadata call, without a partial return. Google error bodies are not reflected in responses.
+- 列表 `breadcrumbs: [{name,location}, ...]` 从 My Drive 根目录延伸到当前目录，使用 ID 导航。即使文件夹重名或名称包含 `/`，也不能从显示 `path` 解析身份。其他 Provider 的 `breadcrumbs: null`。
+- `mime_type` 为 Google MIME type，其他 Provider 为 `null`。Google native documents 保留真实标题，不添加合成扩展名；文件大小可为 `null`，文件夹大小始终为 `null`。Google `can_rename` 反映逐项能力，根目录和 shortcuts 为 `false`。
+- Google 拒绝所有 `path` location，包括空路径形式；根目录应使用 `{kind:"root"}`。ID 读取须确认祖先链可到当前账号的 My Drive 根目录，拒绝 shared-drive、trashed、outside-root 项目，且不跟随 shortcuts。
+- 目录结果包括所有可见直接子项，不按所有权过滤；My Drive 下的普通文件夹不必由当前用户拥有。shortcuts 作为 `can_rename:false` 的普通非目录行保留，不从兄弟项集合静默移除。列表和元数据响应中的根目录父位置均使用 `RootLocation`。
+- 名称按精确字符串比较，区分大小写及 Unicode form。校验拒绝空白标题和 NUL，不套用 Windows 保留名称/字符，也不假定标题长度上限；其他远端限制仍以远端为准。
+- 发生变化的目标名不能重复所选目标名或占用未选兄弟项名称；已有重名可保持不变。普通文件、文件夹和 native document titles 可重命名，根目录与 shortcuts 被拒绝。
+- Google 不提供“目录冲突检查 + 重命名”的 transaction；外部编辑、新增重名或权限变化仍可能与写入竞争。
 
-Google names use exact string comparison, including case and Unicode form. Application validation rejects blank/whitespace-only titles and NUL; it does not impose Windows reserved names/characters or an assumed title-length limit. Other remote restrictions remain authoritative. Changed targets cannot duplicate selected targets or names occupied by unselected siblings; existing duplicate names may remain unchanged. Ordinary files, folders and native document titles may be renamed; roots and shortcuts are rejected.
+## 认证与 OAuth callback
 
-Google single/batch renames use metadata-only PATCH parts in multipart requests, with at most 20 writes per batch and one batch in flight. Only `name` is sent; content, parents and shortcut targets are never modified. Each batch rechecks item scope/ancestry and rename permissions. Known successes are retained; bounded retries apply only to explicit authentication/throttle refusals, and per-part retries include only refused parts. Transport errors, 5xx writes and malformed/incomplete successful responses produce `RENAME_OUTCOME_UNKNOWN`; the existing execution service queries metadata by ID instead of replaying writes, stops later groups if unresolved and reports nullable actual names. Cycles/dependencies and best-effort rollback use the existing engine. Google provides no transaction for the directory conflict check plus rename: external edits, new duplicates or permission changes may still race a write. No state-format migration or new public schema is introduced in stage three.
+| Method / route | 请求 | 响应 |
+| --- | --- | --- |
+| `GET /storages/{storage_id}/auth/status` | 无 | `{configured,connected,account_id,account_display_name,account_email}`；profile 字段可空 |
+| `POST /storages/{storage_id}/auth/start` | 无 | `{authorization_url,redirect_uri}` |
+| `DELETE /storages/{storage_id}/auth/session` | 无 | 204；保留客户端配置 |
 
-Config/account changes invalidate old previews with `STORAGE_CONNECTION_CHANGED` (409); normal token rotation does not change revision. Active rename connections reject configuration, authorization and deletion with `STORAGE_BUSY` (409). Unknown connections return 404; invalid locations or configuration return 422. Complete listing failures return provider errors rather than partial directories.
-
-`GET /auth/storage/callback` is an HTML callback with code/state/error query parameters. Configure `STORAGE_REDIRECT_URI` in the Microsoft application. OAuth state is single use, expiring, and bound to connection/revision. It posts:
+`GET /auth/storage/callback` 是接收 `code` / `state` / `error` query parameters 的 HTML callback。Microsoft 应用需配置 `STORAGE_REDIRECT_URI`；OAuth state 单次使用、有有效期，并绑定连接和 `revision`。callback 发送消息：
 
 ```ts
 { type: "storage-auth"; storage_id: string | null; status: "connected" | "failed"; message: string }
 ```
 
-The frontend validates the callback origin from redirect_uri, popup window source, message shape and storage_id.
+前端校验 `redirect_uri` 对应的 callback origin、popup window source、message shape 和 `storage_id`。
 
-Google uses the same callback and authorization endpoints, with a user-provided Desktop OAuth client, PKCE S256, offline access and the fixed `https://www.googleapis.com/auth/drive.metadata` scope. Token exchange and refresh include both client ID and secret. The callback verifies the granted scope and reads Drive `about.user.permissionId` as the opaque account ID before publishing a connected session. Account names/emails are optional. Access tokens remain in memory; refresh tokens, client secret, scope and account identity are saved in the v3 document. Refresh responses may omit a replacement refresh token or scope; those omissions preserve the previous grant. Normal refresh/rotation keeps the connection revision, while rejected authorization clears account credentials and changes the revision. Temporary transport/429/5xx failures preserve the saved grant. Status is local session state, not an online token-validity probe. The settings UI accepts Google client ID and a write-only client secret; the workspace shares cloud account/default-location handling and consumes server breadcrumbs. See the [Google Drive setup and usage](../README.md#连接-google-drive) for user configuration; API contracts are documented above.
+Google 复用相同 callback 和授权 endpoints，使用用户提供的 Desktop OAuth client、PKCE S256、offline access 和固定 `https://www.googleapis.com/auth/drive.metadata` scope。Token exchange / refresh 均携带 Client ID 和 Secret；callback 校验授予的 scope，读取 Drive `about.user.permissionId` 作为不透明账号 ID，之后才发布 connected session。账号名称与邮箱可选。
 
-Execute still accepts only preview_id and progress polling remains read-only. Result items optionally include error_code/actual_name/current_file. current_file preserves Provider-confirmed identity after successful rename or rollback, including changed Local path IDs; file_id remains the original request ID. Null does not mean a write succeeded or failed. Preview requests are limited to 1000 files and 20 rules (including disabled rules); execute also checks the snapshot size. Directory loading and overall UI selection remain unlimited. `RENAME_OUTCOME_UNKNOWN` means a write could have happened but its current state could not be verified; actual_name is null. Known successful writes are not replayed after a missing response. Rollback errors report remaining names when they can be confirmed. Existing completed/partial/failed and renamed/skipped/failed enums retain their meaning.
+Access Token 仅在内存；Refresh Token、client secret、scope 和账号身份保存在 v3 文档。refresh 响应省略替换 Refresh Token 或 scope 时，保留既有 grant。正常 refresh / rotation 不改变连接 `revision`；授权被拒绝则清除账号凭据并改变 `revision`；临时 transport / 429 / 5xx 失败保留已保存 grant。status 表示本地 session 状态，不是在线 Token 有效性探测。
 
-## Known API inconsistency
+Google 设置 UI 接受 Client ID 和 write-only client secret；工作台共用云账号及默认目录处理，并使用服务端 breadcrumbs。用户配置见 [Google Drive setup and usage](https://github.com/runoobjerry/Rename_Studio/wiki/Configuration)。
 
-No route/schema/client field mismatch was found during this audit. The frontend client now exposes HTTP failures as `ApiError`, preserving `status`, `code`, `message`, and `details`. Non-standard responses retain the HTTP status with a fallback message, null code, and empty details. Network failures remain their original errors. Existing UI consumers can continue reading `error.message`; dedicated code-based recovery remains tracked in `UI_TODO.md`.
+## 规则
 
+### `GET /rules`
 
-## Removed API contracts
+响应：
 
-The former provider/path browsing, Local/OneDrive settings, provider-specific authentication callback, and `/rename/preview` endpoints are removed. They are not redirected or translated. `/rename/execute`, `/rename/progress/{preview_id}`, `/rules` and `/health` remain shared endpoints. Storage IDs have no `local`/`onedrive` aliases.
+```ts
+Array<{
+  type: string;
+  name: string;
+  description: string;
+  config_schema: Record<string, unknown>;
+}>
+```
+
+| Type | Config |
+| --- | --- |
+| `padding` | 必填 `mode: "number" \| "text"`、`length: 1..255`；`fill_character` 默认 `_`，最多一个字符；空文本填充跳过规则；`side` 默认 `left`。 |
+| `replace` | 必填 `search: 0..255`；空 search 跳过规则。`replacement` 最长 255，默认空串（删除匹配）；`occurrence: all | first | last`；`case_sensitive=true`；`whole_word=false`；`ignore_extension=true`。 |
+| `remove` | 与 replace 使用相同匹配字段，不含 `replacement`。 |
+| `insert` | 必填 `text: 0..255`；空 text 跳过规则。`position: prefix | suffix | index | before_text | after_text`；`index: 1..255`；`from_right=false`；相对文本位置的 `anchor` 为空时跳过规则，最长 255。 |
+
+规则按数组顺序执行，跳过 disabled 规则；前端只为以上四种已知类型渲染字段。空值严格指 `""`，空白字符仍是有效文本。跳过规则保留当前文件名，并继续后续规则；缺少必填字段、类型错误、无效枚举或长度越界仍返回 `RULE_CONFIGURATION_ERROR`。
+
+## 重命名预览（Rename Preview）
+
+### `POST /storages/{storage_id}/rename/preview`
+
+请求体：
+
+```ts
+{
+  location?: StorageLocation; // 默认 root；导航使用后端返回的位置
+  file_ids: string[];      // 1..1000 项，不允许重复
+  rules?: RuleSpec[];      // 默认 []，最多 20 条规则
+  previous_preview_id?: string; // 非空；新预览保存后释放同连接的旧预览
+}
+```
+
+响应（`RenamePreviewResponse`）：
+
+```ts
+{
+  preview_id: string;
+  expires_at: string;
+  items: PreviewItem[];
+  valid: boolean;
+}
+```
+
+- 不修改文件；未变化项目仍保留在 `items` 中，所有项目有效时 `valid` 才为 true。
+- `file_ids` 有序，rule context indices 与响应 `items` 均按该顺序；服务端快照保留顺序，执行前重校验不重新排序。预览限制为 1000 文件、20 条规则（包括 disabled 规则），execute 也检查快照大小。
+- 422：超过文件/规则上限、空选择、重复、跨目录、超出路径、选择根目录、无效路径或规则配置；404：项目或目录不存在；其他 Provider 错误见通用错误。
+- 预览在当前后端进程保留 10 分钟，后端重启即失效。
+- 新预览保存成功后，仅替换显式提供且属于同连接的 `previous_preview_id`，不影响其他预览。请求失败保留旧快照；保存的响应即使 `valid: false` 也替换旧快照。替换不改变执行重校验或 consume 语义。
+
+### `DELETE /storages/{storage_id}/rename/previews/{preview_id}`
+
+仅释放指定连接的指定预览；不存在、过期、已消费或重复释放均返回 204，不影响其他连接的预览。连接删除后仍可清理。
+
+该操作不访问 Provider，不取消已开始的执行，不清除执行进度或目录元数据缓存。前端在任务结束或工作区变化时释放持有的预览，并丢弃旧上下文迟到的预览响应；清理失败则由到期机制回收。规则/选择变化导致预览展示重置时，保留 cleanup ID，供下次替换或任务结束时使用。
+
+## 重命名执行（Rename Execute）
+
+### `POST /rename/execute`
+
+请求体为 `{ preview_id: string }`，`preview_id` 非空；只接受服务端签发的预览 ID。
+
+响应：
+
+```ts
+{
+  preview_id: string;
+  status: "completed" | "partial" | "failed";
+  items: Array<{
+    file_id: string;
+    original_name: string;
+    new_name: string;
+    status: "renamed" | "skipped" | "failed";
+    error: string | null;
+    error_code?: string | null;
+    actual_name?: string | null;
+    current_file?: FileItem | null; // 成功重命名或成功回滚后经 Provider 确认的元数据
+  }>;
+}
+```
+
+- 404：预览不存在或已消费；409：预览过期或源状态变化；422：预览无效；重校验期间也可能返回 Provider 错误。
+- 后端在修改前重新校验，真正执行前 consume 预览，不会重复执行同一预览。
+- 响应 `items` 按已保存预览顺序返回；实际写入可使用临时名称阶段及并发 Provider batches，不保证完成顺序。
+- HTTP 200 也可能包含整体 `partial` / `failed` 及逐项失败，必须检查整体 status 和每项结果；既有 `completed` / `partial` / `failed`、`renamed` / `skipped` / `failed` 含义保持不变。
+- `current_file` 保留成功重命名或回滚后经 Provider 确认的身份，包括变化后的 Local path ID；`file_id` 始终为原请求 ID。`null` 本身不能证明写入成功或失败。
+- `RENAME_OUTCOME_UNKNOWN` 表示可能已写入但当前状态无法确认，此时 `actual_name: null`。已知成功的写入不会因响应缺失而重放；回滚错误在可确认时报告遗留名称。
+
+## 执行进度（Rename Execution Progress）
+
+### `GET /rename/progress/{preview_id}`
+
+只读查询，不启动、consume、取消或重试执行；`POST /rename/execute` 仍是返回既有最终响应的单次请求。
+
+```ts
+{
+  preview_id: string;
+  total: number;     // 仅变化的预览项目，不含未变化或 skipped 项目
+  processed: number; // 已定案项目，包括失败，不是成功数
+  phase: "waiting" | "validating" | "staging" | "renaming" | "rollback" | "finished" | "failed";
+  error: string | null;
+}
+```
+
+- 执行前，有效预览返回 `waiting`，`processed` 为零。执行按 Provider 批次发布真实计数（Local / OneDrive 当前每批 20）。staging 不计数；依赖直接重命名须阶段成功后计数，暂存项目须最终重命名/回滚处理后计数。
+- `finished` 表示执行响应已就绪，包括整体 `partial` / `failed`。批次中止后定案为失败或未尝试的项目均计入 `processed`；100% 不等于全部成功，应查看 POST 响应和逐项结果。
+- 请求级失败或取消报告 `failed`，保留已知计数；校验失败保持零。未知异常使用通用消息，不暴露内部异常详情。
+- 进度为 process-local，与 singleton execution service 共用，终止后保留 10 分钟。重启、过期、未知或已消费且无保留进度的预览返回 404；未执行但已过期的预览返回 409。不提供 durable jobs、历史或 reconnect / resume 语义。
+- 前端仅在 POST pending 期间每 500ms 轮询，快速批次可能表现为 0% → 100%；轮询失败绝不触发另一次 execute。
+
+## 应用设置（App Settings）
+
+应用偏好与连接配置、凭据共用 v3 `backend/settings.json` 文档。Settings 响应仅暴露 `{preferences}`；偏好更新没有 revision 字段，连接 revision 和 Preview / Execute 校验保持不变。
+
+```ts
+interface AppPreferences {
+  theme: "light" | "dark" | "system";
+  hide_batch_limit_hint: boolean;
+  cloud_default_locations: Record<string, { account_id: string; location: StorageLocation }>;
+}
+```
+
+| Route | 请求 | 响应 |
+| --- | --- | --- |
+| `GET /app-settings` | 无 | 当前偏好 |
+| `PATCH /app-settings` | 仅变化的偏好字段 | 更新后的偏好；值未变化时不写入 |
+| `POST /app-settings/factory-reset` | 无 | 默认偏好；清除云连接、凭据和预览 |
+
+云默认目录 patch 按传入的 storage ID 整体替换记录；`null` 删除该连接默认值，省略的连接保持不变。每个连接仅保留当前账号的默认目录；保存其他账号记录返回 `STORAGE_CONNECTION_CHANGED`（409）。账号变化、disconnect、配置变化或连接删除时，默认目录随连接更新原子移除；正常 Token rotation 保留默认目录。
+
+patch 合并到当前偏好，保留省略的偏好、连接及最新凭据；每个字段最后一次成功处理的修改生效。完整状态原子保存，保存成功后才更新内存和前端 cache；失败返回错误并保留原状态。
+
+偏好限制：最多 100 条云默认目录记录；连接/账号标识长 1–200 字符；目录值最长 4096 字符；JSON 大小最多 128 KiB。factory reset 等待前端排队保存完成，重置期间拒绝新保存；后端存在活动重命名时返回 `STORAGE_BUSY`（409）。默认 Local 保留，真实文件不受影响；规则仍为前端内存状态。
+
+## 实现补充
+
+以下压缩说明原文中的清理、批处理与前端状态同步机制，不增加独立 API。
+
+| 范围 | 现有机制与失败语义 |
+| --- | --- |
+| 预览回收 | 新快照保存、访问过期 ID 时移除过期快照，并由 lifecycle-managed sweep 每 60 秒清理；不设 global capacity limit。 |
+| 偏好保存 | 前端在单个 QueryClient 内串行保存，仅发送变化字段，每次保存前不重新读取设置；失败不阻断后续队列。后端基于当前内存偏好合并并原子保存完整状态；成功后，前端先取消更早的 in-flight settings reads，再更新 cache。 |
+| Google 分页 | 读取至 `nextPageToken` 缺失，包括空中间页。无效/重复 Token、incomplete search、重复 item ID、错误 parent、malformed data 或后续页失败均中止完整响应，客户端须从头刷新。 |
+| Google 元数据读取 | 每个 HTTP multipart request 最多 100 个 GET，保留请求顺序；同一操作共享祖先读取，不跨读取缓存。401 触发有界授权刷新；限流（429 或支持的 403 reasons）、transport errors 和 5xx reads 使用有限次 Retry-After / backoff 重试。成功 batch parts 保留，只重试可重试失败；永久失败、malformed / missing part 使整个调用失败，不返回部分元数据。Google error bodies 不回显。 |
+| Google 写入 | 单项/批量重命名使用 metadata-only PATCH parts，每个 multipart batch 最多 20 次写入，同时仅一个 batch 在途；只发送 `name`，不修改内容、parents 或 shortcut targets。每批重新校验项目范围、祖先和重命名权限；已知成功保留，仅对明确认证/限流拒绝做有界重试，逐项重试只含被拒绝 parts。 |
+| Google 未知写入与回滚 | transport errors、5xx writes 或 malformed / incomplete successful responses 产生 `RENAME_OUTCOME_UNKNOWN`；既有 execution service 按 ID 查询元数据，不重放写入，未解决时停止后续分组并返回可空实际名称。循环、依赖及尽力回滚复用既有 Engine；Google Drive 第三阶段未引入状态格式迁移或新的公共 Schema。 |
+
+## 未实现与已移除的契约
+
+未实现：
+
+- RuleSet API 或持久化。
+- History、Undo、Redo API / persistence。
+- 服务端文件选择、分页、搜索、排序或筛选。
+
+原有 Provider / path 浏览、Local / OneDrive settings、Provider 专属 authentication callback，以及 `/rename/preview` endpoints 已移除，不提供重定向或转换。`/rename/execute`、`/rename/progress/{preview_id}`、`/rules`、`/health` 仍是共享 endpoints；storage ID 不提供 `local` / `onedrive` aliases。
