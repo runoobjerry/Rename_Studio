@@ -1,21 +1,11 @@
-import type { Resource } from "i18next";
-
-export interface LanguageMeta {
-  code: string;
-  name: string;
-}
+import { createCatalog, type LanguageMeta } from "./catalog";
 
 export const fallbackLanguage = "en-US";
 export const namespaces = ["common", "settings", "files", "rules", "providers", "errors"] as const;
 
 const metadata = import.meta.glob<LanguageMeta>("../locales/*/meta.json", { eager: true, import: "default" });
-export const languages = Object.values(metadata);
 const dictionaries = import.meta.glob<Record<string, unknown>>("../locales/*/*.json", { eager: true, import: "default" });
-export const resources: Resource = {};
-for (const [path, dictionary] of Object.entries(dictionaries)) {
-  const [, code, filename] = path.match(/\/locales\/([^/]+)\/([^/]+)\.json$/)!;
-  if (filename !== "meta") (resources[code] ??= {})[filename] = dictionary;
-}
+export const { languages, resources } = createCatalog(metadata, dictionaries);
 
 export function browserLanguages(): readonly string[] {
   return navigator.languages?.length ? navigator.languages : [navigator.language];

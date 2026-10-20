@@ -8,7 +8,7 @@
 - **有序规则链**：填充、替换、移除、插入，支持复制、排序与启用/禁用。
 - **预览与冲突检查**：展示原名、新名、名称合法性及冲突；执行前服务端重新校验。
 - **批次与进度**：文件/子文件夹多选、筛选与排序，逐批确认，展示进度和逐项结果。
-- **工作台偏好**：明暗主题、账号默认目录、标签页浏览位置恢复与恢复默认设置。
+- **工作台偏好**：明暗主题、中英文界面与浏览器语言自动选择、账号默认目录、标签页浏览位置恢复与恢复默认设置。
 
 每批最多 **1000 项**，最多 **20 条规则**；只处理同一目录的直接子项，不递归修改子文件夹内容。目前没有历史撤销/重做功能，操作前请备份重要数据。
 
@@ -63,6 +63,8 @@ bash "/项目完整路径/Start.sh"
 
 默认本地目录为后端系统用户的 Documents 文件夹。超过 1000 项时分批预览和处理，完成后通过“待处理”筛选继续。遇到超时或未知结果先核对进度和真实文件，不要盲目重试整批。
 
+界面语言默认为 `auto`，按浏览器语言偏好选择；可在设置中即时切换简体中文 / English，保存至后端 settings.json，恢复出厂设置时回到 auto。缺失译文固定回退 en-US；语言切换不改变文件名、连接名、排序、选择或任务。
+
 ## 用户文档
 
 详细使用与配置说明见[项目 Wiki](https://github.com/runoobjerry/Rename_Studio/wiki)。
@@ -114,6 +116,8 @@ frontend/
     components/    共享 UI 组件
     features/      文件、规则、重命名与设置功能
     hooks/         通用 hooks
+    i18n/          语言发现、解析、偏好与格式化
+    locales/       meta.json 与按命名空间组织的词典
     stores/        工作台 UI 与批次状态
     test/          测试环境与交互 harness
     types/         前端契约类型
@@ -157,7 +161,7 @@ npm run dev
 # 在 frontend 目录：单独构建
 npm run build
 
-# 在 frontend 目录：Vitest、TypeScript 检查与 Vite 构建
+# 在 frontend 目录：翻译静态检查、Vitest、TypeScript 检查与 Vite 构建
 npm run check
 
 # 在 backend 目录：后端测试（macOS 使用 .venv/bin/python）
@@ -166,13 +170,15 @@ npm run check
 
 构建生成完整 `frontend/dist` 后，可从仓库根目录使用 `Start.ps1` / `Start.sh` 验证发布模式。发布启动器使用单进程后端提供静态页面，保留根路径 API 和 `/api` 挂载；预览和执行状态位于进程内存中，不支持多 worker 部署。
 
-Frontend CI 在相关 PR 或手动触发时运行前端测试和构建。Release ZIPs 在 `v*` 标签推送时构建、按白名单组装 ZIP，并在 Windows x64 / macOS ARM64 的全新 Python 3.12 环境检查依赖和解压包服务，成功后创建 Release 草稿；手动触发只生成 Actions 产物。发布工作流不运行 Vitest 或 pytest，也不代替启动交互、浏览器、OAuth 和真实改名验收。
+Frontend CI 在相关前端、Rule/Provider 注册代码的 PR 或手动触发时运行翻译静态检查、前端测试和构建。Release ZIPs 在 `v*` 标签推送时构建、按白名单组装 ZIP，并在 Windows x64 / macOS ARM64 的全新 Python 3.12 环境检查依赖和解压包服务，成功后创建 Release 草稿；手动触发只生成 Actions 产物。发布工作流不运行 Vitest 或 pytest，也不代替启动交互、浏览器、OAuth 和真实改名验收。
 
 ### 模块边界与维护文档
 
 规则位于 `backend/app/rules`；各 Provider 的配置、定义、认证与驱动位于 `backend/app/providers`，经 `builtin.py` 显式注册。前端依据 Provider 元数据渲染连接配置与操作；`StorageManager` 管理连接生命周期、版本和执行互斥，Repository 原子保存完整状态。新增规则或 Provider 不应将具体存储逻辑引入 Rename Engine。
 
 Rule/Provider 的界面文案维护在 `frontend/src/locales`：规则使用 `rules:types.<type>`，Provider 及配置字段使用 `providers:<provider_type>.fields.<key>`。新增实现需同步补齐中英文文案；后端元数据仅保留稳定标识、配置结构与能力，接口形状见 [API 参考](docs/API_REFERENCE.md)。
+
+社区翻译通过 PR 贡献：新增语言目录、meta.json 与六个词典文件即可自动发现，无需更改后端或语言注册列表。步骤、术语、缺词回退和本地 `npm run i18n:check` 说明见 [翻译贡献指南](docs/TRANSLATING.md)。
 
 - [项目约束](AGENTS.md)、[前端边界](frontend/AGENTS.md)、[前端交接](docs/FRONTEND_HANDOFF.md)
 - [API 参考](docs/API_REFERENCE.md)、[版本发布](docs/RELEASING.md)、[启动与人工验收](docs/LAUNCHER.md)

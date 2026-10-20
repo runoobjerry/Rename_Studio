@@ -32,6 +32,8 @@
 
 ## 业务功能、异常与交互
 
+翻译工作流的补充覆盖：[检查器](../frontend/scripts/check-i18n.test.mjs) 验证 JSON/重复属性、非法或重复元数据、命名空间、结构、插值、zh-CN 完整性、社区语言缺词报告，以及代码和新增注册元数据缺词失败；[Vite 目录发现](../frontend/src/i18n/catalog.test.ts) 验证模拟语言自动发现和跨命名空间英文回退。[语言解析](../frontend/src/i18n/languages.test.ts) 覆盖浏览器候选顺序与变体；偏好恢复、重置、任务独立和 Rule/Provider 交互沿用下表已有测试。人工复核步骤见 [TRANSLATING](TRANSLATING.md)。
+
 | 场景 | 自动化承接位置 |
 |---|---|
 | 默认云目录恢复、导航后保存；重新进入优先使用尚未设为默认值的工作路径；缺账号不保存，读取/保存/目录请求失败不覆盖配置 | WorkspaceApp、[存储 Hook](../frontend/src/workspace/hooks/useWorkspaceStorage.test.ts) |
@@ -41,7 +43,7 @@
 | 超上限只在请求预览时提示；取消不建任务、继续只提交一批、偏好保存到后端 | 工作流 Hook；提示框交互按人工清单检查 |
 | 核对选择保留部分执行结果，普通选择清除旧结果 | 工作流 Hook；[PreviewPanel](../frontend/src/features/rename/PreviewPanel.test.tsx) 验证结果和筛选展示 |
 | 主题跟随系统、服务器偏好恢复、保存失败回退、连续编辑串行、迟到读取不覆盖保存 | [主题偏好 Hook](../frontend/src/features/settings/useThemePreference.test.ts) |
-| 自动发现语言、浏览器候选优先级与简繁边界、显式/不可用偏好和英文回退；有效语言格式化 | [语言解析](../frontend/src/i18n/languages.test.ts) |
+| 自动发现语言、浏览器候选优先级与简繁边界、显式/不可用偏好和英文回退；有效语言日期格式化 | [语言解析](../frontend/src/i18n/languages.test.ts) |
 | 首次读取门控、语言即时切换与持久化恢复、保存失败回退、连续切换、重置等待队列并阻止新保存、auto 跟随浏览器且不重挂载 | [语言 Provider](../frontend/src/i18n/LanguageProvider.test.tsx) |
 | 设置语言菜单接线、读取失败的本地化警告、保存失败通知、切换时保留选择且不重新请求目录/元数据 | WorkspaceApp |
 | 已有预览与确认框随语言更新；保持任务快照、选中项和降序排列，不额外预览、执行或释放快照 | WorkspaceApp |

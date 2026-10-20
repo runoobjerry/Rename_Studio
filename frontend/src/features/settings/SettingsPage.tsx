@@ -102,14 +102,14 @@ export function SettingsPage({ preference, onPreferenceChange, onBack, executing
         <Box component="section" aria-labelledby="about-settings-title">
           <Typography id="about-settings-title" component="h2" variant="subtitle1" sx={{ mb: 1.25, fontWeight: 600 }}>{t("about")}</Typography>
           <Card variant="outlined">
-            <Stack direction="row" sx={{ alignItems: "center", justifyContent: "space-between", gap: 2, p: { xs: 2, sm: 2.5 } }}>
+            <Stack direction={{ xs: "column", sm: "row" }} sx={{ alignItems: { xs: "flex-start", sm: "center" }, justifyContent: "space-between", gap: 2, p: { xs: 2, sm: 2.5 } }}>
               <Stack direction="row" spacing={1.25} sx={{ alignItems: "center", minWidth: 0 }}>
                 <Box component="img" src={brandMark} alt="" width={36} height={36} sx={{ display: "block", flexShrink: 0 }} />
                 <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>Rename Studio</Typography>
               </Stack>
-              <Box sx={{ flexShrink: 0, textAlign: "right" }}>
+              <Box sx={{ flexShrink: 0, textAlign: { xs: "left", sm: "right" } }}>
                 <Typography variant="body2" color="text.secondary">v{version}</Typography>
-                <Typography variant="caption" component="div" sx={{ color: "text.secondary"}}>{buildTime} BUILD</Typography>
+                <Typography variant="caption" component="div" sx={{ color: "text.secondary"}}>{t("build", { time: buildTime })}</Typography>
               </Box>
             </Stack>
             <Divider />

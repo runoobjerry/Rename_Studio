@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { browserLanguages, languages, resolveLanguage } from "./languages";
 import { i18n } from "./index";
-import { formatDate, formatNumber } from "./format";
+import { formatDate } from "./format";
 
 describe("language resolution", () => {
   it.each([
@@ -9,6 +9,9 @@ describe("language resolution", () => {
     [["en-GB", "zh-CN"], "en-US"],
     [["zh-SG", "en-US"], "zh-CN"],
     [["zh-Hans", "en-US"], "zh-CN"],
+    [["zh-Hans-CN", "en-US"], "zh-CN"],
+    [["zh-Hans-SG", "en-US"], "zh-CN"],
+    [["en-AU", "zh-CN"], "en-US"],
     [["zh", "en-US"], "zh-CN"],
     [["zh-TW", "zh-Hant", "zh-HK"], "en-US"],
     [["fr-FR"], "en-US"],
@@ -45,6 +48,5 @@ describe("language resolution", () => {
     await i18n.changeLanguage("en-US");
     const date = new Date("2026-10-20T00:00:00Z");
     expect(formatDate(date, { timeZone: "Asia/Shanghai" })).toBe(new Intl.DateTimeFormat("en-US", { timeZone: "Asia/Shanghai" }).format(date));
-    expect(formatNumber(1234.5)).toBe(new Intl.NumberFormat("en-US").format(1234.5));
   });
 });

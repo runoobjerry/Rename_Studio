@@ -1,4 +1,5 @@
 {
+  "build": "{{time}} BUILD",
   "title": "Settings",
   "back": "Back to workspace",
   "general": "General",

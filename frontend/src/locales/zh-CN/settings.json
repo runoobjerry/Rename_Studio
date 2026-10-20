@@ -1,4 +1,5 @@
 {
+  "build": "{{time}} 构建",
   "title": "设置",
   "back": "返回主页",
   "general": "常规",

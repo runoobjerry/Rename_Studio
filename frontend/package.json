@@ -8,7 +8,8 @@
     "build": "tsc -b && vite build",
     "test": "vitest run",
     "test:watch": "vitest",
-    "check": "npm run test && npm run build"
+    "check": "npm run i18n:check && npm run test && npm run build",
+    "i18n:check": "node scripts/check-i18n.mjs"
   },
   "dependencies": {
     "@emotion/react": "^11.14.0",

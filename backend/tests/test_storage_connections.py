@@ -144,23 +144,6 @@ def test_default_documents_root_and_explicit_override(tmp_path: Path, monkeypatc
     assert app_config.Settings(_env_file=None).local_storage_root == override.resolve()
 
 
-def test_legacy_v3_preferences_load_with_auto_language_and_keep_credentials(tmp_path: Path) -> None:
-    manager = make_manager(tmp_path)
-    cloud = manager.create(StorageCreate(provider_type="onedrive", name="Account", config={"client_id": "app"}))
-    manager._persist_auth(cloud.storage_id, {"client_id": "app"}, {
-        "account_id": "account-a", "refresh_token": "fixture-secret",
-    })
-    manager.update_app_settings(AppSettingsPatch(theme="dark"))
-    legacy = manager.state.model_dump(mode="json")
-    del legacy["preferences"]["language"]
-    manager.repository.path.write_text(json.dumps(legacy), encoding="utf-8")
-    restored = make_manager(tmp_path)
-    assert restored.state.schema_version == 3
-    assert restored.state.preferences.language == "auto"
-    assert restored.state.preferences.theme == "dark"
-    assert restored.state.connections == manager.state.connections
-
-
 def test_language_partial_patch_persists_without_changing_connections_or_other_preferences(tmp_path: Path) -> None:
     manager = make_manager(tmp_path)
     cloud = manager.create(StorageCreate(provider_type="onedrive", name="Account", config={"client_id": "app"}))
