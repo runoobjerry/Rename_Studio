@@ -120,9 +120,7 @@ export function RuleEditor({ definitions, rules, onChange, isLoading = false }: 
   }
 
   function ruleName(type: string): string {
-    return (
-      definitions.find((definition) => definition.type === type)?.name ?? type
-    );
+    return t(`rules:types.${type}.name`, { defaultValue: type });
   }
 
   return (
@@ -174,7 +172,7 @@ export function RuleEditor({ definitions, rules, onChange, isLoading = false }: 
         }}
       >
         {availableRules.map((definition) => (
-          <Tooltip key={definition.type} title={definition.description} placement="left" describeChild>
+          <Tooltip key={definition.type} title={t(`rules:types.${definition.type}.description`, { defaultValue: definition.type })} placement="left" describeChild>
             <MenuItem
               dense
               onClick={() => {
@@ -182,7 +180,7 @@ export function RuleEditor({ definitions, rules, onChange, isLoading = false }: 
                 setAnchor(null);
               }}
             >
-              {definition.name}
+              {ruleName(definition.type)}
             </MenuItem>
           </Tooltip>
         ))}

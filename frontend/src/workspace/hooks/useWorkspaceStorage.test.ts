@@ -51,7 +51,7 @@ describe("workspace provider capabilities", () => {
   it("restores ID locations for a non-local provider without browser auth, and blocks unsupported path requests", async () => {
     const definitions = await api.fetchStorageProviders();
     vi.mocked(api.fetchStorageProviders).mockResolvedValue([{
-      ...definitions[0], provider_type: "fixture_direct", name: "直连服务", local_picker: false, locations: ["root", "id"],
+      ...definitions[0], provider_type: "fixture_direct", local_picker: false, locations: ["root", "id"],
     }]);
     const storages = await api.fetchStorages();
     vi.mocked(api.fetchStorages).mockResolvedValue([{
@@ -86,7 +86,7 @@ describe("workspace provider capabilities", () => {
   it("requires auth for an unfamiliar provider and ignores a default location kind it does not support", async () => {
     const definitions = await api.fetchStorageProviders();
     vi.mocked(api.fetchStorageProviders).mockResolvedValue([{
-      ...definitions[1], provider_type: "fixture_oauth", name: "授权服务", locations: ["root", "id"],
+      ...definitions[1], provider_type: "fixture_oauth", locations: ["root", "id"],
     }]);
     const storages = await api.fetchStorages();
     vi.mocked(api.fetchStorages).mockResolvedValue([{

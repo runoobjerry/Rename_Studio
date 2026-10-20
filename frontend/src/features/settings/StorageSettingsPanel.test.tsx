@@ -14,25 +14,36 @@ vi.mock("../../api/client", async (importOriginal) => ({
 
 afterEach(() => { cleanup(); vi.clearAllMocks(); vi.restoreAllMocks(); });
 
-function field(key: string, label: string, options: Partial<StorageConfigField> = {}): StorageConfigField {
-  return { key, label, create_label: null, input_type: "text", target: "config", required: false,
-    nullable: false, help_text: null, create_help_text: null, saved_help_text: null, ...options };
+function field(key: string, options: Partial<StorageConfigField> = {}): StorageConfigField {
+  return { key, input_type: "text", target: "config", required: false,
+    nullable: false, ...options };
 }
 
 const directoryDefinition: StorageProviderDefinition = {
-  provider_type: "fixture_directory", name: "Local", locations: ["root", "path"], browser_auth: false,
-  local_picker: true, can_rename: true, config_schema: {}, account_label: "用户", icon: "computer",
-  config_fields: [field("directory", "工作目录", { input_type: "directory", required: true })],
+  provider_type: "fixture_directory", locations: ["root", "path"], browser_auth: false,
+  local_picker: true, can_rename: true, config_schema: {}, icon: "computer",
+  config_fields: [field("directory", { input_type: "directory", required: true })],
 };
 const authDefinition: StorageProviderDefinition = {
-  provider_type: "fixture_oauth", name: "OAuth", locations: ["root", "id"], browser_auth: true,
-  local_picker: false, can_rename: true, config_schema: {}, account_label: "授权用户", icon: "cloud",
+  provider_type: "fixture_oauth", locations: ["root", "id"], browser_auth: true,
+  local_picker: false, can_rename: true, config_schema: {}, icon: "cloud",
   config_fields: [
-    field("application_id", "应用 ID", { create_label: "应用 ID（可稍后配置）", nullable: true }),
-    field("client_secret", "凭据密钥", { input_type: "password", target: "client_secret",
-      saved_help_text: "已保存密钥；留空保留原值。更改客户端配置后需重新登录。" }),
+    field("application_id", { nullable: true }),
+    field("client_secret", { input_type: "password", target: "client_secret" }),
   ],
 };
+
+const builtinDefinitions: StorageProviderDefinition[] = [
+  { provider_type: "local", locations: ["root", "path", "id"], browser_auth: false,
+    local_picker: true, can_rename: true, config_schema: {}, icon: "computer",
+    config_fields: [field("root_path", { input_type: "directory", required: true })] },
+  { provider_type: "onedrive", locations: ["root", "id", "path"], browser_auth: true,
+    local_picker: false, can_rename: true, config_schema: {}, icon: "cloud",
+    config_fields: [field("client_id", { nullable: true })] },
+  { provider_type: "google_drive", locations: ["root", "id"], browser_auth: true,
+    local_picker: false, can_rename: true, config_schema: {}, icon: "cloud",
+    config_fields: [field("client_id", { nullable: true }), field("client_secret", { target: "client_secret" })] },
+];
 
 function setup(executingStorageId?: string) {
   const storage = { storage_id: "default-local", provider_type: "fixture_directory", name: "Local", revision: 1, busy: false, config: { directory: "C:\\files" }, account_id: null, account_display_name: null, account_email: null };
@@ -48,16 +59,151 @@ function setup(executingStorageId?: string) {
 }
 
 describe("storage settings", () => {
-  it("updates an open editor while preserving drafts and backend display fields", async () => {
+  it.each([
+    ["zh-CN", "local", "本地文件", "本地根目录"],
+    ["en-US", "local", "Local Files", "Local root directory"],
+    ["zh-CN", "onedrive", "OneDrive", "OneDrive App ID（可稍后配置）"],
+    ["en-US", "onedrive", "OneDrive", "OneDrive App ID (can be configured later)"],
+    ["zh-CN", "google_drive", "Google Drive", "Google Client ID（可稍后配置）"],
+    ["en-US", "google_drive", "Google Drive", "Google Client ID (can be configured later)"],
+  ])("creates %s %s with translated fields and original configuration keys", async (locale, provider, serviceName, label) => {
+    const { client } = setup();
+    await screen.findByRole("button", { name: "编辑连接 Local" });
+    vi.mocked(api.fetchStorageProviders).mockResolvedValue(builtinDefinitions);
+    await act(async () => {
+      client.setQueryData(["storage-providers"], builtinDefinitions);
+      await i18n.changeLanguage(locale);
+    });
+    const chinese = locale === "zh-CN";
+    fireEvent.click(screen.getByRole("button", { name: chinese ? "添加连接" : "Add connection" }));
+    fireEvent.mouseDown(screen.getByRole("combobox", { name: chinese ? "存储类型" : "Storage type" }));
+    fireEvent.click(screen.getByRole("option", { name: serviceName }));
+    fireEvent.change(screen.getByRole("textbox", { name: chinese ? "连接名称" : "Connection name" }), { target: { value: "我的连接" } });
+    const value = provider === "local" ? "D:\\原始目录" : "original-client-id";
+    fireEvent.change(screen.getByRole("textbox", { name: label }), { target: { value } });
+    if (provider === "google_drive") {
+      expect(screen.getByText(chinese
+        ? "使用自行创建的 Desktop OAuth 客户端 ID 和密钥；两项保存后才能登录。"
+        : "Use your own Desktop OAuth client ID and secret. Save both before signing in.")).toBeInTheDocument();
+      fireEvent.change(screen.getByRole("textbox", { name: "Google Client Secret" }), { target: { value: "fixture-secret" } });
+    }
+    fireEvent.click(screen.getByRole("button", { name: chinese ? "保存连接" : "Save connection" }));
+    await waitFor(() => expect(api.createStorage).toHaveBeenCalledWith({
+      provider_type: provider, name: "我的连接", config: { [provider === "local" ? "root_path" : "client_id"]: value },
+      ...(provider === "google_drive" ? { client_secret: "fixture-secret" } : {}),
+    }));
+    client.clear();
+  });
+
+  it.each([
+    ["zh-CN", "local", "本地根目录"], ["en-US", "local", "Local root directory"],
+    ["zh-CN", "onedrive", "OneDrive App ID"], ["en-US", "onedrive", "OneDrive App ID"],
+  ])("edits %s %s using the base label without translating the connection name", async (locale, provider, label) => {
+    const { client } = setup();
+    await screen.findByRole("button", { name: "编辑连接 Local" });
+    const config = provider === "local" ? { root_path: "C:\\原始目录" } : { client_id: "original-client-id" };
+    const storage = { storage_id: provider === "local" ? "default-local" : "onedrive-connection", provider_type: provider, name: "Local Files", revision: 1,
+      busy: false, config, account_id: null, account_display_name: null, account_email: null };
+    vi.mocked(api.fetchStorages).mockResolvedValue([storage]);
+    vi.mocked(api.fetchStorageProviders).mockResolvedValue(builtinDefinitions);
+    vi.mocked(api.fetchStorageAuthStatus).mockResolvedValue({ configured: true, connected: false,
+      account_id: null, account_display_name: null, account_email: null });
+    await act(async () => {
+      client.setQueryData(["storages"], [storage]);
+      client.setQueryData(["storage-providers"], builtinDefinitions);
+      await i18n.changeLanguage(locale);
+    });
+    const chinese = locale === "zh-CN";
+    fireEvent.click(await screen.findByRole("button", { name: chinese ? "编辑连接 Local Files" : "Edit connection Local Files" }));
+    expect(screen.getByRole("textbox", { name: chinese ? "连接名称" : "Connection name" })).toHaveValue("Local Files");
+    expect(screen.getByRole("textbox", { name: label })).toHaveValue(provider === "local" ? config.root_path : config.client_id);
+    fireEvent.click(screen.getByRole("button", { name: chinese ? "保存" : "Save" }));
+    await waitFor(() => expect(api.updateStorage).toHaveBeenCalledWith(storage.storage_id, { name: "Local Files", config }));
+    client.clear();
+  });
+
+  it.each([
+    ["zh-CN", false], ["zh-CN", true], ["en-US", false], ["en-US", true],
+  ] as const)("shows %s Google edit help with saved secret=%s and preserves the account and values", async (locale, saved) => {
+    const { client } = setup();
+    await screen.findByRole("button", { name: "编辑连接 Local" });
+    const storage = { storage_id: "google", provider_type: "google_drive", name: "我的云盘", revision: 1,
+      busy: false, has_client_secret: saved, config: { client_id: "original-client-id" },
+      account_id: null, account_display_name: null, account_email: null };
+    vi.mocked(api.fetchStorages).mockResolvedValue([storage]);
+    vi.mocked(api.fetchStorageProviders).mockResolvedValue(builtinDefinitions);
+    vi.mocked(api.fetchStorageAuthStatus).mockResolvedValue({ configured: true, connected: false,
+      account_id: null, account_display_name: null, account_email: null });
+    await act(async () => {
+      client.setQueryData(["storages"], [storage]);
+      client.setQueryData(["storage-providers"], builtinDefinitions);
+      await i18n.changeLanguage(locale);
+    });
+    const chinese = locale === "zh-CN";
+    fireEvent.click(await screen.findByRole("button", { name: chinese ? "编辑连接 我的云盘" : "Edit connection 我的云盘" }));
+    expect(await screen.findByText(chinese ? "未授权" : "Not authorized")).toBeInTheDocument();
+    const help = chinese
+      ? saved ? "已保存密钥；留空保留原值。更改客户端配置后需重新登录。" : "请填写 Desktop OAuth 客户端的密钥，保存后登录 Google 账号。"
+      : saved ? "A secret is saved. Leave this empty to keep it. Sign in again after changing the client configuration." : "Enter the secret for your Desktop OAuth client, then save and sign in to your Google account.";
+    expect(screen.getByText(help)).toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: "Google Client ID" })).toHaveValue("original-client-id");
+    expect(screen.getByRole("textbox", { name: "Google Client Secret" })).toHaveValue("");
+    fireEvent.click(screen.getByRole("button", { name: chinese ? "保存" : "Save" }));
+    await waitFor(() => expect(api.updateStorage).toHaveBeenCalledWith("google", {
+      name: "我的云盘", config: { client_id: "original-client-id" },
+    }));
+    vi.mocked(api.fetchStorageAuthStatus).mockResolvedValue({
+      configured: true, connected: true, account_id: "account", account_display_name: null, account_email: null,
+    });
+    await act(async () => { client.setQueryData(["storage-auth", "google", 1], {
+      configured: true, connected: true, account_id: "account", account_display_name: null, account_email: null,
+    }); });
+    expect(await screen.findByText(chinese ? "Google 用户" : "Google user")).toBeInTheDocument();
+    expect(api.startStorageAuth).not.toHaveBeenCalled();
+    client.clear();
+  });
+
+  it("falls back to English extension resources and stable field IDs without changing submitted values", async () => {
+    const original = structuredClone(i18n.getResourceBundle("en-US", "providers"));
+    const { client } = setup();
+    try {
+      i18n.addResourceBundle("en-US", "providers", { fixture_english: {
+        name: "English extension", fields: { mount_path: { label: "Mount path" } },
+      } }, true, true);
+      await screen.findByRole("button", { name: "编辑连接 Local" });
+      const extension: StorageProviderDefinition = { ...directoryDefinition, provider_type: "fixture_english",
+        local_picker: false, config_schema: { title: "Not a UI label" },
+        config_fields: [field("mount_path", { required: true }), field("raw_key")] };
+      vi.mocked(api.fetchStorageProviders).mockResolvedValue([extension]);
+      await act(async () => { client.setQueryData(["storage-providers"], [extension]); });
+      await screen.findByText("服务定义尚未就绪，暂时无法编辑。");
+      fireEvent.click(screen.getByRole("button", { name: "添加连接" }));
+      expect(screen.getByRole("combobox", { name: "存储类型" })).toHaveTextContent("English extension");
+      fireEvent.change(screen.getByRole("textbox", { name: "连接名称" }), { target: { value: "原始连接" } });
+      fireEvent.change(screen.getByRole("textbox", { name: "Mount path" }), { target: { value: "D:\\原始目录" } });
+      fireEvent.change(screen.getByRole("textbox", { name: "raw_key" }), { target: { value: "原始值" } });
+      expect(screen.queryByText(/Not a UI label|providers:|createHelp/)).not.toBeInTheDocument();
+      fireEvent.click(screen.getByRole("button", { name: "保存连接" }));
+      await waitFor(() => expect(api.createStorage).toHaveBeenCalledWith({
+        provider_type: "fixture_english", name: "原始连接", config: { mount_path: "D:\\原始目录", raw_key: "原始值" },
+      }));
+    } finally {
+      client.clear();
+      i18n.removeResourceBundle("en-US", "providers");
+      i18n.addResourceBundle("en-US", "providers", original);
+    }
+  });
+
+  it("updates an open editor while preserving drafts and unknown field identifiers", async () => {
     const { client } = setup();
     fireEvent.click(await screen.findByRole("button", { name: "编辑连接 Local" }));
     fireEvent.change(screen.getByRole("textbox", { name: "连接名称" }), { target: { value: "自定义连接" } });
-    fireEvent.change(screen.getByRole("textbox", { name: "工作目录" }), { target: { value: "D:\\自定义目录" } });
+    fireEvent.change(screen.getByRole("textbox", { name: "directory" }), { target: { value: "D:\\自定义目录" } });
     const requestCount = vi.mocked(api.fetchStorageProviders).mock.calls.length;
     await act(async () => { await i18n.changeLanguage("en-US"); });
     expect(screen.getByRole("dialog", { name: "Local settings" })).toBeInTheDocument();
     expect(screen.getByRole("textbox", { name: "Connection name" })).toHaveValue("自定义连接");
-    expect(screen.getByRole("textbox", { name: "工作目录" })).toHaveValue("D:\\自定义目录");
+    expect(screen.getByRole("textbox", { name: "directory" })).toHaveValue("D:\\自定义目录");
     expect(screen.getByRole("button", { name: "Save" })).toBeEnabled();
     expect(api.fetchStorageProviders).toHaveBeenCalledTimes(requestCount);
     expect(api.updateStorage).not.toHaveBeenCalled();
@@ -86,10 +232,10 @@ describe("storage settings", () => {
     const { client } = setup();
     await screen.findByRole("button", { name: "编辑连接 Local" });
     const definition: StorageProviderDefinition = {
-      ...directoryDefinition, provider_type: "fixture_storage", name: "测试存储",
+      ...directoryDefinition, provider_type: "fixture_storage",
       config_fields: [
-        field("mount_path", "挂载目录", { input_type: "directory", required: true }),
-        field("tenant", "租户", { nullable: true }),
+        field("mount_path", { input_type: "directory", required: true }),
+        field("tenant", { nullable: true }),
       ],
     };
     const definitions = [directoryDefinition, definition];
@@ -97,12 +243,12 @@ describe("storage settings", () => {
     await act(async () => { client.setQueryData(["storage-providers"], definitions); });
     fireEvent.click(screen.getByRole("button", { name: "添加连接" }));
     fireEvent.mouseDown(screen.getByRole("combobox", { name: "存储类型" }));
-    fireEvent.click(await screen.findByRole("option", { name: "测试存储" }));
+    fireEvent.click(await screen.findByRole("option", { name: "fixture_storage" }));
     fireEvent.change(screen.getByRole("textbox", { name: "连接名称" }), { target: { value: "Fixture" } });
     expect(screen.getByRole("button", { name: "保存连接" })).toBeDisabled();
     vi.mocked(api.pickLocalFolderDraft).mockResolvedValueOnce({ selected: true, root_path: "D:\\fixture" });
     fireEvent.click(screen.getByRole("button", { name: "浏览本地目录" }));
-    await waitFor(() => expect(screen.getByRole("textbox", { name: "挂载目录" })).toHaveValue("D:\\fixture"));
+    await waitFor(() => expect(screen.getByRole("textbox", { name: "mount_path" })).toHaveValue("D:\\fixture"));
     expect(api.pickStorageFolder).not.toHaveBeenCalled();
     expect(api.updateStorage).not.toHaveBeenCalled();
     expect(api.createStorage).not.toHaveBeenCalled();
@@ -117,8 +263,8 @@ describe("storage settings", () => {
     vi.mocked(api.fetchStorages).mockResolvedValue([storage]);
     await act(async () => { client.setQueryData(["storages"], [storage]); });
     fireEvent.click(await screen.findByRole("button", { name: "编辑连接 Fixture" }));
-    expect(screen.getByRole("textbox", { name: "挂载目录" })).toHaveValue("D:\\fixture");
-    fireEvent.change(screen.getByRole("textbox", { name: "租户" }), { target: { value: " updated " } });
+    expect(screen.getByRole("textbox", { name: "mount_path" })).toHaveValue("D:\\fixture");
+    fireEvent.change(screen.getByRole("textbox", { name: "tenant" }), { target: { value: " updated " } });
     fireEvent.click(screen.getByRole("button", { name: "保存" }));
     await waitFor(() => expect(api.updateStorage).toHaveBeenCalledWith("fixture", {
       name: "Fixture", config: { mount_path: "D:\\fixture", tenant: "updated" },
@@ -139,20 +285,20 @@ describe("storage settings", () => {
       account_id: null, account_display_name: null, account_email: null });
     await act(async () => { client.setQueryData(["storages"], [storage]); });
     fireEvent.click(await screen.findByRole("button", { name: "编辑连接 OAuth" }));
-    expect(screen.getByLabelText("凭据密钥")).toHaveValue("");
-    expect(screen.getByText(/已保存密钥/)).toBeInTheDocument();
+    expect(screen.getByLabelText("client_secret")).toHaveValue("");
+    expect(screen.queryByText(/providers:|savedHelp/)).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "保存" }));
     await waitFor(() => expect(api.updateStorage).toHaveBeenCalledWith("oauth", {
       name: "OAuth", config: { application_id: "desktop-id" },
     }));
     await waitFor(() => expect(screen.getByRole("button", { name: "保存" })).toBeEnabled());
     vi.mocked(api.updateStorage).mockRejectedValueOnce(new Error("Save failed"));
-    fireEvent.change(screen.getByLabelText("凭据密钥"), { target: { value: "replacement-secret" } });
+    fireEvent.change(screen.getByLabelText("client_secret"), { target: { value: "replacement-secret" } });
     fireEvent.click(screen.getByRole("button", { name: "保存" }));
     await within(screen.getByRole("dialog")).findByText("Save failed");
-    expect(screen.getByLabelText("凭据密钥")).toHaveValue("replacement-secret");
+    expect(screen.getByLabelText("client_secret")).toHaveValue("replacement-secret");
     fireEvent.click(screen.getByRole("button", { name: "保存" }));
-    await waitFor(() => expect(screen.getByLabelText("凭据密钥")).toHaveValue(""));
+    await waitFor(() => expect(screen.getByLabelText("client_secret")).toHaveValue(""));
     expect(api.updateStorage).toHaveBeenLastCalledWith("oauth", {
       name: "OAuth", config: { application_id: "desktop-id" }, client_secret: "replacement-secret",
     });
@@ -173,23 +319,23 @@ describe("storage settings", () => {
       fireEvent.mouseDown(screen.getByRole("combobox", { name: "存储类型" }));
       fireEvent.click(await screen.findByRole("option", { name }));
     };
-    await select("OAuth");
-    fireEvent.change(screen.getByLabelText("凭据密钥"), { target: { value: "discarded-secret" } });
-    await select("Local");
-    await select("OAuth");
-    expect(screen.getByLabelText("凭据密钥")).toHaveValue("");
-    expect(screen.getByLabelText("凭据密钥")).toHaveAttribute("type", "password");
+    await select("fixture_oauth");
+    fireEvent.change(screen.getByLabelText("client_secret"), { target: { value: "discarded-secret" } });
+    await select("fixture_directory");
+    await select("fixture_oauth");
+    expect(screen.getByLabelText("client_secret")).toHaveValue("");
+    expect(screen.getByLabelText("client_secret")).toHaveAttribute("type", "password");
     fireEvent.change(screen.getByRole("textbox", { name: "连接名称" }), { target: { value: "OAuth" } });
-    fireEvent.change(screen.getByRole("textbox", { name: "应用 ID（可稍后配置）" }), { target: { value: "desktop-id" } });
-    fireEvent.change(screen.getByLabelText("凭据密钥"), { target: { value: "fixture-secret" } });
+    fireEvent.change(screen.getByRole("textbox", { name: "application_id" }), { target: { value: "desktop-id" } });
+    fireEvent.change(screen.getByLabelText("client_secret"), { target: { value: "fixture-secret" } });
     fireEvent.click(screen.getByRole("button", { name: "保存连接" }));
     await waitFor(() => expect(api.createStorage).toHaveBeenCalledWith({
       provider_type: "fixture_oauth", name: "OAuth", config: { application_id: "desktop-id" }, client_secret: "fixture-secret",
     }));
     await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
     fireEvent.click(screen.getByRole("button", { name: "添加连接" }));
-    await select("OAuth");
-    expect(screen.getByLabelText("凭据密钥")).toHaveValue("");
+    await select("fixture_oauth");
+    expect(screen.getByLabelText("client_secret")).toHaveValue("");
     client.clear();
   });
 
@@ -221,7 +367,7 @@ describe("storage settings", () => {
     expect(screen.getByRole("button", { name: "等待授权…" })).toBeDisabled();
     vi.mocked(api.fetchStorageAuthStatus).mockResolvedValue({ configured: true, connected: true, account_id: "account", account_display_name: null, account_email: null });
     callback("http://localhost:8000", "oauth");
-    expect(await screen.findByText("授权用户")).toBeInTheDocument();
+    expect(await within(screen.getByRole("dialog")).findByText("fixture_oauth")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "退出登录" })).toBeEnabled();
     client.clear();
   });
@@ -231,7 +377,7 @@ describe("storage settings", () => {
     await screen.findByRole("button", { name: "编辑连接 Local" });
     fireEvent.click(screen.getByRole("button", { name: "添加连接" }));
     fireEvent.change(screen.getByRole("textbox", { name: "连接名称" }), { target: { value: "Other" } });
-    fireEvent.change(screen.getByRole("textbox", { name: "工作目录" }), { target: { value: "D:\\draft" } });
+    fireEvent.change(screen.getByRole("textbox", { name: "directory" }), { target: { value: "D:\\draft" } });
     let finish!: (result: Awaited<ReturnType<typeof api.pickLocalFolderDraft>>) => void;
     vi.mocked(api.pickLocalFolderDraft).mockReturnValueOnce(new Promise((resolve) => { finish = resolve; }));
     fireEvent.click(screen.getByRole("button", { name: "浏览本地目录" }));
@@ -240,7 +386,7 @@ describe("storage settings", () => {
     expect(screen.getByRole("button", { name: "浏览本地目录" })).toBeDisabled();
     finish({ selected: false, root_path: "C:\\Documents" });
     await waitFor(() => expect(screen.getByRole("button", { name: "取消" })).toBeEnabled());
-    expect(screen.getByRole("textbox", { name: "工作目录" })).toHaveValue("D:\\draft");
+    expect(screen.getByRole("textbox", { name: "directory" })).toHaveValue("D:\\draft");
     fireEvent.click(screen.getByRole("button", { name: "取消" }));
     expect(api.createStorage).not.toHaveBeenCalled();
     expect(api.updateStorage).not.toHaveBeenCalled();
@@ -295,13 +441,13 @@ describe("storage settings", () => {
     fireEvent.click(await screen.findByRole("button", { name: "编辑连接 Local" }));
     fireEvent.click(screen.getByRole("button", { name: "浏览本地目录" }));
     await waitFor(() => expect(api.pickStorageFolder).toHaveBeenCalledWith("default-local"));
-    await waitFor(() => expect(screen.getByRole("textbox", { name: "工作目录" })).toHaveValue("D:\\picked"));
+    await waitFor(() => expect(screen.getByRole("textbox", { name: "directory" })).toHaveValue("D:\\picked"));
     vi.mocked(api.pickStorageFolder).mockResolvedValueOnce({ selected: false, root_path: "D:\\picked" });
     await waitFor(() => expect(screen.getByRole("button", { name: "浏览本地目录" })).toBeEnabled());
     fireEvent.click(screen.getByRole("button", { name: "浏览本地目录" }));
     await waitFor(() => expect(api.pickStorageFolder).toHaveBeenCalledTimes(2));
     await waitFor(() => expect(screen.getByRole("button", { name: "浏览本地目录" })).toBeEnabled());
-    expect(screen.getByRole("textbox", { name: "工作目录" })).toHaveValue("D:\\picked");
+    expect(screen.getByRole("textbox", { name: "directory" })).toHaveValue("D:\\picked");
     expect(api.updateStorage).not.toHaveBeenCalled();
     client.clear();
   });
@@ -329,7 +475,7 @@ describe("storage settings", () => {
     vi.mocked(api.createStorage).mockRejectedValueOnce(new Error("Unable to save"));
     fireEvent.click(screen.getByRole("button", { name: "添加连接" }));
     fireEvent.change(screen.getByRole("textbox", { name: "连接名称" }), { target: { value: "Other" } });
-    fireEvent.change(screen.getByRole("textbox", { name: "工作目录" }), { target: { value: "D:\\other" } });
+    fireEvent.change(screen.getByRole("textbox", { name: "directory" }), { target: { value: "D:\\other" } });
     fireEvent.click(screen.getByRole("button", { name: "保存连接" }));
     expect(await within(screen.getByRole("dialog")).findByText("Unable to save")).toBeInTheDocument();
     expect(screen.getByRole("textbox", { name: "连接名称" })).toHaveValue("Other");

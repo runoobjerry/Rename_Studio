@@ -61,14 +61,14 @@ beforeEach(() => {
     return serverSettings;
   });
   vi.mocked(api.fetchStorageProviders).mockResolvedValue([
-    { provider_type: "local", name: "Local", locations: ["root", "path", "id"], can_rename: true,
-      browser_auth: false, local_picker: true, config_schema: {}, account_label: "用户", icon: "computer",
-      config_fields: [{ key: "root_path", label: "本地根目录", create_label: null, input_type: "directory", target: "config",
-        required: true, nullable: false, help_text: null, create_help_text: null, saved_help_text: null }] },
-    { provider_type: "onedrive", name: "OneDrive", locations: ["root", "path", "id"], can_rename: true,
-      browser_auth: true, local_picker: false, config_schema: {}, account_label: "Microsoft 用户", icon: "cloud",
-      config_fields: [{ key: "client_id", label: "OneDrive App ID", create_label: "OneDrive App ID（可稍后配置）", input_type: "text", target: "config",
-        required: false, nullable: true, help_text: null, create_help_text: null, saved_help_text: null }] },
+    { provider_type: "local", locations: ["root", "path", "id"], can_rename: true,
+      browser_auth: false, local_picker: true, config_schema: {}, icon: "computer",
+      config_fields: [{ key: "root_path",   input_type: "directory", target: "config",
+        required: true, nullable: false }] },
+    { provider_type: "onedrive", locations: ["root", "path", "id"], can_rename: true,
+      browser_auth: true, local_picker: false, config_schema: {}, icon: "cloud",
+      config_fields: [{ key: "client_id",   input_type: "text", target: "config",
+        required: false, nullable: true,    }] },
   ]);
   useRenameStore.setState({ selectedIds: [], rules: [], task: null });
   vi.stubGlobal("matchMedia", vi.fn((query: string) => ({
@@ -111,7 +111,7 @@ it.each([
   const definitions = await api.fetchStorageProviders();
   const storages = await api.fetchStorages();
   vi.mocked(api.fetchStorageProviders).mockResolvedValue([{
-    ...definitions[0], provider_type: "fixture_service", name: "Fixture Service",
+    ...definitions[0], provider_type: "fixture_service",
     browser_auth: browserAuth, local_picker: localPicker, icon,
   }]);
   vi.mocked(api.fetchStorages).mockResolvedValue([{
@@ -136,13 +136,13 @@ it("uses the provider name in disconnected guidance without requesting its files
   const definitions = await api.fetchStorageProviders();
   const storages = await api.fetchStorages();
   vi.mocked(api.fetchStorageProviders).mockResolvedValue([{
-    ...definitions[1], provider_type: "fixture_service", name: "Fixture Service",
+    ...definitions[1], provider_type: "fixture_service",
   }]);
   vi.mocked(api.fetchStorages).mockResolvedValue([{ ...storages[0], provider_type: "fixture_service" }]);
   vi.mocked(api.fetchStorageAuthStatus).mockResolvedValue(status(null, false));
   render(<QueryClientProvider client={client}><WorkspaceApp /></QueryClientProvider>);
-  expect(await screen.findByText("请先前往设置页面连接 Fixture Service 账号。")).toBeInTheDocument();
-  expect(screen.getByText("连接 Fixture Service 后可浏览云端目录。")).toBeInTheDocument();
+  expect(await screen.findByText("请先前往设置页面连接 fixture_service 账号。")).toBeInTheDocument();
+  expect(screen.getByText("连接 fixture_service 后可浏览云端目录。")).toBeInTheDocument();
   expect(api.fetchStorageFiles).not.toHaveBeenCalled();
 });
 
@@ -508,7 +508,7 @@ describe("workspace workflow wiring", () => {
 
   it("connects selection and rule changes to preview invalidation", async () => {
     vi.mocked(api.fetchRules).mockResolvedValue([
-      { type: "insert", name: "插入", description: "插入文本", config_schema: {} },
+      { type: "insert",   config_schema: {} },
     ]);
     await setup(2);
     const previewButton = screen.getByRole("button", { name: "刷新预览" });

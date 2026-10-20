@@ -567,8 +567,6 @@ class MappingConfig(BaseModel):
 
 class MappingRule(RenameRule[MappingConfig]):
     type = "mapping"
-    display_name = "Mapping"
-    description = "Exercise Google name dependencies"
     config_model = MappingConfig
 
     def apply(self, filename: str, context: RuleContext, config: MappingConfig) -> str:

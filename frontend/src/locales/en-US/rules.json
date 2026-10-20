@@ -45,5 +45,23 @@
     "decrease": "Decrease {{label}} by one",
     "increase": "Increase {{label}} by one"
   },
-  "unsupported": "Unsupported rule type: {{type}}"
+  "unsupported": "Unsupported rule type: {{type}}",
+  "types": {
+    "padding": {
+      "name": "Padding",
+      "description": "Pad numbers with zeros, or pad text on the left or right"
+    },
+    "replace": {
+      "name": "Replace",
+      "description": "Find text and replace it with new text"
+    },
+    "remove": {
+      "name": "Remove",
+      "description": "Remove matching text"
+    },
+    "insert": {
+      "name": "Insert",
+      "description": "Insert text at the start, end, a character position, or next to specified text"
+    }
+  }
 }

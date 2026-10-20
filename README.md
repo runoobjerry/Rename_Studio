@@ -172,6 +172,8 @@ Frontend CI 在相关 PR 或手动触发时运行前端测试和构建。Release
 
 规则位于 `backend/app/rules`；各 Provider 的配置、定义、认证与驱动位于 `backend/app/providers`，经 `builtin.py` 显式注册。前端依据 Provider 元数据渲染连接配置与操作；`StorageManager` 管理连接生命周期、版本和执行互斥，Repository 原子保存完整状态。新增规则或 Provider 不应将具体存储逻辑引入 Rename Engine。
 
+Rule/Provider 的界面文案维护在 `frontend/src/locales`：规则使用 `rules:types.<type>`，Provider 及配置字段使用 `providers:<provider_type>.fields.<key>`。新增实现需同步补齐中英文文案；后端元数据仅保留稳定标识、配置结构与能力，接口形状见 [API 参考](docs/API_REFERENCE.md)。
+
 - [项目约束](AGENTS.md)、[前端边界](frontend/AGENTS.md)、[前端交接](docs/FRONTEND_HANDOFF.md)
 - [API 参考](docs/API_REFERENCE.md)、[版本发布](docs/RELEASING.md)、[启动与人工验收](docs/LAUNCHER.md)
 - [前端测试与 CI](docs/FRONTEND_TESTING.md)、[测试用例](docs/FRONTEND_TEST_CASES.md)、[UI 人工验收](docs/UI_MANUAL_ACCEPTANCE.md)

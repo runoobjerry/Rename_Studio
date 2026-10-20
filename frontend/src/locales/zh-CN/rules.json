@@ -45,5 +45,23 @@
     "decrease": "{{label}}减一",
     "increase": "{{label}}加一"
   },
-  "unsupported": "不支持的规则类型：{{type}}"
+  "unsupported": "不支持的规则类型：{{type}}",
+  "types": {
+    "padding": {
+      "name": "填充",
+      "description": "为数字序列补零，或从左侧、右侧填充文本"
+    },
+    "replace": {
+      "name": "替换",
+      "description": "查找文本并替换为新文本"
+    },
+    "remove": {
+      "name": "移除",
+      "description": "删除匹配的文本"
+    },
+    "insert": {
+      "name": "插入",
+      "description": "在前缀、后缀、字符位置或指定文本旁插入内容"
+    }
+  }
 }

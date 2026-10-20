@@ -72,12 +72,15 @@ function ConfigFields({ definition, draft, clientSecret, disabled, creating = fa
   return <>{definition.config_fields.map((field) => {
     const secret = field.target === "client_secret";
     const pickable = definition.local_picker && field.input_type === "directory";
-    let helpText = field.help_text;
-    if (creating) helpText = field.create_help_text ?? helpText;
-    else if (secret && hasClientSecret) helpText = field.saved_help_text ?? helpText;
+    const key = `providers:${definition.provider_type}.fields.${field.key}`;
+    const label = t(creating ? [`${key}.createLabel`, `${key}.label`] : `${key}.label`, { defaultValue: field.key });
+    const helpKeys = [`${key}.help`];
+    if (creating) helpKeys.unshift(`${key}.createHelp`);
+    else if (secret && hasClientSecret) helpKeys.unshift(`${key}.savedHelp`);
+    const helpText = t(helpKeys, { defaultValue: "" });
     const input = (
       <TextField key={field.key} variant="standard" size="small"
-        label={creating ? field.create_label ?? field.label : field.label}
+        label={label}
         type={field.input_type === "password" ? "password" : "text"}
         value={secret ? clientSecret : draft[field.key] ?? ""} disabled={disabled}
         autoComplete={field.input_type === "password" ? "new-password" : undefined}
@@ -278,7 +281,7 @@ function ConnectionRow({ storage, executing, definition }: {
     authTitle = t("settings:connection.authReadFailed");
     authDescription = t("settings:connection.authReadHelp");
   } else if (status.data?.connected) {
-    authTitle = status.data.account_display_name ?? definition.account_label;
+    authTitle = status.data.account_display_name ?? t(`providers:${definition.provider_type}.accountLabel`, { defaultValue: definition.provider_type });
     authDescription = status.data.account_email ?? t("settings:connection.noEmail");
   } else {
     authTitle = t("settings:connection.unauthorized");
@@ -289,7 +292,7 @@ function ConnectionRow({ storage, executing, definition }: {
   return <>
     <TableRow hover>
       <TableCell sx={{ maxWidth: 240, overflowWrap: "anywhere", color: "text.primary" }}>{storage.name}</TableCell>
-      <TableCell>{definition.name}</TableCell>
+      <TableCell>{t(`providers:${definition.provider_type}.name`, { defaultValue: definition.provider_type })}</TableCell>
       <TableCell>
         <Chip size="small" variant="outlined" color={!requiresAuth || status.data?.connected ? "success" : "default"}
           label={statusLabel} />
@@ -533,7 +536,7 @@ export function StorageSettingsPanel({ executingStorageId }: { executingStorageI
             {(providers.data ?? []).map((definition) => (
               <MenuItem key={definition.provider_type} value={definition.provider_type}
                 sx={{ fontSize: "body2.fontSize" }}>
-                {definition.name}
+                {t(`providers:${definition.provider_type}.name`, { defaultValue: definition.provider_type })}
               </MenuItem>
             ))}
           </TextField>

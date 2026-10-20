@@ -86,8 +86,6 @@ def _apply_to_filename(
 
 class ReplaceRule(RenameRule[ReplaceConfig]):
     type = "replace"
-    display_name = "替换"
-    description = "查找文本并替换为新文本"
     config_model = ReplaceConfig
 
     def apply(
@@ -103,8 +101,6 @@ class ReplaceRule(RenameRule[ReplaceConfig]):
 
 class RemoveRule(RenameRule[RemoveConfig]):
     type = "remove"
-    display_name = "移除"
-    description = "删除匹配的文本"
     config_model = RemoveConfig
 
     def apply(

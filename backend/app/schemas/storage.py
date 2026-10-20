@@ -178,23 +178,16 @@ class StorageAuthStartResponse(BaseModel):
 
 class StorageConfigField(BaseModel):
     key: str
-    label: str
-    create_label: str | None = None
     input_type: Literal["text", "password", "directory"] = "text"
     target: Literal["config", "client_secret"] = "config"
     required: bool = False
     nullable: bool = False
-    help_text: str | None = None
-    create_help_text: str | None = None
-    saved_help_text: str | None = None
 
 
 class StorageProviderInfo(BaseModel):
     provider_type: str
-    name: str
     config_schema: dict[str, object]
     config_fields: tuple[StorageConfigField, ...] = ()
-    account_label: str = "用户"
     icon: Literal["computer", "cloud"] = "cloud"
     locations: tuple[str, ...]
     can_rename: bool

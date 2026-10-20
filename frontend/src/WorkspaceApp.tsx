@@ -93,7 +93,7 @@ function Workspace({ preference, setPreference, settingsError }: {
   const {
     storageId, location, setLocation, setPath, selectStorage, resetWorkspaceSession, locationReady,
     providers, activeStorage, providerId, providerName, cloudStatus,
-    providerDefinitions, providerDefinition, providerError, metadataReady, requiresAuth, supportsLocalPicker, supportsLocation,
+    providerDefinitions, providerError, metadataReady, requiresAuth, supportsLocalPicker, supportsLocation,
     cloudAccountId, cloudConnected, cloudSession, cloudReady, restoredCloudSession, appSettingsReady,
     files, workspaceKey, settingsLoading, pickLocalRoot,
     restoreDefaultCloudPath, setDefaultCloudPath, refreshFiles,
@@ -226,7 +226,7 @@ function Workspace({ preference, setPreference, settingsError }: {
                   compactNavigation={compactNavigation}
                   listing={locationReady ? files.data : undefined}
                   rootLabel={providerName}
-                  serviceName={providerDefinition?.name ?? providerId}
+                  serviceName={t(`providers:${providerId}.name`, { defaultValue: providerId })}
                   requiresAuth={metadataReady && requiresAuth}
                   supportsLocalPicker={supportsLocalPicker}
                   navigationDisabled={!locationReady || !activeStorage || isExecuting || pickLocalRoot.isPending || activeStorage.busy}
@@ -286,7 +286,7 @@ function Workspace({ preference, setPreference, settingsError }: {
                           ) : (
                             <p className="empty-state">
                               {metadataReady && requiresAuth && cloudStatus.isSuccess && !cloudStatus.data.connected
-                                ? t("files:workspace.connectToBrowse", { service: providerDefinition?.name })
+                                ? t("files:workspace.connectToBrowse", { service: t(`providers:${providerId}.name`, { defaultValue: providerId }) })
                                 : t("files:workspace.unavailable")}
                             </p>
                           )

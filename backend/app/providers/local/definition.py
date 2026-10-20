@@ -23,10 +23,10 @@ class LocalConfig(BaseModel):
 
 def get_definition(settings: Settings) -> ProviderDefinition:
     return ProviderDefinition(
-        "local", "Local Files", LocalConfig, ("root", "path", "id"),
+        "local", LocalConfig, ("root", "path", "id"),
         lambda record, auth: LocalProvider(Path(str(record.config["root_path"]))),
         local_picker=True, icon="computer",
         config_fields=(StorageConfigField(
-            key="root_path", label="本地根目录", input_type="directory", required=True,
+            key="root_path", input_type="directory", required=True,
         ),),
     )

@@ -15,7 +15,6 @@ from app.schemas.storage import PathLocation, RootLocation
 
 class LocalProvider(StorageProvider):
     id = "local"
-    display_name = "Local Files"
 
     def __init__(self, root: Path) -> None:
         self.root = root.expanduser().resolve()

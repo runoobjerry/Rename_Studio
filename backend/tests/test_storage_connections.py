@@ -58,27 +58,30 @@ def services(manager: StorageManager) -> tuple[PreviewService, ExecuteService]:
 def test_provider_metadata_exposes_form_fields_without_connection_secrets(tmp_path: Path) -> None:
     manager = make_manager(tmp_path)
     definition = manager.registry.definition("onedrive")
-    manager.registry.definitions["onedrive"] = replace(
-        definition, account_label="测试用户", icon="computer", config_fields=(
-            StorageConfigField(key="client_id", label="客户端 ID", nullable=True),
-            StorageConfigField(key="client_secret", label="客户端密钥", input_type="password", target="client_secret"),
+    manager.registry.register(replace(
+        definition, provider_type="fixture_service", icon="computer", config_fields=(
+            StorageConfigField(key="client_id", nullable=True),
+            StorageConfigField(key="client_secret", input_type="password", target="client_secret"),
         ),
-    )
+    ))
+    manager.create(StorageCreate(provider_type="fixture_service", name="User connection", config={}, client_secret="fixture-secret"))
     app = FastAPI()
     app.include_router(storage_router.router)
     app.dependency_overrides[get_storage_manager] = lambda: manager
     with TestClient(app) as client:
         response = client.get("/storage-providers")
     assert response.status_code == 200
-    provider = next(item for item in response.json() if item["provider_type"] == "onedrive")
-    assert provider["account_label"] == "测试用户"
+    provider = next(item for item in response.json() if item["provider_type"] == "fixture_service")
+    assert set(provider) == {"provider_type", "config_schema", "config_fields", "icon", "locations", "can_rename", "browser_auth", "local_picker"}
     assert provider["icon"] == "computer"
     assert provider["browser_auth"] is True
     assert provider["config_schema"] == OneDriveConfig.model_json_schema()
     fields = provider["config_fields"]
+    assert all(set(field) == {"key", "input_type", "target", "required", "nullable"} for field in fields)
     assert fields[0]["key"] == "client_id" and fields[0]["nullable"] is True
     assert fields[1]["input_type"] == "password" and fields[1]["target"] == "client_secret"
     assert "value" not in fields[1] and "credentials" not in provider
+    assert "fixture-secret" not in response.text
 
 
 @pytest.mark.parametrize("provider_type", ["fixture_service", "google_drive"])
@@ -86,9 +89,9 @@ def test_provider_metadata_exposes_form_fields_without_connection_secrets(tmp_pa
 def test_client_secret_acceptance_follows_provider_fields(tmp_path: Path, provider_type: str, accepts_secret: bool) -> None:
     manager = make_manager(tmp_path)
     manager.registry.register(replace(
-        manager.registry.definition("onedrive"), provider_type=provider_type, name="Fixture Service",
+        manager.registry.definition("onedrive"), provider_type=provider_type,
         config_fields=(StorageConfigField(
-            key="client_secret", label="密钥", target="client_secret", input_type="password",
+            key="client_secret", target="client_secret", input_type="password",
         ),) if accepts_secret else (),
     ))
     app = create_app()

@@ -24,8 +24,6 @@ class ConstantConfig(BaseModel):
 
 class ConstantRule(RenameRule[ConstantConfig]):
     type = "test_constant"
-    display_name = "Test constant"
-    description = "Test-only rule"
     config_model = ConstantConfig
 
     def apply(
@@ -51,8 +49,6 @@ class CountingLocalProvider(LocalProvider):
 
 class IndexRule(RenameRule[EmptyRuleConfig]):
     type = "test_index"
-    display_name = "Test index"
-    description = "Test-only order-sensitive rule"
     config_model = EmptyRuleConfig
 
     def apply(self, filename: str, context: RuleContext, config: EmptyRuleConfig) -> str:

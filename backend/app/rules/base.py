@@ -18,8 +18,6 @@ class EmptyRuleConfig(BaseModel):
 
 class RenameRule[ConfigT: BaseModel](ABC):
     type: str
-    display_name: str
-    description: str
     config_model: type[ConfigT]
 
     def parse_config(self, value: dict[str, object]) -> ConfigT:

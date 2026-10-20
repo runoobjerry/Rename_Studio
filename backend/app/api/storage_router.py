@@ -29,9 +29,9 @@ Manager = Annotated[StorageManager, Depends(get_storage_manager)]
 
 @router.get("/storage-providers", response_model=list[StorageProviderInfo])
 async def storage_providers(manager: Manager) -> list[StorageProviderInfo]:
-    return [StorageProviderInfo(provider_type=definition.provider_type, name=definition.name,
+    return [StorageProviderInfo(provider_type=definition.provider_type,
              config_schema=definition.config_model.model_json_schema(),
-             config_fields=definition.config_fields, account_label=definition.account_label, icon=definition.icon,
+             config_fields=definition.config_fields, icon=definition.icon,
              locations=definition.locations, can_rename=definition.can_rename,
              browser_auth=definition.auth_factory is not None, local_picker=definition.local_picker)
             for definition in manager.registry.definitions.values()]

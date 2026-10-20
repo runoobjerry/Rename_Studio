@@ -1,31 +1,25 @@
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { useState } from "react";
 
 import type { RuleDefinition, RuleSpec } from "../../types";
 import { cloneRule, DEFAULT_RULES, RuleEditor } from "./RuleEditor";
+import { i18n } from "../../i18n";
 
 afterEach(cleanup);
 
-
 const definition: RuleDefinition = {
   type: "padding",
-  name: "填充",
-  description: "填充文件名",
   config_schema: {},
 };
 
 const replaceDefinition: RuleDefinition = {
   type: "replace",
-  name: "替换",
-  description: "替换匹配文本",
   config_schema: {},
 };
 
 const insertDefinition: RuleDefinition = {
   type: "insert",
-  name: "插入",
-  description: "插入指定文本",
   config_schema: {},
 };
 
@@ -41,6 +35,35 @@ const textRule: RuleSpec = {
 };
 
 describe("RuleEditor", () => {
+  it("translates a rule menu, tooltip and card while keeping its type and configuration", async () => {
+    const onChange = vi.fn();
+    function Editor() {
+      const [rules, setRules] = useState<RuleSpec[]>([]);
+      return <RuleEditor definitions={[definition]} rules={rules} onChange={(next) => { onChange(next); setRules(next); }} />;
+    }
+    render(<Editor />);
+    fireEvent.click(screen.getByRole("button", { name: "添加规则" }));
+    fireEvent.mouseOver(screen.getByRole("menuitem", { name: "填充" }));
+    expect(await screen.findByRole("tooltip")).toHaveTextContent("为数字序列补零，或从左侧、右侧填充文本");
+    await act(async () => { await i18n.changeLanguage("en-US"); });
+    expect(screen.getByRole("tooltip")).toHaveTextContent("Pad numbers with zeros, or pad text on the left or right");
+    fireEvent.click(screen.getByRole("menuitem", { name: "Padding" }));
+    await waitFor(() => expect(screen.queryByRole("menu")).not.toBeInTheDocument());
+    expect(screen.getByRole("switch", { name: "Enable Padding" })).toBeChecked();
+    fireEvent.change(screen.getByRole("spinbutton", { name: "Target length" }), { target: { value: "6" } });
+    expect(onChange).toHaveBeenLastCalledWith([expect.objectContaining({ type: "padding", config: expect.objectContaining({ length: 6, mode: "number" }) })]);
+  });
+
+  it("displays an unknown rule ID and keeps its original configuration when toggled", async () => {
+    const onChange = vi.fn();
+    const rule = { type: "opaque_rule", enabled: true, config: { text: "原始值" } };
+    render(<RuleEditor definitions={[{ type: rule.type, config_schema: {} }]} rules={[rule]} onChange={onChange} />);
+    expect(screen.getByRole("switch", { name: "opaque_rule启用状态" })).toBeChecked();
+    await act(async () => { await i18n.changeLanguage("en-US"); });
+    fireEvent.click(screen.getByRole("switch", { name: "Enable opaque_rule" }));
+    expect(onChange).toHaveBeenCalledWith([{ ...rule, enabled: false }]);
+  });
+
   it("keeps number drafts with their rule through edits, moves, copies and deletion", () => {
     const onChange = vi.fn();
     function Editor() {
@@ -123,13 +146,16 @@ describe("RuleEditor", () => {
 
   it("limits the menu viewport to eight rows without dropping overflow options", () => {
     // 临时注入已适配规则模板，仅验证未来超过八项时的展示边界。
-    const extras = Array.from({ length: 9 }, (_, index) => ({ ...definition, type: `test-${index}`, name: `测试规则 ${index}` }));
+    const extras = Array.from({ length: 9 }, (_, index) => ({ ...definition, type: `test-${index}` }));
+    const onChange = vi.fn();
     try {
       extras.forEach((extra) => { DEFAULT_RULES[extra.type] = { ...DEFAULT_RULES.padding, type: extra.type }; });
-      render(<RuleEditor definitions={extras} rules={[]} onChange={vi.fn()} />);
+      render(<RuleEditor definitions={extras} rules={[]} onChange={onChange} />);
       fireEvent.click(screen.getByRole("button", { name: "添加规则" }));
       expect(screen.getAllByRole("menuitem")).toHaveLength(9);
       expect(screen.getByRole("menu")).toHaveStyle({ maxHeight: "294px", overflowY: "auto" });
+      fireEvent.click(screen.getByRole("menuitem", { name: "test-0" }));
+      expect(onChange).toHaveBeenCalledWith([{ ...DEFAULT_RULES.padding, type: "test-0" }]);
     } finally {
       extras.forEach((extra) => { delete DEFAULT_RULES[extra.type]; });
     }
