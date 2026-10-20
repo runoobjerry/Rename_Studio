@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import { useEffect, useState } from "react";
 import PlayArrowRoundedIcon from "@mui/icons-material/PlayArrowRounded";
 import PreviewRoundedIcon from "@mui/icons-material/PreviewRounded";
@@ -15,11 +16,6 @@ import {
 } from "@mui/material";
 
 import type { PreviewResponse, RenameProgress } from "../../types";
-
-const phaseLabels = {
-  waiting: "等待确认", validating: "正在复核", staging: "正在准备临时名称",
-  renaming: "正在修改", rollback: "正在回滚", finished: "处理结束", failed: "执行失败",
-};
 
 export interface RenameActionsProps {
   preview?: PreviewResponse;
@@ -52,6 +48,7 @@ export function RenameActions({
   onPreview,
   onExecute,
 }: RenameActionsProps) {
+  const { t } = useTranslation();
   const [confirming, setConfirming] = useState(false);
   const [applied, setApplied] = useState(false);
   const changedCount = preview?.items.filter((item) => item.changed).length ?? 0;
@@ -85,7 +82,7 @@ export function RenameActions({
           disabled={selectedCount === 0 || isPreviewing || isExecuting || isBlocked}
           onClick={onPreview}
         >
-          {isPreviewing ? "正在刷新…" : "刷新预览"}
+          {isPreviewing ? t("files:rename.refreshing") : t("files:rename.preview")}
         </Button>
         <Button
           fullWidth
@@ -94,30 +91,30 @@ export function RenameActions({
           disabled={!preview?.valid || (changedCount === 0 && !allowUnchangedBatch) || isExecuting || hasExecuted || isBlocked}
           onClick={() => { setApplied(false); setConfirming(true); }}
         >
-          开始修改
+          {t("files:rename.start")}
         </Button>
       </Stack>
 
       <Dialog open={confirming} onClose={() => !isExecuting && setConfirming(false)}>
-        <DialogTitle>{phaseLabels[phase]}</DialogTitle>
+        <DialogTitle>{t(`files:rename.phases.${phase}`)}</DialogTitle>
         <DialogContent>
           {started ? (
             <DialogContentText role="status" sx={{ color: executionError || (isExecuting && progressError) ? "error.main" : "text.secondary" }}>
-              {executionError ? `返回错误：${executionError}，请尝试刷新文件目录。` : isExecuting && progressError
-                ? `暂时无法读取进度：${progressError}；执行请求仍在进行，请勿重复提交。`
-                : `当前任务已处理 ${processed} 项，共 ${total} 项。稍等片刻，请勿刷新页面。`}
+              {executionError ? t("files:rename.returnedError", { message: executionError }) : isExecuting && progressError
+                ? t("files:rename.progressUnavailable", { message: progressError })
+                : t("files:rename.processed", { processed, total })}
             </DialogContentText>
           ) : (
             <DialogContentText>
-              {changedCount === 0 && allowUnchangedBatch && "本批没有名称变化，确认后将记录为已完成。"}
-              将根据当前预览区新文件名修改 {providerName} 中的 {changedCount} 个项目。请注意，
-              <Typography component="span" variant="inherit" sx={{ color: "error.main" }}>此操作不可恢复！</Typography>
+              {changedCount === 0 && allowUnchangedBatch && t("files:rename.unchangedBatch")}
+              {t("files:rename.confirm", { provider: providerName, count: changedCount })}
+              <Typography component="span" variant="inherit" sx={{ color: "error.main" }}>{t("files:rename.irreversible")}</Typography>
             </DialogContentText>
           )}
         </DialogContent>
         <DialogActions>
           <Button disabled={isExecuting} onClick={() => setConfirming(false)}>
-            {isFailed ? "关闭" : "取消"}
+            {isFailed ? t("common:close") : t("common:cancel")}
           </Button>
           {!isFailed && (
             <Button
@@ -128,11 +125,11 @@ export function RenameActions({
                 onExecute(preview.preview_id);
               }}
             >
-              应用
+              {t("common:apply")}
             </Button>
           )}
         </DialogActions>
-        <LinearProgress variant="determinate" color="primary" value={percent} aria-label="修改进度" sx={{ height: 4, flexShrink: 0, bgcolor: "transparent" }} />
+        <LinearProgress variant="determinate" color="primary" value={percent} aria-label={t("files:rename.progress")} sx={{ height: 4, flexShrink: 0, bgcolor: "transparent" }} />
       </Dialog>
     </>
   );

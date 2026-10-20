@@ -2,31 +2,19 @@ import { createContext, useCallback, useContext, useEffect, useRef, useState } f
 import type { ReactNode } from "react";
 import Alert from "@mui/material/Alert";
 import Snackbar from "@mui/material/Snackbar";
-import { ApiError } from "../api/client";
 import { useTranslation } from "react-i18next";
+import { translateMessage, type NotificationMessage } from "../i18n/messages";
+export { errorMessage } from "../i18n/messages";
 
 type Severity = "success" | "info" | "warning" | "error";
-interface LocalizedMessage {
-  key: string;
-  values?: Record<string, string | number>;
-}
-type Notify = (message: string | LocalizedMessage, severity?: Severity) => void;
+type Notify = (message: NotificationMessage, severity?: Severity) => void;
 const NotificationContext = createContext<Notify | null>(null);
 interface Notification {
   id: number;
-  message: string | LocalizedMessage;
+  message: NotificationMessage;
   severity: Severity;
   open: boolean;
   replaced: boolean;
-}
-
-export function errorMessage(error: Error): string {
-  if (error instanceof ApiError) {
-    if (error.code === "AUTHENTICATION_ERROR") return `账号授权失效，请重新登录。${error.message}`;
-    if (error.code === "PREVIEW_EXPIRED") return `预览已过期或文件状态已变化，请重新预览。${error.message}`;
-    if (error.code === "RATE_LIMIT_ERROR") return `请求过于频繁，请稍后重试。${error.message}`;
-  }
-  return error.message;
 }
 
 export function NotificationProvider({ children }: { children: ReactNode }) {
@@ -81,7 +69,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
             // 被替换时覆盖 Grow 的缩放，只在原地淡出；正常关闭保留反向 Grow。
             sx={{ width: "100%", ...(item.replaced && { transform: "none !important" }) }}
           >
-            {typeof item.message === "string" ? item.message : t(item.message.key, item.message.values)}
+            {translateMessage(item.message, t)}
           </Alert>
         </Snackbar>
       ))}

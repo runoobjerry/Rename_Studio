@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import * as api from "../../api/client";
 import { NotificationProvider } from "../../components/NotificationProvider";
 import { StorageSettingsPanel } from "./StorageSettingsPanel";
+import { i18n } from "../../i18n";
 import type { StorageConfigField, StorageProviderDefinition } from "../../types";
 
 vi.mock("../../api/client", async (importOriginal) => ({
@@ -47,6 +48,22 @@ function setup(executingStorageId?: string) {
 }
 
 describe("storage settings", () => {
+  it("updates an open editor while preserving drafts and backend display fields", async () => {
+    const { client } = setup();
+    fireEvent.click(await screen.findByRole("button", { name: "编辑连接 Local" }));
+    fireEvent.change(screen.getByRole("textbox", { name: "连接名称" }), { target: { value: "自定义连接" } });
+    fireEvent.change(screen.getByRole("textbox", { name: "工作目录" }), { target: { value: "D:\\自定义目录" } });
+    const requestCount = vi.mocked(api.fetchStorageProviders).mock.calls.length;
+    await act(async () => { await i18n.changeLanguage("en-US"); });
+    expect(screen.getByRole("dialog", { name: "Local settings" })).toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: "Connection name" })).toHaveValue("自定义连接");
+    expect(screen.getByRole("textbox", { name: "工作目录" })).toHaveValue("D:\\自定义目录");
+    expect(screen.getByRole("button", { name: "Save" })).toBeEnabled();
+    expect(api.fetchStorageProviders).toHaveBeenCalledTimes(requestCount);
+    expect(api.updateStorage).not.toHaveBeenCalled();
+    expect(api.createStorage).not.toHaveBeenCalled();
+    client.clear();
+  });
   it("blocks editing and creation when provider definitions are unavailable", async () => {
     const { client } = setup();
     await screen.findByRole("button", { name: "编辑连接 Local" });

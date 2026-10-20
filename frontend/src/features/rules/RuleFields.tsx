@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import { useState } from "react";
 import AddRoundedIcon from "@mui/icons-material/AddRounded";
 import RemoveRoundedIcon from "@mui/icons-material/RemoveRounded";
@@ -32,6 +33,7 @@ interface NumberStepperProps {
 }
 
 function NumberStepper({ label, value, min, max, onChange }: NumberStepperProps) {
+  const { t } = useTranslation();
   const [draft, setDraft] = useState<{ text: string; value: number } | null>(null);
   const text = draft?.value === value ? draft.text : String(value);
   const updateValue = (nextValue: number) => {
@@ -101,7 +103,7 @@ function NumberStepper({ label, value, min, max, onChange }: NumberStepperProps)
         size="small"
         disabled={value <= min}
         onClick={() => updateValue(value - 1)}
-        aria-label={`${label}减一`}
+        aria-label={t("rules:fields.decrease", { label })}
       >
         <RemoveRoundedIcon fontSize="small" />
       </IconButton>
@@ -133,7 +135,7 @@ function NumberStepper({ label, value, min, max, onChange }: NumberStepperProps)
         size="small"
         disabled={value >= max}
         onClick={() => updateValue(value + 1)}
-        aria-label={`${label}加一`}
+        aria-label={t("rules:fields.increase", { label })}
       >
         <AddRoundedIcon fontSize="small" />
       </IconButton>
@@ -142,28 +144,29 @@ function NumberStepper({ label, value, min, max, onChange }: NumberStepperProps)
 }
 
 function PaddingFields({ rule, onChange }: RuleFieldsProps) {
+  const { t } = useTranslation();
   const mode = valueAsString(rule, "mode", "number");
 
   return (
     <Box className="rule-fields" sx={ruleFieldsSx}>
       <label>
-        填充类型
+        {t("rules:fields.paddingMode")}
         <TextField
           select
           fullWidth
           size="small"
           value={mode}
           onChange={(event) => onChange({ mode: event.target.value })}
-          slotProps={{ select: { inputProps: { "aria-label": "填充类型" } } }}
+          slotProps={{ select: { inputProps: { "aria-label": t("rules:fields.paddingMode") } } }}
         >
-          <MenuItem value="number">数字序列补零</MenuItem>
-          <MenuItem value="text">文本填充</MenuItem>
+          <MenuItem value="number">{t("rules:fields.numberPadding")}</MenuItem>
+          <MenuItem value="text">{t("rules:fields.textPadding")}</MenuItem>
         </TextField>
       </label>
       <label>
-        目标长度
+        {t("rules:fields.length")}
         <NumberStepper
-          label="目标长度"
+          label={t("rules:fields.length")}
           min={1}
           max={255}
           value={Number(rule.config.length ?? 3)}
@@ -173,28 +176,28 @@ function PaddingFields({ rule, onChange }: RuleFieldsProps) {
       {mode === "text" && (
         <>
           <label>
-            填充字符
+            {t("rules:fields.fillCharacter")}
             <TextField
               fullWidth
               hiddenLabel
               size="small"
               value={valueAsString(rule, "fill_character", "_")}
               onChange={(event) => onChange({ fill_character: event.target.value })}
-              slotProps={{ htmlInput: { maxLength: 1, "aria-label": "填充字符" } }}
+              slotProps={{ htmlInput: { maxLength: 1, "aria-label": t("rules:fields.fillCharacter") } }}
             />
           </label>
           <label>
-            填充位置
+            {t("rules:fields.side")}
             <TextField
               select
               fullWidth
               size="small"
               value={valueAsString(rule, "side", "left")}
               onChange={(event) => onChange({ side: event.target.value })}
-              slotProps={{ select: { inputProps: { "aria-label": "填充位置" } } }}
+              slotProps={{ select: { inputProps: { "aria-label": t("rules:fields.side") } } }}
             >
-              <MenuItem value="left">从左侧填充</MenuItem>
-              <MenuItem value="right">从右侧填充</MenuItem>
+              <MenuItem value="left">{t("rules:fields.left")}</MenuItem>
+              <MenuItem value="right">{t("rules:fields.right")}</MenuItem>
             </TextField>
           </label>
         </>
@@ -204,13 +207,14 @@ function PaddingFields({ rule, onChange }: RuleFieldsProps) {
 }
 
 function TextOperationFields({ rule, onChange }: RuleFieldsProps) {
+  const { t } = useTranslation();
   const isReplace = rule.type === "replace";
 
   return (
     <>
       <Box className="rule-fields" sx={ruleFieldsSx}>
         <label>
-          {isReplace ? "查找内容" : "移除内容"}
+          {isReplace ? t("rules:fields.search") : t("rules:fields.removeText")}
           <TextField
             fullWidth
             hiddenLabel
@@ -218,36 +222,36 @@ function TextOperationFields({ rule, onChange }: RuleFieldsProps) {
             value={valueAsString(rule, "search", "")}
             onChange={(event) => onChange({ search: event.target.value })}
             slotProps={{
-              htmlInput: { "aria-label": isReplace ? "查找内容" : "移除内容" },
+              htmlInput: { "aria-label": isReplace ? t("rules:fields.search") : t("rules:fields.removeText") },
             }}
           />
         </label>
         {isReplace && (
           <label>
-            替换为
+            {t("rules:fields.replacement")}
             <TextField
               fullWidth
               hiddenLabel
               size="small"
               value={valueAsString(rule, "replacement", "")}
               onChange={(event) => onChange({ replacement: event.target.value })}
-              slotProps={{ htmlInput: { "aria-label": "替换为" } }}
+              slotProps={{ htmlInput: { "aria-label": t("rules:fields.replacement") } }}
             />
           </label>
         )}
         <label>
-          操作序数
+          {t("rules:fields.occurrence")}
           <TextField
             select
             fullWidth
             size="small"
             value={valueAsString(rule, "occurrence", "all")}
             onChange={(event) => onChange({ occurrence: event.target.value })}
-            slotProps={{ select: { inputProps: { "aria-label": "操作序数" } } }}
+            slotProps={{ select: { inputProps: { "aria-label": t("rules:fields.occurrence") } } }}
           >
-            <MenuItem value="all">全部</MenuItem>
-            <MenuItem value="first">首个</MenuItem>
-            <MenuItem value="last">末个</MenuItem>
+            <MenuItem value="all">{t("rules:fields.all")}</MenuItem>
+            <MenuItem value="first">{t("rules:fields.first")}</MenuItem>
+            <MenuItem value="last">{t("rules:fields.last")}</MenuItem>
           </TextField>
         </label>
       </Box>
@@ -257,27 +261,27 @@ function TextOperationFields({ rule, onChange }: RuleFieldsProps) {
             size="small"
             checked={Boolean(rule.config.case_sensitive ?? true)}
             onChange={(event) => onChange({ case_sensitive: event.target.checked })}
-            slotProps={{ input: { "aria-label": "区分大小写" } }}
+            slotProps={{ input: { "aria-label": t("rules:fields.caseSensitive") } }}
           />
-          区分大小写
+          {t("rules:fields.caseSensitive")}
         </label>
         <label className="option-toggle">
           <Checkbox
             size="small"
             checked={Boolean(rule.config.whole_word ?? false)}
             onChange={(event) => onChange({ whole_word: event.target.checked })}
-            slotProps={{ input: { "aria-label": "仅全字匹配" } }}
+            slotProps={{ input: { "aria-label": t("rules:fields.wholeWord") } }}
           />
-          仅全字匹配
+          {t("rules:fields.wholeWord")}
         </label>
         <label className="option-toggle">
           <Checkbox
             size="small"
             checked={Boolean(rule.config.ignore_extension ?? true)}
             onChange={(event) => onChange({ ignore_extension: event.target.checked })}
-            slotProps={{ input: { "aria-label": "忽略扩展名" } }}
+            slotProps={{ input: { "aria-label": t("rules:fields.ignoreExtension") } }}
           />
-          忽略扩展名
+          {t("rules:fields.ignoreExtension")}
         </label>
       </div>
     </>
@@ -285,6 +289,7 @@ function TextOperationFields({ rule, onChange }: RuleFieldsProps) {
 }
 
 function InsertFields({ rule, onChange }: RuleFieldsProps) {
+  const { t } = useTranslation();
   const position = valueAsString(rule, "position", "prefix");
   const usesIndex = position === "index";
   const usesAnchor = position === "before_text" || position === "after_text";
@@ -293,38 +298,38 @@ function InsertFields({ rule, onChange }: RuleFieldsProps) {
     <>
       <Box className="rule-fields" sx={ruleFieldsSx}>
         <label>
-          插入内容
+          {t("rules:fields.insertText")}
           <TextField
             fullWidth
             hiddenLabel
             size="small"
             value={valueAsString(rule, "text", "")}
             onChange={(event) => onChange({ text: event.target.value })}
-            slotProps={{ htmlInput: { "aria-label": "插入内容" } }}
+            slotProps={{ htmlInput: { "aria-label": t("rules:fields.insertText") } }}
           />
         </label>
         <label>
-          插入位置
+          {t("rules:fields.position")}
           <TextField
             select
             fullWidth
             size="small"
             value={position}
             onChange={(event) => onChange({ position: event.target.value })}
-            slotProps={{ select: { inputProps: { "aria-label": "插入位置" } } }}
+            slotProps={{ select: { inputProps: { "aria-label": t("rules:fields.position") } } }}
           >
-            <MenuItem value="prefix">前缀</MenuItem>
-            <MenuItem value="suffix">后缀</MenuItem>
-            <MenuItem value="index">指定字符位置</MenuItem>
-            <MenuItem value="before_text">指定文本之前</MenuItem>
-            <MenuItem value="after_text">指定文本之后</MenuItem>
+            <MenuItem value="prefix">{t("rules:fields.prefix")}</MenuItem>
+            <MenuItem value="suffix">{t("rules:fields.suffix")}</MenuItem>
+            <MenuItem value="index">{t("rules:fields.indexPosition")}</MenuItem>
+            <MenuItem value="before_text">{t("rules:fields.beforeText")}</MenuItem>
+            <MenuItem value="after_text">{t("rules:fields.afterText")}</MenuItem>
           </TextField>
         </label>
         {usesIndex && (
           <label>
-            字符位置
+            {t("rules:fields.index")}
             <NumberStepper
-              label="字符位置"
+              label={t("rules:fields.index")}
               min={1}
               max={255}
               value={Number(rule.config.index ?? 1)}
@@ -334,14 +339,14 @@ function InsertFields({ rule, onChange }: RuleFieldsProps) {
         )}
         {usesAnchor && (
           <label>
-            指定文本
+            {t("rules:fields.anchor")}
             <TextField
               fullWidth
               hiddenLabel
               size="small"
               value={valueAsString(rule, "anchor", "")}
               onChange={(event) => onChange({ anchor: event.target.value })}
-              slotProps={{ htmlInput: { "aria-label": "指定文本" } }}
+              slotProps={{ htmlInput: { "aria-label": t("rules:fields.anchor") } }}
             />
           </label>
         )}
@@ -353,9 +358,9 @@ function InsertFields({ rule, onChange }: RuleFieldsProps) {
               size="small"
               checked={Boolean(rule.config.from_right ?? false)}
               onChange={(event) => onChange({ from_right: event.target.checked })}
-              slotProps={{ input: { "aria-label": "从右往左计数" } }}
+              slotProps={{ input: { "aria-label": t("rules:fields.fromRight") } }}
             />
-            从右往左计数
+            {t("rules:fields.fromRight")}
           </label>
         </div>
       )}
@@ -364,10 +369,11 @@ function InsertFields({ rule, onChange }: RuleFieldsProps) {
 }
 
 export function RuleFields(props: RuleFieldsProps) {
+  const { t } = useTranslation();
   if (props.rule.type === "padding") return <PaddingFields {...props} />;
   if (props.rule.type === "replace" || props.rule.type === "remove") {
     return <TextOperationFields {...props} />;
   }
   if (props.rule.type === "insert") return <InsertFields {...props} />;
-  return <Alert severity="error">不支持的规则类型：{props.rule.type}</Alert>;
+  return <Alert severity="error">{t("rules:unsupported", { type: props.rule.type })}</Alert>;
 }

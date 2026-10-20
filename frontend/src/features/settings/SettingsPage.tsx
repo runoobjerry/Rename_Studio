@@ -36,7 +36,7 @@ export function SettingsPage({ preference, onPreferenceChange, onBack, executing
   });
   const changeLanguage = (next: string) => {
     void language.setPreference(next).catch((error: Error) => {
-      notify({ key: "settings:languageSaveFailed", values: { message: error.message } }, "error");
+      notify({ key: "settings:languageSaveFailed", error }, "error");
     });
   };
   const [confirmOpen, setConfirmOpen] = useState(false);

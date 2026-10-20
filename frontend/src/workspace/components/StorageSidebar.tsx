@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import brandMark from "../../assets/brand-mark.svg";
 import CloudQueueRoundedIcon from "@mui/icons-material/CloudQueueRounded";
 import ComputerRoundedIcon from "@mui/icons-material/ComputerRounded";
@@ -45,6 +46,7 @@ function StorageName({ name }: { name: string }) {
 
 // Drawer 的响应式容器与开关由父组件负责。
 export function StorageSidebar({ storages, providerDefinitions, isLoading, disabled, view, storageId, onSelectStorage, onOpenSettings }: StorageSidebarProps) {
+  const { t } = useTranslation();
   return (
     <Box
       sx={{
@@ -72,10 +74,10 @@ export function StorageSidebar({ storages, providerDefinitions, isLoading, disab
         color="textSecondary"
         sx={{ px: 1.5, mt: 1}}
       >
-      存储位置
+      {t("files:sidebar.title")}
       </Typography>
       <List disablePadding>
-        {isLoading && <Skeleton variant="rounded" height={80} aria-label="正在加载存储位置" />}
+        {isLoading && <Skeleton variant="rounded" height={80} aria-label={t("files:sidebar.loading")} />}
         {storages.map((storage) => {
           const definition = providerDefinitions.find((entry) => entry.provider_type === storage.provider_type);
           const Icon = definition ? providerIcons[definition.icon] : StorageRoundedIcon;
@@ -102,7 +104,7 @@ export function StorageSidebar({ storages, providerDefinitions, isLoading, disab
           onClick={onOpenSettings}
         >
           <ListItemIcon><SettingsRoundedIcon /></ListItemIcon>
-          <ListItemText primary="设置" />
+          <ListItemText primary={t("settings:title")} />
         </ListItemButton>
       </List>
     </Box>

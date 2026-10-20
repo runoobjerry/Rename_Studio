@@ -331,6 +331,54 @@ describe("workspace path navigation", () => {
 });
 
 describe("language settings", () => {
+  it("updates an existing preview and confirmation without changing task, selection, order, or requests", async () => {
+    const items = ["文件2.txt", "文件10.txt"].map((name) => ({
+      id: name, name, path: name, parent_path: "", is_directory: false, size: 1, modified_at: null,
+    }));
+    vi.mocked(api.fetchStorageFiles).mockResolvedValue({
+      provider: "local", path: "", parent_path: null, location: { kind: "root" }, items,
+    });
+    vi.mocked(api.createStoragePreview).mockImplementation(async (_storage, _location, ids) => ({
+      preview_id: "language-preview", expires_at: "2099-01-01T00:00:00Z", valid: true,
+      items: ids.map((id) => ({ file_id: id, original_name: id, new_name: `新-${id}`, changed: true, valid: true, conflict: false, error: null })),
+    }));
+    render(<QueryClientProvider client={client}><WorkspaceApp /></QueryClientProvider>);
+    fireEvent.click(await screen.findByRole("checkbox", { name: "选择当前显示的全部项目" }));
+    fireEvent.click(screen.getByRole("button", { name: "文件名" }));
+    fireEvent.click(screen.getByRole("button", { name: "刷新预览" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "开始修改" })).toBeEnabled());
+    const before = useRenameStore.getState();
+    const filesRequests = vi.mocked(api.fetchStorageFiles).mock.calls.length;
+    const fileOrder = () => within(screen.getByRole("table", { name: /(?:文件列表|file list)$/ }))
+      .getAllByRole("row").slice(1).map((row) => within(row).getAllByRole("cell")[1].textContent);
+    const originalOrder = fileOrder();
+    fireEvent.click(screen.getByRole("button", { name: "开始修改" }));
+    await act(async () => {
+      client.setQueryData<AppSettings>(["app-settings"], { preferences: { ...serverSettings.preferences, language: "en-US" } });
+    });
+    expect(await screen.findByRole("heading", { name: "Awaiting confirmation" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Apply" })).toBeEnabled();
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    expect(screen.getByRole("table", { name: "Rename preview" })).toHaveTextContent("新-文件10.txt");
+    expect(screen.getByRole("checkbox", { name: "Select file 文件2.txt" })).toBeChecked();
+    expect(screen.getByRole("columnheader", { name: "File name" })).toHaveAttribute("aria-sort", "descending");
+    expect(fileOrder()).toEqual(originalOrder);
+    expect(useRenameStore.getState().task).toBe(before.task);
+    expect(useRenameStore.getState().selectedIds).toEqual(before.selectedIds);
+    expect(useRenameStore.getState().rules).toBe(before.rules);
+    expect(api.createStoragePreview).toHaveBeenCalledOnce();
+    expect(api.executePreview).not.toHaveBeenCalled();
+    expect(api.releaseStoragePreview).not.toHaveBeenCalled();
+    expect(api.fetchStorageFiles).toHaveBeenCalledTimes(filesRequests);
+    fireEvent.click(screen.getByRole("button", { name: "Start renaming" }));
+    await act(async () => { client.setQueryData(["app-settings"], serverSettings); });
+    expect(await screen.findByRole("heading", { name: "等待确认" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "取消" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    expect(fileOrder()).toEqual(originalOrder);
+  });
+
   it("switches through the menu, preserves workspace state, and reports a failed save", async () => {
     vi.mocked(api.fetchStorageFiles).mockResolvedValue({
       provider: "local", path: "", parent_path: null, location: { kind: "root" },
@@ -358,7 +406,7 @@ describe("language settings", () => {
     expect(screen.getByRole("combobox", { name: "Interface language" })).toHaveTextContent("English");
     expect(document.documentElement.lang).toBe("en-US");
     fireEvent.click(screen.getByRole("button", { name: "Back to workspace" }));
-    expect(await screen.findByRole("checkbox", { name: "选择文件 keep.txt" })).toBeChecked();
+    expect(await screen.findByRole("checkbox", { name: "Select file keep.txt" })).toBeChecked();
   });
 
   it("uses browser auto and a localized warning when settings cannot be read", async () => {

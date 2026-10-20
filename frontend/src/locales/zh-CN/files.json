@@ -1,1 +1,133 @@
-{}
+{
+  "types": {
+    "file": "文件",
+    "folder": "文件夹"
+  },
+  "filters": {
+    "pending": "待处理",
+    "completed": "已完成",
+    "failed": "失败/待核对"
+  },
+  "taskTitle": "当前任务",
+  "title": "文件选择",
+  "sortLocked": " · 排序已锁定，结束任务后可调整",
+  "endTask": "结束当前任务",
+  "parent": "返回上级",
+  "invert": "反选",
+  "filterItems": "筛选项目",
+  "refreshingDirectory": "正在刷新目录",
+  "selectAll": "选择当前显示的全部项目",
+  "columns": {
+    "name": "文件名",
+    "extension": "扩展名",
+    "modified": "修改时间"
+  },
+  "emptyTask": "当前任务为空。",
+  "emptyDirectory": "此目录为空。",
+  "breadcrumbs": {
+    "label": "文件路径",
+    "parents": "显示父级目录"
+  },
+  "preview": {
+    "filters": {
+      "error": "错误",
+      "unchanged": "无变化",
+      "pending": "待修改",
+      "renamed": "已修改"
+    },
+    "currentStorage": "当前存储",
+    "title": "修改预览",
+    "filter": "筛选状态",
+    "original": "原文件名",
+    "new": "新文件名",
+    "failed": "修改失败",
+    "conflict": "名称冲突",
+    "invalid": "不可修改",
+    "summary": "{{pending}} 项待修改 · {{unchanged}} 项无需修改",
+    "empty": "点击预览按钮以查看修改名称；预览不会修改 {{provider}} 中的内容。",
+    "executeFailed": "执行失败：{{message}}"
+  },
+  "rename": {
+    "phases": {
+      "waiting": "等待确认",
+      "validating": "正在复核",
+      "staging": "正在准备临时名称",
+      "renaming": "正在修改",
+      "rollback": "正在回滚",
+      "finished": "处理结束",
+      "failed": "执行失败"
+    },
+    "refreshing": "正在刷新…",
+    "preview": "刷新预览",
+    "start": "开始修改",
+    "unchangedBatch": "本批没有名称变化，确认后将记录为已完成。",
+    "irreversible": "此操作不可恢复！",
+    "progress": "修改进度",
+    "returnedError": "返回错误：{{message}}，请尝试刷新文件目录。",
+    "progressUnavailable": "暂时无法读取进度：{{message}}；执行请求仍在进行，请勿重复提交。",
+    "processed": "当前任务已处理 {{processed}} 项，共 {{total}} 项。稍等片刻，请勿刷新页面。",
+    "confirm": "将根据当前预览区新文件名修改 {{provider}} 中的 {{count}} 个项目。请注意，",
+    "confirm_one": "将根据当前预览区新文件名修改 {{provider}} 中的 {{count}} 个项目。请注意，",
+    "confirm_other": "将根据当前预览区新文件名修改 {{provider}} 中的 {{count}} 个项目。请注意，"
+  },
+  "notifications": {
+    "invalidPreview": "预览包含无效名称或冲突，请检查结果；其他批次尚未处理的文件仍占用名称，不能跳过冲突检查。",
+    "oldUnknownTask": "旧任务仍有待核对项，请先恢复原规则并核对执行结果。",
+    "fixedMembers": "本次任务的文件集合已固定；请先结束当前任务，再选择文件开始新任务。",
+    "noTaskFiles": "没有可处理的任务文件；失败项可单独选择重试，待核对项须先核对。",
+    "verifyBeforeRules": "本批存在待核对结果，请先核对实际文件，结束当前任务后再修改规则。",
+    "rootSelected": "已选择本地根文件夹。",
+    "sessionUnavailable": "浏览器会话存储不可用，刷新后无法保留工作路径。",
+    "defaultUnavailable": "无法读取默认路径，将打开云盘根目录。",
+    "refreshed": "目录已刷新。",
+    "previewFailed": "预览失败：{{message}}",
+    "completed": "修改全部成功：{{count}} 项已修改。",
+    "partial": "修改部分完成：{{renamed}} 项已修改，{{failed}} 项失败。",
+    "failed": "修改失败：{{renamed}} 项已修改，{{failed}} 项失败。",
+    "unknownOutcome": "执行未返回完整结果：{{message}}；请刷新目录并核对本批文件。",
+    "pickFailed": "选择文件夹失败：{{message}}",
+    "defaultSaved": "已将“{{path}}”设为当前账号的默认路径。",
+    "defaultRootSaved": "已将“根目录”设为当前账号的默认路径。",
+    "defaultSaveFailed": "默认路径保存失败：{{message}}",
+    "refreshFailed": "刷新失败：{{message}}",
+    "completed_one": "修改全部成功：{{count}} 项已修改。",
+    "completed_other": "修改全部成功：{{count}} 项已修改。"
+  },
+  "batch": {
+    "title": "大批量处理提示",
+    "hideHint": "下次不再提示",
+    "continue": "继续预览",
+    "description": "当前选择的文件超过 {{limit}} 项。为避免影响性能，本次只会修改前 {{limit}} 项。本次执行结束后，您可以在“筛选”中选择“待处理项目”，继续选择并处理剩余项目。"
+  },
+  "location": {
+    "title": "目录位置",
+    "openNavigation": "打开导航",
+    "setDefault": "设为默认路径",
+    "picking": "等待选择…",
+    "browse": "浏览…",
+    "storageMissing": "当前存储已删除，请选择其他连接。",
+    "accountIdMissing": "当前账号缺少账号 ID，仍可浏览文件；请重新登录后设置默认路径。",
+    "pickerFailed": "无法打开文件夹选择器：{{message}}",
+    "connectAccount": "请先前往设置页面连接 {{service}} 账号。"
+  },
+  "sidebar": {
+    "title": "存储位置",
+    "loading": "正在加载存储位置"
+  },
+  "workspace": {
+    "loading": "正在加载工作台配置",
+    "loadingSettings": "正在读取存储设置…",
+    "loadingDirectory": "正在读取目录…",
+    "unavailable": "目录暂不可用，请检查存储设置。",
+    "loadFailed": "无法连接后端：{{message}}",
+    "directoryFailed": "目录读取失败：{{message}}",
+    "connectToBrowse": "连接 {{service}} 后可浏览云端目录。",
+    "definitionMissing": "未找到存储服务 {{provider}} 的定义。"
+  },
+  "summary": "共 {{total}} 项 · 已选择 {{selected}} 项",
+  "showing": " · 显示 {{count}} 项",
+  "refreshFailed": "目录刷新失败，当前显示上次读取的内容：{{message}}",
+  "listLabel": "{{provider}} 文件列表",
+  "selectFile": "选择文件 {{name}}",
+  "selectFolder": "选择文件夹 {{name}}"
+}

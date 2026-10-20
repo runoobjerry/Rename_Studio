@@ -1,3 +1,6 @@
+import { useTranslation } from "react-i18next";
+import { errorMessage } from "../../i18n/messages";
+import type { TFunction } from "i18next";
 import { memo, useMemo, useState } from "react";
 import Alert from "@mui/material/Alert";
 import Table from "@mui/material/Table";
@@ -13,9 +16,9 @@ import { VirtualTableSpacer } from "../../components/VirtualTableSpacer";
 import { CheckboxFilterMenu } from "../../components/CheckboxFilterMenu";
 
 const statusFilters = [
-  { value: "error", label: "错误" },
-  { value: "unchanged", label: "无变化" },
-  { value: "pending", label: "待修改" },
+  { value: "error", labelKey: "files:preview.filters.error" },
+  { value: "unchanged", labelKey: "files:preview.filters.unchanged" },
+  { value: "pending", labelKey: "files:preview.filters.pending" },
 ] as const;
 type StatusFilter = typeof statusFilters[number]["value"];
 
@@ -30,25 +33,26 @@ interface PreviewPanelProps {
 export const PreviewPanel = memo(function PreviewPanel({
   preview,
   execution,
-  providerName = "当前存储",
+  providerName,
   error,
   executeError,
 }: PreviewPanelProps) {
+  const { t } = useTranslation();
   const [filters, setFilters] = useState<StatusFilter[]>([]);
-  const filterOptions = statusFilters.map((option) => option.value === "pending"
-    ? { ...option, label: execution ? "已修改" : "待修改" } : option);
+  const filterOptions = statusFilters.map((option) => ({ ...option, label: option.value === "pending" && execution
+    ? t("files:preview.filters.renamed") : t(option.labelKey) }));
   const executionById = useMemo(() => new Map(execution?.items.map((item) => [item.file_id, item])), [execution?.items]);
   const { rows, pendingCount, unchangedCount } = useMemo(() => {
     let pendingCount = 0;
     let unchangedCount = 0;
     const rows = (preview?.items ?? []).map((item) => {
-      const status = statusFor(item, executionById.get(item.file_id));
+      const status = statusFor(item, executionById.get(item.file_id), t);
       if (status.isPendingChange) pendingCount++;
       if (status.isUnchanged) unchangedCount++;
       return { item, status };
     });
     return { rows, pendingCount, unchangedCount };
-  }, [preview?.items, executionById]);
+  }, [preview?.items, executionById, t]);
   const visibleItems = useMemo(() => rows.filter(({ status }) =>
     filters.length === 0 || filters.includes(status.category)), [rows, filters]);
   const scrollKey = useMemo(() => [preview?.preview_id, filters], [preview?.preview_id, filters]);
@@ -60,20 +64,18 @@ export const PreviewPanel = memo(function PreviewPanel({
     <section className="panel preview" aria-labelledby="preview-title">
       <div className="panel-heading">
         <div className="panel-title-line">
-          <h2 id="preview-title">修改预览</h2>
+          <h2 id="preview-title">{t("files:preview.title")}</h2>
           <p className="panel-summary">
-            {preview
-              ? `${pendingCount} 项待修改 · ${unchangedCount} 项无需修改`
-              : "0 项待修改 · 0 项无需修改"}
-            {preview && filters.length > 0 && ` · 显示 ${visibleItems.length} 项`}
+            {t("files:preview.summary", { pending: pendingCount, unchanged: unchangedCount })}
+            {preview && filters.length > 0 && t("files:showing", { count: visibleItems.length })}
           </p>
         </div>
-        <CheckboxFilterMenu label="筛选状态" options={filterOptions} selected={filters} onChange={setFilters} />
+        <CheckboxFilterMenu label={t("files:preview.filter")} options={filterOptions} selected={filters} onChange={setFilters} />
       </div>
 
       {error && <Alert severity="error" sx={{ m: 2 }}>{error}</Alert>}
       {!preview && !error && (
-        <p className="empty-state">点击预览按钮以查看修改名称；预览不会修改 {providerName} 中的内容。</p>
+        <p className="empty-state">{t("files:preview.empty", { provider: providerName ?? t("files:preview.currentStorage") })}</p>
       )}
       {preview && (
         <TableContainer ref={virtual.containerRef} onScroll={virtual.onScroll} onKeyDown={virtual.onKeyDown} tabIndex={0} className="preview-table-wrap" sx={{ minWidth: 0, maxWidth: "100%" }}>
@@ -81,7 +83,7 @@ export const PreviewPanel = memo(function PreviewPanel({
             stickyHeader
             aria-rowcount={visibleItems.length + 1}
             size="small"
-            aria-label="修改预览"
+            aria-label={t("files:preview.title")}
             sx={{
               // 文件名列紧贴内容，状态列吸收剩余空间；长内容仍可撑开表格。
               width: "100%",
@@ -94,9 +96,9 @@ export const PreviewPanel = memo(function PreviewPanel({
               <col key={index} style={index < 2 ? { width } : undefined} />)}</colgroup>}
             <TableHead>
               <TableRow>
-                <TableCell>原文件名</TableCell>
-                <TableCell>新文件名</TableCell>
-                <TableCell sx={{ minWidth: virtual.columnWidths?.[2] }}>状态</TableCell>
+                <TableCell>{t("files:preview.original")}</TableCell>
+                <TableCell>{t("files:preview.new")}</TableCell>
+                <TableCell sx={{ minWidth: virtual.columnWidths?.[2] }}>{t("common:status")}</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
@@ -108,7 +110,7 @@ export const PreviewPanel = memo(function PreviewPanel({
               <VirtualTableSpacer height={virtual.bottom} columns={3} />
               {visibleItems.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={3} align="center">没有符合筛选条件的项目。</TableCell>
+                  <TableCell colSpan={3} align="center">{t("common:noMatches")}</TableCell>
                 </TableRow>
               )}
             </TableBody>
@@ -117,7 +119,7 @@ export const PreviewPanel = memo(function PreviewPanel({
       )}
 
       {executeError && (
-        <Alert severity="error" sx={{ m: 2 }}>执行失败：{executeError}</Alert>
+        <Alert severity="error" sx={{ m: 2 }}>{t("files:preview.executeFailed", { message: executeError })}</Alert>
       )}
     </section>
   );
@@ -133,31 +135,31 @@ const PreviewRow = memo(function PreviewRow({ item, label, statusClassName, rena
   </TableRow>;
 });
 
-function statusFor(item: PreviewResponse["items"][number], result?: ExecuteResponse["items"][number]) {
+function statusFor(item: PreviewResponse["items"][number], result: ExecuteResponse["items"][number] | undefined, t: TFunction) {
   // 已修改项保留原预览分类；失败和跳过的执行结果覆盖分类。
   let category: StatusFilter = item.error || !item.valid || item.conflict ? "error"
     : item.changed ? "pending" : "unchanged";
   let label: string;
   let className: string;
   if (result?.status === "renamed") {
-    label = "已修改";
+    label = t("files:preview.filters.renamed");
     className = "valid";
   } else if (result?.status === "failed") {
     category = "error";
-    label = result.error ?? "修改失败";
+    label = result.error === null ? t("files:preview.failed") : errorMessage({ code: result.error_code, message: result.error }, t);
     className = "invalid";
   } else if (result?.status === "skipped") {
     category = "unchanged";
-    label = "无变化";
+    label = t("files:preview.filters.unchanged");
     className = "neutral";
   } else if (item.error) {
     label = item.error;
     className = "invalid";
   } else if (!item.valid) {
-    label = item.conflict ? "名称冲突" : "不可修改";
+    label = item.conflict ? t("files:preview.conflict") : t("files:preview.invalid");
     className = "invalid";
   } else {
-    label = item.changed ? "待修改" : "无变化";
+    label = item.changed ? t("files:preview.filters.pending") : t("files:preview.filters.unchanged");
     className = item.changed ? "pending" : "neutral";
   }
   return {

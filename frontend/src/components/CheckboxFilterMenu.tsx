@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import { useId, useState } from "react";
 import FilterList from "@mui/icons-material/FilterList";
 import FilterListOff from "@mui/icons-material/FilterListOff";
@@ -15,12 +16,13 @@ interface CheckboxFilterMenuProps<T extends string> {
 export function CheckboxFilterMenu<T extends string>({
   label, options, selected, onChange, disabled = false,
 }: CheckboxFilterMenuProps<T>) {
+  const { t } = useTranslation();
   const id = useId();
   const [anchor, setAnchor] = useState<HTMLElement | null>(null);
   const active = selected.length > 0;
   return (
     <>
-      <Tooltip title={`${label}（${active ? "已启用" : "未启用"}）`} arrow>
+      <Tooltip title={t("common:filterState", { label, state: t(active ? "common:enabled" : "common:disabled") })} arrow>
         <PanelIconButton
           id={`${id}-button`}
           size="small"

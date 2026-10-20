@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { createStoragePreview, releaseStoragePreview, executePreview } from "../../api/client";
@@ -29,6 +30,7 @@ interface RenameWorkflowOptions {
 export function useRenameWorkflow({
   storageId, location, workspaceKey, cloudSession, locationReady, activeStorage, task, files, sort, onSortChange,
 }: RenameWorkflowOptions) {
+  const { t } = useTranslation();
   const notify = useNotification();
   const queryClient = useQueryClient();
   const appSettings = useAppSettings();
@@ -104,11 +106,11 @@ export function useRenameWorkflow({
       retainedPreview.current = { storageId: result.storageId, previewId: result.preview_id };
       useRenameStore.getState().bindPreview(result.batchId, result.preview_id);
       if (!result.valid) {
-        notify("预览包含无效名称或冲突，请检查结果；其他批次尚未处理的文件仍占用名称，不能跳过冲突检查。", "warning");
+        notify({ key: "files:notifications.invalidPreview" }, "warning");
       }
     },
     onError: (error, input) => {
-      if (input.contextKey === currentWorkspace.current) notify(`预览失败：${errorMessage(error)}`, "error");
+      if (input.contextKey === currentWorkspace.current) notify({ key: "files:notifications.previewFailed", error }, "error");
     },
   });
   const execution = useMutation({
@@ -117,12 +119,12 @@ export function useRenameWorkflow({
     onSuccess: (result) => {
       if (result.status === "completed") {
         const renamed = result.items.filter((item) => item.status === "renamed").length;
-        notify(`修改全部成功：${renamed} 项已修改。`, "success");
+        notify({ key: "files:notifications.completed", values: { count: renamed } }, "success");
       } else {
         const renamed = result.items.filter((item) => item.status === "renamed").length;
         const failed = result.items.filter((item) => item.status === "failed").length;
         notify(
-          `修改${result.status === "partial" ? "部分完成" : "失败"}：${renamed} 项已修改，${failed} 项失败。`,
+          { key: result.status === "partial" ? "files:notifications.partial" : "files:notifications.failed", values: { renamed, failed } },
           result.status === "partial" ? "warning" : "error",
         );
       }
@@ -136,7 +138,7 @@ export function useRenameWorkflow({
     onError: (error, previewId) => {
       // 请求失败可能发生在写入之后；没有逐项结果时先锁定本批，避免盲目重放。
       useRenameStore.getState().markUnknown(previewId);
-      notify(`执行未返回完整结果：${errorMessage(error)}；请刷新目录并核对本批文件。`, "error");
+      notify({ key: "files:notifications.unknownOutcome", error }, "error");
     },
   });
   const previewData = preview.data && (preview.data.contextKey === previewContext || (execution.variables === preview.data.preview_id && (execution.isPending || execution.data || execution.error))) ? preview.data : undefined;
@@ -168,19 +170,19 @@ export function useRenameWorkflow({
     const selected = new Set(useRenameStore.getState().selectedIds);
     const fileIds = renamableFiles.filter((item) => selected.has(item.id)).map((item) => item.id);
     if (task && !taskCurrent && task.items.some((item) => item.status === "unknown")) {
-      notify("旧任务仍有待核对项，请先恢复原规则并核对执行结果。", "warning");
+      notify({ key: "files:notifications.oldUnknownTask" }, "warning");
       return;
     }
     if (taskCurrent && task) {
       const members = new Set(task.items.map((item) => item.currentFileId));
       if (fileIds.some((id) => !members.has(id))) {
-        notify("本次任务的文件集合已固定；请先结束当前任务，再选择文件开始新任务。", "warning");
+        notify({ key: "files:notifications.fixedMembers" }, "warning");
         return;
       }
     }
     const batch = useRenameStore.getState().prepareBatch(taskContext, storageId, location, renamableFiles);
     if (!batch.fileIds.length) {
-      notify("没有可处理的任务文件；失败项可单独选择重试，待核对项须先核对。", "warning");
+      notify({ key: "files:notifications.noTaskFiles" }, "warning");
       return;
     }
     execution.reset();
@@ -224,7 +226,7 @@ export function useRenameWorkflow({
   const onRulesChange = (nextRules: RuleSpec[]) => {
     if (execution.isPending) return;
     if (task?.items.some((item) => item.status === "unknown")) {
-      notify("本批存在待核对结果，请先核对实际文件，结束当前任务后再修改规则。", "warning");
+      notify({ key: "files:notifications.verifyBeforeRules" }, "warning");
       return;
     }
     // 规则变化后旧预览立即失效，避免用户误读过期结果。
@@ -244,7 +246,7 @@ export function useRenameWorkflow({
     const id = ++batchHintEditId.current;
     setBatchHintDraft(checked);
     void appSettings.save({ hide_batch_limit_hint: checked })
-      .catch((error: Error) => notify(`提示偏好保存失败，已撤销本次更改：${errorMessage(error)}`, "error"))
+      .catch((error: Error) => notify({ key: "settings:hintSaveFailed", error }, "error"))
       .finally(() => { if (batchHintEditId.current === id) setBatchHintDraft(null); });
   };
 
@@ -266,8 +268,8 @@ export function useRenameWorkflow({
     selectedIds, rules, browserTask, taskCurrent, browserItems, sortLocked, changeSort,
     selectedCount: Math.min(RENAME_BATCH_SIZE, currentSelectedIds.length),
     previewData, executionData: execution.data,
-    previewError: preview.variables?.contextKey === previewContext ? preview.error?.message : undefined,
-    executeError: execution.error?.message, executionPreviewId: execution.variables,
+    previewError: preview.variables?.contextKey === previewContext && preview.error ? errorMessage(preview.error, t) : undefined,
+    executeError: execution.error ? errorMessage(execution.error, t) : undefined, executionPreviewId: execution.variables,
     isPreviewing: preview.isPending, isExecuting: execution.isPending, hasExecuted: Boolean(execution.data),
     batchHintOpen: batchHintContext === previewContext, skipBatchHint,
     closeBatchHint, changeBatchHintPreference, continueBatchPreview,

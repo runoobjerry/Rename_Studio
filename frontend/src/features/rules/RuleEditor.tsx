@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import { useId, useRef, useState } from "react";
 import ArrowDownwardRoundedIcon from "@mui/icons-material/ArrowDownwardRounded";
 import ArrowUpwardRoundedIcon from "@mui/icons-material/ArrowUpwardRounded";
@@ -78,6 +79,7 @@ export function cloneRule(rule: RuleSpec): RuleSpec {
 }
 
 export function RuleEditor({ definitions, rules, onChange, isLoading = false }: RuleEditorProps) {
+  const { t } = useTranslation();
   const menuId = useId();
   const [anchor, setAnchor] = useState<HTMLElement | null>(null);
   const identities = useRef({ keys: new WeakMap<RuleSpec, number>(), nextKey: 0 });
@@ -126,7 +128,7 @@ export function RuleEditor({ definitions, rules, onChange, isLoading = false }: 
   return (
     <section className="panel rule-editor-panel" aria-labelledby="rules-title">
       <div className="panel-heading rule-editor-heading">
-        <h2 id="rules-title">规则编辑</h2>
+        <h2 id="rules-title">{t("rules:editor.title")}</h2>
         <div className="rule-heading-actions">
           <Button
             size="small"
@@ -137,7 +139,7 @@ export function RuleEditor({ definitions, rules, onChange, isLoading = false }: 
             disabled={rules.length === 0}
             sx={{ flex: { xs: 1, sm: "initial" } }}
           >
-            一键清除
+            {t("rules:editor.clear")}
           </Button>
           <Button
             id={`${menuId}-button`}
@@ -151,7 +153,7 @@ export function RuleEditor({ definitions, rules, onChange, isLoading = false }: 
             disabled={isLoading || availableRules.length === 0}
             sx={{ flex: { xs: 1, sm: "initial" } }}
           >
-            添加规则
+            {t("rules:editor.add")}
           </Button>
         </div>
       </div>
@@ -186,17 +188,17 @@ export function RuleEditor({ definitions, rules, onChange, isLoading = false }: 
         ))}
       </Menu>
       {isLoading ? (
-        <div className="notice" role="status" aria-label="正在加载规则">
+        <div className="notice" role="status" aria-label={t("rules:editor.loading")}>
           <Skeleton height={28} />
           <Skeleton width="70%" height={28} />
         </div>
       ) : availableRules.length === 0 ? (
         <div className="notice">
-          <strong>暂无可用规则</strong>
-          <p>请确认后端规则注册表已经加载。</p>
+          <strong>{t("rules:editor.unavailable")}</strong>
+          <p>{t("rules:editor.checkRegistry")}</p>
         </div>
       ) : rules.length === 0 ? (
-        <p className="empty-state">添加规则后即可组合生成重命名预览。</p>
+        <p className="empty-state">{t("rules:editor.empty")}</p>
       ) : null}
 
       <div className="rule-list">
@@ -210,57 +212,57 @@ export function RuleEditor({ definitions, rules, onChange, isLoading = false }: 
                   onChange={(event) =>
                     updateRule(index, { ...rule, enabled: event.target.checked })
                   }
-                  slotProps={{ input: { "aria-label": `${ruleName(rule.type)}启用状态` } }}
+                  slotProps={{ input: { "aria-label": t("rules:editor.enabledLabel", { name: ruleName(rule.type) }) } }}
                 />
                 <strong>
                   {index + 1}. {ruleName(rule.type)}
                 </strong>
               </label>
               <div className="rule-actions">
-                <Tooltip title="上移规则">
+                <Tooltip title={t("rules:editor.moveUp")}>
                   <span>
                     <IconButton
                       size="small"
                       disabled={index === 0}
                       onClick={() => moveRule(index, -1)}
-                      aria-label="上移规则"
+                      aria-label={t("rules:editor.moveUp")}
                       sx={ruleActionSx}
                     >
                       <ArrowUpwardRoundedIcon fontSize="small" />
                     </IconButton>
                   </span>
                 </Tooltip>
-                <Tooltip title="下移规则">
+                <Tooltip title={t("rules:editor.moveDown")}>
                   <span>
                     <IconButton
                       size="small"
                       disabled={index === rules.length - 1}
                       onClick={() => moveRule(index, 1)}
-                      aria-label="下移规则"
+                      aria-label={t("rules:editor.moveDown")}
                       sx={ruleActionSx}
                     >
                       <ArrowDownwardRoundedIcon fontSize="small" />
                     </IconButton>
                   </span>
                 </Tooltip>
-                <Tooltip title="复制规则">
+                <Tooltip title={t("rules:editor.copy")}>
                   <IconButton
                     size="small"
                     onClick={() => onChange([...rules, cloneRule(rule)])}
-                    aria-label="复制规则"
+                    aria-label={t("rules:editor.copy")}
                     sx={ruleActionSx}
                   >
                     <ContentCopyRoundedIcon fontSize="small" />
                   </IconButton>
                 </Tooltip>
-                <Tooltip title="删除规则">
+                <Tooltip title={t("rules:editor.remove")}>
                   <IconButton
                     size="small"
                     color="error"
                     onClick={() =>
                       onChange(rules.filter((_, itemIndex) => itemIndex !== index))
                     }
-                    aria-label="删除规则"
+                    aria-label={t("rules:editor.remove")}
                     sx={ruleActionSx}
                   >
                     <DeleteOutlineRoundedIcon fontSize="small" />

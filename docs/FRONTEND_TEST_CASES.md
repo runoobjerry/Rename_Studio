@@ -44,7 +44,10 @@
 | 自动发现语言、浏览器候选优先级与简繁边界、显式/不可用偏好和英文回退；有效语言格式化 | [语言解析](../frontend/src/i18n/languages.test.ts) |
 | 首次读取门控、语言即时切换与持久化恢复、保存失败回退、连续切换、重置等待队列并阻止新保存、auto 跟随浏览器且不重挂载 | [语言 Provider](../frontend/src/i18n/LanguageProvider.test.tsx) |
 | 设置语言菜单接线、读取失败的本地化警告、保存失败通知、切换时保留选择且不重新请求目录/元数据 | WorkspaceApp |
+| 已有预览与确认框随语言更新；保持任务快照、选中项和降序排列，不额外预览、执行或释放快照 | WorkspaceApp |
+| 错误类别只按稳定 code 翻译，原始 message/details 保留，未知 code 或普通异常不从英文内容推断类别 | [错误翻译](../frontend/src/i18n/messages.test.ts) |
 | 连接创建/编辑/关闭草稿、本地选择器、授权状态与失败保留输入 | StorageSettingsPanel |
+| 打开的连接编辑器随语言更新，保留名称/目录草稿及后端动态字段标签，不发保存或元数据请求 | StorageSettingsPanel |
 | 未硬编码的 Provider 根据字段元数据渲染、校验必填、按字段 key 回填目录、提交多个配置及 nullable 空值；无 browser_auth 不请求授权，定义缺失禁止编辑和创建 | StorageSettingsPanel |
 | 编辑密钥留空不提交；失败保留新密钥、重试成功后清空，密码不回显 | StorageSettingsPanel |
 | 任意 Provider 通过元数据定义配置字段、账号缺省文案和密码式顶层密钥；创建/切换/重开清空，配置不完整禁用登录，授权弹窗校验来源和连接 | StorageSettingsPanel |
@@ -53,6 +56,6 @@
 | MUI 表头升降序、选择不随排序变化、锁定提示；中文数字名称自然排序、等价名称稳定比较、真实时间/时区、同时间及缺失值分组置后、不修改源数组 | FileBrowser、[文件排序](../frontend/src/features/files/fileSort.test.ts) |
 | 规则添加、编辑、移动、复制、删除及数字草稿归属；加载时禁止添加，溢出菜单仍可访问 | [RuleEditor](../frontend/src/features/rules/RuleEditor.test.tsx)、[RuleFields](../frontend/src/features/rules/RuleFields.test.tsx) |
 | API 偏好 PATCH / 恢复接口 / 进度 ID 编码；结构化错误、HTML 网关错误和代表性非法 JSON；成功、204、网络失败 | API client |
-| 通知五秒关闭、新通知独立计时、连续消息不泄漏中间消息、过期预览提供操作提示；翻译键通知随语言切换更新且不重复创建 | [NotificationProvider](../frontend/src/components/NotificationProvider.test.tsx) |
+| 通知五秒关闭、新通知独立计时、连续消息不泄漏中间消息、过期预览提供操作提示；翻译键通知随语言切换更新且不重复创建，数量插值正确，路径作为纯文本保留 | [NotificationProvider](../frontend/src/components/NotificationProvider.test.tsx) |
 
 优先级按失败后果确定。删除连接的确认形式、狭窄空间布局等交互不再单独标为 P0。视觉和真实浏览器行为不靠 JSDOM 推断；检查步骤及本轮迁移记录见人工验收清单。

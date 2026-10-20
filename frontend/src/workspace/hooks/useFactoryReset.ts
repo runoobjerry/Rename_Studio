@@ -42,7 +42,7 @@ export function useFactoryReset({
       try {
         await appSettings.factoryReset();
       } catch (error) {
-        notify({ key: "settings:resetFailed", values: { message: (error as Error).message } }, "error");
+        notify({ key: "settings:resetFailed", error: error as Error }, "error");
         return false;
       }
       // Clear the workspace only after the backend reset succeeds.

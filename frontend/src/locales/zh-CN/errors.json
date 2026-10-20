@@ -1,3 +1,21 @@
 {
-  "resetInProgress": "正在恢复出厂设置，请稍后重试。"
+  "resetInProgress": "正在恢复出厂设置，请稍后重试。",
+  "codes": {
+    "APPLICATION_ERROR": "应用无法完成此操作。{{message}}",
+    "NOT_FOUND": "请求的资源不存在。{{message}}",
+    "PROVIDER_ERROR": "存储服务请求失败。{{message}}",
+    "AUTHENTICATION_ERROR": "账号授权失效，请重新登录。{{message}}",
+    "RATE_LIMIT_ERROR": "请求过于频繁，请稍后重试。{{message}}",
+    "PERMISSION_DENIED": "没有执行此操作的权限。{{message}}",
+    "VALIDATION_ERROR": "请求未通过校验。{{message}}",
+    "REQUEST_VALIDATION_ERROR": "请求参数不符合要求。{{message}}",
+    "RULE_CONFIGURATION_ERROR": "规则配置无效，请检查规则。{{message}}",
+    "RENAME_CONFLICT": "存在重命名冲突，请检查预览。{{message}}",
+    "PREVIEW_EXPIRED": "预览已过期或文件状态已变化，请重新预览。{{message}}",
+    "PREVIEW_NOT_FOUND": "预览不存在，请重新预览。{{message}}",
+    "STORAGE_BUSY": "存储连接忙碌，请等待当前操作完成。{{message}}",
+    "STORAGE_CONNECTION_CHANGED": "存储连接或账号已变化，请重新读取目录并预览。{{message}}",
+    "RENAME_OUTCOME_UNKNOWN": "重命名结果尚未确认，请核对实际文件，勿重复执行。{{message}}",
+    "INTERNAL_ERROR": "服务端发生错误。{{message}}"
+  }
 }

@@ -32,7 +32,7 @@ import { createAppTheme } from "./theme";
 import { useThemePreference } from "./features/settings/useThemePreference";
 import { useFactoryReset } from "./workspace/hooks/useFactoryReset";
 import type { ThemePreference } from "./features/settings/useThemePreference";
-import { NotificationProvider, useNotification } from "./components/NotificationProvider";
+import { NotificationProvider, errorMessage, useNotification } from "./components/NotificationProvider";
 
 const SettingsPage = lazy(() =>
   import("./features/settings/SettingsPage").then((module) => ({
@@ -75,12 +75,13 @@ function Workspace({ preference, setPreference, settingsError }: {
   setPreference: (preference: ThemePreference) => Promise<void>;
   settingsError: Error | null;
 }) {
+  const { t } = useTranslation();
   const notify = useNotification();
   useEffect(() => {
-    if (settingsError) notify({ key: "settings:readFailed", values: { message: settingsError.message } }, "warning");
+    if (settingsError) notify({ key: "settings:readFailed", error: settingsError }, "warning");
   }, [settingsError, notify]);
   const changeTheme = (next: ThemePreference) => {
-    void setPreference(next).catch((error: Error) => notify({ key: "settings:themeSaveFailed", values: { message: error.message } }, "error"));
+    void setPreference(next).catch((error: Error) => notify({ key: "settings:themeSaveFailed", error }, "error"));
   };
   const theme = useTheme();
   const compactNavigation = useMediaQuery(theme.breakpoints.down("md"));
@@ -205,9 +206,9 @@ function Workspace({ preference, setPreference, settingsError }: {
             className={view === "workspace" ? "workspace-page" : undefined}
             sx={{ width: "100%", maxWidth: 1680, mx: "auto", p: 1.5 }}
           >
-            {loadError && <Alert severity="error" sx={{ mb: 2 }}>无法连接后端：{loadError.message}</Alert>}
+            {loadError && <Alert severity="error" sx={{ mb: 2 }}>{t("files:workspace.loadFailed", { message: errorMessage(loadError, t) })}</Alert>}
             {(providers.isPending || providerDefinitions.isPending || definitions.isPending) && (
-              <LinearProgress aria-label="正在加载工作台配置" sx={{ flexShrink: 0, mb: 1 }} />
+              <LinearProgress aria-label={t("files:workspace.loading")} sx={{ flexShrink: 0, mb: 1 }} />
             )}
 
             {view === "settings" && (
@@ -260,7 +261,7 @@ function Workspace({ preference, setPreference, settingsError }: {
                         onReconcileSelection={reconcileSelection}
                         onEndTask={endTask}
                         isRefreshing={files.isFetching}
-                        refreshError={files.error?.message}
+                        refreshError={files.error ? errorMessage(files.error, t) : undefined}
                         onNavigate={navigate}
                         onRefresh={refreshFiles}
                         onToggle={toggleFile}
@@ -272,21 +273,21 @@ function Workspace({ preference, setPreference, settingsError }: {
                       <section className="panel">
                         {files.error ? (
                           <Alert severity="error" sx={{ m: 2 }}>
-                            目录读取失败：{files.error.message}
+                            {t("files:workspace.directoryFailed", { message: errorMessage(files.error, t) })}
                           </Alert>
                         ) : (
                           settingsLoading || files.isFetching ? (
                             <Box sx={{ p: 2 }} aria-busy="true">
                               <Typography role="status" variant="body2" sx={{ mb: 1 }}>
-                                {settingsLoading ? "正在读取存储设置…" : "正在读取目录…"}
+                                {settingsLoading ? t("files:workspace.loadingSettings") : t("files:workspace.loadingDirectory")}
                               </Typography>
                               {[0, 1, 2, 3].map((row) => <Skeleton key={row} height={38} />)}
                             </Box>
                           ) : (
                             <p className="empty-state">
                               {metadataReady && requiresAuth && cloudStatus.isSuccess && !cloudStatus.data.connected
-                                ? `连接 ${providerDefinition?.name} 后可浏览云端目录。`
-                                : "目录暂不可用，请检查存储设置。"}
+                                ? t("files:workspace.connectToBrowse", { service: providerDefinition?.name })
+                                : t("files:workspace.unavailable")}
                             </p>
                           )
                         )}
