@@ -77,6 +77,10 @@ function Workspace({ preference, setPreference, settingsError }: {
 }) {
   const { t } = useTranslation();
   const notify = useNotification();
+  const { failedLanguage } = useLanguagePreference();
+  useEffect(() => {
+    if (failedLanguage) notify({ key: "settings:languageLoadFailed", values: { code: failedLanguage } }, "warning");
+  }, [failedLanguage, notify]);
   useEffect(() => {
     if (settingsError) notify({ key: "settings:readFailed", error: settingsError }, "warning");
   }, [settingsError, notify]);

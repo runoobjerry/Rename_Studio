@@ -2,12 +2,13 @@ import { createContext, useContext, useEffect, useLayoutEffect, useRef, useState
 import { Skeleton } from "@mui/material";
 import { I18nextProvider } from "react-i18next";
 import { useAppSettings } from "../features/settings/useAppSettings";
-import { i18n } from "./index";
-import { resolveLanguage } from "./languages";
+import { i18n, isLanguageLoaded, loadLanguageResources } from "./index";
+import { fallbackLanguage, resolveLanguage } from "./languages";
 
 interface LanguageContextValue {
   preference: string;
   locale: string;
+  failedLanguage: string | null;
   setPreference: (next: string) => Promise<void>;
 }
 
@@ -19,7 +20,9 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
   const editId = useRef(0);
   const preference = draft ?? settings.data?.preferences.language ?? "auto";
   const [environment, setEnvironment] = useState(0);
-  const locale = resolveLanguage(preference);
+  const requestedLocale = resolveLanguage(preference);
+  const [locale, setLocale] = useState(fallbackLanguage);
+  const [failedLanguage, setFailedLanguage] = useState<string | null>(null);
   const [started, setStarted] = useState(false);
 
   useEffect(() => {
@@ -31,11 +34,24 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
 
   useLayoutEffect(() => {
     if (settings.isPending) return;
-    // Bundled resources switch synchronously. Gate only the initial mount, never a task.
-    void i18n.changeLanguage(locale);
-    document.documentElement.lang = locale;
-    setStarted(true);
-  }, [settings.isPending, locale, environment]);
+    let active = true;
+    setFailedLanguage(null);
+    const apply = () => {
+      if (!active) return;
+      void i18n.changeLanguage(requestedLocale);
+      document.documentElement.lang = requestedLocale;
+      setLocale(requestedLocale);
+      setStarted(true);
+    };
+    if (isLanguageLoaded(requestedLocale)) apply();
+    else void loadLanguageResources(requestedLocale).then(apply, () => {
+      if (!active) return;
+      // Initial failure shows English; later failures retain the current UI and task.
+      setFailedLanguage(requestedLocale);
+      setStarted(true);
+    });
+    return () => { active = false; };
+  }, [settings.isPending, requestedLocale, environment]);
 
   const setPreference = async (next: string) => {
     const id = ++editId.current;
@@ -49,7 +65,7 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
 
   return (
     <I18nextProvider i18n={i18n}>
-      <LanguageContext.Provider value={{ preference, locale, setPreference }}>
+      <LanguageContext.Provider value={{ preference, locale, failedLanguage, setPreference }}>
         {started ? children : <Skeleton variant="rounded" height={180} sx={{ m: 3 }} aria-busy="true" />}
       </LanguageContext.Provider>
     </I18nextProvider>

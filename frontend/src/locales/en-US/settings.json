@@ -10,6 +10,7 @@
   "system": "Follow system",
   "language": "Interface language",
   "languageHelp": "Choose your preferred interface language",
+  "languageLoadFailed": "Could not load the language files for {{code}}. The current interface language is being kept. Reload to try again.",
   "auto": "Follow browser",
   "unavailableLanguage": "{{code}} (currently unavailable)",
   "connections": "Connections",

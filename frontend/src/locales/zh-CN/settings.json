@@ -10,6 +10,7 @@
   "system": "跟随系统",
   "language": "界面语言",
   "languageHelp": "选择您偏好的界面语言",
+  "languageLoadFailed": "无法加载 {{code}} 的语言资源，暂时保留当前界面语言。请刷新后重试。",
   "auto": "跟随浏览器",
   "unavailableLanguage": "{{code}}（当前不可用）",
   "connections": "连接设置",

@@ -4,8 +4,10 @@ export const fallbackLanguage = "en-US";
 export const namespaces = ["common", "settings", "files", "rules", "providers", "errors"] as const;
 
 const metadata = import.meta.glob<LanguageMeta>("../locales/*/meta.json", { eager: true, import: "default" });
-const dictionaries = import.meta.glob<Record<string, unknown>>("../locales/*/*.json", { eager: true, import: "default" });
-export const { languages, resources } = createCatalog(metadata, dictionaries);
+const dictionaries = import.meta.glob<Record<string, unknown>>(
+  ["../locales/*/*.json", "!../locales/*/meta.json", "!../locales/en-US/*.json"], { import: "default" },
+);
+export const { languages, loadLanguage } = createCatalog(metadata, dictionaries);
 
 export function browserLanguages(): readonly string[] {
   return navigator.languages?.length ? navigator.languages : [navigator.language];
