@@ -77,6 +77,7 @@ class RenameRule:
 
 - 服务端偏好、标签页浏览会话和重命名任务分开管理；位置记忆只保存成功打开后 Provider 返回的 `StorageLocation`，恢复前校验 `storage_id`、连接版本、账号身份和 Provider 位置能力。不得将显示路径当作 ID，也不得恢复旧预览或执行任务。
 - 云默认目录以连接和稳定 `account_id` 隔离，不以邮箱或显示名代替；位置恢复完成前暂停目录读取。
+- 新 UI 文案使用 i18next 翻译键，默认与回退资源为 `en-US`，同步维护 `zh-CN`；新增 Rule/Provider 同步稳定 ID 对应词条。翻译值不得用作业务标识，不翻译文件名、路径、连接名称或账号数据；贡献规范见 `docs/TRANSLATING.md`。
 
 ## Persistence
 

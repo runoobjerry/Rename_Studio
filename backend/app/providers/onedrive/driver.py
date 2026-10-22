@@ -39,7 +39,6 @@ DRIVE_ITEM_SELECT = "id,name,parentReference,folder,root,size,lastModifiedDateTi
 
 class OneDriveProvider(StorageProvider):
     id = "onedrive"
-    display_name = "OneDrive"
     execution_batch_concurrency = WRITE_BATCH_CONCURRENCY
 
     def __init__(

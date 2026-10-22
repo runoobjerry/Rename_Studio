@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import { useLayoutEffect, useMemo, useRef, useState } from "react";
 import ChevronRightIcon from "@mui/icons-material/ChevronRight";
 import MoreHorizIcon from "@mui/icons-material/MoreHoriz";
@@ -23,6 +24,7 @@ const buttonSx = {
 } as const;
 
 export function LocationBreadcrumbs({ listing, rootLabel, disabled, onNavigate }: LocationBreadcrumbsProps) {
+  const { t } = useTranslation();
   const container = useRef<HTMLDivElement>(null);
   const measurement = useRef<HTMLDivElement>(null);
   const [hiddenCount, setHiddenCount] = useState(0);
@@ -73,14 +75,14 @@ export function LocationBreadcrumbs({ listing, rootLabel, disabled, onNavigate }
       <Box ref={measurement} aria-hidden="true" sx={{ display: "flex", position: "absolute", width: "max-content", visibility: "hidden", pointerEvents: "none" }}>
         {entries.map((entry, index) => <Button key={index} tabIndex={-1} sx={buttonSx}>{entry.label}</Button>)}
       </Box>
-      <Breadcrumbs aria-label="文件路径" separator={<ChevronRightIcon sx={{ fontSize: 18 }} />}
+      <Breadcrumbs aria-label={t("files:breadcrumbs.label")} separator={<ChevronRightIcon sx={{ fontSize: 18 }} />}
         maxItems={entries.length + 1}
         sx={{ "& ol": { flexWrap: "nowrap" }, "& .MuiBreadcrumbs-separator": { mx: "2px" },
           "& .MuiBreadcrumbs-li": { display: "flex", minWidth: 0, flexShrink: 0 },
           "& .MuiBreadcrumbs-li:last-child": { flexShrink: 1, overflow: "hidden" } }}>
         {hiddenCount > 0 && (
-          <Tooltip title="显示父级目录">
-            <span><PanelIconButton aria-label="显示父级目录" disabled={disabled} sx={{ p: "4px" }}
+          <Tooltip title={t("files:breadcrumbs.parents")}>
+            <span><PanelIconButton aria-label={t("files:breadcrumbs.parents")} disabled={disabled} sx={{ p: "4px" }}
               aria-haspopup="menu" aria-expanded={Boolean(anchor)} aria-controls={anchor ? "location-parents-menu" : undefined}
               onClick={(event) => setAnchor(event.currentTarget)}><MoreHorizIcon /></PanelIconButton></span>
           </Tooltip>

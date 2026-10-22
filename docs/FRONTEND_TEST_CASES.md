@@ -32,6 +32,8 @@
 
 ## 业务功能、异常与交互
 
+翻译工作流的补充覆盖：[检查器](../frontend/scripts/check-i18n.test.mjs) 验证 JSON/重复属性、非法或重复元数据、命名空间、结构、插值、zh-CN 完整性、社区语言缺词报告，以及代码和新增注册元数据缺词失败；[Vite 目录发现](../frontend/src/i18n/catalog.test.ts) 验证模拟语言自动发现和跨命名空间英文回退。[语言解析](../frontend/src/i18n/languages.test.ts) 覆盖浏览器候选顺序与变体；偏好恢复、重置、任务独立和 Rule/Provider 交互沿用下表已有测试。人工复核步骤见 [TRANSLATING](TRANSLATING.md)。
+
 | 场景 | 自动化承接位置 |
 |---|---|
 | 默认云目录恢复、导航后保存；重新进入优先使用尚未设为默认值的工作路径；缺账号不保存，读取/保存/目录请求失败不覆盖配置 | WorkspaceApp、[存储 Hook](../frontend/src/workspace/hooks/useWorkspaceStorage.test.ts) |
@@ -41,15 +43,24 @@
 | 超上限只在请求预览时提示；取消不建任务、继续只提交一批、偏好保存到后端 | 工作流 Hook；提示框交互按人工清单检查 |
 | 核对选择保留部分执行结果，普通选择清除旧结果 | 工作流 Hook；[PreviewPanel](../frontend/src/features/rename/PreviewPanel.test.tsx) 验证结果和筛选展示 |
 | 主题跟随系统、服务器偏好恢复、保存失败回退、连续编辑串行、迟到读取不覆盖保存 | [主题偏好 Hook](../frontend/src/features/settings/useThemePreference.test.ts) |
+| 自动发现语言、浏览器候选优先级与简繁边界、显式/不可用偏好和英文回退；有效语言日期格式化 | [语言解析](../frontend/src/i18n/languages.test.ts) |
+| 首次读取门控、语言即时切换与持久化恢复、保存失败回退、连续切换、重置等待队列并阻止新保存、auto 跟随浏览器且不重挂载 | [语言 Provider](../frontend/src/i18n/LanguageProvider.test.tsx) |
+| 设置语言菜单接线、读取失败的本地化警告、保存失败通知、切换时保留选择且不重新请求目录/元数据 | WorkspaceApp |
+| 已有预览与确认框随语言更新；保持任务快照、选中项和降序排列，不额外预览、执行或释放快照 | WorkspaceApp |
+| 错误类别只按稳定 code 翻译，原始 message/details 保留，未知 code 或普通异常不从英文内容推断类别 | [错误翻译](../frontend/src/i18n/messages.test.ts) |
 | 连接创建/编辑/关闭草稿、本地选择器、授权状态与失败保留输入 | StorageSettingsPanel |
+| 打开的连接编辑器随语言更新，保留名称/目录草稿，未知字段显示稳定 ID，不发保存或元数据请求 | StorageSettingsPanel |
 | 未硬编码的 Provider 根据字段元数据渲染、校验必填、按字段 key 回填目录、提交多个配置及 nullable 空值；无 browser_auth 不请求授权，定义缺失禁止编辑和创建 | StorageSettingsPanel |
 | 编辑密钥留空不提交；失败保留新密钥、重试成功后清空，密码不回显 | StorageSettingsPanel |
-| 任意 Provider 通过元数据定义配置字段、账号缺省文案和密码式顶层密钥；创建/切换/重开清空，配置不完整禁用登录，授权弹窗校验来源和连接 | StorageSettingsPanel |
+| 任意 Provider 通过元数据定义配置字段及密码式顶层密钥，缺词显示原始 Provider/字段 ID；创建/切换/重开清空，配置不完整禁用登录，授权弹窗校验来源和连接 | StorageSettingsPanel |
 | 明确不可重命名项在权限变化后退出旧选择和预览请求，未知权限项保留 | 工作流 Hook |
 | 目录语义导航、文本选择不误导航、任务过滤、目录折叠与键盘/滚动访问 | FileBrowser、虚拟列表、[LocationBreadcrumbs](../frontend/src/features/files/LocationBreadcrumbs.test.tsx) |
 | MUI 表头升降序、选择不随排序变化、锁定提示；中文数字名称自然排序、等价名称稳定比较、真实时间/时区、同时间及缺失值分组置后、不修改源数组 | FileBrowser、[文件排序](../frontend/src/features/files/fileSort.test.ts) |
 | 规则添加、编辑、移动、复制、删除及数字草稿归属；加载时禁止添加，溢出菜单仍可访问 | [RuleEditor](../frontend/src/features/rules/RuleEditor.test.tsx)、[RuleFields](../frontend/src/features/rules/RuleFields.test.tsx) |
+| Rule 菜单、说明 Tooltip、卡片与 ARIA 按 type 翻译；切换后继续提交原始 type/config，未知规则显示 ID | RuleEditor |
+| Local/OneDrive/Google Drive 双语字段、新建/编辑/已保存密钥帮助、未授权状态及账号缺省文案；原始 key/value 与顶层密钥提交 | StorageSettingsPanel |
+| 扩展 Provider 回退英文词典，未翻译字段显示 ID，不使用 Schema title；未知类型仍按能力渲染并提交原配置 | StorageSettingsPanel |
 | API 偏好 PATCH / 恢复接口 / 进度 ID 编码；结构化错误、HTML 网关错误和代表性非法 JSON；成功、204、网络失败 | API client |
-| 通知五秒关闭、新通知独立计时、连续消息不泄漏中间消息、过期预览提供操作提示 | [NotificationProvider](../frontend/src/components/NotificationProvider.test.tsx) |
+| 通知五秒关闭、新通知独立计时、连续消息不泄漏中间消息、过期预览提供操作提示；翻译键通知随语言切换更新且不重复创建，数量插值正确，路径作为纯文本保留 | [NotificationProvider](../frontend/src/components/NotificationProvider.test.tsx) |
 
 优先级按失败后果确定。删除连接的确认形式、狭窄空间布局等交互不再单独标为 P0。视觉和真实浏览器行为不靠 JSDOM 推断；检查步骤及本轮迁移记录见人工验收清单。

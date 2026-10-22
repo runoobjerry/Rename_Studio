@@ -1,0 +1,133 @@
+{
+  "types": {
+    "file": "File",
+    "folder": "Folder"
+  },
+  "filters": {
+    "pending": "Pending",
+    "completed": "Completed",
+    "failed": "Failed / Action Required"
+  },
+  "taskTitle": "Current task",
+  "title": "File selection",
+  "sortLocked": " · Sorting is locked until the task ends",
+  "endTask": "End current task",
+  "parent": "Back",
+  "invert": "Invert selection",
+  "filterItems": "Filter items",
+  "refreshingDirectory": "Refreshing directory",
+  "selectAll": "Select all displayed items",
+  "columns": {
+    "name": "File name",
+    "extension": "Extension",
+    "modified": "Modified"
+  },
+  "emptyTask": "The current task is empty.",
+  "emptyDirectory": "This directory is empty.",
+  "breadcrumbs": {
+    "label": "File path",
+    "parents": "Show parent folders"
+  },
+  "preview": {
+    "filters": {
+      "error": "Error",
+      "unchanged": "Unchanged",
+      "pending": "To rename",
+      "renamed": "Renamed"
+    },
+    "currentStorage": "Current storage",
+    "title": "Preview",
+    "filter": "Filter by status",
+    "original": "Original name",
+    "new": "New name",
+    "failed": "Rename failed",
+    "conflict": "Name conflict",
+    "invalid": "Cannot rename",
+    "summary": "{{pending}} to rename · {{unchanged}} unchanged",
+    "empty": "Click the preview button to see the new names. Previewing does not change anything in {{provider}}.",
+    "executeFailed": "Execution failed: {{message}}"
+  },
+  "rename": {
+    "phases": {
+      "waiting": "Awaiting confirmation",
+      "validating": "Revalidating",
+      "staging": "Preparing temporary names",
+      "renaming": "Renaming",
+      "rollback": "Rolling back",
+      "finished": "Processing finished",
+      "failed": "Execution failed"
+    },
+    "refreshing": "Refreshing…",
+    "preview": "Refresh preview",
+    "start": "Start renaming",
+    "unchangedBatch": "This batch has no name changes. Confirming will mark it as completed. ",
+    "irreversible": "This action cannot be undone!",
+    "progress": "Rename progress",
+    "returnedError": "An error was returned: {{message}}. Try refreshing the file directory.",
+    "progressUnavailable": "Progress is temporarily unavailable: {{message}}. The execution request is still in progress; do not submit it again.",
+    "processed": "Processed {{processed}} of {{total}} items in this task. Please wait and do not refresh the page.",
+    "confirm": "Rename {{count}} items in {{provider}} using the new names in the current preview. Please note: ",
+    "confirm_one": "Rename {{count}} item in {{provider}} using the new name in the current preview. Please note: ",
+    "confirm_other": "Rename {{count}} items in {{provider}} using the new names in the current preview. Please note: "
+  },
+  "notifications": {
+    "invalidPreview": "The preview contains invalid names or conflicts. Review the results. Files in unprocessed batches still occupy their names; conflict checks cannot be skipped.",
+    "oldUnknownTask": "The previous task has outcomes that need verification. Restore its rules and verify the results first.",
+    "fixedMembers": "The files in this task are fixed. End the current task before selecting files for a new one.",
+    "noTaskFiles": "No task files are available to process. Failed items can be selected for a retry; unknown outcomes must be verified first.",
+    "verifyBeforeRules": "This batch has outcomes that need verification. Check the actual files and end the task before changing rules.",
+    "rootSelected": "Local root folder selected.",
+    "sessionUnavailable": "Browser session storage is unavailable. Your working location cannot be restored after a refresh.",
+    "defaultUnavailable": "Could not read the default location. Opening the cloud drive root.",
+    "refreshed": "Directory refreshed.",
+    "previewFailed": "Preview failed: {{message}}",
+    "completed": "Renaming completed successfully: {{count}} items renamed.",
+    "partial": "Renaming partially completed: {{renamed}} renamed, {{failed}} failed.",
+    "failed": "Renaming failed: {{renamed}} renamed, {{failed}} failed.",
+    "unknownOutcome": "Execution did not return complete results: {{message}}. Refresh the directory and verify the files in this batch.",
+    "pickFailed": "Could not select a folder: {{message}}",
+    "defaultSaved": "Set “{{path}}” as the default location for the current account.",
+    "defaultRootSaved": "Set the root directory as the default location for the current account.",
+    "defaultSaveFailed": "Could not save the default location: {{message}}",
+    "refreshFailed": "Refresh failed: {{message}}",
+    "completed_one": "Renaming completed successfully: {{count}} item renamed.",
+    "completed_other": "Renaming completed successfully: {{count}} items renamed."
+  },
+  "batch": {
+    "title": "Large batch notice",
+    "hideHint": "Do not show this again",
+    "continue": "Continue",
+    "description": "More than {{limit}} files are selected. To maintain performance, only the first {{limit}} items will be renamed in this batch. After it finishes, filter for pending items to select and process the remaining files."
+  },
+  "location": {
+    "title": "Directory location",
+    "openNavigation": "Open navigation",
+    "setDefault": "Set as default",
+    "picking": "Waiting for selection…",
+    "browse": "Browse…",
+    "storageMissing": "This storage connection has been deleted. Select another connection.",
+    "accountIdMissing": "The current account has no account ID. You can still browse files; sign in again before setting a default location.",
+    "pickerFailed": "Could not open the folder picker: {{message}}",
+    "connectAccount": "Go to Settings and connect your {{service}} account first."
+  },
+  "sidebar": {
+    "title": "Storage locations",
+    "loading": "Loading storage locations"
+  },
+  "workspace": {
+    "loading": "Loading workspace configuration",
+    "loadingSettings": "Loading storage settings…",
+    "loadingDirectory": "Loading directory…",
+    "unavailable": "The directory is temporarily unavailable. Check your storage settings.",
+    "loadFailed": "Could not connect to the backend: {{message}}",
+    "directoryFailed": "Could not load the directory: {{message}}",
+    "connectToBrowse": "Connect {{service}} to browse cloud directories.",
+    "definitionMissing": "No definition was found for storage service {{provider}}."
+  },
+  "summary": "Total: {{total}} · Selected: {{selected}}",
+  "showing": " · {{count}} shown",
+  "refreshFailed": "Could not refresh the directory. Showing the last loaded contents: {{message}}",
+  "listLabel": "{{provider}} file list",
+  "selectFile": "Select file {{name}}",
+  "selectFolder": "Select folder {{name}}"
+}

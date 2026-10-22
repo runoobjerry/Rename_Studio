@@ -60,6 +60,7 @@ export interface CloudDefaultLocation {
 }
 
 export interface AppPreferences {
+  language: string;
   theme: ThemePreference;
   hide_batch_limit_hint: boolean;
   cloud_default_locations: Record<string, CloudDefaultLocation>;
@@ -70,6 +71,7 @@ export interface AppSettings {
 }
 
 export interface AppSettingsPatch {
+  language?: string;
   theme?: ThemePreference;
   hide_batch_limit_hint?: boolean;
   cloud_default_locations?: Record<string, CloudDefaultLocation | null>;
@@ -77,8 +79,6 @@ export interface AppSettingsPatch {
 
 export interface RuleDefinition {
   type: string;
-  name: string;
-  description: string;
   config_schema: Record<string, unknown>;
 }
 
@@ -141,23 +141,16 @@ export interface StorageInfo {
 
 export interface StorageConfigField {
   key: string;
-  label: string;
-  create_label: string | null;
   input_type: "text" | "password" | "directory";
   target: "config" | "client_secret";
   required: boolean;
   nullable: boolean;
-  help_text: string | null;
-  create_help_text: string | null;
-  saved_help_text: string | null;
 }
 
 export interface StorageProviderDefinition {
   provider_type: string;
-  name: string;
   config_schema: Record<string, unknown>;
   config_fields: StorageConfigField[];
-  account_label: string;
   icon: "computer" | "cloud";
   locations: Array<StorageLocation["kind"]>;
   can_rename: boolean;

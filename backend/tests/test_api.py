@@ -64,6 +64,19 @@ def test_validation_errors_use_standard_shape(api_client: TestClient) -> None:
     assert response.json()["error"]["code"] == "REQUEST_VALIDATION_ERROR"
 
 
+def test_rules_metadata_contains_identifiers_and_validation_schema(api_client: TestClient) -> None:
+    response = api_client.get("/rules")
+    assert response.status_code == 200
+    definitions = response.json()
+    assert {item["type"] for item in definitions} == {"padding", "replace", "remove", "insert"}
+    assert all(set(item) == {"type", "config_schema"} for item in definitions)
+    padding = next(item["config_schema"] for item in definitions if item["type"] == "padding")
+    assert padding["type"] == "object"
+    assert padding["properties"]["length"]["minimum"] == 1
+    assert padding["properties"]["length"]["maximum"] == 255
+    assert set(padding["required"]) == {"mode", "length"}
+
+
 def test_execute_requires_a_server_generated_preview(api_client: TestClient) -> None:
     response = api_client.post(
         "/rename/execute",

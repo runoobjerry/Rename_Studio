@@ -17,7 +17,6 @@ if TYPE_CHECKING:
 @dataclass(frozen=True)
 class ProviderDefinition:
     provider_type: str
-    name: str
     config_model: type[BaseModel]
     locations: tuple[str, ...]
     factory: Callable[[StorageRecord, ConnectionAuth | None], StorageProvider]
@@ -25,7 +24,6 @@ class ProviderDefinition:
     local_picker: bool = False
     can_rename: bool = True
     config_fields: tuple[StorageConfigField, ...] = ()
-    account_label: str = "用户"
     icon: Literal["computer", "cloud"] = "cloud"
 
 

@@ -23,8 +23,6 @@ class MappingConfig(BaseModel):
 
 class MappingRule(RenameRule[MappingConfig]):
     type = "mapping"
-    display_name = "Mapping"
-    description = "Test business outcomes with opaque storage IDs"
     config_model = MappingConfig
 
     def apply(self, filename: str, context: RuleContext, config: MappingConfig) -> str:
@@ -33,7 +31,6 @@ class MappingRule(RenameRule[MappingConfig]):
 
 class StableIdProvider(StorageProvider):
     id = "stable"
-    display_name = "Stable IDs"
     execution_batch_size = 2
 
     def __init__(self, names: dict[str, str]) -> None:

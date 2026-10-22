@@ -71,7 +71,6 @@ class _ErrorResponse(BaseModel):
 
 class GoogleDriveProvider(StorageProvider):
     id = "google_drive"
-    display_name = "Google Drive"
 
     def __init__(self, auth: ConnectionAuth, *, timeout: float = 30.0, client: httpx.AsyncClient | None = None) -> None:
         self.auth = auth

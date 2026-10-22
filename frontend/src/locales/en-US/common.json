@@ -1,0 +1,15 @@
+{
+  "cancel": "Cancel",
+  "loadingPage": "Loading page",
+  "close": "Close",
+  "save": "Save",
+  "delete": "Delete",
+  "apply": "Apply",
+  "refresh": "Refresh",
+  "refreshing": "Refreshing",
+  "noMatches": "No items match the filters.",
+  "status": "Status",
+  "filterState": "{{label}} ({{state}})",
+  "enabled": "enabled",
+  "disabled": "disabled"
+}

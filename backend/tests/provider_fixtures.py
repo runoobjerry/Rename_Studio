@@ -19,12 +19,12 @@ def registry_for(providers: list[StorageProvider]) -> ProviderRegistry:
     connections = {}
     for provider in providers:
         registry.register(ProviderDefinition(
-            provider.id, provider.display_name, TestProviderConfig, ("root", "id", "path"),
+            provider.id, TestProviderConfig, ("root", "id", "path"),
             lambda record, auth, instance=provider: instance,
         ))
         connections[provider.id] = StorageRecord(
             storage_id=provider.id, provider_type=provider.id,
-            name=provider.display_name, config={},
+            name=provider.id, config={},
         )
     StorageManager(registry, JsonStorageRepository(Path("unused-unit-test-state.json")),
                    StorageState(connections=connections))

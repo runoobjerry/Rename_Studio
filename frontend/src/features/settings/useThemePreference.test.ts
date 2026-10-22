@@ -22,7 +22,7 @@ beforeEach(() => {
   systemDark = false;
   listeners = new Set();
   serverSettings = { preferences: {
-    theme: "system", hide_batch_limit_hint: false, cloud_default_locations: {},
+    language: "auto", theme: "system", hide_batch_limit_hint: false, cloud_default_locations: {},
   } };
   client = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } });
   vi.mocked(fetchAppSettings).mockImplementation(async () => serverSettings);

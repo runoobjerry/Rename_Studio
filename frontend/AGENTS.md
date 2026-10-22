@@ -13,6 +13,8 @@
 
 ## 工作区职责边界
 
+- 新 UI 文案（含通知、Tooltip、ARIA）使用 `react-i18next`，默认与回退资源为 `en-US`，同步维护 `zh-CN`；不得在模块导入时缓存译文。新增 Rule/Provider 补齐稳定 type/field key 的词条，不能用译文标识业务或翻译文件名、路径、连接与账号数据。语言贡献和静态检查见 [TRANSLATING.md](../docs/TRANSLATING.md)；测试/构建及 Git 审批规则保持不变。
+
 - `WorkspaceApp` 只负责 Provider 入口、布局、导航保护和跨 Hook 协调；连接/目录生命周期归 `useWorkspaceStorage`，选择、预览、执行和分批任务归 `useRenameWorkflow`。两个 Hook 不直接互相调用，所需状态和重置动作由容器显式传递。
 - TanStack Query 管理服务端数据和缓存，Zustand 仅保存选择、规则链与当前页面内存中的分批任务；展示组件不承载工作流状态机，也不以 DOM、文件名或推测结果改变任务状态。
 - 预览和执行响应只能在仍匹配当前工作区上下文时更新 UI。过时预览必须释放；缺失完整执行响应或标记为未知的批次必须锁定，待用户核对真实存储后才能开始新任务，禁止客户端重放或推断成功。

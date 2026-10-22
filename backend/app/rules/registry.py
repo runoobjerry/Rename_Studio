@@ -24,8 +24,6 @@ class RuleRegistry:
         return [
             RuleDefinition(
                 type=rule.type,
-                name=rule.display_name,
-                description=rule.description,
                 config_schema=rule.config_model.model_json_schema(),
             )
             for rule in self._rules.values()

@@ -1,0 +1,67 @@
+{
+  "editor": {
+    "title": "Rule editor",
+    "clear": "Clear all",
+    "add": "Add",
+    "loading": "Loading rules",
+    "unavailable": "No rules available",
+    "checkRegistry": "Check that the backend rule registry has loaded.",
+    "empty": "Multiple rules can be combined to form a rule chain.",
+    "moveUp": "Move rule up",
+    "moveDown": "Move rule down",
+    "copy": "Duplicate rule",
+    "remove": "Delete rule",
+    "enabledLabel": "Enable {{name}}"
+  },
+  "fields": {
+    "paddingMode": "Padding type",
+    "numberPadding": "Pad numbers with zeros",
+    "textPadding": "Text padding",
+    "length": "Target length",
+    "fillCharacter": "Padding characters",
+    "side": "Padding side",
+    "left": "Left",
+    "right": "Right",
+    "search": "Find",
+    "removeText": "Remove",
+    "replacement": "Replace",
+    "occurrence": "Occurrences",
+    "all": "All",
+    "first": "First",
+    "last": "Last",
+    "caseSensitive": "Case sensitive",
+    "wholeWord": "Whole words only",
+    "ignoreExtension": "Skip extension",
+    "insertText": "Insert",
+    "position": "Where",
+    "prefix": "Prefix",
+    "suffix": "Suffix",
+    "indexPosition": "Position",
+    "beforeText": "Before text",
+    "afterText": "After text",
+    "index": "Character position",
+    "anchor": "Specified text",
+    "fromRight": "Right to left",
+    "decrease": "Decrease {{label}} by one",
+    "increase": "Increase {{label}} by one"
+  },
+  "unsupported": "Unsupported rule type: {{type}}",
+  "types": {
+    "padding": {
+      "name": "Padding",
+      "description": "Pad numbers with zeros, or pad text on the left or right"
+    },
+    "replace": {
+      "name": "Replace",
+      "description": "Find text and replace it with new text"
+    },
+    "remove": {
+      "name": "Remove",
+      "description": "Remove matching text"
+    },
+    "insert": {
+      "name": "Insert",
+      "description": "Insert text at the start, end, a character position, or next to specified text"
+    }
+  }
+}

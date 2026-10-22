@@ -13,6 +13,8 @@ import {
   useTheme,
 } from "@mui/material";
 import { useQuery } from "@tanstack/react-query";
+import { useTranslation } from "react-i18next";
+import { LanguageProvider, useLanguagePreference } from "./i18n/LanguageProvider";
 
 import { fetchRules } from "./api/client";
 import { BatchLimitDialog } from "./workspace/components/BatchLimitDialog";
@@ -45,16 +47,22 @@ type AppView = "workspace" | "settings";
 const drawerWidth = 244;
 
 function SecondaryPageFallback() {
+  const { t } = useTranslation();
   return (
     <Box sx={{ display: "grid", minHeight: 240, placeItems: "center" }}>
-      <CircularProgress size={28} aria-label="正在加载页面" />
+      <CircularProgress size={28} aria-label={t("loadingPage")} />
     </Box>
   );
 }
 
 export default function WorkspaceApp() {
+  return <LanguageProvider><ThemedWorkspace /></LanguageProvider>;
+}
+
+function ThemedWorkspace() {
+  const { locale } = useLanguagePreference();
   const { mode, preference, setPreference, settingsError } = useThemePreference();
-  const theme = useMemo(() => createAppTheme(mode), [mode]);
+  const theme = useMemo(() => createAppTheme(mode, locale), [mode, locale]);
   return (
     <ThemeProvider theme={theme}>
       <NotificationProvider><Workspace preference={preference} setPreference={setPreference} settingsError={settingsError} /></NotificationProvider>
@@ -67,12 +75,17 @@ function Workspace({ preference, setPreference, settingsError }: {
   setPreference: (preference: ThemePreference) => Promise<void>;
   settingsError: Error | null;
 }) {
+  const { t } = useTranslation();
   const notify = useNotification();
+  const { failedLanguage } = useLanguagePreference();
   useEffect(() => {
-    if (settingsError) notify(`读取应用设置失败，暂用默认偏好：${errorMessage(settingsError)}`, "warning");
+    if (failedLanguage) notify({ key: "settings:languageLoadFailed", values: { code: failedLanguage } }, "warning");
+  }, [failedLanguage, notify]);
+  useEffect(() => {
+    if (settingsError) notify({ key: "settings:readFailed", error: settingsError }, "warning");
   }, [settingsError, notify]);
   const changeTheme = (next: ThemePreference) => {
-    void setPreference(next).catch((error: Error) => notify(`主题保存失败，已撤销本次更改：${errorMessage(error)}`, "error"));
+    void setPreference(next).catch((error: Error) => notify({ key: "settings:themeSaveFailed", error }, "error"));
   };
   const theme = useTheme();
   const compactNavigation = useMediaQuery(theme.breakpoints.down("md"));
@@ -84,7 +97,7 @@ function Workspace({ preference, setPreference, settingsError }: {
   const {
     storageId, location, setLocation, setPath, selectStorage, resetWorkspaceSession, locationReady,
     providers, activeStorage, providerId, providerName, cloudStatus,
-    providerDefinitions, providerDefinition, providerError, metadataReady, requiresAuth, supportsLocalPicker, supportsLocation,
+    providerDefinitions, providerError, metadataReady, requiresAuth, supportsLocalPicker, supportsLocation,
     cloudAccountId, cloudConnected, cloudSession, cloudReady, restoredCloudSession, appSettingsReady,
     files, workspaceKey, settingsLoading, pickLocalRoot,
     restoreDefaultCloudPath, setDefaultCloudPath, refreshFiles,
@@ -197,9 +210,9 @@ function Workspace({ preference, setPreference, settingsError }: {
             className={view === "workspace" ? "workspace-page" : undefined}
             sx={{ width: "100%", maxWidth: 1680, mx: "auto", p: 1.5 }}
           >
-            {loadError && <Alert severity="error" sx={{ mb: 2 }}>无法连接后端：{loadError.message}</Alert>}
+            {loadError && <Alert severity="error" sx={{ mb: 2 }}>{t("files:workspace.loadFailed", { message: errorMessage(loadError, t) })}</Alert>}
             {(providers.isPending || providerDefinitions.isPending || definitions.isPending) && (
-              <LinearProgress aria-label="正在加载工作台配置" sx={{ flexShrink: 0, mb: 1 }} />
+              <LinearProgress aria-label={t("files:workspace.loading")} sx={{ flexShrink: 0, mb: 1 }} />
             )}
 
             {view === "settings" && (
@@ -217,7 +230,7 @@ function Workspace({ preference, setPreference, settingsError }: {
                   compactNavigation={compactNavigation}
                   listing={locationReady ? files.data : undefined}
                   rootLabel={providerName}
-                  serviceName={providerDefinition?.name ?? providerId}
+                  serviceName={t(`providers:${providerId}.name`, { defaultValue: providerId })}
                   requiresAuth={metadataReady && requiresAuth}
                   supportsLocalPicker={supportsLocalPicker}
                   navigationDisabled={!locationReady || !activeStorage || isExecuting || pickLocalRoot.isPending || activeStorage.busy}
@@ -252,7 +265,7 @@ function Workspace({ preference, setPreference, settingsError }: {
                         onReconcileSelection={reconcileSelection}
                         onEndTask={endTask}
                         isRefreshing={files.isFetching}
-                        refreshError={files.error?.message}
+                        refreshError={files.error ? errorMessage(files.error, t) : undefined}
                         onNavigate={navigate}
                         onRefresh={refreshFiles}
                         onToggle={toggleFile}
@@ -264,21 +277,21 @@ function Workspace({ preference, setPreference, settingsError }: {
                       <section className="panel">
                         {files.error ? (
                           <Alert severity="error" sx={{ m: 2 }}>
-                            目录读取失败：{files.error.message}
+                            {t("files:workspace.directoryFailed", { message: errorMessage(files.error, t) })}
                           </Alert>
                         ) : (
                           settingsLoading || files.isFetching ? (
                             <Box sx={{ p: 2 }} aria-busy="true">
                               <Typography role="status" variant="body2" sx={{ mb: 1 }}>
-                                {settingsLoading ? "正在读取存储设置…" : "正在读取目录…"}
+                                {settingsLoading ? t("files:workspace.loadingSettings") : t("files:workspace.loadingDirectory")}
                               </Typography>
                               {[0, 1, 2, 3].map((row) => <Skeleton key={row} height={38} />)}
                             </Box>
                           ) : (
                             <p className="empty-state">
                               {metadataReady && requiresAuth && cloudStatus.isSuccess && !cloudStatus.data.connected
-                                ? `连接 ${providerDefinition?.name} 后可浏览云端目录。`
-                                : "目录暂不可用，请检查存储设置。"}
+                                ? t("files:workspace.connectToBrowse", { service: t(`providers:${providerId}.name`, { defaultValue: providerId }) })
+                                : t("files:workspace.unavailable")}
                             </p>
                           )
                         )}

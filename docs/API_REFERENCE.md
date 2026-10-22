@@ -109,24 +109,26 @@ interface StorageInfo {
 }
 ```
 
-Provider definitions 提供有序 `config_fields`、账号无显示名时使用的 `account_label`，以及侧栏 `icon`（`computer` 或 `cloud`）。图标显式声明，不从授权或选择器能力推断。每个字段描述包含：
+Provider definitions 提供有序 `config_fields`、能力与侧栏 `icon`（`computer` 或 `cloud`），不提供展示名称、账号缺省文案或字段文案。图标显式声明，不从授权或选择器能力推断。每个字段描述包含：
 
 | 字段 | 含义或取值 |
 | --- | --- |
-| `key`, `label` | 配置字段标识与显示标签 |
-| `create_label` | 可选的新建标签 |
+| `key` | 稳定配置字段标识 |
 | `input_type` | `text`、`password` 或 `directory` |
 | `target` | `config` 或既有的请求顶层 `client_secret` |
 | `required`, `nullable` | 必填与可空标记 |
-| `help_text`, `create_help_text`, `saved_help_text` | 可选的帮助、新建帮助与已保存帮助文本 |
 
-可空配置输入为空时提交 `null`，密钥输入为空时省略该字段。描述符不包含凭据值；目录选择按钮同时依赖 `directory` 字段和 `local_picker`，授权操作依赖 `browser_auth`。`config_schema` 仍为后端校验 Schema，不是通用前端表单引擎。前后端须同步升级以使用这些新增元数据字段。
+可空配置输入为空时提交 `null`，密钥输入为空时省略该字段。描述符不包含凭据值；目录选择按钮同时依赖 `directory` 字段和 `local_picker`，授权操作依赖 `browser_auth`。`config_schema` 保留完整 Pydantic 校验与结构信息；其自动生成的 title/description 不作为最终 UI 翻译源，也不驱动通用表单引擎。
+
+前端按 `providers:<provider_type>.name`、`.accountLabel` 和 `.fields.<key>.{label,createLabel,help,createHelp,savedHelp}` 查词典。新建标签缺失时使用普通标签，帮助变体缺失时使用普通帮助；当前语言缺词回退 `en-US`，仍缺失的名称/标签显示稳定类型或字段 ID，可选帮助不显示原始翻译键。能力仍只取元数据，不从类型名称或翻译推断。
+
+**响应形状迁移（1.0.0-alpha3 开发阶段）**：`/storage-providers` 删除 `name`、`account_label`，`config_fields[]` 删除 `label`、`create_label`、`help_text`、`create_help_text`、`saved_help_text`；`/rules` 删除 `name`、`description`。这是不兼容变更，前后端必须同步升级，外部调用者也需改用稳定 ID，不保留兼容字段。连接记录的 `name`、账号资料、文件名、路径及 settings 状态版本均不变；已保存的 `default-local.name = "Local Files"` 不改写。
 
 ### 路由
 
 | Method / route | 请求 | 响应 |
 | --- | --- | --- |
-| `GET /storage-providers` | 无 | Definitions：`provider_type`、`name`、`config_schema`、`config_fields`、`account_label`、`icon`、`locations`、`can_rename`、`browser_auth`、`local_picker` |
+| `GET /storage-providers` | 无 | Definitions：`provider_type`、`config_schema`、`config_fields`、`icon`、`locations`、`can_rename`、`browser_auth`、`local_picker` |
 | `GET /storages` | 无 | `StorageInfo[]` |
 | `POST /storages` | `{provider_type,name,config,client_secret?:string|null}` | 201 `StorageInfo` |
 | `GET /storages/{storage_id}` | 无 | `StorageInfo` |
@@ -187,11 +189,11 @@ Google 设置 UI 接受 Client ID 和 write-only client secret；工作台共用
 ```ts
 Array<{
   type: string;
-  name: string;
-  description: string;
   config_schema: Record<string, unknown>;
 }>
 ```
+
+名称与说明由前端 `rules:types.<type>.name` / `.description` 提供；缺词按当前语言、`en-US`、稳定 `type` 回退。规则类型、配置键和值、服务端校验与实际执行语义不变；新增规则的字段编辑 UI 仍须显式适配。
 
 | Type | Config |
 | --- | --- |
@@ -300,6 +302,7 @@ Array<{
 
 ```ts
 interface AppPreferences {
+  language: string; // "auto" 或语言代码，例如 "zh-CN"、"en-US"
   theme: "light" | "dark" | "system";
   hide_batch_limit_hint: boolean;
   cloud_default_locations: Record<string, { account_id: string; location: StorageLocation }>;
@@ -315,6 +318,10 @@ interface AppPreferences {
 云默认目录 patch 按传入的 storage ID 整体替换记录；`null` 删除该连接默认值，省略的连接保持不变。每个连接仅保留当前账号的默认目录；保存其他账号记录返回 `STORAGE_CONNECTION_CHANGED`（409）。账号变化、disconnect、配置变化或连接删除时，默认目录随连接更新原子移除；正常 Token rotation 保留默认目录。
 
 patch 合并到当前偏好，保留省略的偏好、连接及最新凭据；每个字段最后一次成功处理的修改生效。完整状态原子保存，保存成功后才更新内存和前端 cache；失败返回错误并保留原状态。
+
+`language` 默认 `auto`，恢复出厂设置同样恢复 `auto`；后端只校验语言标识长度（2–63）和连字符分段格式，不维护前端支持语言列表。已保存但当前前端不支持的标识保留原值，界面回退 `en-US`。当前 alpha 阶段不承诺不同版本之间的 settings.json 兼容性。
+
+auto 的浏览器语言解析、Vite 语言发现、词条回退和 MUI/日期显示均属于前端，不改变业务请求参数。新增词典语言只需通过 PR 贡献 JSON/meta，不修改后端枚举或业务 API；说明见 [TRANSLATING](TRANSLATING.md)。Rule/Provider 展示字段的响应迁移见上方对应接口，本轮翻译工作流不新增或改变 API 字段；AppError code/message/details 与真实连接/账号/文件数据继续保留。
 
 偏好限制：最多 100 条云默认目录记录；连接/账号标识长 1–200 字符；目录值最长 4096 字符；JSON 大小最多 128 KiB。factory reset 等待前端排队保存完成，重置期间拒绝新保存；后端存在活动重命名时返回 `STORAGE_BUSY`（409）。默认 Local 保留，真实文件不受影响；规则仍为前端内存状态。
 

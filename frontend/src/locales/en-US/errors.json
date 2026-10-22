@@ -1,0 +1,21 @@
+{
+  "resetInProgress": "Factory reset is in progress. Try again shortly.",
+  "codes": {
+    "APPLICATION_ERROR": "The app could not complete this operation. {{message}}",
+    "NOT_FOUND": "The requested resource was not found. {{message}}",
+    "PROVIDER_ERROR": "The storage service request failed. {{message}}",
+    "AUTHENTICATION_ERROR": "Account authorization is invalid. Sign in again. {{message}}",
+    "RATE_LIMIT_ERROR": "Too many requests. Try again later. {{message}}",
+    "PERMISSION_DENIED": "You do not have permission to perform this operation. {{message}}",
+    "VALIDATION_ERROR": "The request did not pass validation. {{message}}",
+    "REQUEST_VALIDATION_ERROR": "The request parameters are invalid. {{message}}",
+    "RULE_CONFIGURATION_ERROR": "The rule configuration is invalid. Check the rules. {{message}}",
+    "RENAME_CONFLICT": "A rename conflict was detected. Review the preview. {{message}}",
+    "PREVIEW_EXPIRED": "The preview has expired or file state has changed. Preview again. {{message}}",
+    "PREVIEW_NOT_FOUND": "The preview was not found. Preview again. {{message}}",
+    "STORAGE_BUSY": "The storage connection is busy. Wait for the current operation to finish. {{message}}",
+    "STORAGE_CONNECTION_CHANGED": "The storage connection or account has changed. Reload the directory and preview again. {{message}}",
+    "RENAME_OUTCOME_UNKNOWN": "The rename outcome is unknown. Verify the actual files and do not repeat the operation. {{message}}",
+    "INTERNAL_ERROR": "A server error occurred. {{message}}"
+  }
+}

@@ -17,8 +17,6 @@ class PrefixConfig(BaseModel):
 
 class PrefixRule(RenameRule[PrefixConfig]):
     type = "test_prefix"
-    display_name = "Test prefix"
-    description = "Test-only rule"
     config_model = PrefixConfig
 
     def apply(

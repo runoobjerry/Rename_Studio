@@ -26,12 +26,11 @@ class OneDriveConfig(BaseModel):
 
 def get_definition(settings: Settings) -> ProviderDefinition:
     return ProviderDefinition(
-        "onedrive", "OneDrive", OneDriveConfig, ("root", "id", "path"),
+        "onedrive", OneDriveConfig, ("root", "id", "path"),
         lambda record, auth: OneDriveProvider(cast(ConnectionAuth, auth)),
         config_fields=(StorageConfigField(
-            key="client_id", label="OneDrive App ID", create_label="OneDrive App ID（可稍后配置）", nullable=True,
+            key="client_id", nullable=True,
         ),),
-        account_label="Microsoft 用户",
         auth_factory=lambda record, persist, guard: OneDriveAuthService(
             settings.storage_redirect_uri,
             initial_state={**record.credentials, **({"client_id": str(record.config["client_id"])} if record.config["client_id"] else {})},

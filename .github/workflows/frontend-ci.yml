@@ -4,6 +4,9 @@ on:
   pull_request:
     paths:
       - "frontend/**"
+      - "backend/app/rules/**"
+      - "backend/app/providers/**"
+      - "backend/app/api/dependencies.py"
       - ".github/workflows/frontend-ci.yml"
   workflow_dispatch:
 
@@ -26,6 +29,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
 
       - name: Setup Node.js
         uses: actions/setup-node@v5
@@ -34,11 +39,67 @@ jobs:
           cache: npm
           cache-dependency-path: frontend/package-lock.json
 
+      - name: Detect translation-only PR
+        id: changes
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          node --input-type=module <<'JS'
+          import { execFileSync } from 'node:child_process';
+          import { appendFileSync } from 'node:fs';
+
+          const git = (...args) => execFileSync('git', args, { encoding: 'utf8' });
+          const resource = /^frontend\/src\/locales\/[^/]+\/(meta|common|settings|files|rules|providers|errors)\.json$/;
+          // Compare keys and nesting independently of translated text and JSON property order.
+          function shape(value) {
+            if (value === null || typeof value !== 'object') return typeof value;
+            if (Array.isArray(value)) return 'array';
+            return Object.keys(value).sort().map((key) => [key, shape(value[key])]);
+          }
+
+          let translationOnly = false;
+          if (process.env.EVENT_NAME === 'pull_request') {
+            const base = git('merge-base', process.env.BASE_SHA, 'HEAD').trim();
+            // Inspect the whole PR, including deletions; do not infer scope from labels or branch names.
+            const changes = git('diff', '--no-renames', '--name-status', '-z', base, 'HEAD').split('\0');
+            changes.pop();
+            translationOnly = changes.length > 0;
+            for (let index = 0; index < changes.length; index += 2) {
+              const status = changes[index];
+              const path = changes[index + 1];
+              if (!['A', 'M'].includes(status) || !resource.test(path)) {
+                translationOnly = false;
+                break;
+              }
+              if (path.startsWith('frontend/src/locales/en-US/') && !path.endsWith('/meta.json')) {
+                if (status !== 'M') {
+                  translationOnly = false;
+                  break;
+                }
+                const before = JSON.parse(git('show', `${base}:${path}`));
+                const after = JSON.parse(git('show', `HEAD:${path}`));
+                if (JSON.stringify(shape(before)) !== JSON.stringify(shape(after))) {
+                  translationOnly = false;
+                  break;
+                }
+              }
+            }
+          }
+          appendFileSync(process.env.GITHUB_OUTPUT, `translation_only=${translationOnly}\n`);
+          console.log(translationOnly ? 'Translation-only PR: run i18n checks.' : 'Run full frontend checks.');
+          JS
+
       - name: Install locked dependencies
         run: npm ci --no-audit --no-fund
 
+      - name: Check translation resources and metadata
+        run: npm run i18n:check
+
       - name: Run Vitest
+        if: steps.changes.outputs.translation_only != 'true'
         run: npm test
 
       - name: Type-check and production build
+        if: steps.changes.outputs.translation_only != 'true'
         run: npm run build

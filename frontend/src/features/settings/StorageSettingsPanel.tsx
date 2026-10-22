@@ -1,3 +1,5 @@
+import { translateMessage, type LocalizedMessage, type NotificationMessage } from "../../i18n/messages";
+import { useTranslation } from "react-i18next";
 import { useEffect, useRef, useState } from "react";
 import EditIcon from "@mui/icons-material/Edit";
 import AddIcon from "@mui/icons-material/Add";
@@ -66,15 +68,19 @@ function ConfigFields({ definition, draft, clientSecret, disabled, creating = fa
   onSecretChange: (value: string) => void;
   onPick: (key: string) => void;
 }) {
+  const { t } = useTranslation();
   return <>{definition.config_fields.map((field) => {
     const secret = field.target === "client_secret";
     const pickable = definition.local_picker && field.input_type === "directory";
-    let helpText = field.help_text;
-    if (creating) helpText = field.create_help_text ?? helpText;
-    else if (secret && hasClientSecret) helpText = field.saved_help_text ?? helpText;
+    const key = `providers:${definition.provider_type}.fields.${field.key}`;
+    const label = t(creating ? [`${key}.createLabel`, `${key}.label`] : `${key}.label`, { defaultValue: field.key });
+    const helpKeys = [`${key}.help`];
+    if (creating) helpKeys.unshift(`${key}.createHelp`);
+    else if (secret && hasClientSecret) helpKeys.unshift(`${key}.savedHelp`);
+    const helpText = t(helpKeys, { defaultValue: "" });
     const input = (
       <TextField key={field.key} variant="standard" size="small"
-        label={creating ? field.create_label ?? field.label : field.label}
+        label={label}
         type={field.input_type === "password" ? "password" : "text"}
         value={secret ? clientSecret : draft[field.key] ?? ""} disabled={disabled}
         autoComplete={field.input_type === "password" ? "new-password" : undefined}
@@ -85,10 +91,10 @@ function ConfigFields({ definition, draft, clientSecret, disabled, creating = fa
     return pickable ? (
       <Stack key={field.key} direction="row" spacing={1} sx={{ alignItems: "flex-end" }}>
         {input}
-        <Tooltip title={creating ? "浏览本地目录（在后端电脑打开，仅填入路径）" : "浏览本地目录"}
+        <Tooltip title={creating ? t("settings:connection.browseDraft") : t("settings:connection.browse")}
           slotProps={{ tooltip: { sx: { fontSize: "caption.fontSize" } } }}>
           <span>
-            <PanelIconButton aria-label="浏览本地目录" disabled={disabled} onClick={() => onPick(field.key)}>
+            <PanelIconButton aria-label={t("settings:connection.browse")} disabled={disabled} onClick={() => onPick(field.key)}>
               <FolderOpenIcon />
             </PanelIconButton>
           </span>
@@ -103,6 +109,7 @@ function ConnectionRow({ storage, executing, definition }: {
   executing: boolean;
   definition: StorageProviderDefinition;
 }) {
+  const { t } = useTranslation();
   const notify = useNotification();
   const queryClient = useQueryClient();
   const [name, setName] = useState(storage.name);
@@ -110,7 +117,7 @@ function ConnectionRow({ storage, executing, definition }: {
   const [clientSecret, setClientSecret] = useState("");
   const [editing, setEditing] = useState(false);
   const [awaitingAuth, setAwaitingAuth] = useState(false);
-  const [authError, setAuthError] = useState<string>();
+  const [authError, setAuthError] = useState<NotificationMessage>();
   const popup = useRef<Window | null>(null);
   const callbackOrigin = useRef<string>();
   const requiresAuth = definition.browser_auth;
@@ -132,13 +139,13 @@ function ConnectionRow({ storage, executing, definition }: {
   };
   const operation = useMutation({
     gcTime: 0,
-    mutationFn: (action: { run: () => Promise<unknown>; message: string }) => action.run(),
+    mutationFn: (action: { run: () => Promise<unknown>; message: LocalizedMessage }) => action.run(),
     onSuccess: (_result, action) => {
       setClientSecret("");
       refresh();
       notify(action.message);
     },
-    onError: (error) => notify(errorMessage(error), "error"),
+    onError: (error) => notify(error, "error"),
   });
   const pick = useMutation({
     mutationFn: (_fieldKey: string) => pickStorageFolder(storage.storage_id),
@@ -146,9 +153,9 @@ function ConnectionRow({ storage, executing, definition }: {
       if (!result.selected) return;
       setDraft((current) => ({ ...current, [fieldKey]: result.root_path }));
       refresh();
-      notify("已选择本地根文件夹。");
+      notify({ key: "files:notifications.rootSelected" });
     },
-    onError: (error) => notify(errorMessage(error), "error"),
+    onError: (error) => notify(error, "error"),
   });
   const connect = useMutation({
     mutationFn: () => startStorageAuth(storage.storage_id),
@@ -160,8 +167,8 @@ function ConnectionRow({ storage, executing, definition }: {
     },
     onError: (error) => {
       popup.current?.close();
-      setAuthError(errorMessage(error));
-      notify(errorMessage(error), "error");
+      setAuthError(error);
+      notify(error, "error");
     },
   });
   useEffect(() => {
@@ -174,11 +181,11 @@ function ConnectionRow({ storage, executing, definition }: {
         !("storage_id" in data) || data.storage_id !== storage.storage_id ||
         !("status" in data) || (data.status !== "connected" && data.status !== "failed")
       ) return;
-      const message = "message" in data && typeof data.message === "string" ? data.message : "授权失败，请重试。";
+      const message = "message" in data && typeof data.message === "string" ? data.message : { key: "settings:connection.authFailed" };
       setAwaitingAuth(false);
       popup.current = null;
       setAuthError(data.status === "failed" ? message : undefined);
-      notify(data.status === "connected" ? "账号已连接。" : message, data.status === "connected" ? "success" : "error");
+      notify(data.status === "connected" ? { key: "settings:connection.connectedNotice" } : message, data.status === "connected" ? "success" : "error");
       refresh();
     };
     window.addEventListener("message", receive);
@@ -190,7 +197,7 @@ function ConnectionRow({ storage, executing, definition }: {
       if (popup.current?.closed) {
         setAwaitingAuth(false);
         popup.current = null;
-        setAuthError("授权窗口已关闭，请重新登录。");
+        setAuthError({ key: "settings:connection.authClosed" });
         refresh();
       }
     }, 500);
@@ -201,11 +208,11 @@ function ConnectionRow({ storage, executing, definition }: {
   const isDefault = storage.storage_id === "default-local";
   const requestError = operation.error ?? pick.error ?? connect.error ?? status.error;
   const saveDisabled = busy || !name.trim() || missingRequiredConfig(definition.config_fields, draft);
-  const statusErrorMessage = authError ?? (status.error ? errorMessage(status.error) : "");
-  const requestErrorMessage = authError ?? (requestError ? errorMessage(requestError) : "");
+  const statusErrorMessage = authError !== undefined ? translateMessage(authError, t) : status.error ? errorMessage(status.error, t) : "";
+  const requestErrorMessage = authError !== undefined ? translateMessage(authError, t) : requestError ? errorMessage(requestError, t) : "";
   const save = () => {
     if (Array.from(name.trim()).length > 20) {
-      notify("连接名称最多为 20 个字符。", "error");
+      notify({ key: "settings:connection.nameTooLong" }, "error");
       return;
     }
     operation.mutate({
@@ -214,7 +221,7 @@ function ConnectionRow({ storage, executing, definition }: {
         config: buildConfig(definition.config_fields, draft),
         ...secretPayload(definition.config_fields, clientSecret),
       }),
-      message: "存储连接设置已更新。",
+      message: { key: "settings:connection.updated" },
     });
   };
   const openEditor = () => {
@@ -228,7 +235,7 @@ function ConnectionRow({ storage, executing, definition }: {
   const beginAuthorization = () => {
     popup.current = window.open("about:blank", `storage-auth-${storage.storage_id}`, "popup,width=600,height=720");
     if (!popup.current) {
-      setAuthError("登录窗口被浏览器拦截，请允许弹窗。");
+      setAuthError({ key: "settings:connection.popupBlocked" });
       return;
     }
     setAuthError(undefined);
@@ -244,54 +251,54 @@ function ConnectionRow({ storage, executing, definition }: {
   const disconnectAccount = () => {
     operation.mutate({
       run: () => disconnectStorage(storage.storage_id),
-      message: "账号已退出。",
+      message: { key: "settings:connection.signedOut" },
     });
   };
   const deleteConnection = () => {
     operation.mutate({
       run: () => deleteStorage(storage.storage_id),
-      message: "存储连接设置已更新。",
+      message: { key: "settings:connection.updated" },
     }, { onSuccess: () => setEditing(false) });
   };
 
   let statusLabel: string;
   if (!requiresAuth) {
-    statusLabel = "已连接";
+    statusLabel = t("settings:connection.connected");
   } else if (status.isPending) {
-    statusLabel = "正在读取…";
+    statusLabel = t("settings:connection.reading");
   } else if (status.error) {
-    statusLabel = "读取失败";
+    statusLabel = t("settings:connection.readFailed");
   } else {
-    statusLabel = status.data?.connected ? "已连接" : "未连接";
+    statusLabel = status.data?.connected ? t("settings:connection.connected") : t("settings:connection.disconnected");
   }
 
   let authTitle: string;
   let authDescription: string;
   if (status.isPending) {
-    authTitle = "正在读取授权状态…";
-    authDescription = "正在读取连接账号信息。";
+    authTitle = t("settings:connection.authLoading");
+    authDescription = t("settings:connection.accountLoading");
   } else if (status.error) {
-    authTitle = "授权状态读取失败";
-    authDescription = "暂时无法确认授权状态，请稍后重试。";
+    authTitle = t("settings:connection.authReadFailed");
+    authDescription = t("settings:connection.authReadHelp");
   } else if (status.data?.connected) {
-    authTitle = status.data.account_display_name ?? definition.account_label;
-    authDescription = status.data.account_email ?? "未提供邮箱";
+    authTitle = status.data.account_display_name ?? t(`providers:${definition.provider_type}.accountLabel`, { defaultValue: definition.provider_type });
+    authDescription = status.data.account_email ?? t("settings:connection.noEmail");
   } else {
-    authTitle = "未授权";
-    authDescription = "保存配置后登录相关服务账号进行授权";
+    authTitle = t("settings:connection.unauthorized");
+    authDescription = t("settings:connection.signInHelp");
   }
   // 图标反映查询状态；操作按钮仍按已有账号数据决定，保留刷新失败时的行为。
   const showVerified = !status.isPending && !status.error && status.data?.connected;
   return <>
     <TableRow hover>
       <TableCell sx={{ maxWidth: 240, overflowWrap: "anywhere", color: "text.primary" }}>{storage.name}</TableCell>
-      <TableCell>{definition.name}</TableCell>
+      <TableCell>{t(`providers:${definition.provider_type}.name`, { defaultValue: definition.provider_type })}</TableCell>
       <TableCell>
         <Chip size="small" variant="outlined" color={!requiresAuth || status.data?.connected ? "success" : "default"}
           label={statusLabel} />
         {renaming && (
           <Typography variant="caption" component="div" color="text.secondary" sx={{ mt: 0.5 }}>
-            正在执行重命名
+            {t("settings:connection.executing")}
           </Typography>
         )}
         {(status.error || authError) && (
@@ -302,10 +309,10 @@ function ConnectionRow({ storage, executing, definition }: {
         )}
       </TableCell>
       <TableCell align="right">
-        <Tooltip title={busy ? "连接忙碌，暂时无法编辑" : "编辑连接"}
+        <Tooltip title={busy ? t("settings:connection.busyEdit") : t("settings:connection.edit")}
           slotProps={{ tooltip: { sx: { fontSize: "caption.fontSize" } } }}>
           <span>
-            <PanelIconButton aria-label={`编辑连接 ${storage.name}`} disabled={busy} onClick={openEditor}>
+            <PanelIconButton aria-label={t("settings:connection.editLabel", { name: storage.name })} disabled={busy} onClick={openEditor}>
               <EditIcon />
             </PanelIconButton>
           </span>
@@ -314,17 +321,17 @@ function ConnectionRow({ storage, executing, definition }: {
     </TableRow>
     <Dialog open={editing} fullWidth maxWidth="sm" sx={connectionBodySx}
       aria-labelledby={`edit-${storage.storage_id}-title`} onClose={closeEditor}>
-      <DialogTitle id={`edit-${storage.storage_id}-title`}>{storage.name} 设置</DialogTitle>
+      <DialogTitle id={`edit-${storage.storage_id}-title`}>{t("settings:connection.dialogTitle", { name: storage.name })}</DialogTitle>
       <DialogContent dividers>
         <Stack spacing={2}>
-          <TextField variant="standard" label="连接名称" size="small" value={name} disabled={busy}
+          <TextField variant="standard" label={t("settings:connection.name")} size="small" value={name} disabled={busy}
             onChange={(event) => setName(event.target.value)} />
           <ConfigFields definition={definition} draft={draft} clientSecret={clientSecret}
             disabled={busy} hasClientSecret={storage.has_client_secret}
             onChange={(key, value) => setDraft((current) => ({ ...current, [key]: value }))}
             onSecretChange={setClientSecret} onPick={(key) => pick.mutate(key)} />
           <Box sx={{ display: "flex", justifyContent: "flex-end" }}>
-            <Button variant="text" disabled={saveDisabled} onClick={save}>保存</Button>
+            <Button variant="text" disabled={saveDisabled} onClick={save}>{t("common:save")}</Button>
           </Box>
           {requiresAuth && (
             <>
@@ -346,12 +353,12 @@ function ConnectionRow({ storage, executing, definition }: {
                 {status.data?.connected ? (
                   <Button variant="text" color="error" disabled={busy} sx={{ flexShrink: 0 }}
                     onClick={disconnectAccount}>
-                    退出登录
+                    {t("settings:connection.signOut")}
                   </Button>
                 ) : (
                   <Button variant="text" disabled={busy || !status.data?.configured} sx={{ flexShrink: 0 }}
                     onClick={beginAuthorization}>
-                    {awaitingAuth ? "等待授权…" : "登录账号"}
+                    {awaitingAuth ? t("settings:connection.awaitingAuth") : t("settings:connection.signIn")}
                   </Button>
                 )}
               </Stack>
@@ -361,25 +368,26 @@ function ConnectionRow({ storage, executing, definition }: {
             <Alert severity="error">{requestErrorMessage}</Alert>
           )}
           {renaming && (
-            <Alert severity="info">正在执行重命名，完成后可修改此连接。</Alert>
+            <Alert severity="info">{t("settings:connection.busyHelp")}</Alert>
           )}
         </Stack>
       </DialogContent>
       <DialogActions sx={{ px: 3, py: 2 }}>
-        <Tooltip title={isDefault ? "默认本地连接不可删除" : "删除连接配置和本地授权，不删除文件"}
+        <Tooltip title={isDefault ? t("settings:connection.defaultCannotDelete") : t("settings:connection.deleteHelp")}
           slotProps={{ tooltip: { sx: { fontSize: "caption.fontSize" } } }}>
           <span>
-            <Button color="error" disabled={busy || isDefault} onClick={deleteConnection}>删除</Button>
+            <Button color="error" disabled={busy || isDefault} onClick={deleteConnection}>{t("common:delete")}</Button>
           </span>
         </Tooltip>
         <Box sx={{ flex: 1 }} />
-        <Button disabled={busy} onClick={closeEditor}>关闭</Button>
+        <Button disabled={busy} onClick={closeEditor}>{t("common:close")}</Button>
       </DialogActions>
     </Dialog>
   </>;
 }
 
 export function StorageSettingsPanel({ executingStorageId }: { executingStorageId?: string }) {
+  const { t } = useTranslation();
   const notify = useNotification();
   const queryClient = useQueryClient();
   const storages = useQuery({ queryKey: ["storages"], queryFn: fetchStorages });
@@ -402,16 +410,16 @@ export function StorageSettingsPanel({ executingStorageId }: { executingStorageI
       setClientSecret("");
       setAdding(false);
       void queryClient.invalidateQueries({ queryKey: ["storages"] });
-      notify("存储连接已创建。");
+      notify({ key: "settings:connection.created" });
     },
-    onError: (error) => notify(errorMessage(error), "error"),
+    onError: (error) => notify(error, "error"),
   });
   const pickDraft = useMutation({
     mutationFn: (_fieldKey: string) => pickLocalFolderDraft(),
     onSuccess: (result, fieldKey) => {
       if (result.selected) setDraft((current) => ({ ...current, [fieldKey]: result.root_path }));
     },
-    onError: (error) => notify(errorMessage(error), "error"),
+    onError: (error) => notify(error, "error"),
   });
   const addingBusy = create.isPending || pickDraft.isPending;
   const createError = create.error ?? pickDraft.error ?? providers.error;
@@ -443,7 +451,7 @@ export function StorageSettingsPanel({ executingStorageId }: { executingStorageI
   const saveConnection = () => {
     if (!activeProvider) return;
     if (Array.from(name.trim()).length > 20) {
-      notify("连接名称最多为 20 个字符。", "error");
+      notify({ key: "settings:connection.nameTooLong" }, "error");
       return;
     }
     create.mutate(activeProvider);
@@ -451,17 +459,17 @@ export function StorageSettingsPanel({ executingStorageId }: { executingStorageI
   return <>
     <Card variant="outlined" sx={connectionBodySx}>
       <Stack direction="row" sx={{ alignItems: "center", justifyContent: "space-between", gap: 2, p: { xs: 2, sm: 2.5 } }}>
-        <Typography component="h3" variant="body2" sx={{ fontWeight: 500 }}>已保存连接</Typography>
+        <Typography component="h3" variant="body2" sx={{ fontWeight: 500 }}>{t("settings:connection.saved")}</Typography>
         <Button variant="outlined" size="small" startIcon={<AddIcon />} onClick={openAddDialog}>
-          添加连接
+          {t("settings:connection.add")}
         </Button>
       </Stack>
       <Divider />
       {storages.error && (
-        <Alert severity="error" sx={{ m: 2 }}>{errorMessage(storages.error)}</Alert>
+        <Alert severity="error" sx={{ m: 2 }}>{errorMessage(storages.error, t)}</Alert>
       )}
       {providers.error && (
-        <Alert severity="error" sx={{ m: 2 }}>{errorMessage(providers.error)}</Alert>
+        <Alert severity="error" sx={{ m: 2 }}>{errorMessage(providers.error, t)}</Alert>
       )}
       {storages.isPending ? (
         <Stack sx={{ p: 2 }} spacing={1}>
@@ -472,7 +480,7 @@ export function StorageSettingsPanel({ executingStorageId }: { executingStorageI
         <TableContainer>
           <Table
             size="small"
-            aria-label="已保存连接"
+            aria-label={t("settings:connection.saved")}
             sx={{
               minWidth: 500,
               "& th": { color: "text.secondary", fontWeight: 500 },
@@ -483,10 +491,10 @@ export function StorageSettingsPanel({ executingStorageId }: { executingStorageI
           >
             <TableHead>
               <TableRow>
-                <TableCell>连接名称</TableCell>
-                <TableCell>连接服务</TableCell>
-                <TableCell>连接状态</TableCell>
-                <TableCell align="right" aria-label="连接操作" sx={{ width: 60 }} />
+                <TableCell>{t("settings:connection.name")}</TableCell>
+                <TableCell>{t("settings:connection.service")}</TableCell>
+                <TableCell>{t("settings:connection.status")}</TableCell>
+                <TableCell align="right" aria-label={t("settings:connection.actions")} sx={{ width: 60 }} />
               </TableRow>
             </TableHead>
             <TableBody>
@@ -499,7 +507,7 @@ export function StorageSettingsPanel({ executingStorageId }: { executingStorageI
                     <TableCell>{storage.name}</TableCell>
                     <TableCell>{storage.provider_type}</TableCell>
                     <TableCell colSpan={2}>
-                      <Typography variant="caption" color="text.secondary">服务定义尚未就绪，暂时无法编辑。</Typography>
+                      <Typography variant="caption" color="text.secondary">{t("settings:connection.definitionPending")}</Typography>
                     </TableCell>
                   </TableRow>
                 );
@@ -510,7 +518,7 @@ export function StorageSettingsPanel({ executingStorageId }: { executingStorageI
               })}
               {storages.isSuccess && storages.data.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={4} align="center">尚未保存连接，请添加连接。</TableCell>
+                  <TableCell colSpan={4} align="center">{t("settings:connection.empty")}</TableCell>
                 </TableRow>
               )}
             </TableBody>
@@ -520,19 +528,19 @@ export function StorageSettingsPanel({ executingStorageId }: { executingStorageI
     </Card>
     <Dialog open={adding} fullWidth maxWidth="sm" sx={connectionBodySx} aria-labelledby="add-connection-title"
       onClose={closeAddDialog}>
-      <DialogTitle id="add-connection-title">添加连接</DialogTitle>
+      <DialogTitle id="add-connection-title">{t("settings:connection.add")}</DialogTitle>
       <DialogContent dividers>
         <Stack spacing={2}>
-          <TextField variant="standard" select label="存储类型" size="small" value={selectedProvider}
+          <TextField variant="standard" select label={t("settings:connection.type")} size="small" value={selectedProvider}
             disabled={addingBusy} onChange={(event) => changeProvider(event.target.value)}>
             {(providers.data ?? []).map((definition) => (
               <MenuItem key={definition.provider_type} value={definition.provider_type}
                 sx={{ fontSize: "body2.fontSize" }}>
-                {definition.name}
+                {t(`providers:${definition.provider_type}.name`, { defaultValue: definition.provider_type })}
               </MenuItem>
             ))}
           </TextField>
-          <TextField variant="standard" label="连接名称" size="small" value={name} disabled={addingBusy}
+          <TextField variant="standard" label={t("settings:connection.name")} size="small" value={name} disabled={addingBusy}
             onChange={(event) => setName(event.target.value)} />
           {activeProvider && (
             <ConfigFields definition={activeProvider} draft={draft} clientSecret={clientSecret}
@@ -540,12 +548,12 @@ export function StorageSettingsPanel({ executingStorageId }: { executingStorageI
               onChange={(key, value) => setDraft((current) => ({ ...current, [key]: value }))}
               onSecretChange={setClientSecret} onPick={(key) => pickDraft.mutate(key)} />
           )}
-          {createError && <Alert severity="error">{errorMessage(createError)}</Alert>}
+          {createError && <Alert severity="error">{errorMessage(createError, t)}</Alert>}
         </Stack>
       </DialogContent>
       <DialogActions sx={{ px: 3, py: 2 }}>
-        <Button disabled={addingBusy} onClick={closeAddDialog}>取消</Button>
-        <Button variant="text" disabled={createDisabled} onClick={saveConnection}>保存连接</Button>
+        <Button disabled={addingBusy} onClick={closeAddDialog}>{t("common:cancel")}</Button>
+        <Button variant="text" disabled={createDisabled} onClick={saveConnection}>{t("settings:connection.save")}</Button>
       </DialogActions>
     </Dialog>
   </>;

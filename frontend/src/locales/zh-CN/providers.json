@@ -1,0 +1,37 @@
+{
+  "local": {
+    "name": "本地文件",
+    "accountLabel": "用户",
+    "fields": {
+      "root_path": {
+        "label": "本地根目录"
+      }
+    }
+  },
+  "onedrive": {
+    "name": "OneDrive",
+    "accountLabel": "Microsoft 用户",
+    "fields": {
+      "client_id": {
+        "label": "OneDrive App ID",
+        "createLabel": "OneDrive App ID（可稍后配置）"
+      }
+    }
+  },
+  "google_drive": {
+    "name": "Google Drive",
+    "accountLabel": "Google 用户",
+    "fields": {
+      "client_id": {
+        "label": "Google Client ID",
+        "createLabel": "Google Client ID（可稍后配置）"
+      },
+      "client_secret": {
+        "label": "Google Client Secret",
+        "help": "请填写 Desktop OAuth 客户端的密钥，保存后登录 Google 账号。",
+        "createHelp": "使用自行创建的 Desktop OAuth 客户端 ID 和密钥；两项保存后才能登录。",
+        "savedHelp": "已保存密钥；留空保留原值。更改客户端配置后需重新登录。"
+      }
+    }
+  }
+}

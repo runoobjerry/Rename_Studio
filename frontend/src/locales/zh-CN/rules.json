@@ -1,0 +1,67 @@
+{
+  "editor": {
+    "title": "规则编辑",
+    "clear": "一键清除",
+    "add": "添加规则",
+    "loading": "正在加载规则",
+    "unavailable": "暂无可用规则",
+    "checkRegistry": "请确认后端规则注册表已经加载。",
+    "empty": "添加多个规则可组合为规则链。",
+    "moveUp": "上移规则",
+    "moveDown": "下移规则",
+    "copy": "复制规则",
+    "remove": "删除规则",
+    "enabledLabel": "{{name}}启用状态"
+  },
+  "fields": {
+    "paddingMode": "填充类型",
+    "numberPadding": "数字序列补零",
+    "textPadding": "文本填充",
+    "length": "目标长度",
+    "fillCharacter": "填充字符",
+    "side": "填充位置",
+    "left": "从左侧填充",
+    "right": "从右侧填充",
+    "search": "查找内容",
+    "removeText": "移除内容",
+    "replacement": "替换为",
+    "occurrence": "操作序数",
+    "all": "全部",
+    "first": "首个",
+    "last": "末个",
+    "caseSensitive": "区分大小写",
+    "wholeWord": "仅全字匹配",
+    "ignoreExtension": "忽略扩展名",
+    "insertText": "插入内容",
+    "position": "插入位置",
+    "prefix": "前缀",
+    "suffix": "后缀",
+    "indexPosition": "指定字符位置",
+    "beforeText": "指定文本之前",
+    "afterText": "指定文本之后",
+    "index": "字符位置",
+    "anchor": "指定文本",
+    "fromRight": "从右往左计数",
+    "decrease": "{{label}}减一",
+    "increase": "{{label}}加一"
+  },
+  "unsupported": "不支持的规则类型：{{type}}",
+  "types": {
+    "padding": {
+      "name": "填充",
+      "description": "为数字序列补零，或从左侧、右侧填充文本"
+    },
+    "replace": {
+      "name": "替换",
+      "description": "查找文本并替换为新文本"
+    },
+    "remove": {
+      "name": "移除",
+      "description": "删除匹配的文本"
+    },
+    "insert": {
+      "name": "插入",
+      "description": "在前缀、后缀、字符位置或指定文本旁插入内容"
+    }
+  }
+}

@@ -66,6 +66,8 @@ class StorageManager:
     def update_app_settings(self, request: AppSettingsPatch) -> AppSettingsResponse:
         preferences = self.state.preferences.model_copy(deep=True)
         fields = request.model_fields_set
+        if "language" in fields:
+            preferences.language = request.language
         if "theme" in fields:
             preferences.theme = request.theme
         if "hide_batch_limit_hint" in fields:

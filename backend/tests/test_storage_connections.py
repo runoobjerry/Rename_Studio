@@ -1,4 +1,5 @@
 import asyncio
+import json
 from datetime import UTC, datetime
 from dataclasses import replace
 from pathlib import Path
@@ -19,7 +20,7 @@ from app.providers.registry import ProviderRegistry
 from app.repositories.storage_repository import JsonStorageRepository
 from app.schemas.rename import RenamePreviewRequest
 from app.schemas.rules import RuleSpec
-from app.schemas.storage import StorageConfigField, RootLocation, StorageCreate, StorageUpdate
+from app.schemas.storage import AppSettingsPatch, StorageConfigField, RootLocation, StorageCreate, StorageUpdate
 from app.services.connection_auth import ConnectionAuth
 from app.services.execute_service import ExecuteService
 from app.providers.onedrive.auth import OneDriveAuthService
@@ -57,27 +58,30 @@ def services(manager: StorageManager) -> tuple[PreviewService, ExecuteService]:
 def test_provider_metadata_exposes_form_fields_without_connection_secrets(tmp_path: Path) -> None:
     manager = make_manager(tmp_path)
     definition = manager.registry.definition("onedrive")
-    manager.registry.definitions["onedrive"] = replace(
-        definition, account_label="测试用户", icon="computer", config_fields=(
-            StorageConfigField(key="client_id", label="客户端 ID", nullable=True),
-            StorageConfigField(key="client_secret", label="客户端密钥", input_type="password", target="client_secret"),
+    manager.registry.register(replace(
+        definition, provider_type="fixture_service", icon="computer", config_fields=(
+            StorageConfigField(key="client_id", nullable=True),
+            StorageConfigField(key="client_secret", input_type="password", target="client_secret"),
         ),
-    )
+    ))
+    manager.create(StorageCreate(provider_type="fixture_service", name="User connection", config={}, client_secret="fixture-secret"))
     app = FastAPI()
     app.include_router(storage_router.router)
     app.dependency_overrides[get_storage_manager] = lambda: manager
     with TestClient(app) as client:
         response = client.get("/storage-providers")
     assert response.status_code == 200
-    provider = next(item for item in response.json() if item["provider_type"] == "onedrive")
-    assert provider["account_label"] == "测试用户"
+    provider = next(item for item in response.json() if item["provider_type"] == "fixture_service")
+    assert set(provider) == {"provider_type", "config_schema", "config_fields", "icon", "locations", "can_rename", "browser_auth", "local_picker"}
     assert provider["icon"] == "computer"
     assert provider["browser_auth"] is True
     assert provider["config_schema"] == OneDriveConfig.model_json_schema()
     fields = provider["config_fields"]
+    assert all(set(field) == {"key", "input_type", "target", "required", "nullable"} for field in fields)
     assert fields[0]["key"] == "client_id" and fields[0]["nullable"] is True
     assert fields[1]["input_type"] == "password" and fields[1]["target"] == "client_secret"
     assert "value" not in fields[1] and "credentials" not in provider
+    assert "fixture-secret" not in response.text
 
 
 @pytest.mark.parametrize("provider_type", ["fixture_service", "google_drive"])
@@ -85,9 +89,9 @@ def test_provider_metadata_exposes_form_fields_without_connection_secrets(tmp_pa
 def test_client_secret_acceptance_follows_provider_fields(tmp_path: Path, provider_type: str, accepts_secret: bool) -> None:
     manager = make_manager(tmp_path)
     manager.registry.register(replace(
-        manager.registry.definition("onedrive"), provider_type=provider_type, name="Fixture Service",
+        manager.registry.definition("onedrive"), provider_type=provider_type,
         config_fields=(StorageConfigField(
-            key="client_secret", label="密钥", target="client_secret", input_type="password",
+            key="client_secret", target="client_secret", input_type="password",
         ),) if accepts_secret else (),
     ))
     app = create_app()
@@ -121,7 +125,7 @@ def test_new_install_only_creates_local_and_restores_it(tmp_path: Path) -> None:
     assert manager.record("default-local").name == "Local Files"
     assert manager.state.schema_version == 3
     assert manager.state.preferences.model_dump() == {
-        "theme": "system", "hide_batch_limit_hint": False,
+        "language": "auto", "theme": "system", "hide_batch_limit_hint": False,
         "cloud_default_locations": {},
     }
     assert manager.record("default-local").config["root_path"] == str((tmp_path / "files").resolve())
@@ -138,6 +142,38 @@ def test_default_documents_root_and_explicit_override(tmp_path: Path, monkeypatc
     override = tmp_path / "custom"
     monkeypatch.setenv("LOCAL_STORAGE_ROOT", str(override))
     assert app_config.Settings(_env_file=None).local_storage_root == override.resolve()
+
+
+def test_language_partial_patch_persists_without_changing_connections_or_other_preferences(tmp_path: Path) -> None:
+    manager = make_manager(tmp_path)
+    cloud = manager.create(StorageCreate(provider_type="onedrive", name="Account", config={"client_id": "app"}))
+    manager._persist_auth(cloud.storage_id, {"client_id": "app"}, {"account_id": "account-a", "refresh_token": "fixture-secret"})
+    manager.update_app_settings(AppSettingsPatch.model_validate({
+        "cloud_default_locations": {cloud.storage_id: {"account_id": "account-a", "location": {"kind": "id", "value": "folder-a"}}},
+    }))
+    manager.update_app_settings(AppSettingsPatch(theme="dark", hide_batch_limit_hint=True))
+    before = manager.state.model_copy(deep=True)
+    # A future language is accepted without adding a Python enum member.
+    manager.update_app_settings(AppSettingsPatch(language="fr-FR"))
+    manager.update_app_settings(AppSettingsPatch(hide_batch_limit_hint=False))
+    restored = make_manager(tmp_path)
+    assert restored.state.preferences.language == "fr-FR"
+    assert restored.state.preferences.theme == "dark"
+    assert restored.state.preferences.hide_batch_limit_hint is False
+    assert restored.state.preferences.cloud_default_locations == before.preferences.cloud_default_locations
+    assert restored.state.connections == before.connections
+
+
+@pytest.mark.parametrize("language", ["", "en_US", "en US", "en/US", "en-", "e", "en-" + "a" * 64, None])
+def test_language_api_rejects_invalid_identifiers_without_writing(tmp_path: Path, language: object) -> None:
+    manager = make_manager(tmp_path)
+    before = manager.repository.path.read_bytes()
+    app = create_app()
+    app.dependency_overrides[get_storage_manager] = lambda: manager
+    with TestClient(app) as client:
+        response = client.patch("/app-settings", json={"language": language})
+    assert response.status_code == 422
+    assert manager.repository.path.read_bytes() == before
 
 
 @pytest.mark.parametrize("selected", [True, False])
@@ -264,7 +300,7 @@ def test_app_settings_api_partial_updates_preserve_other_fields_and_credentials(
         initial = client.get("/app-settings")
         assert initial.status_code == 200
         assert initial.json() == {"preferences": {
-            "theme": "system", "hide_batch_limit_hint": False,
+            "language": "auto", "theme": "system", "hide_batch_limit_hint": False,
             "cloud_default_locations": {},
         }}
         updated = client.patch("/app-settings", json={"theme": "dark"})
@@ -276,7 +312,7 @@ def test_app_settings_api_partial_updates_preserve_other_fields_and_credentials(
         last = client.patch("/app-settings", json={"theme": "light"})
         assert last.status_code == 200
         assert last.json() == {"preferences": {
-            "theme": "light", "hide_batch_limit_hint": True, "cloud_default_locations": {},
+            "language": "auto", "theme": "light", "hide_batch_limit_hint": True, "cloud_default_locations": {},
         }}
         rejected = client.patch("/app-settings", json={
             "credentials": {"refresh_token": "fixture-secret"},
@@ -314,7 +350,7 @@ def test_factory_reset_api_rejects_busy_and_never_returns_credentials(tmp_path: 
         done = client.post("/app-settings/factory-reset")
         assert done.status_code == 200
         assert done.json() == {"preferences": {
-            "theme": "system", "hide_batch_limit_hint": False, "cloud_default_locations": {},
+            "language": "auto", "theme": "system", "hide_batch_limit_hint": False, "cloud_default_locations": {},
         }}
         assert "fixture-secret" not in busy.text + done.text
 
@@ -332,7 +368,7 @@ async def test_factory_reset_clears_connections_preferences_and_old_preview(tmp_
     manager._persist_auth(cloud.storage_id, {"client_id": "app"}, {"refresh_token": "fixture-secret", "account_id": "account-a"})
     auth = manager.auth(cloud.storage_id)
     manager.authorization_sessions["old-session"] = (cloud.storage_id, 1, "old-session", datetime.now(UTC))
-    manager.update_app_settings(AppSettingsPatch(theme="dark", hide_batch_limit_hint=True))
+    manager.update_app_settings(AppSettingsPatch(language="en-US", theme="dark", hide_batch_limit_hint=True))
     preview, execute = services(manager)
     snapshot = await preview.preview(RenamePreviewRequest(
         storage_id="default-local", location=RootLocation(), file_ids=["keep.txt"], rules=[],
@@ -342,7 +378,7 @@ async def test_factory_reset_clears_connections_preferences_and_old_preview(tmp_
     result = await manager.factory_reset(tmp_path / "files", preview.store)
 
     assert result.preferences.model_dump() == {
-        "theme": "system", "hide_batch_limit_hint": False, "cloud_default_locations": {},
+        "language": "auto", "theme": "system", "hide_batch_limit_hint": False, "cloud_default_locations": {},
     }
     assert list(manager.state.connections) == ["default-local"]
     assert manager.record("default-local").revision == previous_revision + 1

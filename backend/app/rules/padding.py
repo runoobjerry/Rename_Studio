@@ -26,8 +26,6 @@ class PaddingConfig(BaseModel):
 
 class PaddingRule(RenameRule[PaddingConfig]):
     type = "padding"
-    display_name = "填充"
-    description = "为数字序列补零，或从左侧、右侧填充文本"
     config_model = PaddingConfig
 
     def apply(

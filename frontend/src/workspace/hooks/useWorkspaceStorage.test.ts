@@ -51,7 +51,7 @@ describe("workspace provider capabilities", () => {
   it("restores ID locations for a non-local provider without browser auth, and blocks unsupported path requests", async () => {
     const definitions = await api.fetchStorageProviders();
     vi.mocked(api.fetchStorageProviders).mockResolvedValue([{
-      ...definitions[0], provider_type: "fixture_direct", name: "直连服务", local_picker: false, locations: ["root", "id"],
+      ...definitions[0], provider_type: "fixture_direct", local_picker: false, locations: ["root", "id"],
     }]);
     const storages = await api.fetchStorages();
     vi.mocked(api.fetchStorages).mockResolvedValue([{
@@ -86,7 +86,7 @@ describe("workspace provider capabilities", () => {
   it("requires auth for an unfamiliar provider and ignores a default location kind it does not support", async () => {
     const definitions = await api.fetchStorageProviders();
     vi.mocked(api.fetchStorageProviders).mockResolvedValue([{
-      ...definitions[1], provider_type: "fixture_oauth", name: "授权服务", locations: ["root", "id"],
+      ...definitions[1], provider_type: "fixture_oauth", locations: ["root", "id"],
     }]);
     const storages = await api.fetchStorages();
     vi.mocked(api.fetchStorages).mockResolvedValue([{
@@ -177,7 +177,7 @@ describe("workspace storage", () => {
       expect(useRenameStore.getState().task).toBeNull();
       expect(useRenameStore.getState().selectedIds).toEqual([]);
       expect(hook.result.current.workflow.previewData).toBeUndefined();
-      expect(notify).toHaveBeenCalledWith("已选择本地根文件夹。");
+      expect(notify).toHaveBeenCalledWith({ key: "files:notifications.rootSelected" });
     } else {
       expect(useRenameStore.getState().task).toBe(previousTask);
       expect(useRenameStore.getState().selectedIds).toEqual(["file-0.txt"]);
@@ -207,7 +207,7 @@ describe("workspace storage", () => {
     await waitFor(() => expect(hook.result.current.storage.files.isFetching).toBe(false));
     vi.mocked(api.patchAppSettings).mockRejectedValueOnce(new Error("Disk unavailable"));
     act(() => hook.result.current.storage.setDefaultCloudPath());
-    await waitFor(() => expect(notify).toHaveBeenCalledWith("默认路径保存失败：Disk unavailable", "error"));
+    await waitFor(() => expect(notify).toHaveBeenCalledWith({ key: "files:notifications.defaultSaveFailed", error: expect.objectContaining({ message: "Disk unavailable" }) }, "error"));
     expect(serverSettings.preferences.cloud_default_locations["user-onedrive"].location).toEqual({ kind: "path", value: "照片" });
     expect(client.getQueryData<typeof serverSettings>(["app-settings"])!.preferences.cloud_default_locations["user-onedrive"].location)
       .toEqual({ kind: "path", value: "照片" });
@@ -221,7 +221,7 @@ describe("workspace storage", () => {
     await openCloud(hook);
     expect(hook.result.current.storage.location).toEqual({ kind: "root" });
     expect(api.fetchStorageFiles).toHaveBeenCalledWith("user-onedrive", { kind: "root" });
-    expect(notify).toHaveBeenCalledWith("无法读取默认路径，将打开云盘根目录。", "warning");
+    expect(notify).toHaveBeenCalledWith({ key: "files:notifications.defaultUnavailable" }, "warning");
   });
 
   it("does not save a default from a failed directory request", async () => {
@@ -481,6 +481,6 @@ describe("workspace session locations", () => {
     act(() => hook.result.current.selectStorage("default-local"));
     await waitFor(() => expect(hook.result.current.location).toEqual({ kind: "path", value: "内存目录" }));
     expect(notify).toHaveBeenCalledTimes(1);
-    expect(notify).toHaveBeenCalledWith("浏览器会话存储不可用，刷新后无法保留工作路径。", "warning");
+    expect(notify).toHaveBeenCalledWith({ key: "files:notifications.sessionUnavailable" }, "warning");
   });
 });

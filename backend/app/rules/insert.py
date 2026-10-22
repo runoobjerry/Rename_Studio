@@ -22,8 +22,6 @@ class InsertConfig(BaseModel):
 
 class InsertRule(RenameRule[InsertConfig]):
     type = "insert"
-    display_name = "插入"
-    description = "在前缀、后缀、字符位置或指定文本旁插入内容"
     config_model = InsertConfig
 
     def apply(

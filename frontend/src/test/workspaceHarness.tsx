@@ -35,7 +35,7 @@ beforeEach(() => {
   window.sessionStorage.clear();
   useRenameStore.setState({ selectedIds: [], rules: [], task: null });
   client = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } });
-  serverSettings = { preferences: { theme: "system", hide_batch_limit_hint: false, cloud_default_locations: {} } };
+  serverSettings = { preferences: { language: "auto", theme: "system", hide_batch_limit_hint: false, cloud_default_locations: {} } };
   vi.mocked(api.fetchAppSettings).mockImplementation(async () => serverSettings);
   vi.mocked(api.patchAppSettings).mockImplementation(async (patch) => {
     const locations = { ...serverSettings.preferences.cloud_default_locations };
@@ -56,10 +56,10 @@ beforeEach(() => {
       config: { client_id: "app" }, account_id: "account-a", account_display_name: null, account_email: null },
   ]);
   vi.mocked(api.fetchStorageProviders).mockResolvedValue([
-    { provider_type: "local", name: "Local", locations: ["root", "path", "id"], can_rename: true,
-      browser_auth: false, local_picker: true, config_schema: {}, config_fields: [], account_label: "用户", icon: "computer" },
-    { provider_type: "onedrive", name: "OneDrive", locations: ["root", "path", "id"], can_rename: true,
-      browser_auth: true, local_picker: false, config_schema: {}, config_fields: [], account_label: "Microsoft 用户", icon: "cloud" },
+    { provider_type: "local", locations: ["root", "path", "id"], can_rename: true,
+      browser_auth: false, local_picker: true, config_schema: {}, config_fields: [],  icon: "computer" },
+    { provider_type: "onedrive", locations: ["root", "path", "id"], can_rename: true,
+      browser_auth: true, local_picker: false, config_schema: {}, config_fields: [],  icon: "cloud" },
   ]);
   vi.mocked(api.fetchStorageAuthStatus).mockResolvedValue(status("account-a"));
   vi.mocked(api.fetchStorageFiles).mockImplementation(async (provider, location) => ({

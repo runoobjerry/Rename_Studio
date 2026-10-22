@@ -11,6 +11,4 @@ class RuleSpec(BaseModel):
 
 class RuleDefinition(BaseModel):
     type: str
-    name: str
-    description: str
     config_schema: dict[str, Any]

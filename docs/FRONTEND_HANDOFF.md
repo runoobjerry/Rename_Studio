@@ -19,6 +19,8 @@
 | `workspace/hooks/useFactoryReset.ts` | 重置禁用条件、请求状态、成功后的缓存和工作区清理 |
 | `features/settings/{SettingsPage,StorageSettingsPanel}.tsx` | 外观、多连接配置、授权与重置确认 |
 | `features/settings/{useAppSettings,useThemePreference}.ts` | 后端设置读取/串行保存、主题草稿与系统外观订阅 |
+| `i18n/`、`locales/` | i18next 初始化、Vite 自动发现语言资源、按语言加载全部命名空间与缓存、浏览器语言解析、语言偏好及初次显示门控；日期格式化 |
+| `../scripts/check-i18n.mjs` | 翻译资源、静态键和显式注册 Rule/Provider 的词条检查；PR CI 的离线检查入口 |
 | `features/files/{FileBrowser,LocationBreadcrumbs}.tsx`、`fileSort.ts`、`defaultCloudLocation.ts` | 文件/任务成员表、排序比较、筛选与选择、路径导航、默认目录账号匹配 |
 | `features/rules/{RuleEditor,RuleFields}.tsx` | 顺序规则链、添加菜单和显式字段配置 |
 | `features/rename/{PreviewPanel,RenameActions,RenameActionsWithProgress}.tsx` | 预览/结果展示、确认执行、局部进度订阅 |
@@ -66,9 +68,11 @@ TanStack Query 管理服务端状态，Zustand 管理选择、规则与页面内
 - 点击当前连接仅返回工作区，不重新初始化目录、选择或任务；设置页返回保留路径。连接删除、revision 或账号变化、确认断开授权时清理失效记忆；当前连接被删除后返回默认 Local。目录读取失败保留最后成功位置和错误；旧连接或旧版本的迟到响应不写入当前会话位置。
 - 设置保存只发送修改字段，在同一 QueryClient 内串行处理；前一次失败不阻断后续保存，成功才更新缓存。设置 PATCH 不携带偏好版本字段；连接 revision 与预览校验继续保留。
 - 后端是主题、分批提示和默认云目录的持久化来源，不导入旧 localStorage。system 跟随系统外观，不把解析后的明暗模式写回偏好。
+- 界面语言同样由后端偏好持久化：`auto` 按浏览器候选顺序匹配；缺失翻译与不可用语言回退 `en-US`，不可用的已存标识不自动改写。meta.json 与 en-US 回退词典预载，其余语言首次选用时加载该语言全部命名空间并缓存。首次设置与目标词典就绪前只显示骨架；后续加载保留当前工作区，完成后同步文案、document.lang 与 MUI locale，忽略过时选择。资源失败保留当前语言并提示刷新，不覆盖已保存偏好。切换不重挂载工作区、不改变查询键、排序、选择、规则或任务；保存复用同一队列，失败回退，重置恢复 `auto`。语言目录通过 `meta.json` 与命名空间 JSON 自动发现。
+- 翻译贡献、术语和扫描边界见 [TRANSLATING](TRANSLATING.md)。en-US/zh-CN 完整维护，社区语言允许缺词但必须保留命名空间文件，CI 列出缺失键；JSON 结构/插值及默认静态/注册元数据词条错误阻止通过。任意动态键与浏览器布局仍须人工复核，不能把静态检查当作运行验收。
 - 默认云目录按连接与 `account_id` 匹配，不用邮箱或显示名替代身份。缺失 account_id 仍可浏览但不能保存默认目录；换号、断开、配置变化或删除连接清理旧默认值，同账号令牌轮换保留。恢复前暂停目录查询；目录失效保留错误和根目录恢复入口。
 - OneDrive/Google 授权弹窗校验来源、窗口、消息结构与连接身份，前端不保存令牌。列表只展示连接状态，账号信息在编辑授权区；换号先断开再登录，读取中/失败不能误报未授权。
-- 连接配置表单由 Provider 的 `config_fields` 驱动，支持文本、密码、目录字段；字段标签、必填/空值和帮助文案集中在 Provider 定义。服务名、账号缺省文案与侧栏 icon 读取元数据，不按 Provider 类型推断；设置页以 `browser_auth`/`local_picker` 控制授权与目录选择。服务端同样按字段 target 判断密钥准入；仅适配现有字符串配置及顶层 `client_secret`，不实现完整 JSON Schema 表单；工作区同样消费 Provider 能力：browser_auth 控制授权和账号默认目录，local_picker 控制目录选择，locations 约束导航/恢复。元数据未就绪或失败暂停目录读取；无浏览器授权服务按连接版本恢复，需授权服务继续按账号/版本恢复，刷新失败保留已知任务和账号身份。
+- 连接配置表单由 Provider 的 `config_fields` 驱动，支持文本、密码、目录字段；必填/空值、字段类型/target 和侧栏 icon 读取 Provider 元数据。服务名、账号缺省文案和字段文案仅按 provider_type/field.key 查询前端词典，不能由类型名推断业务能力；设置页以 `browser_auth`/`local_picker` 控制授权与目录选择。服务端同样按字段 target 判断密钥准入；仅适配现有字符串配置及顶层 `client_secret`，不实现完整 JSON Schema 表单；工作区同样消费 Provider 能力：browser_auth 控制授权和账号默认目录，local_picker 控制目录选择，locations 约束导航/恢复。元数据未就绪或失败暂停目录读取；无浏览器授权服务按连接版本恢复，需授权服务继续按账号/版本恢复，刷新失败保留已知任务和账号身份。
 - Google 配置使用 Desktop Client ID 和明文输入的 Client Secret；密钥仅在请求顶层提交，响应只提供是否已保存，编辑留空保留。成功保存、关闭或切换新增类型清空密钥草稿，失败保留输入；配置不完整仍可保存，登录依服务端 configured 禁用。
 - Google 导航完全消费服务端 breadcrumbs 中的真实 ID，不拆解显示路径；未提供该字段的 Local/OneDrive 保留现有路径导航。Google 默认目录和会话位置沿用账号/revision 隔离；快捷方式与 can_rename=false 的项不可选择，未知权限交由后端判定，只读文件夹仍能进入。用户配置与支持范围见 [README](../README.md#连接-google-drive)。
 - 连接编辑保存后保留 Dialog；关闭仅丢弃未提交草稿，不撤回保存或即时操作。删除连接无需二次确认，仅默认 Local 禁止删除；删除配置/授权不删除文件。忙碌时禁用冲突操作和关闭。
@@ -82,6 +86,7 @@ TanStack Query 管理服务端状态，Zustand 管理选择、规则与页面内
 - 设置正文和控件文字使用 body2；授权第二行、状态标签、辅助说明、Alert 提示与 Tooltip 使用 caption。规则字段保持显式配置，NumberStepper 草稿不把暂时无效值写入规则。
 - 表格虚拟化保留完整数据语义、固定选择列/复选框几何和键盘导航。长名称与错误在所属面板处理，不撑破页面；侧边栏名称仅实际溢出时启用完整名称 Tooltip。
 - 正常预览不弹成功通知；冲突、无效名称与失败提供反馈，执行成功显示修改数量，部分失败与失败分别提示。新通知立即替换旧通知，保留上下文错误和逐项详情；后台刷新不反复弹成功通知。
+- 前端固定 UI 文案按 common/settings/files/rules/providers/errors 命名空间维护，组件通过 react-i18next 订阅变化；模块常量保留翻译键，通知保留键、插值及原始错误，到展示时翻译。常见错误按 code 给出操作提示并保留诊断 message；未知错误不从句子推断类别。文件名、路径、连接名、账号及规则配置值保持原始数据。Rule 名称/说明按 `rules:types.<type>` 翻译，Provider/字段文案按 `providers:<provider_type>` 翻译；缺词回退 en-US，名称/标签最终显示稳定 ID，可选帮助缺失时省略。元数据 API 仅提供结构和能力；服务端 JSON Schema 的 title/description 不用作 UI 文案。`default-local` 等连接记录名保持用户数据，不以翻译覆盖或猜测别名。
 - 首次加载、后台读取、未授权与读取失败明确区分；后台刷新保留旧内容，选择器取消不报成功。
 
 ## 文档维护与验证

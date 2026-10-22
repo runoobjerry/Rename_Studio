@@ -31,8 +31,6 @@ class MappingConfig(BaseModel):
 
 class MappingRule(RenameRule[MappingConfig]):
     type = "test_mapping"
-    display_name = "Test mapping"
-    description = "Test-only filename mapping"
     config_model = MappingConfig
 
     def apply(

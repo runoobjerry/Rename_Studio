@@ -1,0 +1,15 @@
+{
+  "cancel": "取消",
+  "loadingPage": "正在加载页面",
+  "close": "关闭",
+  "save": "保存",
+  "delete": "删除",
+  "apply": "应用",
+  "refresh": "刷新",
+  "refreshing": "刷新中",
+  "noMatches": "没有符合筛选条件的项目。",
+  "status": "状态",
+  "filterState": "{{label}}（{{state}}）",
+  "enabled": "已启用",
+  "disabled": "未启用"
+}

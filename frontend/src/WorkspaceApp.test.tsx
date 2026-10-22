@@ -36,7 +36,7 @@ const status = (accountId: string | null, connected = true): AuthorizationStatus
 beforeEach(() => {
   window.sessionStorage.clear();
   serverSettings = { preferences: {
-    theme: "system", hide_batch_limit_hint: false, cloud_default_locations: {},
+    language: "auto", theme: "system", hide_batch_limit_hint: false, cloud_default_locations: {},
   } };
   vi.mocked(api.fetchAppSettings).mockImplementation(async () => serverSettings);
   vi.mocked(api.patchAppSettings).mockImplementation(async (patch) => {
@@ -52,7 +52,7 @@ beforeEach(() => {
   });
   vi.mocked(api.factoryResetAppSettings).mockImplementation(async () => {
     serverSettings = { preferences: {
-      theme: "system", hide_batch_limit_hint: false, cloud_default_locations: {},
+      language: "auto", theme: "system", hide_batch_limit_hint: false, cloud_default_locations: {},
     } };
     vi.mocked(api.fetchStorages).mockResolvedValue([{
       storage_id: "default-local", provider_type: "local", name: "本地文件", revision: 2, busy: false,
@@ -61,14 +61,14 @@ beforeEach(() => {
     return serverSettings;
   });
   vi.mocked(api.fetchStorageProviders).mockResolvedValue([
-    { provider_type: "local", name: "Local", locations: ["root", "path", "id"], can_rename: true,
-      browser_auth: false, local_picker: true, config_schema: {}, account_label: "用户", icon: "computer",
-      config_fields: [{ key: "root_path", label: "本地根目录", create_label: null, input_type: "directory", target: "config",
-        required: true, nullable: false, help_text: null, create_help_text: null, saved_help_text: null }] },
-    { provider_type: "onedrive", name: "OneDrive", locations: ["root", "path", "id"], can_rename: true,
-      browser_auth: true, local_picker: false, config_schema: {}, account_label: "Microsoft 用户", icon: "cloud",
-      config_fields: [{ key: "client_id", label: "OneDrive App ID", create_label: "OneDrive App ID（可稍后配置）", input_type: "text", target: "config",
-        required: false, nullable: true, help_text: null, create_help_text: null, saved_help_text: null }] },
+    { provider_type: "local", locations: ["root", "path", "id"], can_rename: true,
+      browser_auth: false, local_picker: true, config_schema: {}, icon: "computer",
+      config_fields: [{ key: "root_path",   input_type: "directory", target: "config",
+        required: true, nullable: false }] },
+    { provider_type: "onedrive", locations: ["root", "path", "id"], can_rename: true,
+      browser_auth: true, local_picker: false, config_schema: {}, icon: "cloud",
+      config_fields: [{ key: "client_id",   input_type: "text", target: "config",
+        required: false, nullable: true,    }] },
   ]);
   useRenameStore.setState({ selectedIds: [], rules: [], task: null });
   vi.stubGlobal("matchMedia", vi.fn((query: string) => ({
@@ -111,7 +111,7 @@ it.each([
   const definitions = await api.fetchStorageProviders();
   const storages = await api.fetchStorages();
   vi.mocked(api.fetchStorageProviders).mockResolvedValue([{
-    ...definitions[0], provider_type: "fixture_service", name: "Fixture Service",
+    ...definitions[0], provider_type: "fixture_service",
     browser_auth: browserAuth, local_picker: localPicker, icon,
   }]);
   vi.mocked(api.fetchStorages).mockResolvedValue([{
@@ -124,10 +124,10 @@ it.each([
   if (localPicker) expect(panel.getByRole("button", { name: "浏览…" })).toBeInTheDocument();
   else expect(panel.queryByRole("button", { name: "浏览…" })).not.toBeInTheDocument();
   if (browserAuth) {
-    expect(panel.getByRole("button", { name: "设为默认路径" })).toBeInTheDocument();
+    expect(panel.getByRole("button", { name: "设为默认" })).toBeInTheDocument();
     expect(api.fetchStorageAuthStatus).toHaveBeenCalledWith("default-local");
   } else {
-    expect(panel.queryByRole("button", { name: "设为默认路径" })).not.toBeInTheDocument();
+    expect(panel.queryByRole("button", { name: "设为默认" })).not.toBeInTheDocument();
     expect(api.fetchStorageAuthStatus).not.toHaveBeenCalled();
   }
 });
@@ -136,20 +136,20 @@ it("uses the provider name in disconnected guidance without requesting its files
   const definitions = await api.fetchStorageProviders();
   const storages = await api.fetchStorages();
   vi.mocked(api.fetchStorageProviders).mockResolvedValue([{
-    ...definitions[1], provider_type: "fixture_service", name: "Fixture Service",
+    ...definitions[1], provider_type: "fixture_service",
   }]);
   vi.mocked(api.fetchStorages).mockResolvedValue([{ ...storages[0], provider_type: "fixture_service" }]);
   vi.mocked(api.fetchStorageAuthStatus).mockResolvedValue(status(null, false));
   render(<QueryClientProvider client={client}><WorkspaceApp /></QueryClientProvider>);
-  expect(await screen.findByText("请先前往设置页面连接 Fixture Service 账号。")).toBeInTheDocument();
-  expect(screen.getByText("连接 Fixture Service 后可浏览云端目录。")).toBeInTheDocument();
+  expect(await screen.findByText("请先前往设置页面连接 fixture_service 账号。")).toBeInTheDocument();
+  expect(screen.getByText("连接 fixture_service 后可浏览云端目录。")).toBeInTheDocument();
   expect(api.fetchStorageFiles).not.toHaveBeenCalled();
 });
 
 async function openCloud() {
   render(<QueryClientProvider client={client}><WorkspaceApp /></QueryClientProvider>);
   fireEvent.click(await screen.findByRole("button", { name: "OneDrive" }));
-  await waitFor(() => expect(screen.getByRole("button", { name: "设为默认路径" })).toBeEnabled());
+  await waitFor(() => expect(screen.getByRole("button", { name: "设为默认" })).toBeEnabled());
 }
 
 it("connects MUI sorting to preview order and clears execution confirmation when the sort changes", async () => {
@@ -264,13 +264,13 @@ describe("cloud default path integration", () => {
     expect(api.fetchStorageFiles).not.toHaveBeenCalledWith("user-onedrive", { kind: "root" });
     expect(screen.queryByRole("textbox", { name: "云端文件夹路径" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "打开文件夹" })).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "设为默认路径" }));
+    fireEvent.click(screen.getByRole("button", { name: "设为默认" }));
     await waitFor(() => expect(savedCloud("user-onedrive", "account-a")).toEqual({ kind: "path", value: "照片" }));
     expect(await screen.findByText("已将“照片”设为当前账号的默认路径。")).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "文档" }));
     await waitFor(() => expect(api.fetchStorageFiles).toHaveBeenCalledWith("user-onedrive", { kind: "id", value: "document-id" }));
-    await waitFor(() => expect(screen.getByRole("button", { name: "设为默认路径" })).toBeEnabled());
+    await waitFor(() => expect(screen.getByRole("button", { name: "设为默认" })).toBeEnabled());
     // 默认目录仍为“照片”，重新进入须使用尚未设为默认值的工作目录。
     fireEvent.click(screen.getByRole("button", { name: "本地文件" }));
     fireEvent.click(screen.getByRole("button", { name: "OneDrive" }));
@@ -278,8 +278,8 @@ describe("cloud default path integration", () => {
     await waitFor(() => expect(within(screen.getByLabelText("文件路径")).getByRole("button", { name: "文档" }))
       .toHaveAttribute("aria-current", "page"));
     expect(savedCloud("user-onedrive", "account-a")).toEqual({ kind: "path", value: "照片" });
-    await waitFor(() => expect(screen.getByRole("button", { name: "设为默认路径" })).toBeEnabled());
-    fireEvent.click(screen.getByRole("button", { name: "设为默认路径" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "设为默认" })).toBeEnabled());
+    fireEvent.click(screen.getByRole("button", { name: "设为默认" }));
     await waitFor(() => expect(savedCloud("user-onedrive", "account-a")).toEqual({ kind: "id", value: "document-id" }));
   });
 
@@ -294,8 +294,8 @@ describe("cloud default path integration", () => {
     await waitFor(() => expect(api.fetchStorageFiles).toHaveBeenCalledWith("user-onedrive", { kind: "root" }));
     expect(api.fetchStorageFiles).not.toHaveBeenCalledWith("user-onedrive", { kind: "path", value: "a-folder" });
     expect(useRenameStore.getState().selectedIds).toEqual([]);
-    await waitFor(() => expect(screen.getByRole("button", { name: "设为默认路径" })).toBeEnabled());
-    fireEvent.click(screen.getByRole("button", { name: "设为默认路径" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "设为默认" })).toBeEnabled());
+    fireEvent.click(screen.getByRole("button", { name: "设为默认" }));
     await waitFor(() => expect(serverSettings.preferences.cloud_default_locations["user-onedrive"]).toEqual({
       account_id: "account-b", location: { kind: "root" },
     }));
@@ -303,7 +303,7 @@ describe("cloud default path integration", () => {
     expect(readWorkspaceSession().session.locations["user-onedrive"])
       .toEqual({ revision: 1, accountId: "account-b", location: { kind: "root" } });
     client.setQueryData(["storage-auth", "user-onedrive", 1], status("account-a"));
-    await waitFor(() => expect(screen.getByRole("button", { name: "设为默认路径" })).toBeEnabled());
+    await waitFor(() => expect(screen.getByRole("button", { name: "设为默认" })).toBeEnabled());
     expect(screen.queryByRole("button", { name: "a-folder" })).not.toBeInTheDocument();
   });
 
@@ -327,6 +327,95 @@ describe("workspace path navigation", () => {
       expect(api.fetchStorageFiles).not.toHaveBeenCalled();
       expect(readWorkspaceSession().session.locations["default-local"].location).toEqual({ kind: "path", value: "工作目录" });
     }
+  });
+});
+
+describe("language settings", () => {
+  it("updates an existing preview and confirmation without changing task, selection, order, or requests", async () => {
+    const items = ["文件2.txt", "文件10.txt"].map((name) => ({
+      id: name, name, path: name, parent_path: "", is_directory: false, size: 1, modified_at: null,
+    }));
+    vi.mocked(api.fetchStorageFiles).mockResolvedValue({
+      provider: "local", path: "", parent_path: null, location: { kind: "root" }, items,
+    });
+    vi.mocked(api.createStoragePreview).mockImplementation(async (_storage, _location, ids) => ({
+      preview_id: "language-preview", expires_at: "2099-01-01T00:00:00Z", valid: true,
+      items: ids.map((id) => ({ file_id: id, original_name: id, new_name: `新-${id}`, changed: true, valid: true, conflict: false, error: null })),
+    }));
+    render(<QueryClientProvider client={client}><WorkspaceApp /></QueryClientProvider>);
+    fireEvent.click(await screen.findByRole("checkbox", { name: "选择当前显示的全部项目" }));
+    fireEvent.click(screen.getByRole("button", { name: "文件名" }));
+    fireEvent.click(screen.getByRole("button", { name: "刷新预览" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "开始修改" })).toBeEnabled());
+    const before = useRenameStore.getState();
+    const filesRequests = vi.mocked(api.fetchStorageFiles).mock.calls.length;
+    const fileOrder = () => within(screen.getByRole("table", { name: /(?:文件列表|file list)$/ }))
+      .getAllByRole("row").slice(1).map((row) => within(row).getAllByRole("cell")[1].textContent);
+    const originalOrder = fileOrder();
+    fireEvent.click(screen.getByRole("button", { name: "开始修改" }));
+    await act(async () => {
+      client.setQueryData<AppSettings>(["app-settings"], { preferences: { ...serverSettings.preferences, language: "en-US" } });
+    });
+    expect(await screen.findByRole("heading", { name: "Awaiting confirmation" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Apply" })).toBeEnabled();
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    expect(screen.getByRole("table", { name: "Preview" })).toHaveTextContent("新-文件10.txt");
+    expect(screen.getByRole("checkbox", { name: "Select file 文件2.txt" })).toBeChecked();
+    expect(screen.getByRole("columnheader", { name: "File name" })).toHaveAttribute("aria-sort", "descending");
+    expect(fileOrder()).toEqual(originalOrder);
+    expect(useRenameStore.getState().task).toBe(before.task);
+    expect(useRenameStore.getState().selectedIds).toEqual(before.selectedIds);
+    expect(useRenameStore.getState().rules).toBe(before.rules);
+    expect(api.createStoragePreview).toHaveBeenCalledOnce();
+    expect(api.executePreview).not.toHaveBeenCalled();
+    expect(api.releaseStoragePreview).not.toHaveBeenCalled();
+    expect(api.fetchStorageFiles).toHaveBeenCalledTimes(filesRequests);
+    fireEvent.click(screen.getByRole("button", { name: "Start renaming" }));
+    await act(async () => { client.setQueryData(["app-settings"], serverSettings); });
+    expect(await screen.findByRole("heading", { name: "等待确认" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "取消" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    expect(fileOrder()).toEqual(originalOrder);
+  });
+
+  it("switches through the menu, preserves workspace state, and reports a failed save", async () => {
+    vi.mocked(api.fetchStorageFiles).mockResolvedValue({
+      provider: "local", path: "", parent_path: null, location: { kind: "root" },
+      items: [{ id: "keep.txt", name: "keep.txt", path: "keep.txt", parent_path: "", is_directory: false, size: 1, modified_at: null }],
+    });
+    render(<QueryClientProvider client={client}><WorkspaceApp /></QueryClientProvider>);
+    fireEvent.click(await screen.findByRole("checkbox", { name: "选择文件 keep.txt" }));
+    fireEvent.click(screen.getByRole("button", { name: "设置" }));
+    const menu = await screen.findByRole("combobox", { name: "界面语言" });
+    const filesRequests = vi.mocked(api.fetchStorageFiles).mock.calls.length;
+    const metadataRequests = vi.mocked(api.fetchStorageProviders).mock.calls.length;
+    fireEvent.mouseDown(menu);
+    fireEvent.click(screen.getByRole("option", { name: "English" }));
+    await screen.findByRole("button", { name: "Back to workspace" });
+    await waitFor(() => expect(serverSettings.preferences.language).toBe("en-US"));
+    expect(document.documentElement.lang).toBe("en-US");
+    expect(api.fetchStorageFiles).toHaveBeenCalledTimes(filesRequests);
+    expect(api.fetchStorageProviders).toHaveBeenCalledTimes(metadataRequests);
+    expect(useRenameStore.getState().selectedIds).toEqual(["keep.txt"]);
+
+    vi.mocked(api.patchAppSettings).mockRejectedValueOnce(new Error("Offline"));
+    fireEvent.mouseDown(screen.getByRole("combobox", { name: "Language" }));
+    fireEvent.click(screen.getByRole("option", { name: "简体中文" }));
+    expect(await screen.findByText("Could not save the language. The change was reverted: Offline")).toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: "Language" })).toHaveTextContent("English");
+    expect(document.documentElement.lang).toBe("en-US");
+    fireEvent.click(screen.getByRole("button", { name: "Back to workspace" }));
+    expect(await screen.findByRole("checkbox", { name: "Select file keep.txt" })).toBeChecked();
+  });
+
+  it("uses browser auto and a localized warning when settings cannot be read", async () => {
+    vi.spyOn(navigator, "languages", "get").mockReturnValue(["en-GB"]);
+    vi.mocked(api.fetchAppSettings).mockRejectedValue(new Error("Offline"));
+    render(<QueryClientProvider client={client}><WorkspaceApp /></QueryClientProvider>);
+    expect(await screen.findByText("Could not load app settings. Using default preferences: Offline")).toBeInTheDocument();
+    expect(document.documentElement.lang).toBe("en-US");
+    expect(api.patchAppSettings).not.toHaveBeenCalled();
   });
 });
 
@@ -364,7 +453,7 @@ describe("factory reset", () => {
     await waitFor(() => expect(api.factoryResetAppSettings).toHaveBeenCalledTimes(1));
     await waitFor(() => expect(useRenameStore.getState().rules).toEqual([]));
     expect(useRenameStore.getState().selectedIds).toEqual([]);
-    expect(serverSettings.preferences).toEqual({ theme: "system", hide_batch_limit_hint: false, cloud_default_locations: {} });
+    expect(serverSettings.preferences).toEqual({ language: "auto", theme: "system", hide_batch_limit_hint: false, cloud_default_locations: {} });
     expect(await screen.findByText("已重置应用")).toBeInTheDocument();
     await waitFor(() => expect(screen.queryByRole("dialog", { name: "确认重置？" })).not.toBeInTheDocument());
     await waitFor(() => expect(screen.getByRole("combobox", { name: "外观主题" })).toHaveTextContent("跟随系统"));
@@ -419,7 +508,7 @@ describe("workspace workflow wiring", () => {
 
   it("connects selection and rule changes to preview invalidation", async () => {
     vi.mocked(api.fetchRules).mockResolvedValue([
-      { type: "insert", name: "插入", description: "插入文本", config_schema: {} },
+      { type: "insert",   config_schema: {} },
     ]);
     await setup(2);
     const previewButton = screen.getByRole("button", { name: "刷新预览" });

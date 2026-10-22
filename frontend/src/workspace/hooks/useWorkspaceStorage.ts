@@ -1,7 +1,8 @@
+import { useTranslation } from "react-i18next";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { fetchStorageFiles, fetchStorageAuthStatus, fetchStorageProviders, fetchStorages, pickStorageFolder } from "../../api/client";
-import { errorMessage, useNotification } from "../../components/NotificationProvider";
+import { useNotification } from "../../components/NotificationProvider";
 import { readDefaultCloudLocation } from "../../features/files/defaultCloudLocation";
 import { useAppSettings } from "../../features/settings/useAppSettings";
 import type { StorageLocation } from "../../types";
@@ -13,6 +14,7 @@ interface WorkspaceStorageOptions {
 }
 
 export function useWorkspaceStorage({ hasTask, onLocalRootSelected }: WorkspaceStorageOptions) {
+  const { t } = useTranslation();
   const notify = useNotification();
   const queryClient = useQueryClient();
   const appSettings = useAppSettings();
@@ -28,7 +30,7 @@ export function useWorkspaceStorage({ hasTask, onLocalRootSelected }: WorkspaceS
   const warnSessionUnavailable = useCallback(() => {
     if (sessionWarningShown.current) return;
     sessionWarningShown.current = true;
-    notify("浏览器会话存储不可用，刷新后无法保留工作路径。", "warning");
+    notify({ key: "files:notifications.sessionUnavailable" }, "warning");
   }, [notify]);
   const saveSession = useCallback(() => {
     if (!writeWorkspaceSession(session.current)) warnSessionUnavailable();
@@ -48,7 +50,7 @@ export function useWorkspaceStorage({ hasTask, onLocalRootSelected }: WorkspaceS
   const supportsLocation = useCallback((value: StorageLocation) =>
     providerDefinition?.locations.includes(value.kind) === true, [providerDefinition]);
   const providerError = providerDefinitions.error ?? (activeStorage && providerDefinitions.isSuccess && !providerDefinition
-    ? new Error(`未找到存储服务 ${providerId} 的定义。`) : null);
+    ? new Error(t("files:workspace.definitionMissing", { provider: providerId })) : null);
   const cloudStatus = useQuery({
     queryKey: ["storage-auth", storageId, activeStorage?.revision],
     queryFn: () => fetchStorageAuthStatus(storageId),
@@ -139,10 +141,10 @@ export function useWorkspaceStorage({ hasTask, onLocalRootSelected }: WorkspaceS
       setPath("");
       // 保留原顺序：刷新连接、回到根目录、清理重命名视图，再通知和失效目录。
       onLocalRootSelected();
-      notify("已选择本地根文件夹。");
+      notify({ key: "files:notifications.rootSelected" });
       await queryClient.invalidateQueries({ queryKey: ["files", storageId] });
     },
-    onError: (error) => notify(`选择文件夹失败：${errorMessage(error)}`, "error"),
+    onError: (error) => notify({ key: "files:notifications.pickFailed", error }, "error"),
   });
 
   const selectStorage = useCallback((nextStorageId: string) => {
@@ -171,7 +173,7 @@ export function useWorkspaceStorage({ hasTask, onLocalRootSelected }: WorkspaceS
     const defaultLocation = cloudConnected && cloudAccountId && appSettings.data
       ? readDefaultCloudLocation(appSettings.data.preferences, storageId, cloudAccountId)
       : { kind: "root" } as StorageLocation;
-    if (!rememberedLocation && appSettings.isError) notify("无法读取默认路径，将打开云盘根目录。", "warning");
+    if (!rememberedLocation && appSettings.isError) notify({ key: "files:notifications.defaultUnavailable" }, "warning");
     // 由工作区在原 effect 位置调用；恢复完成前 cloudReady 阻止目录请求。
     const restoredLocation = rememberedLocation ?? defaultLocation;
     setLocation(supportsLocation(restoredLocation) ? restoredLocation : { kind: "root" });
@@ -182,15 +184,15 @@ export function useWorkspaceStorage({ hasTask, onLocalRootSelected }: WorkspaceS
   const setDefaultCloudPath = useCallback(() => {
     if (!cloudAccountId || !cloudReady || !files.isSuccess || files.isFetching || files.error) return;
     void appSettings.save({ cloud_default_locations: { [storageId]: { account_id: cloudAccountId, location: files.data.location! } } })
-      .then(() => notify(`已将“${files.data.path || "根目录"}”设为当前账号的默认路径。`))
-      .catch((error: Error) => notify(`默认路径保存失败：${errorMessage(error)}`, "error"));
+      .then(() => notify(files.data.path ? { key: "files:notifications.defaultSaved", values: { path: files.data.path } } : { key: "files:notifications.defaultRootSaved" }))
+      .catch((error: Error) => notify({ key: "files:notifications.defaultSaveFailed", error }, "error"));
   }, [cloudAccountId, cloudReady, files.isSuccess, files.isFetching, files.error, files.data, storageId, notify, appSettings.save]);
 
   const refreshFiles = useCallback(() => {
     if (!locationReady) return;
     void files.refetch().then((result) => {
-      if (result.error) notify(`刷新失败：${errorMessage(result.error)}`, "error");
-      else notify("目录已刷新。");
+      if (result.error) notify({ key: "files:notifications.refreshFailed", error: result.error }, "error");
+      else notify({ key: "files:notifications.refreshed" });
     });
   }, [locationReady, files.refetch, notify]);
 
