@@ -14,7 +14,7 @@
     "fields": {
       "client_id": {
         "label": "OneDrive App ID",
-        "createLabel": "OneDrive App ID (can be configured later)"
+        "createLabel": "OneDrive App ID (Can be filled out later)"
       }
     }
   },
@@ -24,13 +24,13 @@
     "fields": {
       "client_id": {
         "label": "Google Client ID",
-        "createLabel": "Google Client ID (can be configured later)"
+        "createLabel": "Google Client ID (Can be filled out later)"
       },
       "client_secret": {
         "label": "Google Client Secret",
         "help": "Enter the secret for your Desktop OAuth client, then save and sign in to your Google account.",
         "createHelp": "Use your own Desktop OAuth client ID and secret. Save both before signing in.",
-        "savedHelp": "A secret is saved. Leave this empty to keep it. Sign in again after changing the client configuration."
+        "savedHelp": "Key saved. Leave blank to keep the existing value. Changing client configuration will require you to sign in again."
       }
     }
   }

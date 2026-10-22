@@ -6,7 +6,7 @@
     "loading": "正在加载规则",
     "unavailable": "暂无可用规则",
     "checkRegistry": "请确认后端规则注册表已经加载。",
-    "empty": "添加规则后即可组合生成重命名预览。",
+    "empty": "添加多个规则可组合为规则链。",
     "moveUp": "上移规则",
     "moveDown": "下移规则",
     "copy": "复制规则",

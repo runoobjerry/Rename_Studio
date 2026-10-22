@@ -63,9 +63,9 @@ describe("storage settings", () => {
     ["zh-CN", "local", "本地文件", "本地根目录"],
     ["en-US", "local", "Local Files", "Local root directory"],
     ["zh-CN", "onedrive", "OneDrive", "OneDrive App ID（可稍后配置）"],
-    ["en-US", "onedrive", "OneDrive", "OneDrive App ID (can be configured later)"],
+    ["en-US", "onedrive", "OneDrive", "OneDrive App ID (Can be filled out later)"],
     ["zh-CN", "google_drive", "Google Drive", "Google Client ID（可稍后配置）"],
-    ["en-US", "google_drive", "Google Drive", "Google Client ID (can be configured later)"],
+    ["en-US", "google_drive", "Google Drive", "Google Client ID (Can be filled out later)"],
   ])("creates %s %s with translated fields and original configuration keys", async (locale, provider, serviceName, label) => {
     const { client } = setup();
     await screen.findByRole("button", { name: "编辑连接 Local" });
@@ -87,7 +87,7 @@ describe("storage settings", () => {
         : "Use your own Desktop OAuth client ID and secret. Save both before signing in.")).toBeInTheDocument();
       fireEvent.change(screen.getByRole("textbox", { name: "Google Client Secret" }), { target: { value: "fixture-secret" } });
     }
-    fireEvent.click(screen.getByRole("button", { name: chinese ? "保存连接" : "Save connection" }));
+    fireEvent.click(screen.getByRole("button", { name: chinese ? "保存连接" : "Save" }));
     await waitFor(() => expect(api.createStorage).toHaveBeenCalledWith({
       provider_type: provider, name: "我的连接", config: { [provider === "local" ? "root_path" : "client_id"]: value },
       ...(provider === "google_drive" ? { client_secret: "fixture-secret" } : {}),
@@ -144,7 +144,7 @@ describe("storage settings", () => {
     expect(await screen.findByText(chinese ? "未授权" : "Not authorized")).toBeInTheDocument();
     const help = chinese
       ? saved ? "已保存密钥；留空保留原值。更改客户端配置后需重新登录。" : "请填写 Desktop OAuth 客户端的密钥，保存后登录 Google 账号。"
-      : saved ? "A secret is saved. Leave this empty to keep it. Sign in again after changing the client configuration." : "Enter the secret for your Desktop OAuth client, then save and sign in to your Google account.";
+      : saved ? "Key saved. Leave blank to keep the existing value. Changing client configuration will require you to sign in again." : "Enter the secret for your Desktop OAuth client, then save and sign in to your Google account.";
     expect(screen.getByText(help)).toBeInTheDocument();
     expect(screen.getByRole("textbox", { name: "Google Client ID" })).toHaveValue("original-client-id");
     expect(screen.getByRole("textbox", { name: "Google Client Secret" })).toHaveValue("");

@@ -32,7 +32,7 @@
   "resetBusy": "重命名操作进行中，完成后才能重置。",
   "resetSaving": "连接正在保存，请稍后重试。",
   "connection": {
-    "browseDraft": "浏览本地目录（在后端电脑打开，仅填入路径）",
+    "browseDraft": "浏览本地目录",
     "browse": "浏览本地目录",
     "authFailed": "授权失败，请重试。",
     "connectedNotice": "账号已连接。",

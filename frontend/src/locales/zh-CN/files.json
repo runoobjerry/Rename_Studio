@@ -44,7 +44,7 @@
     "conflict": "名称冲突",
     "invalid": "不可修改",
     "summary": "{{pending}} 项待修改 · {{unchanged}} 项无需修改",
-    "empty": "点击预览按钮以查看修改名称；预览不会修改 {{provider}} 中的内容。",
+    "empty": "刷新预览查看新名称；预览不会修改 {{provider}} 中的内容。",
     "executeFailed": "执行失败：{{message}}"
   },
   "rename": {
@@ -102,7 +102,7 @@
   "location": {
     "title": "目录位置",
     "openNavigation": "打开导航",
-    "setDefault": "设为默认路径",
+    "setDefault": "设为默认",
     "picking": "等待选择…",
     "browse": "浏览…",
     "storageMissing": "当前存储已删除，请选择其他连接。",

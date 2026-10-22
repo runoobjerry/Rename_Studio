@@ -124,10 +124,10 @@ it.each([
   if (localPicker) expect(panel.getByRole("button", { name: "浏览…" })).toBeInTheDocument();
   else expect(panel.queryByRole("button", { name: "浏览…" })).not.toBeInTheDocument();
   if (browserAuth) {
-    expect(panel.getByRole("button", { name: "设为默认路径" })).toBeInTheDocument();
+    expect(panel.getByRole("button", { name: "设为默认" })).toBeInTheDocument();
     expect(api.fetchStorageAuthStatus).toHaveBeenCalledWith("default-local");
   } else {
-    expect(panel.queryByRole("button", { name: "设为默认路径" })).not.toBeInTheDocument();
+    expect(panel.queryByRole("button", { name: "设为默认" })).not.toBeInTheDocument();
     expect(api.fetchStorageAuthStatus).not.toHaveBeenCalled();
   }
 });
@@ -149,7 +149,7 @@ it("uses the provider name in disconnected guidance without requesting its files
 async function openCloud() {
   render(<QueryClientProvider client={client}><WorkspaceApp /></QueryClientProvider>);
   fireEvent.click(await screen.findByRole("button", { name: "OneDrive" }));
-  await waitFor(() => expect(screen.getByRole("button", { name: "设为默认路径" })).toBeEnabled());
+  await waitFor(() => expect(screen.getByRole("button", { name: "设为默认" })).toBeEnabled());
 }
 
 it("connects MUI sorting to preview order and clears execution confirmation when the sort changes", async () => {
@@ -264,13 +264,13 @@ describe("cloud default path integration", () => {
     expect(api.fetchStorageFiles).not.toHaveBeenCalledWith("user-onedrive", { kind: "root" });
     expect(screen.queryByRole("textbox", { name: "云端文件夹路径" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "打开文件夹" })).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "设为默认路径" }));
+    fireEvent.click(screen.getByRole("button", { name: "设为默认" }));
     await waitFor(() => expect(savedCloud("user-onedrive", "account-a")).toEqual({ kind: "path", value: "照片" }));
     expect(await screen.findByText("已将“照片”设为当前账号的默认路径。")).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "文档" }));
     await waitFor(() => expect(api.fetchStorageFiles).toHaveBeenCalledWith("user-onedrive", { kind: "id", value: "document-id" }));
-    await waitFor(() => expect(screen.getByRole("button", { name: "设为默认路径" })).toBeEnabled());
+    await waitFor(() => expect(screen.getByRole("button", { name: "设为默认" })).toBeEnabled());
     // 默认目录仍为“照片”，重新进入须使用尚未设为默认值的工作目录。
     fireEvent.click(screen.getByRole("button", { name: "本地文件" }));
     fireEvent.click(screen.getByRole("button", { name: "OneDrive" }));
@@ -278,8 +278,8 @@ describe("cloud default path integration", () => {
     await waitFor(() => expect(within(screen.getByLabelText("文件路径")).getByRole("button", { name: "文档" }))
       .toHaveAttribute("aria-current", "page"));
     expect(savedCloud("user-onedrive", "account-a")).toEqual({ kind: "path", value: "照片" });
-    await waitFor(() => expect(screen.getByRole("button", { name: "设为默认路径" })).toBeEnabled());
-    fireEvent.click(screen.getByRole("button", { name: "设为默认路径" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "设为默认" })).toBeEnabled());
+    fireEvent.click(screen.getByRole("button", { name: "设为默认" }));
     await waitFor(() => expect(savedCloud("user-onedrive", "account-a")).toEqual({ kind: "id", value: "document-id" }));
   });
 
@@ -294,8 +294,8 @@ describe("cloud default path integration", () => {
     await waitFor(() => expect(api.fetchStorageFiles).toHaveBeenCalledWith("user-onedrive", { kind: "root" }));
     expect(api.fetchStorageFiles).not.toHaveBeenCalledWith("user-onedrive", { kind: "path", value: "a-folder" });
     expect(useRenameStore.getState().selectedIds).toEqual([]);
-    await waitFor(() => expect(screen.getByRole("button", { name: "设为默认路径" })).toBeEnabled());
-    fireEvent.click(screen.getByRole("button", { name: "设为默认路径" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "设为默认" })).toBeEnabled());
+    fireEvent.click(screen.getByRole("button", { name: "设为默认" }));
     await waitFor(() => expect(serverSettings.preferences.cloud_default_locations["user-onedrive"]).toEqual({
       account_id: "account-b", location: { kind: "root" },
     }));
@@ -303,7 +303,7 @@ describe("cloud default path integration", () => {
     expect(readWorkspaceSession().session.locations["user-onedrive"])
       .toEqual({ revision: 1, accountId: "account-b", location: { kind: "root" } });
     client.setQueryData(["storage-auth", "user-onedrive", 1], status("account-a"));
-    await waitFor(() => expect(screen.getByRole("button", { name: "设为默认路径" })).toBeEnabled());
+    await waitFor(() => expect(screen.getByRole("button", { name: "设为默认" })).toBeEnabled());
     expect(screen.queryByRole("button", { name: "a-folder" })).not.toBeInTheDocument();
   });
 
@@ -360,7 +360,7 @@ describe("language settings", () => {
     expect(screen.getByRole("button", { name: "Apply" })).toBeEnabled();
     fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
     await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
-    expect(screen.getByRole("table", { name: "Rename preview" })).toHaveTextContent("新-文件10.txt");
+    expect(screen.getByRole("table", { name: "Preview" })).toHaveTextContent("新-文件10.txt");
     expect(screen.getByRole("checkbox", { name: "Select file 文件2.txt" })).toBeChecked();
     expect(screen.getByRole("columnheader", { name: "File name" })).toHaveAttribute("aria-sort", "descending");
     expect(fileOrder()).toEqual(originalOrder);
@@ -400,10 +400,10 @@ describe("language settings", () => {
     expect(useRenameStore.getState().selectedIds).toEqual(["keep.txt"]);
 
     vi.mocked(api.patchAppSettings).mockRejectedValueOnce(new Error("Offline"));
-    fireEvent.mouseDown(screen.getByRole("combobox", { name: "Interface language" }));
+    fireEvent.mouseDown(screen.getByRole("combobox", { name: "Language" }));
     fireEvent.click(screen.getByRole("option", { name: "简体中文" }));
     expect(await screen.findByText("Could not save the language. The change was reverted: Offline")).toBeInTheDocument();
-    expect(screen.getByRole("combobox", { name: "Interface language" })).toHaveTextContent("English");
+    expect(screen.getByRole("combobox", { name: "Language" })).toHaveTextContent("English");
     expect(document.documentElement.lang).toBe("en-US");
     fireEvent.click(screen.getByRole("button", { name: "Back to workspace" }));
     expect(await screen.findByRole("checkbox", { name: "Select file keep.txt" })).toBeChecked();

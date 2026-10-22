@@ -6,13 +6,13 @@
   "filters": {
     "pending": "Pending",
     "completed": "Completed",
-    "failed": "Failed / needs verification"
+    "failed": "Failed / Action Required"
   },
   "taskTitle": "Current task",
   "title": "File selection",
   "sortLocked": " · Sorting is locked until the task ends",
   "endTask": "End current task",
-  "parent": "Go to parent folder",
+  "parent": "Back",
   "invert": "Invert selection",
   "filterItems": "Filter items",
   "refreshingDirectory": "Refreshing directory",
@@ -36,7 +36,7 @@
       "renamed": "Renamed"
     },
     "currentStorage": "Current storage",
-    "title": "Rename preview",
+    "title": "Preview",
     "filter": "Filter by status",
     "original": "Original name",
     "new": "New name",
@@ -96,13 +96,13 @@
   "batch": {
     "title": "Large batch notice",
     "hideHint": "Do not show this again",
-    "continue": "Continue to preview",
-    "description": "More than {{limit}} files are selected. To limit the performance impact, only the first {{limit}} items will be renamed in this batch. After it finishes, filter for pending items to select and process the remaining files."
+    "continue": "Continue",
+    "description": "More than {{limit}} files are selected. To maintain performance, only the first {{limit}} items will be renamed in this batch. After it finishes, filter for pending items to select and process the remaining files."
   },
   "location": {
     "title": "Directory location",
     "openNavigation": "Open navigation",
-    "setDefault": "Set as default location",
+    "setDefault": "Set as default",
     "picking": "Waiting for selection…",
     "browse": "Browse…",
     "storageMissing": "This storage connection has been deleted. Select another connection.",
