@@ -1,16 +1,12 @@
 # Rename Studio
 
-本地优先、规则驱动的批量重命名 WebUI，支持本地文件、OneDrive 个人账号和 Google Drive“我的云端硬盘”。先预览，再确认执行。
+一款文件重命名 WebUI 程序，目前支持本地磁盘、OneDrive 个人账号和 Google Drive “我的云端硬盘” 内的文件。
 
 ## 特性
 
-- **多存储连接**：Local Files、OneDrive 和 Google Drive 独立配置与授权。
-- **有序规则链**：填充、替换、移除、插入，支持复制、排序与启用/禁用。
-- **预览与冲突检查**：展示原名、新名、名称合法性及冲突；执行前服务端重新校验。
-- **批次与进度**：文件/子文件夹多选、筛选与排序，逐批确认，展示进度和逐项结果。
-- **工作台偏好**：明暗主题、中英文界面与浏览器语言自动选择、账号默认目录、标签页浏览位置恢复与恢复默认设置。
-
-每批最多 **1000 项**，最多 **20 条规则**；只处理同一目录的直接子项，不递归修改子文件夹内容。目前没有历史撤销/重做功能，操作前请备份重要数据。
+- **多存储连接**：支持 Local Files、OneDrive 和 Google Drive 多个文件源的独立配置与授权。
+- **多重规则链**：目前填充、替换、移除、插入的规则，可将多个重命名规则组合为规则链，按逻辑顺序应用每个规则操作。
+- **预览与冲突检查**：展示原名、新名、名称合法性及冲突；最终操作前服务端将重新校验。
 
 ## 兼容性
 
@@ -18,24 +14,22 @@
 
 | 项目 | 最低要求或支持范围 |
 | --- | --- |
-| 后端 Python | **3.12+**；发布自动检查基线为 Python 3.12。 |
+| 后端 Python | **3.12+** |
 | 前端浏览器 | **Chrome 117+、Edge 121+、Firefox 121+、Safari 17.0+（macOS）**。 |
 | Windows 启动 | 交互式 PowerShell **5.1+**，已安装 Python，项目目录可写。 |
 | macOS 启动 | 交互式终端、系统 Bash 与已安装的 Python，项目目录可写。 |
 | 自动发布检查平台 | Windows x64、macOS Apple Silicon（ARM64）；其他架构需另行验证。 |
 | 网络 | 首次安装依赖及云盘功能需要联网；依赖就绪后，本地文件操作可离线使用。 |
 
-浏览器最低要求依据当前 MUI 9 的[官方支持基线](https://mui.com/material-ui/migration/upgrade-to-v9/#supported-browsers-and-versions)，同时满足项目使用的现代浏览器 API；这是依赖与代码要求，不代表已逐版本实测。建议使用当前稳定版；不支持 Internet Explorer。通过默认的 `http://localhost:8000` 访问，以满足 `crypto.randomUUID()` 等 API 的安全上下文要求。
-
-使用发布包**不需要 Node.js**。开发前端需要 Node.js 20+，仓库 CI 使用 Node.js 22。
+> 浏览器最低要求依据当前 MUI 9 的[官方支持版本](https://mui.com/material-ui/migration/upgrade-to-v9/#supported-browsers-and-versions)，同时满足项目使用的现代浏览器 API；这是依赖与代码要求，不代表已逐版本实测。建议使用当前稳定版；不支持 Internet Explorer。
 
 ## 快速开始
 
-### 1. 安装与解压
+### 安装与解压
 
-安装 [Python 3.12 或更新版本](https://www.python.org/downloads/)（建议使用发布检查基线 3.12），从项目 [Releases](https://github.com/runoobjerry/Rename_Studio/releases) 下载对应系统的发布 ZIP，完整解压到可写目录。不要使用 GitHub 自动生成的源码 ZIP 代替发布包；源码运行方式见下方“开发”。
+安装 [Python 3.12 或更新版本](https://www.python.org/downloads/)，从项目 [Releases](https://github.com/runoobjerry/Rename_Studio/releases) 下载对应系统的发布 ZIP，完整解压到可写目录。
 
-### 2. 启动
+### 启动
 
 **Windows：** 在发布包目录打开 PowerShell，运行：
 
@@ -53,21 +47,19 @@ bash "/项目完整路径/Start.sh"
 
 保持终端打开，输入 **Q 后按 Enter**，或按 **Ctrl+C** 退出。
 
-脚本创建独立的 `.runtime/venv` 并按需安装依赖，随后打开 [本地页面](http://localhost:8000)。服务仅监听 `127.0.0.1:8000`，关闭浏览器不会停止后端。启动失败可先查看 `.runtime/logs`，再查阅[常见问题](https://github.com/runoobjerry/Rename_Studio/wiki/FAQ)。
+> 脚本创建独立的 `.runtime/venv` 并按需安装依赖，随后打开 [本地页面](http://localhost:8000)。服务仅监听 `127.0.0.1:8000`，关闭浏览器不会停止后端。启动失败可先查看 `.runtime/logs`，再查阅[常见问题](https://github.com/runoobjerry/Rename_Studio/wiki/FAQ)。
 
-### 3. 预览并执行
+### 预览并执行
 
 1. 选择默认 `Local Files` 连接，通过“浏览…”选择测试目录；也可在设置中添加本地或云盘连接。
 2. 选择当前目录中的文件或子文件夹，添加规则并排列顺序。
 3. 生成预览，检查新名称与冲突，确认后执行并核对逐项结果。
 
-默认本地目录为后端系统用户的 Documents 文件夹。超过 1000 项时分批预览和处理，完成后通过“待处理”筛选继续。遇到超时或未知结果先核对进度和真实文件，不要盲目重试整批。
-
-界面语言默认为 `auto`，按浏览器语言偏好选择；可在设置中即时切换简体中文 / English，保存至后端 settings.json，恢复出厂设置时回到 auto。缺失译文固定回退 en-US；语言切换不改变文件名、连接名、排序、选择或任务。
+> 默认本地目录为后端系统用户的 Documents 文件夹。超过 1000 项时分批预览和处理，完成后通过“待处理”筛选继续。遇到超时或未知结果先核对进度和真实文件，不要盲目重试整批。
 
 ## 用户文档
 
-详细使用与配置说明见[项目 Wiki](https://github.com/runoobjerry/Rename_Studio/wiki)。
+详细使用与配置说明见[项目 Wiki](https://github.com/runoobjerry/Rename_Studio/wiki) 。
 
 | 文档 | 内容 |
 | --- | --- |
@@ -76,9 +68,12 @@ bash "/项目完整路径/Start.sh"
 | [常见问题](https://github.com/runoobjerry/Rename_Studio/wiki/FAQ) | 安装失败、端口占用、目录权限、授权失败、密钥与执行结果 |
 | [隐私政策](https://github.com/runoobjerry/Rename_Studio/wiki/Privacy-Policy) | 数据处理、本地凭据、浏览器会话、第三方请求、日志与数据清理 |
 
-云盘需自行配置 OAuth 客户端。`backend/settings.json` 是含长期登录凭据的**未加密 JSON**，不要公开或随发布包分发。完整说明见上述配置与隐私文档。
+> [!WARNING] 
+> 云盘需自行配置 OAuth 客户端。`backend/settings.json` 是含长期登录凭据的**未加密 JSON**，不要公开或随发布包分发。完整说明见上述配置与隐私文档。
 
 ## 开发
+
+如果你需要为项目贡献语言翻译，请阅读[指南](https://github.com/runoobjerry/Rename_Studio/wiki/Contribute-translations)和[Agents版指南](https://github.com/runoobjerry/Rename_Studio/wiki/Contribute-translations-(Agents))。
 
 ### 技术栈
 
@@ -86,7 +81,7 @@ bash "/项目完整路径/Start.sh"
 | --- | --- |
 | 后端 | Python 3.12+、FastAPI、Pydantic / pydantic-settings、httpx、Uvicorn |
 | 前端 | React、TypeScript、Vite、MUI；TanStack Query 管理服务端状态，Zustand 管理工作台 UI 与批次状态 |
-| 持久化 | v3 JSON 状态文档，原子保存连接配置、凭据和应用偏好；当前未使用数据库存储这些状态 |
+| 持久化 | JSON 状态文档，原子保存连接配置、凭据和应用偏好；当前未使用数据库存储这些状态 |
 | 测试 | pytest / pytest-asyncio、Vitest、Testing Library、JSDOM |
 | 发布 | PowerShell / Bash 启动入口，Python 发布脚本，GitHub Actions |
 
@@ -176,17 +171,14 @@ Frontend CI 在相关前端、Rule/Provider 注册代码的 PR 或手动触发�
 
 规则位于 `backend/app/rules`；各 Provider 的配置、定义、认证与驱动位于 `backend/app/providers`，经 `builtin.py` 显式注册。前端依据 Provider 元数据渲染连接配置与操作；`StorageManager` 管理连接生命周期、版本和执行互斥，Repository 原子保存完整状态。新增规则或 Provider 不应将具体存储逻辑引入 Rename Engine。
 
-Rule/Provider 的界面文案维护在 `frontend/src/locales`：规则使用 `rules:types.<type>`，Provider 及配置字段使用 `providers:<provider_type>.fields.<key>`。新增实现需同步补齐中英文文案；后端元数据仅保留稳定标识、配置结构与能力，接口形状见 [API 参考](docs/API_REFERENCE.md)。
+Rule/Provider 的界面文案维护在 `frontend/src/locales`：规则使用 `rules:types.<type>`，Provider 及配置字段使用 `providers:<provider_type>.fields.<key>`。新增实现需同步补齐语言文案；后端元数据仅保留稳定标识、配置结构与能力，接口形状见 [API 参考](docs/API_REFERENCE.md)。
 
-社区翻译通过 PR 贡献：新增语言目录、meta.json 与六个词典文件即可自动发现，无需更改后端或语言注册列表。步骤、术语、缺词回退和本地 `npm run i18n:check` 说明见 [翻译贡献指南](docs/TRANSLATING.md)。
-
-- [项目约束](AGENTS.md)、[前端边界](frontend/AGENTS.md)、[前端交接](docs/FRONTEND_HANDOFF.md)
-- [API 参考](docs/API_REFERENCE.md)、[版本发布](docs/RELEASING.md)、[启动与人工验收](docs/LAUNCHER.md)
-- [前端测试与 CI](docs/FRONTEND_TESTING.md)、[测试用例](docs/FRONTEND_TEST_CASES.md)、[UI 人工验收](docs/UI_MANUAL_ACCEPTANCE.md)
-- [当前前端状态](docs/UI_STATE.md)、[待办](docs/UI_TODO.md)
 
 ### 许可与免责声明
 
-本项目按 [GNU AGPL v3](LICENSE) 提供，不保证无错误运行，责任限制以许可证为准。批量重命名会修改真实文件，预览与回滚不能替代备份；目前没有历史撤销功能，请仅操作自己拥有或获授权的数据，先在测试副本验证规则。
+> [!WARNING] 
+> 本项目为 Vibe Coding 实验性项目，大部分源代码由 AI 生成，仅供个人学习使用，每次提交均有人工测试验收，但无法保证完全无错误运行。
 
-项目与 Microsoft、Google 无官方关联。第三方服务的可用性与条款由其提供方决定；请妥善保护本地凭据与账号授权。完整说明见[隐私政策](https://github.com/runoobjerry/Rename_Studio/wiki/Privacy-Policy)。
+项目按 [GNU AGPL v3](LICENSE) 提供，责任限制以许可证为准。批量重命名会修改真实文件，预览与回滚不能替代备份；目前没有历史撤销功能，请仅操作自己拥有或获授权的数据。
+
+项目与 Microsoft 等第三方服务商无官方关联。第三方服务的可用性与条款由其提供方决定；请妥善保护本地凭据与账号授权。完整说明见[隐私政策](https://github.com/runoobjerry/Rename_Studio/wiki/Privacy-Policy)。
