@@ -1,3 +1,4 @@
+import { deferred } from "../../test/deferred";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -75,7 +76,7 @@ describe("storage settings", () => {
       await i18n.changeLanguage(locale);
     });
     const chinese = locale === "zh-CN";
-    fireEvent.click(screen.getByRole("button", { name: chinese ? "添加连接" : "Add connection" }));
+    fireEvent.click(await screen.findByRole("button", { name: chinese ? "添加连接" : "Add" }));
     fireEvent.mouseDown(screen.getByRole("combobox", { name: chinese ? "存储类型" : "Storage type" }));
     fireEvent.click(screen.getByRole("option", { name: serviceName }));
     fireEvent.change(screen.getByRole("textbox", { name: chinese ? "连接名称" : "Connection name" }), { target: { value: "我的连接" } });
@@ -378,13 +379,13 @@ describe("storage settings", () => {
     fireEvent.click(screen.getByRole("button", { name: "添加连接" }));
     fireEvent.change(screen.getByRole("textbox", { name: "连接名称" }), { target: { value: "Other" } });
     fireEvent.change(screen.getByRole("textbox", { name: "directory" }), { target: { value: "D:\\draft" } });
-    let finish!: (result: Awaited<ReturnType<typeof api.pickLocalFolderDraft>>) => void;
-    vi.mocked(api.pickLocalFolderDraft).mockReturnValueOnce(new Promise((resolve) => { finish = resolve; }));
+    const finish = deferred<Awaited<ReturnType<typeof api.pickLocalFolderDraft>>>();
+    vi.mocked(api.pickLocalFolderDraft).mockReturnValueOnce(finish.promise);
     fireEvent.click(screen.getByRole("button", { name: "浏览本地目录" }));
     await waitFor(() => expect(screen.getByRole("button", { name: "取消" })).toBeDisabled());
     expect(screen.getByRole("button", { name: "保存连接" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "浏览本地目录" })).toBeDisabled();
-    finish({ selected: false, root_path: "C:\\Documents" });
+    finish.resolve({ selected: false, root_path: "C:\\Documents" });
     await waitFor(() => expect(screen.getByRole("button", { name: "取消" })).toBeEnabled());
     expect(screen.getByRole("textbox", { name: "directory" })).toHaveValue("D:\\draft");
     fireEvent.click(screen.getByRole("button", { name: "取消" }));

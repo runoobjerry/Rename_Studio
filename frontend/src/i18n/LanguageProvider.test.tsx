@@ -1,3 +1,4 @@
+import { deferred } from "../test/deferred";
 import { useEffect, type ReactNode } from "react";
 import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -46,13 +47,13 @@ afterEach(() => { cleanup(); client.clear(); vi.clearAllMocks(); vi.restoreAllMo
 
 describe("persisted language preference", () => {
   it("gates the initial UI until saved preferences arrive", async () => {
-    let finish!: (value: AppSettings) => void;
-    vi.mocked(api.fetchAppSettings).mockReturnValueOnce(new Promise((resolve) => { finish = resolve; }));
+    const finish = deferred<AppSettings>();
+    vi.mocked(api.fetchAppSettings).mockReturnValueOnce(finish.promise);
     render(<Probe />, { wrapper: Wrapper });
     expect(screen.queryByText("设置")).not.toBeInTheDocument();
     expect(mounted).not.toHaveBeenCalled();
     server.preferences.language = "en-US";
-    await act(async () => { finish(server); });
+    await act(async () => { finish.resolve(server); });
     expect(await screen.findByText("Settings")).toBeInTheDocument();
     expect(document.documentElement.lang).toBe("en-US");
   });
@@ -75,13 +76,13 @@ describe("persisted language preference", () => {
   it("switches immediately, then rolls back to the persisted choice after failure", async () => {
     render(<Probe />, { wrapper: Wrapper });
     await screen.findByText("设置");
-    let fail!: (error: Error) => void;
-    vi.mocked(api.patchAppSettings).mockReturnValueOnce(new Promise((_resolve, reject) => { fail = reject; }));
+    const fail = deferred<AppSettings>();
+    vi.mocked(api.patchAppSettings).mockReturnValueOnce(fail.promise);
     let outcome!: Promise<unknown>;
     act(() => { outcome = language.setPreference("en-US").catch((error: Error) => error.message); });
     expect(screen.getByText("Settings")).toBeInTheDocument();
     await waitFor(() => expect(api.patchAppSettings).toHaveBeenCalledOnce());
-    await act(async () => { fail(new Error("Offline")); expect(await outcome).toBe("Offline"); });
+    await act(async () => { fail.reject(new Error("Offline")); expect(await outcome).toBe("Offline"); });
     expect(screen.getByText("设置")).toBeInTheDocument();
     expect(language.preference).toBe("auto");
     expect(document.documentElement.lang).toBe("zh-CN");
@@ -90,13 +91,13 @@ describe("persisted language preference", () => {
   it("serializes rapid switches, continues after failure, and keeps the newest draft", async () => {
     render(<Probe />, { wrapper: Wrapper });
     await screen.findByText("设置");
-    let fail!: (error: Error) => void;
-    vi.mocked(api.patchAppSettings).mockReturnValueOnce(new Promise((_resolve, reject) => { fail = reject; }));
+    const fail = deferred<AppSettings>();
+    vi.mocked(api.patchAppSettings).mockReturnValueOnce(fail.promise);
     await act(async () => {
       const first = language.setPreference("en-US").catch(() => undefined);
       const second = language.setPreference("zh-CN");
       await waitFor(() => expect(api.patchAppSettings).toHaveBeenCalledOnce());
-      fail(new Error("Offline"));
+      fail.reject(new Error("Offline"));
       await Promise.all([first, second]);
     });
     expect(api.patchAppSettings).toHaveBeenNthCalledWith(2, { language: "zh-CN" });
@@ -107,15 +108,15 @@ describe("persisted language preference", () => {
   it("waits for queued writes before reset, blocks new writes, and resolves auto again", async () => {
     render(<Probe />, { wrapper: Wrapper });
     await screen.findByText("设置");
-    let finish!: (value: AppSettings) => void;
-    vi.mocked(api.patchAppSettings).mockReturnValueOnce(new Promise((resolve) => { finish = resolve; }));
+    const finish = deferred<AppSettings>();
+    vi.mocked(api.patchAppSettings).mockReturnValueOnce(finish.promise);
     await act(async () => {
       const save = language.setPreference("en-US");
       await waitFor(() => expect(api.patchAppSettings).toHaveBeenCalledOnce());
       const reset = settings.factoryReset();
       expect(api.factoryResetAppSettings).not.toHaveBeenCalled();
       await expect(language.setPreference("zh-CN")).rejects.toThrow();
-      finish({ preferences: { ...server.preferences, language: "en-US" } });
+      finish.resolve({ preferences: { ...server.preferences, language: "en-US" } });
       await Promise.all([save, reset]);
     });
     expect(api.patchAppSettings).toHaveBeenCalledOnce();

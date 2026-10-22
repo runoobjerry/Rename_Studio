@@ -1,27 +1,31 @@
+import { deferred } from "../../test/deferred";
 import { createElement, type ReactNode } from "react";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import * as api from "../../api/client";
 import { useRenameStore } from "../../stores/useRenameStore";
-import { client, listing, notify, openCloud, preview, serverSettings, setupWorkspace, status } from "../../test/workspaceHarness";
+import { installWorkspaceTestHooks, client, listing, notify, openCloud, preview, serverSettings, setupWorkspace, status } from "../../test/workspaceHarness";
 import type { DirectoryListing, StorageInfo, StorageProviderDefinition } from "../../types";
 import { useWorkspaceStorage } from "./useWorkspaceStorage";
 import { readWorkspaceSession, workspaceSessionKey } from "../workspaceSession";
 
-// 在测试入口注册，确保 API 导入和共享 Hook 使用同一份 mock。
-vi.mock("../../api/client", async (importOriginal) => ({
-  ...await importOriginal<typeof import("../../api/client")>(),
-  fetchStorages: vi.fn(), fetchStorageProviders: vi.fn(), fetchStorageAuthStatus: vi.fn(), fetchStorageFiles: vi.fn(),
-  pickStorageFolder: vi.fn(), fetchAppSettings: vi.fn(), patchAppSettings: vi.fn(),
-  createStoragePreview: vi.fn(), releaseStoragePreview: vi.fn(), executePreview: vi.fn(),
+// Mock 注册保留在入口；真实 Hook、Store 和 Query 共同参与场景。
+vi.mock("../../api/client", async (importOriginal) => {
+  const { workspaceApiMock } = await import("../../test/workspaceApiMock");
+  return workspaceApiMock(await importOriginal<typeof import("../../api/client")>());
+});
+vi.mock("../../components/NotificationProvider", async (importOriginal) => ({
+  ...await importOriginal<typeof import("../../components/NotificationProvider")>(),
+  useNotification: () => notify,
 }));
+installWorkspaceTestHooks();
 
 describe("workspace provider capabilities", () => {
   it.each(["pending", "failed", "missing"] as const)("blocks auth and files while provider metadata is %s, then restores the remembered directory", async (state) => {
     const definitions = await api.fetchStorageProviders();
-    let finish!: (value: StorageProviderDefinition[]) => void;
-    if (state === "pending") vi.mocked(api.fetchStorageProviders).mockReturnValueOnce(new Promise((resolve) => { finish = resolve; }));
+    const finish = deferred<StorageProviderDefinition[]>();
+    if (state === "pending") vi.mocked(api.fetchStorageProviders).mockReturnValueOnce(finish.promise);
     else if (state === "failed") vi.mocked(api.fetchStorageProviders).mockRejectedValueOnce(new Error("Metadata unavailable"));
     else vi.mocked(api.fetchStorageProviders).mockResolvedValueOnce([]);
     window.sessionStorage.setItem(workspaceSessionKey, JSON.stringify({
@@ -38,7 +42,7 @@ describe("workspace provider capabilities", () => {
     expect(api.fetchStorageFiles).not.toHaveBeenCalled();
     expect(readWorkspaceSession().session.locations["user-onedrive"].location)
       .toEqual({ kind: "id", value: "remembered-directory" });
-    if (state === "pending") await act(async () => { finish(definitions); });
+    if (state === "pending") await act(async () => { finish.resolve(definitions); });
     else await act(async () => { await client.invalidateQueries({ queryKey: ["storage-providers"] }); });
     await waitFor(() => expect(hook.result.current.cloudConnected).toBe(true));
     await waitFor(() => expect(hook.result.current.appSettingsReady).toBe(true));
@@ -138,13 +142,13 @@ describe("workspace storage", () => {
 
   it("keeps pending navigation and then the task, selection and preview when clicking the current connection", async () => {
     const hook = await setupWorkspace(1);
-    let resolveDirectory!: (value: DirectoryListing) => void;
-    vi.mocked(api.fetchStorageFiles).mockImplementationOnce(() => new Promise((resolve) => { resolveDirectory = resolve; }));
+    const resolveDirectory = deferred<DirectoryListing>();
+    vi.mocked(api.fetchStorageFiles).mockImplementationOnce(() => resolveDirectory.promise);
     act(() => hook.result.current.storage.setPath("任务目录"));
     await waitFor(() => expect(hook.result.current.storage.files.isFetching).toBe(true));
     act(() => hook.result.current.storage.selectStorage("default-local"));
     expect(hook.result.current.storage.location).toEqual({ kind: "path", value: "任务目录" });
-    await act(async () => { resolveDirectory({ ...listing(1), location: { kind: "path", value: "任务目录" } }); });
+    await act(async () => { resolveDirectory.resolve({ ...listing(1), location: { kind: "path", value: "任务目录" } }); });
     await waitFor(() => expect(readWorkspaceSession().session.locations["default-local"].location)
       .toEqual({ kind: "path", value: "任务目录" }));
     act(() => hook.result.current.workflow.selectAllFiles(["file-0.txt"]));
@@ -311,8 +315,8 @@ describe("workspace session locations", () => {
   it.each(["connection", "revision"] as const)("does not remember a late directory response after changing the %s", async (change) => {
     const hook = mountStorage();
     await waitFor(() => expect(hook.result.current.files.isSuccess).toBe(true));
-    let resolveDirectory!: (value: DirectoryListing) => void;
-    vi.mocked(api.fetchStorageFiles).mockImplementationOnce(() => new Promise((resolve) => { resolveDirectory = resolve; }));
+    const resolveDirectory = deferred<DirectoryListing>();
+    vi.mocked(api.fetchStorageFiles).mockImplementationOnce(() => resolveDirectory.promise);
     act(() => hook.result.current.setPath("迟到目录"));
     await waitFor(() => expect(hook.result.current.files.isFetching).toBe(true));
     if (change === "connection") {
@@ -327,7 +331,7 @@ describe("workspace session locations", () => {
       act(() => client.setQueryData(["storages"], changed));
       await waitFor(() => expect(readWorkspaceSession().session.locations["default-local"].revision).toBe(2));
     }
-    await act(async () => { resolveDirectory({ ...listing(), location: { kind: "path", value: "迟到目录" } }); });
+    await act(async () => { resolveDirectory.resolve({ ...listing(), location: { kind: "path", value: "迟到目录" } }); });
     await waitFor(() => expect(client.getQueryData(["files", "default-local", 1, { kind: "path", value: "迟到目录" }])).toBeDefined());
     expect(readWorkspaceSession().session.locations["default-local"])
       .toEqual({ revision: change === "connection" ? 1 : 2, accountId: null, location: { kind: "root" } });

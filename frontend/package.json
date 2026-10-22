@@ -7,6 +7,7 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "test": "vitest run",
+    "test:ci": "vitest run --reporter=default --reporter=junit --outputFile.junit=test-results/vitest.xml",
     "test:watch": "vitest",
     "check": "npm run i18n:check && npm run test && npm run build",
     "i18n:check": "node scripts/check-i18n.mjs"

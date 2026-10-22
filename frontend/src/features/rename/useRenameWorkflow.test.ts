@@ -1,16 +1,22 @@
+import { deferred } from "../../test/deferred";
 import { act, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import * as api from "../../api/client";
 import { useRenameStore } from "../../stores/useRenameStore";
-import { client, listing, preview, serverSettings, setupWorkspace } from "../../test/workspaceHarness";
+import { previewResponse } from "../../test/fixtures";
+import type { ExecuteResponse } from "../../types";
+import { installWorkspaceTestHooks, client, listing, notify, preview, serverSettings, setupWorkspace } from "../../test/workspaceHarness";
 
-// 在测试入口注册，确保 API 导入和共享 Hook 使用同一份 mock。
-vi.mock("../../api/client", async (importOriginal) => ({
-  ...await importOriginal<typeof import("../../api/client")>(),
-  fetchStorages: vi.fn(), fetchStorageProviders: vi.fn(), fetchStorageAuthStatus: vi.fn(), fetchStorageFiles: vi.fn(),
-  pickStorageFolder: vi.fn(), fetchAppSettings: vi.fn(), patchAppSettings: vi.fn(),
-  createStoragePreview: vi.fn(), releaseStoragePreview: vi.fn(), executePreview: vi.fn(),
+// Mock 注册保留在入口；真实 Hook、Store 和 Query 共同参与场景。
+vi.mock("../../api/client", async (importOriginal) => {
+  const { workspaceApiMock } = await import("../../test/workspaceApiMock");
+  return workspaceApiMock(await importOriginal<typeof import("../../api/client")>());
+});
+vi.mock("../../components/NotificationProvider", async (importOriginal) => ({
+  ...await importOriginal<typeof import("../../components/NotificationProvider")>(),
+  useNotification: () => notify,
 }));
+installWorkspaceTestHooks();
 
 describe("rename workflow", () => {
 
@@ -122,12 +128,12 @@ describe("rename workflow", () => {
 
   it("releases a late preview after its selection context changes", async () => {
     const hook = await setupWorkspace();
-    let finish!: (value: Awaited<ReturnType<typeof api.createStoragePreview>>) => void;
-    vi.mocked(api.createStoragePreview).mockReturnValueOnce(new Promise((resolve) => { finish = resolve; }));
+    const finish = deferred<Awaited<ReturnType<typeof api.createStoragePreview>>>();
+    vi.mocked(api.createStoragePreview).mockReturnValueOnce(finish.promise);
     act(() => hook.result.current.workflow.requestPreview());
     await waitFor(() => expect(api.createStoragePreview).toHaveBeenCalledOnce());
     act(() => useRenameStore.getState().setSelectedIds([]));
-    await act(async () => finish({ preview_id: "late-preview", expires_at: "2099-01-01T00:00:00Z", valid: true, items: [] }));
+    await act(async () => finish.resolve({ preview_id: "late-preview", expires_at: "2099-01-01T00:00:00Z", valid: true, items: [] }));
     await waitFor(() => expect(api.releaseStoragePreview).toHaveBeenCalledWith("default-local", "late-preview"));
     expect(hook.result.current.workflow.previewData).toBeUndefined();
   });
@@ -195,6 +201,52 @@ describe("rename workflow", () => {
     expect(useRenameStore.getState().selectedIds).toEqual(["file-0.txt", "file-1.txt"]);
   });
 
+  it.each(["unknown-result", "missing-result"] as const)("keeps identity, snapshots and retry selection consistent after %s", async (outcome) => {
+    const hook = await setupWorkspace(3);
+    await preview(hook);
+    const before = useRenameStore.getState().task!;
+    const files = listing(3).items;
+    const confirmed = { ...files[0], id: "opaque-new-id", name: "renamed-file-0.txt" };
+    const response: ExecuteResponse = {
+      preview_id: "task-preview", status: "partial", items: [
+        { file_id: files[0].id, original_name: files[0].name, new_name: confirmed.name,
+          status: "renamed", error: null, current_file: confirmed },
+        ...(outcome === "unknown-result" ? [{
+          file_id: files[1].id, original_name: files[1].name, new_name: "renamed-file-1.txt",
+          status: "failed" as const, error: "Write outcome unknown", error_code: "RENAME_OUTCOME_UNKNOWN", actual_name: null,
+        }] : []),
+        { file_id: files[2].id, original_name: files[2].name, new_name: "renamed-file-2.txt",
+          status: "failed", error: "Conflict", actual_name: files[2].name },
+      ],
+    };
+    vi.mocked(api.executePreview).mockResolvedValueOnce(response);
+
+    act(() => hook.result.current.workflow.executeRename("task-preview"));
+    await waitFor(() => expect(hook.result.current.workflow.executionData).toEqual(response));
+
+    const task = useRenameStore.getState().task!;
+    expect(task.taskId).toBe(before.taskId);
+    expect(task.items.map((item) => item.status)).toEqual(["completed", "unknown", "failed"]);
+    expect(task.items.map((item) => item.currentFileId)).toEqual([confirmed.id, files[1].id, files[2].id]);
+    task.items.forEach((item, index) => expect(item.before).toBe(before.items[index].before));
+    expect(task.batches[0].results).toEqual(response.items);
+    expect(hook.result.current.storage.files.data!.items).toEqual([confirmed, files[1], files[2]]);
+    expect(useRenameStore.getState().selectedIds).toEqual([files[2].id]);
+
+    // 即使再次全选，成功和未知项也不得混入重试；下一次预览只提交明确失败项。
+    act(() => hook.result.current.workflow.selectAllFiles([confirmed.id, files[1].id, files[2].id]));
+    expect(useRenameStore.getState().selectedIds).toEqual([files[2].id]);
+    vi.mocked(api.createStoragePreview).mockResolvedValueOnce(previewResponse([files[2].id], "retry-preview"));
+    act(() => hook.result.current.workflow.requestPreview());
+    await waitFor(() => expect(hook.result.current.workflow.previewData?.preview_id).toBe("retry-preview"));
+    expect(api.createStoragePreview).toHaveBeenLastCalledWith("default-local", { kind: "root" }, [files[2].id], [], "task-preview");
+    expect(api.executePreview).toHaveBeenCalledTimes(1);
+    // TanStack Query 还会传入内部 context；这里只检查提交的业务参数。
+    expect(vi.mocked(api.executePreview).mock.calls[0][0]).toBe("task-preview");
+    expect(api.fetchStorageFiles).toHaveBeenCalledTimes(1);
+    expect(useRenameStore.getState().task!.batches[0].results).toEqual(response.items);
+  });
+
   it("invalidates preview on sorting, keeps task snapshots, and never revives a previous ordering", async () => {
     const hook = await setupWorkspace(3);
     act(() => hook.result.current.workflow.selectAllFiles(["file-1.txt", "file-0.txt", "file-2.txt"]));
@@ -225,8 +277,8 @@ describe("rename workflow", () => {
     })) };
     act(() => client.setQueryData(key, data));
     act(() => hook.result.current.workflow.changeSort({ field: "modified_at", direction: "asc" }));
-    let finish!: (value: Awaited<ReturnType<typeof api.createStoragePreview>>) => void;
-    vi.mocked(api.createStoragePreview).mockReturnValueOnce(new Promise((resolve) => { finish = resolve; }));
+    const finish = deferred<Awaited<ReturnType<typeof api.createStoragePreview>>>();
+    vi.mocked(api.createStoragePreview).mockReturnValueOnce(finish.promise);
     act(() => hook.result.current.workflow.requestPreview());
     await waitFor(() => expect(api.createStoragePreview).toHaveBeenCalledWith("default-local", { kind: "root" },
       ["file-1.txt", "file-0.txt", "file-2.txt"], []));
@@ -235,7 +287,7 @@ describe("rename workflow", () => {
     // Query 缓存通知异步送达 React；先确认新顺序生效，再模拟旧预览迟到。
     await waitFor(() => expect(hook.result.current.workflow.browserItems.map((file) => file.id))
       .toEqual(["file-0.txt", "file-1.txt", "file-2.txt"]));
-    await act(async () => finish({ preview_id: "late-sorted", expires_at: "2099-01-01T00:00:00Z", valid: true, items: [] }));
+    await act(async () => finish.resolve({ preview_id: "late-sorted", expires_at: "2099-01-01T00:00:00Z", valid: true, items: [] }));
     await waitFor(() => expect(api.releaseStoragePreview).toHaveBeenCalledWith("default-local", "late-sorted"));
     expect(hook.result.current.workflow.previewData).toBeUndefined();
     await preview(hook);

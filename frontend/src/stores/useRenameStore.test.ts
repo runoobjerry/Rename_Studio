@@ -1,9 +1,9 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { useRenameStore } from "./useRenameStore";
 import type { ExecuteResponse } from "../types";
+import { fileItem } from "../test/fixtures";
 
-const files = ["a.txt", "b.txt"].map((id) => ({ id, name: id, path: id, parent_path: "",
-  is_directory: false, size: 1, modified_at: null }));
+const files = ["a.txt", "b.txt"].map((id) => fileItem(id));
 const prepare = () => useRenameStore.getState().prepareBatch("context", "test", { kind: "root" }, files);
 beforeEach(() => { useRenameStore.setState({ task: null, selectedIds: files.map((item) => item.id), rules: [] }); });
 
@@ -75,10 +75,7 @@ it("uses supplied file order, reorders drafts without replacing snapshots, and f
 
 describe("session rename batches", () => {
   beforeEach(() => { useRenameStore.setState({ selectedIds: [], rules: [], task: null }); });
-  const files = (count: number) => Array.from({ length: count }, (_, index) => ({
-    id: `old-${index}.txt`, name: `old-${index}.txt`, path: `old-${index}.txt`, parent_path: "",
-    is_directory: false, size: 1, modified_at: null,
-  }));
+  const files = (count: number) => Array.from({ length: count }, (_, index) => fileItem(`old-${index}.txt`));
   const begin = (count: number) => {
     const entries = files(count);
     useRenameStore.getState().setSelectedIds(entries.map((file) => file.id));
@@ -87,7 +84,7 @@ describe("session rename batches", () => {
   const succeed = (fileIds: string[], previewId: string) => {
     useRenameStore.getState().applyResults({ preview_id: previewId, status: "completed", items: fileIds.map((id) => ({
       file_id: id, original_name: id, new_name: `new-${id}`, status: "renamed", error: null,
-      current_file: { id: `new-${id}`, name: `new-${id}`, path: `new-${id}`, parent_path: "", is_directory: false, size: 1, modified_at: null },
+      current_file: fileItem(`new-${id}`),
     })) });
   };
 

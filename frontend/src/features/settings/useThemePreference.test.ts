@@ -1,3 +1,4 @@
+import { deferred } from "../../test/deferred";
 import { createElement, type ReactNode } from "react";
 import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -82,14 +83,14 @@ describe("theme preference", () => {
   it("serializes rapid edits and keeps the last successful change", async () => {
     const { result } = renderHook(useThemePreference, { wrapper });
     await waitFor(() => expect(fetchAppSettings).toHaveBeenCalledOnce());
-    let finishFirst!: (settings: AppSettings) => void;
-    vi.mocked(patchAppSettings).mockReturnValueOnce(new Promise((resolve) => { finishFirst = resolve; }));
+    const finishFirst = deferred<AppSettings>();
+    vi.mocked(patchAppSettings).mockReturnValueOnce(finishFirst.promise);
     await act(async () => {
       const first = result.current.setPreference("light");
       const second = result.current.setPreference("dark");
       await waitFor(() => expect(patchAppSettings).toHaveBeenCalledOnce());
       serverSettings = { preferences: { ...serverSettings.preferences, theme: "light" } };
-      finishFirst(serverSettings);
+      finishFirst.resolve(serverSettings);
       await Promise.all([first, second]);
     });
     expect(patchAppSettings).toHaveBeenNthCalledWith(1, { theme: "light" });
@@ -115,12 +116,12 @@ describe("theme preference", () => {
 
   it("saves changed fields without waiting for settings to load or requesting them again", async () => {
     const initialSettings = serverSettings;
-    let finishLoad!: (settings: AppSettings) => void;
-    vi.mocked(fetchAppSettings).mockReturnValueOnce(new Promise((resolve) => { finishLoad = resolve; }));
+    const finishLoad = deferred<AppSettings>();
+    vi.mocked(fetchAppSettings).mockReturnValueOnce(finishLoad.promise);
     const { result } = renderHook(useThemePreference, { wrapper });
     await waitFor(() => expect(fetchAppSettings).toHaveBeenCalledOnce());
     await act(async () => { await result.current.setPreference("dark"); });
-    await act(async () => { finishLoad(initialSettings); });
+    await act(async () => { finishLoad.resolve(initialSettings); });
     expect(patchAppSettings).toHaveBeenCalledWith({ theme: "dark" });
     expect(fetchAppSettings).toHaveBeenCalledOnce();
     expect(result.current.preference).toBe("dark");

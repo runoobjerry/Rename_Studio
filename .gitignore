@@ -20,6 +20,7 @@ node_modules/
 /frontend/.npm-cache/
 dist/
 coverage/
+/frontend/test-results/
 *.tsbuildinfo
 
 # Legacy local files and test output
