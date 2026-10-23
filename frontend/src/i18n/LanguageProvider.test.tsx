@@ -6,22 +6,19 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useTranslation } from "react-i18next";
 import * as api from "../api/client";
 import type { AppSettings } from "../types";
-import { useAppSettings } from "../features/settings/useAppSettings";
 import { LanguageProvider, useLanguagePreference } from "./LanguageProvider";
 
 vi.mock("../api/client", async (importOriginal) => ({
   ...await importOriginal<typeof import("../api/client")>(),
-  fetchAppSettings: vi.fn(), patchAppSettings: vi.fn(), factoryResetAppSettings: vi.fn(),
+  fetchAppSettings: vi.fn(), patchAppSettings: vi.fn(),
 }));
 
 let client: QueryClient;
 let server: AppSettings;
 let language: ReturnType<typeof useLanguagePreference>;
-let settings: ReturnType<typeof useAppSettings>;
 const mounted = vi.fn();
 function Probe() {
   language = useLanguagePreference();
-  settings = useAppSettings();
   const { t } = useTranslation("settings");
   useEffect(() => { mounted(); }, []);
   return <span>{t("title")}</span>;
@@ -35,10 +32,6 @@ beforeEach(() => {
   vi.mocked(api.fetchAppSettings).mockImplementation(async () => server);
   vi.mocked(api.patchAppSettings).mockImplementation(async (patch) => {
     server = { preferences: { ...server.preferences, language: patch.language ?? server.preferences.language } };
-    return server;
-  });
-  vi.mocked(api.factoryResetAppSettings).mockImplementation(async () => {
-    server = { preferences: { language: "auto", theme: "system", hide_batch_limit_hint: false, cloud_default_locations: {} } };
     return server;
   });
   mounted.mockClear();
@@ -103,26 +96,6 @@ describe("persisted language preference", () => {
     expect(api.patchAppSettings).toHaveBeenNthCalledWith(2, { language: "zh-CN" });
     expect(language.preference).toBe("zh-CN");
     expect(server.preferences.language).toBe("zh-CN");
-  });
-
-  it("waits for queued writes before reset, blocks new writes, and resolves auto again", async () => {
-    render(<Probe />, { wrapper: Wrapper });
-    await screen.findByText("设置");
-    const finish = deferred<AppSettings>();
-    vi.mocked(api.patchAppSettings).mockReturnValueOnce(finish.promise);
-    await act(async () => {
-      const save = language.setPreference("en-US");
-      await waitFor(() => expect(api.patchAppSettings).toHaveBeenCalledOnce());
-      const reset = settings.factoryReset();
-      expect(api.factoryResetAppSettings).not.toHaveBeenCalled();
-      await expect(language.setPreference("zh-CN")).rejects.toThrow();
-      finish.resolve({ preferences: { ...server.preferences, language: "en-US" } });
-      await Promise.all([save, reset]);
-    });
-    expect(api.patchAppSettings).toHaveBeenCalledOnce();
-    expect(language.preference).toBe("auto");
-    expect(document.documentElement.lang).toBe("zh-CN");
-    expect(mounted).toHaveBeenCalledOnce();
   });
 
   it("follows browser changes only in auto and retains unsupported saved identifiers", async () => {

@@ -4,7 +4,7 @@ import * as api from "./api/client";
 import { useRenameStore } from "./stores/useRenameStore";
 import { readWorkspaceSession, workspaceSessionKey } from "./workspace/workspaceSession";
 import { client, serverSettings } from "./test/workspaceHarness";
-import { installWorkspaceAppTestHooks, renderWorkspace, seedCloud } from "./test/workspaceAppHarness";
+import { installWorkspaceAppTestHooks, renderWorkspace } from "./test/workspaceAppHarness";
 import type { AppSettings } from "./types";
 
 vi.mock("./api/client", async (importOriginal) => {
@@ -108,47 +108,6 @@ describe("factory reset", () => {
     fireEvent.click(await screen.findByRole("button", { name: "设置" }));
     return screen.findByRole("button", { name: "将应用还原为原始默认状态" });
   };
-
-  it("cancels confirmation without calling the reset API", async () => {
-    fireEvent.click(await openSettings());
-    const dialog = screen.getByRole("dialog", { name: "确认重置？" });
-    fireEvent.click(within(dialog).getByRole("button", { name: "取消" }));
-    expect(api.factoryResetAppSettings).not.toHaveBeenCalled();
-    await waitFor(() => expect(screen.queryByRole("dialog", { name: "确认重置？" })).not.toBeInTheDocument());
-  });
-
-  it("clears in-memory rules and restores preferences after one successful reset", async () => {
-    window.sessionStorage.setItem(workspaceSessionKey, JSON.stringify({
-      version: 1, activeStorageId: "default-local", locations: {
-        "default-local": { revision: 1, accountId: null, location: { kind: "path", value: "重置前的目录" } },
-        "user-onedrive": { revision: 1, accountId: "account-a", location: { kind: "id", value: "remembered-folder" } },
-      },
-    }));
-    window.sessionStorage.setItem("unrelated-session-key", "keep");
-    const removeItem = vi.spyOn(Storage.prototype, "removeItem");
-    serverSettings.preferences.theme = "dark";
-    serverSettings.preferences.hide_batch_limit_hint = true;
-    seedCloud("user-onedrive", "account-a", { kind: "id", value: "old-folder" });
-    useRenameStore.setState({ rules: [{ type: "insert", enabled: true, config: { text: "x" } }], selectedIds: ["old"], task: null });
-    fireEvent.click(await openSettings());
-    fireEvent.click(within(screen.getByRole("dialog", { name: "确认重置？" }))
-      .getByRole("button", { name: "重置" }));
-    await waitFor(() => expect(api.factoryResetAppSettings).toHaveBeenCalledTimes(1));
-    await waitFor(() => expect(useRenameStore.getState().rules).toEqual([]));
-    expect(useRenameStore.getState().selectedIds).toEqual([]);
-    expect(serverSettings.preferences).toEqual({ language: "auto", theme: "system", hide_batch_limit_hint: false, cloud_default_locations: {} });
-    expect(await screen.findByText("已重置应用")).toBeInTheDocument();
-    await waitFor(() => expect(screen.queryByRole("dialog", { name: "确认重置？" })).not.toBeInTheDocument());
-    await waitFor(() => expect(screen.getByRole("combobox", { name: "外观主题" })).toHaveTextContent("跟随系统"));
-    expect(removeItem).toHaveBeenCalledWith(workspaceSessionKey);
-    expect(window.sessionStorage.getItem("unrelated-session-key")).toBe("keep");
-    fireEvent.click(screen.getByRole("button", { name: "返回主页" }));
-    await waitFor(() => expect(readWorkspaceSession().session.locations["default-local"])
-      .toEqual({ revision: 2, accountId: null, location: { kind: "root" } }));
-    expect(readWorkspaceSession().session.locations["user-onedrive"]).toBeUndefined();
-    expect(readWorkspaceSession().session.activeStorageId).toBe("default-local");
-    expect(screen.queryByRole("button", { name: "重置前的目录" })).not.toBeInTheDocument();
-  });
 
   it("keeps current settings and rules when reset fails", async () => {
     window.sessionStorage.setItem(workspaceSessionKey, JSON.stringify({

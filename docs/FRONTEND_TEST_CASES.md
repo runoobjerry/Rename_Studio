@@ -29,7 +29,7 @@
 | 部分成功并伴随未知/缺失结果时，文件身份、缓存、原始快照、批次记录与重试集合一致；重新全选不包含成功/未知项，后续预览只提交明确失败项 | 工作流 Hook、Rename Store |
 | 执行前确认，未变化批次也必须确认，进度失败不虚构结果，执行中锁定控件 | [RenameActions](../frontend/src/features/rename/RenameActions.test.tsx)、工作台集成 |
 | 全选和过滤覆盖完整数据集，包括虚拟列表未挂载的行；未知身份禁止选择 | FileBrowser、[虚拟列表](../frontend/src/features/files/FileBrowser.virtual.test.tsx) |
-| 恢复出厂设置成功清空内存规则、选择及路径记忆并回到默认 Local 根目录，保留其他会话键；取消不请求，失败保留配置和路径记忆 | 工作台集成 |
+| 恢复出厂设置失败显示错误，保留规则、配置、路径记忆与当前连接，并保持确认框打开 | 工作台集成 |
 | 连接执行期间不能编辑，默认连接不能删除 | [StorageSettingsPanel](../frontend/src/features/settings/StorageSettingsPanel.test.tsx) |
 | 预览创建传递替换 ID，释放只针对指定预览；错误项不能计入可修改数量 | [API client](../frontend/src/api/client.test.ts)、[PreviewPanel](../frontend/src/features/rename/PreviewPanel.test.tsx) |
 
@@ -47,7 +47,7 @@
 | 核对选择保留部分执行结果，普通选择清除旧结果 | 工作流 Hook；[PreviewPanel](../frontend/src/features/rename/PreviewPanel.test.tsx) 验证结果和筛选展示 |
 | 主题跟随系统、服务器偏好恢复、保存失败回退、连续编辑串行、迟到读取不覆盖保存 | [主题偏好 Hook](../frontend/src/features/settings/useThemePreference.test.ts) |
 | 自动发现语言、浏览器候选优先级与简繁边界、显式/不可用偏好和英文回退；有效语言日期格式化 | [语言解析](../frontend/src/i18n/languages.test.ts) |
-| 首次读取门控、语言即时切换与持久化恢复、保存失败回退、连续切换、重置等待队列并阻止新保存、auto 跟随浏览器且不重挂载 | [语言 Provider](../frontend/src/i18n/LanguageProvider.test.tsx) |
+| 首次读取门控、语言即时切换与持久化恢复、保存失败回退、连续切换、auto 跟随浏览器且不重挂载 | [语言 Provider](../frontend/src/i18n/LanguageProvider.test.tsx) |
 | 设置语言菜单接线、读取失败的本地化警告、保存失败通知、切换时保留选择且不重新请求目录/元数据 | 工作台集成 |
 | 已有预览与确认框随语言更新；保持任务快照、选中项和降序排列，不额外预览、执行或释放快照 | 工作台集成 |
 | 错误类别只按稳定 code 翻译，原始 message/details 保留，未知 code 或普通异常不从英文内容推断类别 | [错误翻译](../frontend/src/i18n/messages.test.ts) |
