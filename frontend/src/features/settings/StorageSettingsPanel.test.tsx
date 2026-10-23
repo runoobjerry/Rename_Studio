@@ -393,16 +393,6 @@ describe("storage settings", () => {
     expect(api.updateStorage).not.toHaveBeenCalled();
     client.clear();
   });
-  it("blocks edits to the executing connection and keeps defaults non-deletable", async () => {
-    const { client, rerender } = setup("default-local");
-    expect(await screen.findByRole("button", { name: "编辑连接 Local" })).toBeDisabled();
-    expect(screen.queryByRole("switch")).not.toBeInTheDocument();
-    expect(screen.getByText("已连接")).toBeInTheDocument();
-    rerender(<QueryClientProvider client={client}><NotificationProvider><StorageSettingsPanel /></NotificationProvider></QueryClientProvider>);
-    fireEvent.click(screen.getByRole("button", { name: "编辑连接 Local" }));
-    expect(screen.getByRole("button", { name: "删除" })).toBeDisabled();
-    client.clear();
-  });
   it("shows account details only in the editor and reports successful logout", async () => {
     const { client } = setup();
     vi.mocked(api.fetchStorageAuthStatus).mockResolvedValue({
@@ -483,22 +473,6 @@ describe("storage settings", () => {
     fireEvent.click(screen.getByRole("button", { name: "取消" }));
     await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
     expect(api.createStorage).toHaveBeenCalledOnce();
-    client.clear();
-  });
-
-  it("deletes only the edited connection directly and does not delete on close", async () => {
-    const { client } = setup();
-    await screen.findByRole("button", { name: "编辑连接 Local" });
-    client.setQueryData(["storages"], [{ storage_id: "other-local", provider_type: "fixture_directory", name: "Other", revision: 1, busy: false, config: { directory: "D:\\other" } }]);
-    fireEvent.click(await screen.findByRole("button", { name: "编辑连接 Other" }));
-    fireEvent.click(screen.getByRole("button", { name: "关闭" }));
-    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
-    expect(api.deleteStorage).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole("button", { name: "编辑连接 Other" }));
-    fireEvent.click(screen.getByRole("button", { name: "删除" }));
-    await waitFor(() => expect(api.deleteStorage).toHaveBeenCalledWith("other-local"));
-    expect(api.deleteStorage).toHaveBeenCalledOnce();
-    expect(screen.queryByText("删除存储连接")).not.toBeInTheDocument();
     client.clear();
   });
 

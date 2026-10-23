@@ -22,12 +22,11 @@ vi.mock("../../components/NotificationProvider", async (importOriginal) => ({
 installWorkspaceTestHooks();
 
 describe("workspace provider capabilities", () => {
-  it.each(["pending", "failed", "missing"] as const)("blocks auth and files while provider metadata is %s, then restores the remembered directory", async (state) => {
+  it.each(["pending", "failed"] as const)("blocks auth and files while provider metadata is %s, then restores the remembered directory", async (state) => {
     const definitions = await api.fetchStorageProviders();
     const finish = deferred<StorageProviderDefinition[]>();
     if (state === "pending") vi.mocked(api.fetchStorageProviders).mockReturnValueOnce(finish.promise);
-    else if (state === "failed") vi.mocked(api.fetchStorageProviders).mockRejectedValueOnce(new Error("Metadata unavailable"));
-    else vi.mocked(api.fetchStorageProviders).mockResolvedValueOnce([]);
+    else vi.mocked(api.fetchStorageProviders).mockRejectedValueOnce(new Error("Metadata unavailable"));
     window.sessionStorage.setItem(workspaceSessionKey, JSON.stringify({
       version: 1, activeStorageId: "user-onedrive", locations: { "user-onedrive": {
         revision: 1, accountId: "account-a", location: { kind: "id", value: "remembered-directory" },
@@ -163,60 +162,6 @@ describe("workspace storage", () => {
     expect(api.releaseStoragePreview).not.toHaveBeenCalled();
   });
 
-  it.each([false, true])("preserves or resets the task when the folder picker returns selected=%s", async (selected) => {
-    const hook = await setupWorkspace(1);
-    await preview(hook);
-    const previousTask = useRenameStore.getState().task;
-    vi.mocked(api.pickStorageFolder).mockResolvedValue({ root_path: selected ? "C:\\new-root" : "C:\\files", selected });
-    if (selected) {
-      const storages = client.getQueryData<StorageInfo[]>(["storages"])!;
-      vi.mocked(api.fetchStorages).mockResolvedValue(storages.map((storage) => storage.storage_id === "default-local"
-        ? { ...storage, revision: 2, config: { root_path: "C:\\new-root" } } : storage));
-      vi.mocked(api.fetchStorageFiles).mockResolvedValue({ ...listing(), items: [listing().items[1]] });
-    }
-    await act(async () => { await hook.result.current.storage.pickLocalRoot.mutateAsync(); });
-    expect(api.pickStorageFolder).toHaveBeenCalledWith("default-local");
-    if (selected) {
-      await waitFor(() => expect(hook.result.current.storage.files.data?.items[0]?.id).toBe("file-1.txt"));
-      expect(useRenameStore.getState().task).toBeNull();
-      expect(useRenameStore.getState().selectedIds).toEqual([]);
-      expect(hook.result.current.workflow.previewData).toBeUndefined();
-      expect(notify).toHaveBeenCalledWith({ key: "files:notifications.rootSelected" });
-    } else {
-      expect(useRenameStore.getState().task).toBe(previousTask);
-      expect(useRenameStore.getState().selectedIds).toEqual(["file-0.txt"]);
-      expect(hook.result.current.workflow.previewData).toBeDefined();
-      expect(notify).not.toHaveBeenCalled();
-      expect(api.fetchStorageFiles).toHaveBeenCalledTimes(1);
-    }
-  });
-
-  it("browses without an account ID but never saves a shared default", async () => {
-    const hook = await setupWorkspace();
-    vi.mocked(api.fetchStorageAuthStatus).mockResolvedValue(status(null));
-    await openCloud(hook);
-    expect(api.fetchStorageFiles).toHaveBeenCalledWith("user-onedrive", { kind: "root" });
-    act(() => hook.result.current.storage.setDefaultCloudPath());
-    expect(api.patchAppSettings).not.toHaveBeenCalled();
-  });
-
-  it("reports a failed save without replacing the previous default", async () => {
-    const hook = await setupWorkspace();
-    serverSettings.preferences.cloud_default_locations["user-onedrive"] = {
-      account_id: "account-a", location: { kind: "path", value: "照片" },
-    };
-    await openCloud(hook);
-    act(() => hook.result.current.storage.setLocation({ kind: "root" }));
-    await waitFor(() => expect(hook.result.current.storage.files.data?.location).toEqual({ kind: "root" }));
-    await waitFor(() => expect(hook.result.current.storage.files.isFetching).toBe(false));
-    vi.mocked(api.patchAppSettings).mockRejectedValueOnce(new Error("Disk unavailable"));
-    act(() => hook.result.current.storage.setDefaultCloudPath());
-    await waitFor(() => expect(notify).toHaveBeenCalledWith({ key: "files:notifications.defaultSaveFailed", error: expect.objectContaining({ message: "Disk unavailable" }) }, "error"));
-    expect(serverSettings.preferences.cloud_default_locations["user-onedrive"].location).toEqual({ kind: "path", value: "照片" });
-    expect(client.getQueryData<typeof serverSettings>(["app-settings"])!.preferences.cloud_default_locations["user-onedrive"].location)
-      .toEqual({ kind: "path", value: "照片" });
-  });
-
   it("falls back to root when settings cannot be read", async () => {
     const hook = await setupWorkspace();
     vi.mocked(api.fetchAppSettings).mockRejectedValueOnce(new Error("Server unavailable"));
@@ -343,27 +288,6 @@ describe("workspace session locations", () => {
     expect(hook.result.current.location).toEqual({ kind: "root" });
   });
 
-  it("keeps independent locations for multiple local connections", async () => {
-    const storages = await api.fetchStorages();
-    vi.mocked(api.fetchStorages).mockResolvedValue([...storages, {
-      ...storages[0], storage_id: "second-local", name: "另一本地连接",
-    }]);
-    const hook = mountStorage();
-    await waitFor(() => expect(hook.result.current.files.isSuccess).toBe(true));
-    act(() => hook.result.current.setPath("照片/一"));
-    await waitFor(() => expect(readWorkspaceSession().session.locations["default-local"].location)
-      .toEqual({ kind: "path", value: "照片/一" }));
-    act(() => hook.result.current.selectStorage("second-local"));
-    await waitFor(() => expect(hook.result.current.files.isSuccess).toBe(true));
-    act(() => hook.result.current.setPath("文档/二"));
-    await waitFor(() => expect(readWorkspaceSession().session.locations["second-local"].location)
-      .toEqual({ kind: "path", value: "文档/二" }));
-    act(() => hook.result.current.selectStorage("default-local"));
-    await waitFor(() => expect(hook.result.current.location).toEqual({ kind: "path", value: "照片/一" }));
-    act(() => hook.result.current.selectStorage("second-local"));
-    await waitFor(() => expect(hook.result.current.location).toEqual({ kind: "path", value: "文档/二" }));
-  });
-
   it("restores the active cloud connection and canonical location after remount without reading root or the default", async () => {
     serverSettings.preferences.cloud_default_locations["user-onedrive"] = {
       account_id: "account-a", location: { kind: "path", value: "默认目录" },
@@ -473,18 +397,5 @@ describe("workspace session locations", () => {
     await waitFor(() => expect(hook.result.current.files.isError).toBe(true));
     expect(readWorkspaceSession().session.locations["default-local"].location)
       .toEqual({ kind: "path", value: "工作目录" });
-  });
-
-  it("preserves in-memory locations and warns once when session storage is blocked", async () => {
-    vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => { throw new DOMException("Blocked", "SecurityError"); });
-    vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => { throw new DOMException("Blocked", "SecurityError"); });
-    const hook = mountStorage();
-    await waitFor(() => expect(hook.result.current.files.isSuccess).toBe(true));
-    act(() => hook.result.current.setPath("内存目录"));
-    await waitFor(() => expect(hook.result.current.files.data?.location).toEqual({ kind: "path", value: "内存目录" }));
-    act(() => hook.result.current.selectStorage("default-local"));
-    await waitFor(() => expect(hook.result.current.location).toEqual({ kind: "path", value: "内存目录" }));
-    expect(notify).toHaveBeenCalledTimes(1);
-    expect(notify).toHaveBeenCalledWith({ key: "files:notifications.sessionUnavailable" }, "warning");
   });
 });

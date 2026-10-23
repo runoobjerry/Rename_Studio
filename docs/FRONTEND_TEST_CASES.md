@@ -18,9 +18,9 @@
 | 场景 | 自动化承接位置 |
 |---|---|
 | 连接/账号/目录隔离，旧目录与旧预览不能污染新工作区 | [工作台存储集成](../frontend/src/WorkspaceApp.storage.test.tsx)、[默认云目录](../frontend/src/features/files/defaultCloudLocation.test.ts) |
-| 工作区按 browser_auth 判定授权；元数据 pending/error/missing 不读取授权或文件，恢复后使用原目录；元数据刷新失败保留账号身份、任务与选择 | [存储 Hook](../frontend/src/workspace/hooks/useWorkspaceStorage.test.ts) |
+| 工作区按 browser_auth 判定授权；元数据 pending/error 不读取授权或文件，恢复后使用原目录；元数据刷新失败保留账号身份、任务与选择 | [存储 Hook](../frontend/src/workspace/hooks/useWorkspaceStorage.test.ts) |
 | 非 Local 且无需浏览器授权的服务恢复 ID 位置，不发授权请求；未知 OAuth 服务等待授权，不支持的位置类型不请求 | 存储 Hook |
-| 目录按钮分别按 browser_auth/local_picker 展示，侧栏图标按 icon 展示，未授权提示使用 Provider 名称；无浏览器授权服务的选择随成功列表同步 | 工作台集成、工作流 Hook |
+| 无浏览器授权服务的选择随成功列表同步 | 工作流 Hook |
 | 选择及规则变化使旧预览失效；保留替换 ID、释放迟到或结束任务的预览 | [工作流 Hook](../frontend/src/features/rename/useRenameWorkflow.test.ts)、工作台集成 代表性 UI 接线 |
 | 排序与完整列表、预览、1001 项分批保持一致；草稿可重排并保留任务身份与原始快照，执行后冻结顺序并保留 Local 新 ID 与已有记录 | 工作流 Hook、[Rename Store](../frontend/src/stores/useRenameStore.test.ts)、工作台集成、[虚拟列表](../frontend/src/features/files/FileBrowser.virtual.test.tsx) |
 | 刷新只移除已消失的选择，失败保留选择；过滤隐藏项不恢复旧选择 | 工作流 Hook、工作台集成、[FileBrowser](../frontend/src/features/files/FileBrowser.test.tsx) |
@@ -30,7 +30,6 @@
 | 执行前确认，未变化批次也必须确认，进度失败不虚构结果，执行中锁定控件 | [RenameActions](../frontend/src/features/rename/RenameActions.test.tsx)、工作台集成 |
 | 全选和过滤覆盖完整数据集，包括虚拟列表未挂载的行；未知身份禁止选择 | FileBrowser、[虚拟列表](../frontend/src/features/files/FileBrowser.virtual.test.tsx) |
 | 恢复出厂设置失败显示错误，保留规则、配置、路径记忆与当前连接，并保持确认框打开 | 工作台集成 |
-| 连接执行期间不能编辑，默认连接不能删除 | [StorageSettingsPanel](../frontend/src/features/settings/StorageSettingsPanel.test.tsx) |
 | 预览创建传递替换 ID，释放只针对指定预览；错误项不能计入可修改数量 | [API client](../frontend/src/api/client.test.ts)、[PreviewPanel](../frontend/src/features/rename/PreviewPanel.test.tsx) |
 
 ## 业务功能、异常与交互
@@ -39,10 +38,9 @@
 
 | 场景 | 自动化承接位置 |
 |---|---|
-| 默认云目录恢复、导航后保存；重新进入优先使用尚未设为默认值的工作路径；缺账号不保存，读取/保存/目录请求失败不覆盖配置 | 工作台集成、[存储 Hook](../frontend/src/workspace/hooks/useWorkspaceStorage.test.ts) |
-| 标签会话记忆：多本地连接位置隔离、刷新重挂载恢复当前连接与服务端规范位置、新会话回到根目录；旧连接版本、其他账号位置和损坏数据不复用，目录读取失败保留成功位置，浏览器存储禁用时保留内存状态并提示 | 存储 Hook；云端重新进入由 工作台集成 承接，真实刷新及关闭标签行为由人工验收 |
+| 默认云目录恢复、导航后保存；重新进入优先使用尚未设为默认值的工作路径；读取/目录请求失败不覆盖配置 | 工作台集成、[存储 Hook](../frontend/src/workspace/hooks/useWorkspaceStorage.test.ts) |
+| 标签会话记忆：刷新重挂载恢复当前连接与服务端规范位置、新会话回到根目录；旧连接版本、其他账号位置和损坏数据不复用，目录读取失败保留成功位置 | 存储 Hook；云端重新进入由 工作台集成 承接，真实刷新及关闭标签行为由人工验收 |
 | 同连接点击保留进行中的导航、任务和预览；设置页两种返回入口保留路径；连接删除返回默认 Local、非当前连接配置变化和断开授权清理旧记忆，旧连接/旧版本的迟到目录响应不覆盖记忆 | 存储 Hook、工作台集成 |
-| 本地文件夹选择确认后清理任务，取消保留任务 | 存储 Hook；UI 入口按人工清单检查 |
 | 超上限只在请求预览时提示；取消不建任务、继续只提交一批、偏好保存到后端 | 工作流 Hook；提示框交互按人工清单检查 |
 | 核对选择保留部分执行结果，普通选择清除旧结果 | 工作流 Hook；[PreviewPanel](../frontend/src/features/rename/PreviewPanel.test.tsx) 验证结果和筛选展示 |
 | 主题跟随系统、服务器偏好恢复、保存失败回退、连续编辑串行、迟到读取不覆盖保存 | [主题偏好 Hook](../frontend/src/features/settings/useThemePreference.test.ts) |

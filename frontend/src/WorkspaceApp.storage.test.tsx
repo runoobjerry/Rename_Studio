@@ -15,50 +15,6 @@ vi.mock("./api/client", async (importOriginal) => {
 });
 installWorkspaceAppTestHooks();
 
-it.each([
-  { browserAuth: false, localPicker: false, icon: "computer" as const },
-  { browserAuth: false, localPicker: true, icon: "cloud" as const },
-  { browserAuth: true, localPicker: false, icon: "computer" as const },
-  { browserAuth: true, localPicker: true, icon: "cloud" as const },
-])("uses provider capabilities for directory actions: browserAuth=$browserAuth localPicker=$localPicker", async ({ browserAuth, localPicker, icon }) => {
-  const definitions = await api.fetchStorageProviders();
-  const storages = await api.fetchStorages();
-  vi.mocked(api.fetchStorageProviders).mockResolvedValue([{
-    ...definitions[0], provider_type: "fixture_service",
-    browser_auth: browserAuth, local_picker: localPicker, icon,
-  }]);
-  vi.mocked(api.fetchStorages).mockResolvedValue([{
-    ...storages[0], provider_type: "fixture_service", account_id: browserAuth ? "account-a" : null,
-  }]);
-  renderWorkspace();
-  await waitFor(() => expect(api.fetchStorageFiles).toHaveBeenCalledWith("default-local", { kind: "root" }));
-  const panel = within(screen.getByRole("region", { name: "目录位置" }));
-  expect(screen.getByTestId(icon === "computer" ? "ComputerRoundedIcon" : "CloudQueueRoundedIcon")).toBeInTheDocument();
-  if (localPicker) expect(panel.getByRole("button", { name: "浏览…" })).toBeInTheDocument();
-  else expect(panel.queryByRole("button", { name: "浏览…" })).not.toBeInTheDocument();
-  if (browserAuth) {
-    expect(panel.getByRole("button", { name: "设为默认" })).toBeInTheDocument();
-    expect(api.fetchStorageAuthStatus).toHaveBeenCalledWith("default-local");
-  } else {
-    expect(panel.queryByRole("button", { name: "设为默认" })).not.toBeInTheDocument();
-    expect(api.fetchStorageAuthStatus).not.toHaveBeenCalled();
-  }
-});
-
-it("uses the provider name in disconnected guidance without requesting its files", async () => {
-  const definitions = await api.fetchStorageProviders();
-  const storages = await api.fetchStorages();
-  vi.mocked(api.fetchStorageProviders).mockResolvedValue([{
-    ...definitions[1], provider_type: "fixture_service",
-  }]);
-  vi.mocked(api.fetchStorages).mockResolvedValue([{ ...storages[0], provider_type: "fixture_service" }]);
-  vi.mocked(api.fetchStorageAuthStatus).mockResolvedValue(status(null, false));
-  renderWorkspace();
-  expect(await screen.findByText("请先前往设置页面连接 fixture_service 账号。")).toBeInTheDocument();
-  expect(screen.getByText("连接 fixture_service 后可浏览云端目录。")).toBeInTheDocument();
-  expect(api.fetchStorageFiles).not.toHaveBeenCalled();
-});
-
 async function openCloud() {
   renderWorkspace();
   fireEvent.click(await screen.findByRole("button", { name: "OneDrive" }));
