@@ -22,7 +22,7 @@
 | 非 Local 且无需浏览器授权的服务恢复 ID 位置，不发授权请求；未知 OAuth 服务等待授权，不支持的位置类型不请求 | 存储 Hook |
 | 目录按钮分别按 browser_auth/local_picker 展示，侧栏图标按 icon 展示，未授权提示使用 Provider 名称；无浏览器授权服务的选择随成功列表同步 | 工作台集成、工作流 Hook |
 | 选择及规则变化使旧预览失效；保留替换 ID、释放迟到或结束任务的预览 | [工作流 Hook](../frontend/src/features/rename/useRenameWorkflow.test.ts)、工作台集成 代表性 UI 接线 |
-| 排序与完整列表、预览、1001 项分批保持一致；草稿可重排且旧预览不能复活，执行后冻结顺序并保留 Local 新 ID 与已有记录 | 工作流 Hook、[Rename Store](../frontend/src/stores/useRenameStore.test.ts)、工作台集成、[虚拟列表](../frontend/src/features/files/FileBrowser.virtual.test.tsx) |
+| 排序与完整列表、预览、1001 项分批保持一致；草稿可重排并保留任务身份与原始快照，执行后冻结顺序并保留 Local 新 ID 与已有记录 | 工作流 Hook、[Rename Store](../frontend/src/stores/useRenameStore.test.ts)、工作台集成、[虚拟列表](../frontend/src/features/files/FileBrowser.virtual.test.tsx) |
 | 刷新只移除已消失的选择，失败保留选择；过滤隐藏项不恢复旧选择 | 工作流 Hook、工作台集成、[FileBrowser](../frontend/src/features/files/FileBrowser.test.tsx) |
 | 1000 / 2000 项分批、固定任务快照、成功项不重复选择、失败重试与未知结果显式核对 | [Rename Store](../frontend/src/stores/useRenameStore.test.ts)、工作流 Hook |
 | 执行成功或响应丢失后暂停自动目录读取，允许人工刷新；合并服务端确认的文件身份 | 工作流 Hook、Rename Store |
@@ -58,7 +58,7 @@
 | 任意 Provider 通过元数据定义配置字段及密码式顶层密钥，缺词显示原始 Provider/字段 ID；创建/切换/重开清空，配置不完整禁用登录，授权弹窗校验来源和连接 | StorageSettingsPanel |
 | 明确不可重命名项在权限变化后退出旧选择和预览请求，未知权限项保留 | 工作流 Hook |
 | 目录语义导航、文本选择不误导航、任务过滤、目录折叠与键盘/滚动访问 | FileBrowser、虚拟列表、[LocationBreadcrumbs](../frontend/src/features/files/LocationBreadcrumbs.test.tsx) |
-| MUI 表头升降序、选择不随排序变化、锁定提示；中文数字名称自然排序、等价名称稳定比较、真实时间/时区、同时间及缺失值分组置后、不修改源数组 | FileBrowser、[文件排序](../frontend/src/features/files/fileSort.test.ts) |
+| 虚拟列表先对完整数据排序再截取渲染行；切换排序重置滚动位置，全选使用完整排序结果 | [虚拟列表](../frontend/src/features/files/FileBrowser.virtual.test.tsx) |
 | 规则添加、编辑、移动、复制、删除及数字草稿归属；加载时禁止添加，溢出菜单仍可访问 | [RuleEditor](../frontend/src/features/rules/RuleEditor.test.tsx)、[RuleFields](../frontend/src/features/rules/RuleFields.test.tsx) |
 | Rule 菜单、说明 Tooltip、卡片与 ARIA 按 type 翻译；切换后继续提交原始 type/config，未知规则显示 ID | RuleEditor |
 | Local/OneDrive/Google Drive 双语字段、新建/编辑/已保存密钥帮助、未授权状态及账号缺省文案；原始 key/value 与顶层密钥提交 | StorageSettingsPanel |

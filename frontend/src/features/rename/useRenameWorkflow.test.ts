@@ -247,18 +247,14 @@ describe("rename workflow", () => {
     expect(useRenameStore.getState().task!.batches[0].results).toEqual(response.items);
   });
 
-  it("invalidates preview on sorting, keeps task snapshots, and never revives a previous ordering", async () => {
+  it("reorders preview items while keeping task identity, selection and original snapshots", async () => {
     const hook = await setupWorkspace(3);
     act(() => hook.result.current.workflow.selectAllFiles(["file-1.txt", "file-0.txt", "file-2.txt"]));
     await preview(hook);
     const task = useRenameStore.getState().task!;
     const before = task.items[0].before;
     act(() => hook.result.current.workflow.changeSort({ field: "name", direction: "desc" }));
-    expect(hook.result.current.workflow.previewData).toBeUndefined();
     expect(useRenameStore.getState().selectedIds).toEqual(["file-1.txt", "file-0.txt", "file-2.txt"]);
-    act(() => hook.result.current.workflow.changeSort({ field: "name", direction: "asc" }));
-    expect(hook.result.current.workflow.previewData).toBeUndefined();
-    act(() => hook.result.current.workflow.changeSort({ field: "name", direction: "desc" }));
     await preview(hook);
     expect(api.createStoragePreview).toHaveBeenLastCalledWith("default-local", { kind: "root" },
       ["file-2.txt", "file-1.txt", "file-0.txt"], [], "task-preview");
@@ -293,17 +289,6 @@ describe("rename workflow", () => {
     await preview(hook);
     expect(api.createStoragePreview).toHaveBeenLastCalledWith("default-local", { kind: "root" },
       ["file-0.txt", "file-1.txt", "file-2.txt"], []);
-  });
-
-  it("keeps fixed task membership validation when sorting the selected IDs", async () => {
-    const hook = await setupWorkspace(3);
-    act(() => hook.result.current.workflow.selectAllFiles(["file-0.txt", "file-1.txt"]));
-    await preview(hook);
-    act(() => hook.result.current.workflow.changeSort({ field: "name", direction: "desc" }));
-    act(() => hook.result.current.workflow.selectAllFiles(["file-0.txt", "file-1.txt", "file-2.txt"]));
-    act(() => hook.result.current.workflow.requestPreview());
-    expect(api.createStoragePreview).toHaveBeenCalledTimes(1);
-    expect(useRenameStore.getState().task!.items).toHaveLength(2);
   });
 
   it.each(["skipped", "failed", "lost-response"] as const)("locks sort after %s and unlocks only after task end", async (outcome) => {

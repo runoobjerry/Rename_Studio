@@ -51,7 +51,7 @@ jobs:
         if: steps.changes.outputs.scope != 'skip'
         run: npm run i18n:check
 
-      - name: Run business and infrastructure tests
+      - name: Run business tests
         id: tests
         if: steps.changes.outputs.scope == 'full'
         run: npm run test:ci

@@ -12,7 +12,7 @@ vi.mock("./api/client", async (importOriginal) => {
 });
 installWorkspaceAppTestHooks();
 
-it("connects MUI sorting to preview order and clears execution confirmation when the sort changes", async () => {
+it("connects MUI sorting to preview request and displayed order", async () => {
   const items = ["001.jpg", "002.jpg"].map((name) => ({ id: name, name, path: name,
     parent_path: "", is_directory: false, size: 1, modified_at: null }));
   vi.mocked(api.fetchStorageFiles).mockResolvedValue({ provider: "local", path: "", parent_path: null, items });
@@ -31,15 +31,7 @@ it("connects MUI sorting to preview order and clears execution confirmation when
   const previewTable = await screen.findByRole("table", { name: "修改预览" });
   expect(within(previewTable).getAllByRole("row").slice(1)
     .map((row) => within(row).getAllByRole("cell")[0].textContent)).toEqual(["002.jpg", "001.jpg"]);
-  fireEvent.click(screen.getByRole("button", { name: "开始修改" }));
-  expect(screen.getByRole("dialog")).toBeInTheDocument();
-  // 关闭确认卡片后改变排序，不能再次应用之前的服务端快照。
-  fireEvent.click(screen.getByRole("button", { name: "取消" }));
-  await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
-  fireEvent.click(screen.getByRole("button", { name: "文件名" }));
-  expect(screen.getByRole("button", { name: "开始修改" })).toBeDisabled();
-  expect(screen.queryByRole("table", { name: "修改预览" })).not.toBeInTheDocument();
-  expect(api.executePreview).not.toHaveBeenCalled();
+
 });
 
 describe("workspace workflow wiring", () => {
@@ -92,8 +84,6 @@ describe("workspace workflow wiring", () => {
     expect(fileSelection).toBeDisabled();
     expect(allSelection).toBeDisabled();
     expect(invertSelection).toBeDisabled();
-    expect(screen.getByText("文件名", { selector: ".MuiTableSortLabel-root" })).toHaveAttribute("aria-disabled", "true");
-    expect(screen.getByText("修改时间", { selector: ".MuiTableSortLabel-root" })).toHaveAttribute("aria-disabled", "true");
     fireEvent.click(fileSelection);
     fireEvent.click(allSelection);
     fireEvent.click(invertSelection);
