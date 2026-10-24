@@ -2,7 +2,6 @@
 
 import argparse
 import ast
-from datetime import date
 import json
 from pathlib import Path
 import re
@@ -90,17 +89,13 @@ def update_api(source: str, version: str) -> str:
 
 def update_changelog(source: str, version: str) -> str:
     headings = list(re.finditer(
-        r"(?m)^## \[([^\]\r\n]+)\](?: - (\d{4}-\d{2}-\d{2}))?(?=\r?$)",
+        r"(?m)^## \[[^\]\r\n]+\](?=\r?$)",
         source,
     ))
     if len(headings) != 1:
         raise ValueError("CHANGELOG.md: expected one current version heading")
     heading = headings[0]
-    tag = f"v{version}"
-    if heading[1] == tag and heading[2] is not None:
-        return source
-    # Stamp a newly selected version once; subsequent checks keep its date.
-    updated = f"## [{tag}] - {date.today().isoformat()}"
+    updated = f"## [v{version}]"
     return source[:heading.start()] + updated + source[heading.end():]
 
 

@@ -2,7 +2,6 @@
 
 import argparse
 from pathlib import Path
-import re
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -10,8 +9,8 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def release_notes(changelog: str, tag: str) -> str:
     lines = changelog.splitlines()
-    heading = re.compile(rf"## \[{re.escape(tag)}\] - \d{{4}}-\d{{2}}-\d{{2}}")
-    starts = [index for index, line in enumerate(lines) if heading.fullmatch(line)]
+    heading = f"## [{tag}]"
+    starts = [index for index, line in enumerate(lines) if line == heading]
     if len(starts) != 1:
         raise ValueError(f"Expected exactly one CHANGELOG section for {tag}")
     start = starts[0]
