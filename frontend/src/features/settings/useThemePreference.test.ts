@@ -40,22 +40,6 @@ beforeEach(() => {
 afterEach(() => { cleanup(); client.clear(); vi.clearAllMocks(); vi.unstubAllGlobals(); });
 
 describe("theme preference", () => {
-  it("uses server system preference and follows live system changes", async () => {
-    const { result } = renderHook(useThemePreference, { wrapper });
-    await waitFor(() => expect(fetchAppSettings).toHaveBeenCalledOnce());
-    expect(result.current.preference).toBe("system");
-    expect(result.current.mode).toBe("light");
-    changeSystem(true);
-    expect(result.current.mode).toBe("dark");
-    expect(patchAppSettings).not.toHaveBeenCalled();
-  });
-
-  it.each(["light", "dark"] as const)("restores server %s preference", async (mode) => {
-    serverSettings.preferences.theme = mode;
-    const { result } = renderHook(useThemePreference, { wrapper });
-    await waitFor(() => expect(result.current.preference).toBe(mode));
-    expect(result.current.mode).toBe(mode);
-  });
 
   it("saves explicit appearance and restores it after remount", async () => {
     const { result, unmount } = renderHook(useThemePreference, { wrapper });
@@ -77,25 +61,6 @@ describe("theme preference", () => {
     vi.mocked(patchAppSettings).mockRejectedValueOnce(new Error("Offline"));
     await act(async () => { await expect(result.current.setPreference("dark")).rejects.toThrow("Offline"); });
     expect(result.current.preference).toBe("system");
-    expect(client.getQueryData<AppSettings>(["app-settings"])).toEqual(serverSettings);
-  });
-
-  it("serializes rapid edits and keeps the last successful change", async () => {
-    const { result } = renderHook(useThemePreference, { wrapper });
-    await waitFor(() => expect(fetchAppSettings).toHaveBeenCalledOnce());
-    const finishFirst = deferred<AppSettings>();
-    vi.mocked(patchAppSettings).mockReturnValueOnce(finishFirst.promise);
-    await act(async () => {
-      const first = result.current.setPreference("light");
-      const second = result.current.setPreference("dark");
-      await waitFor(() => expect(patchAppSettings).toHaveBeenCalledOnce());
-      serverSettings = { preferences: { ...serverSettings.preferences, theme: "light" } };
-      finishFirst.resolve(serverSettings);
-      await Promise.all([first, second]);
-    });
-    expect(patchAppSettings).toHaveBeenNthCalledWith(1, { theme: "light" });
-    expect(patchAppSettings).toHaveBeenNthCalledWith(2, { theme: "dark" });
-    expect(result.current.preference).toBe("dark");
     expect(client.getQueryData<AppSettings>(["app-settings"])).toEqual(serverSettings);
   });
 

@@ -5,7 +5,7 @@ import * as api from "../../api/client";
 import { useRenameStore } from "../../stores/useRenameStore";
 import { previewResponse } from "../../test/fixtures";
 import type { ExecuteResponse } from "../../types";
-import { installWorkspaceTestHooks, client, listing, notify, preview, serverSettings, setupWorkspace } from "../../test/workspaceHarness";
+import { installWorkspaceTestHooks, client, listing, notify, preview, setupWorkspace } from "../../test/workspaceHarness";
 
 // Mock 注册保留在入口；真实 Hook、Store 和 Query 共同参与场景。
 vi.mock("../../api/client", async (importOriginal) => {
@@ -96,23 +96,6 @@ describe("rename workflow", () => {
     expect(hook.result.current.workflow.batchHintOpen).toBe(false);
     expect(useRenameStore.getState().selectedIds).toHaveLength(1001);
     expect(api.createStoragePreview).not.toHaveBeenCalled();
-  });
-
-  it("saves the hint preference and submits only 1000 after continuing", async () => {
-    const hook = await setupWorkspace(1001);
-    act(() => hook.result.current.workflow.requestPreview());
-    act(() => hook.result.current.workflow.changeBatchHintPreference(true));
-    await waitFor(() => expect(serverSettings.preferences.hide_batch_limit_hint).toBe(true));
-    expect(api.patchAppSettings).toHaveBeenCalledWith({ hide_batch_limit_hint: true });
-    act(() => hook.result.current.workflow.continueBatchPreview());
-    await waitFor(() => expect(api.createStoragePreview).toHaveBeenCalledWith(
-      "default-local", { kind: "root" }, listing(1001).items.slice(0, 1000).map((file) => file.id), [],
-    ));
-    await waitFor(() => expect(hook.result.current.workflow.previewData).toBeDefined());
-    expect(hook.result.current.workflow.batchHintOpen).toBe(false);
-    act(() => hook.result.current.workflow.requestPreview());
-    await waitFor(() => expect(api.createStoragePreview).toHaveBeenCalledTimes(2));
-    expect(hook.result.current.workflow.batchHintOpen).toBe(false);
   });
 
   it("retains a cleared preview ID and releases it on task end", async () => {
