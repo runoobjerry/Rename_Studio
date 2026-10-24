@@ -129,6 +129,22 @@ export const FileBrowser = memo(function FileBrowser({
   const visibleSelectedCount = useMemo(() => visibleItems.filter((item) => selectedSet.has(item.id)).length, [visibleItems, selectedSet]);
   const selectableIds = useMemo(() => visibleIds.filter((id) => listedItems.has(id) && listedItems.get(id)!.can_rename !== false &&
     taskItems.get(id)?.status !== "completed" && taskItems.get(id)?.status !== "unknown"), [visibleIds, listedItems, taskItems]);
+  const [selectionAnchor, setSelectionAnchor] = useState<string | null>(null);
+  useEffect(() => {
+    setSelectionAnchor(null);
+  }, [listing, task?.taskId, filters, sort]);
+  const selectRow = useCallback((fileId: string, shiftKey: boolean) => {
+    const anchorIndex = selectionAnchor !== null && selectedSet.has(selectionAnchor)
+      ? selectableIds.indexOf(selectionAnchor) : -1;
+    if (shiftKey && anchorIndex >= 0) {
+      // 使用完整可选列表，区间选择不受虚拟滚动的已渲染行限制。
+      const targetIndex = selectableIds.indexOf(fileId);
+      onSelectAll(selectableIds.slice(Math.min(anchorIndex, targetIndex), Math.max(anchorIndex, targetIndex) + 1));
+    } else {
+      setSelectionAnchor(fileId);
+      onSelectAll([fileId]);
+    }
+  }, [selectionAnchor, selectedSet, selectableIds, onSelectAll]);
   const scrollKey = useMemo(() => [listing.items, task?.taskId, filters, sort], [listing.items, task?.taskId, filters, sort]);
   const columnValues = useMemo(() => [visibleItems.map(() => ""), visibleItems.map((item) => item.name),
     visibleItems.map((item) => getExtension(item.name, item.is_directory, t("files:types.folder"))),
@@ -268,7 +284,7 @@ export const FileBrowser = memo(function FileBrowser({
               <FileBrowserRow key={taskItems.get(item.id)?.taskItemId ?? item.id}
                 item={item} rowIndex={virtual.start + offset} selected={selectedSet.has(item.id)} modifiedAtFormatter={modifiedAtFormatter}
                 disabled={disabled || listedItems.get(item.id)?.can_rename === false || (hasTask && (!taskCurrent || !listedItems.has(item.id))) || taskItems.get(item.id)?.status === "completed" || taskItems.get(item.id)?.status === "unknown"}
-                navigationDisabled={hasTask || disabled} onToggle={onToggle}
+                navigationDisabled={hasTask || disabled} onToggle={onToggle} onSelectRow={selectRow}
                 onNavigate={onNavigate} onNavigateLocation={onNavigateLocation} />
             ))}
             <VirtualTableSpacer height={virtual.bottom} columns={4} />
@@ -294,23 +310,32 @@ interface FileBrowserRowProps {
   disabled: boolean;
   navigationDisabled: boolean;
   onToggle: FileBrowserProps["onToggle"];
+  onSelectRow: (fileId: string, shiftKey: boolean) => void;
   onNavigate: FileBrowserProps["onNavigate"];
   onNavigateLocation: FileBrowserProps["onNavigateLocation"];
 }
 
 const FileBrowserRow = memo(function FileBrowserRow({ item, rowIndex, selected, disabled, navigationDisabled, modifiedAtFormatter,
-  onToggle, onNavigate, onNavigateLocation }: FileBrowserRowProps) {
+  onToggle, onSelectRow, onNavigate, onNavigateLocation }: FileBrowserRowProps) {
   const { t } = useTranslation();
   const modifiedAt = formatModifiedAt(item.modified_at, modifiedAtFormatter);
-  return <TableRow hover selected={selected} data-row-index={rowIndex} aria-rowindex={rowIndex + 2} tabIndex={-1}>
+  return <TableRow hover selected={selected} data-row-index={rowIndex} aria-rowindex={rowIndex + 2} tabIndex={-1}
+    onClick={(event) => { if (!disabled) onSelectRow(item.id, event.shiftKey); }}
+    onMouseDown={(event) => { if (!disabled && event.shiftKey) event.preventDefault(); }}
+    sx={{ cursor: disabled ? undefined : "pointer" }}>
     <TableCell padding="checkbox">
       <Checkbox size="small" sx={fileCheckboxSx} checked={selected} disabled={disabled} onChange={() => onToggle(item.id)}
+        onClick={(event) => event.stopPropagation()}
         slotProps={{ input: { "aria-label": t(item.is_directory ? "files:selectFolder" : "files:selectFile", { name: item.name }) } }} />
     </TableCell>
     <TableCell>
       <Tooltip title={item.name} placement="top-start">
         {item.is_directory ? <ButtonBase className="directory-name" disabled={navigationDisabled}
-          onClick={() => item.location && onNavigateLocation ? onNavigateLocation(item.location) : onNavigate(item.path)}>
+          onClick={(event) => {
+            event.stopPropagation();
+            if (item.location && onNavigateLocation) onNavigateLocation(item.location);
+            else onNavigate(item.path);
+          }}>
           <FolderRoundedIcon className="file-icon" fontSize="small" />
           <span className="file-name">{item.name}</span>
         </ButtonBase> : <span className="file-name-cell">
