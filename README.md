@@ -61,8 +61,6 @@ bash "/项目完整路径/Start.sh"
 
 详细使用与配置说明见[项目 Wiki](https://github.com/runoobjerry/Rename_Studio/wiki) 。
 
-新版本的重大变更见[更新日志](CHANGELOG.md)。
-
 | 文档 | 内容 |
 | --- | --- |
 | [使用帮助](https://github.com/runoobjerry/Rename_Studio/wiki/Usage-Guide) | 文件选择、规则参数、预览执行、分批处理、目录记忆、更新与重置 |
@@ -168,8 +166,6 @@ npm run check
 构建生成完整 `frontend/dist` 后，可从仓库根目录使用 `Start.ps1` / `Start.sh` 验证发布模式。发布启动器使用单进程后端提供静态页面，保留根路径 API 和 `/api` 挂载；预览和执行状态位于进程内存中，不支持多 worker 部署。
 
 Frontend CI 在相关前端、Rule/Provider 注册代码的 PR 或手动触发时运行翻译静态检查、前端测试和构建。Release ZIPs 在 `v*` 标签推送时构建、按白名单组装 ZIP，并在 Windows x64 / macOS ARM64 的全新 Python 3.12 环境检查依赖和解压包服务，成功后创建 Release 草稿；手动触发只生成 Actions 产物。发布工作流不运行 Vitest 或 pytest，也不代替启动交互、浏览器、OAuth 和真实改名验收。
-
-版本变更按 [CHANGELOG.md](CHANGELOG.md) 中的流程维护：用户验收并要求记录后，Codex 写入“未发布”，随相关代码一起提交（提交与推送需用户批准）。准备发布时先归档到与 Git 标签完全一致的版本标题并提交，再创建标签；发布工作流将该版本记录写入 Release 草稿，缺失或没有实质条目时不创建草稿。最终发布前请人工核对说明和附件。
 
 ### 模块边界与维护文档
 
