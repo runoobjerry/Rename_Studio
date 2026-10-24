@@ -87,6 +87,18 @@ def update_api(source: str, version: str) -> str:
     return (content[:start] + json.dumps(version).encode("utf-8") + content[end:]).decode("utf-8")
 
 
+def update_changelog(source: str, version: str) -> str:
+    headings = list(re.finditer(
+        r"(?m)^## \[[^\]\r\n]+\](?=\r?$)",
+        source,
+    ))
+    if len(headings) != 1:
+        raise ValueError("CHANGELOG.md: expected one current version heading")
+    heading = headings[0]
+    updated = f"## [v{version}]"
+    return source[:heading.start()] + updated + source[heading.end():]
+
+
 def prepare_updates(version: str, python_version: str) -> dict[Path, str]:
     updates: dict[Path, str] = {}
     # Prepare every file before writing, so invalid input or layout cannot cause
@@ -96,6 +108,7 @@ def prepare_updates(version: str, python_version: str) -> dict[Path, str]:
         "frontend/package.json",
         "frontend/package-lock.json",
         "backend/app/main.py",
+        "CHANGELOG.md",
     ):
         path = ROOT / relative
         source = path.read_bytes().decode("utf-8")
@@ -103,6 +116,8 @@ def prepare_updates(version: str, python_version: str) -> dict[Path, str]:
             updated = update_project(source, python_version)
         elif relative == "backend/app/main.py":
             updated = update_api(source, version)
+        elif relative == "CHANGELOG.md":
+            updated = update_changelog(source, version)
         else:
             updated = update_json(source, version, lockfile=path.name == "package-lock.json")
         if updated != source:
