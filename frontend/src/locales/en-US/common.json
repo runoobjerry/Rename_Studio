@@ -11,5 +11,9 @@
   "status": "Status",
   "filterState": "{{label}} ({{state}})",
   "enabled": "enabled",
-  "disabled": "disabled"
+  "disabled": "disabled",
+  "numberField": {
+    "decrease": "Decrease {{label}} by one",
+    "increase": "Increase {{label}} by one"
+  }
 }

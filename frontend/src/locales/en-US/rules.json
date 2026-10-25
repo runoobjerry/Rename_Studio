@@ -41,9 +41,7 @@
     "afterText": "After text",
     "index": "Character position",
     "anchor": "Specified text",
-    "fromRight": "Right to left",
-    "decrease": "Decrease {{label}} by one",
-    "increase": "Increase {{label}} by one"
+    "fromRight": "Right to left"
   },
   "unsupported": "Unsupported rule type: {{type}}",
   "types": {

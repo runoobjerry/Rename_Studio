@@ -41,9 +41,7 @@
     "afterText": "指定文本之后",
     "index": "字符位置",
     "anchor": "指定文本",
-    "fromRight": "从右往左计数",
-    "decrease": "{{label}}减一",
-    "increase": "{{label}}加一"
+    "fromRight": "从右往左计数"
   },
   "unsupported": "不支持的规则类型：{{type}}",
   "types": {
