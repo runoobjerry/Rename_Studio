@@ -7,7 +7,7 @@
 - 后端路由不带 `/api` 前缀；开发环境由 Vite 将前端 `/api/*` 请求代理到后端 `/*`。
 - JSON 使用 `snake_case`；日期时间为 ISO 8601 字符串；HTTP 204 无响应体。
 - `provider_type` 标识驱动类型（`local`、`onedrive`、`google_drive`），`storage_id` 标识独立配置与账号连接。`DirectoryListing.provider` 仍为用于展示的驱动类型。
-- Storage APIs 以 `storage_id` 和 `location` 为边界。仅自动创建 `default-local`，云连接由用户添加。Google Drive 支持连接、OAuth、My Drive 读取与 Preview First 重命名，没有直接重命名的 HTTP endpoint。
+- Storage APIs 以 `storage_id` 和 `location` 为边界。仅自动创建 `default-local`，云连接由用户添加。Google Drive 支持连接、OAuth、My Drive 读取，以及下述预览执行和单项直接执行接口。
 - `file_id` 由 Provider 定义，客户端须视为不透明值。Local ID 为相对路径，重命名后会变化；OneDrive ID 为 Graph item ID。显示路径不能作为资源身份。
 - 目录 API 不接受分页、搜索、排序或筛选参数；后端聚合 OneDrive / Google Drive 分页后一次返回完整结果。目录加载、UI 选择和单次预览均不设应用级文件数量上限。
 
@@ -215,6 +215,7 @@ Array<{
   location?: StorageLocation; // 默认 root；导航使用后端返回的位置
   file_ids: string[];      // 至少 1 项，不允许重复，无文件数量上限
   rules?: RuleSpec[];      // 默认 []，最多 20 条规则
+  target_name?: string | null; // 单项完整目标名称；省略或 null 时使用规则链
   previous_preview_id?: string; // 非空；新预览保存后释放同连接的旧预览
 }
 ```
@@ -231,6 +232,8 @@ Array<{
 ```
 
 - 不修改文件；未变化项目仍保留在 `items` 中，所有项目有效时 `valid` 才为 true。
+- `target_name` 为文件或文件夹的完整目标名称（文件含扩展名），不自动裁剪空格。非 null 时，`file_ids` 必须恰好 1 项，`rules` 必须为空或省略（包括 disabled 规则），否则返回 422 `REQUEST_VALIDATION_ERROR`；不执行规则链。
+- 名称、长度、权限及冲突按 Provider 校验，无效时返回 `valid: false` 和逐项错误；同名返回 `changed: false`。执行此预览仍须提交 `preview_id`；直接改名单项可使用下述单项执行接口。
 - `file_ids` 有序，rule context indices 与响应 `items` 均按该顺序；服务端快照保留顺序，执行前重校验不重新排序。预览不设文件数量上限，规则最多 20 条（包括 disabled 规则）；Provider 内部仍按自身能力分组写入。
 - 422：超过规则上限、空选择、重复、跨目录、超出路径、选择根目录、无效路径或规则配置；404：项目或目录不存在；其他 Provider 错误见通用错误。
 - 预览在当前后端进程保留 10 分钟，后端重启即失效。
@@ -273,6 +276,17 @@ Array<{
 - HTTP 200 也可能包含整体 `partial` / `failed` 及逐项失败，必须检查整体 status 和每项结果；既有 `completed` / `partial` / `failed`、`renamed` / `skipped` / `failed` 含义保持不变。
 - `current_file` 保留成功重命名或回滚后经 Provider 确认的身份，包括变化后的 Local path ID；`file_id` 始终为原请求 ID。`null` 本身不能证明写入成功或失败。
 - `RENAME_OUTCOME_UNKNOWN` 表示可能已写入但当前状态无法确认，此时 `actual_name: null`。已知成功的写入不会因响应缺失而重放；回滚错误在可确认时报告遗留名称。
+
+### 单项执行：`POST /storages/{storage_id}/rename/single/execute`
+
+请求为 `{ operation_id: string, revision: number, location?: StorageLocation, file_id: string, original_name: string, target_name: string }`。`operation_id` 为客户端生成的 UUID，仅标识操作，不是 `preview_id` 或幂等键；`revision` 为当前连接版本（整数，≥ 1），`location` 默认 root，`file_id` 非空，`target_name` 为完整目标名称（文件含扩展名）。不接受额外字段。
+
+支持单个文件或文件夹，无需预览，不执行规则链。服务端校验当前连接版本、源项及原名、名称、权限和同目录冲突后立即执行。
+
+响应为 `{ operation_id: string, status: "completed" | "partial" | "failed", items: ExecuteItem[] }`，返回本次 `operation_id`，逐项字段同上。HTTP 200 不保证成功：名称、权限或冲突校验失败返回 `failed` 项，同名返回 `skipped`。
+
+- 请求格式无效返回 422 `REQUEST_VALIDATION_ERROR`；源项缺失或原名变化返回 422 `VALIDATION_ERROR`；连接版本变化返回 409 `STORAGE_CONNECTION_CHANGED`。其他错误见通用错误。
+- 写入结果未知时返回 `RENAME_OUTCOME_UNKNOWN`；网络失败或结果未知时不得自动重放请求。此接口不提供按 `operation_id` 查询进度的能力。
 
 ## 执行进度（Rename Execution Progress）
 

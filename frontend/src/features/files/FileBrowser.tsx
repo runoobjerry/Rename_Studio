@@ -1,6 +1,7 @@
 import { memo, useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import ArrowBackRoundedIcon from "@mui/icons-material/ArrowBackRounded";
+import EditRoundedIcon from "@mui/icons-material/EditRounded";
 import FolderRoundedIcon from "@mui/icons-material/FolderRounded";
 import InsertDriveFileOutlinedIcon from "@mui/icons-material/InsertDriveFileOutlined";
 import LogoutRoundedIcon from "@mui/icons-material/LogoutRounded";
@@ -47,6 +48,8 @@ interface FileBrowserProps {
   onSortChange: (sort: FileSort) => void;
   hasTask?: boolean;
   onEndTask?: () => void;
+  onRename?: (fileId: string) => void;
+  renameDisabled?: boolean;
   disabled?: boolean;
   providerName: string;
   selectedIds: string[];
@@ -76,7 +79,7 @@ function formatModifiedAt(value: string | null, formatter: Intl.DateTimeFormat):
 
 export const FileBrowser = memo(function FileBrowser({
   listing, items: panelItems, sort, onSortChange,
-  hasTask = false, onEndTask, disabled = false,
+  hasTask = false, onEndTask, onRename, renameDisabled = false, disabled = false,
   providerName,
   selectedIds,
   isRefreshing = false,
@@ -252,6 +255,8 @@ export const FileBrowser = memo(function FileBrowser({
               <FileBrowserRow key={item.id}
                 item={item} rowIndex={virtual.start + offset} selected={selectedSet.has(item.id)} modifiedAtFormatter={modifiedAtFormatter}
                 disabled={disabled || !listedItems.has(item.id) || listedItems.get(item.id)?.can_rename === false}
+                showRename={selectedIds.length === 1 && selectedSet.has(item.id)}
+                renameDisabled={renameDisabled} onRename={onRename}
                 navigationDisabled={disabled || hasTask} onToggle={onToggle} onSelectRow={selectRow}
                 onNavigate={onNavigate} onNavigateLocation={onNavigateLocation} />
             ))}
@@ -277,6 +282,9 @@ interface FileBrowserRowProps {
   selected: boolean;
   disabled: boolean;
   navigationDisabled: boolean;
+  showRename: boolean;
+  renameDisabled: boolean;
+  onRename: FileBrowserProps["onRename"];
   onToggle: FileBrowserProps["onToggle"];
   onSelectRow: (fileId: string, shiftKey: boolean) => void;
   onNavigate: FileBrowserProps["onNavigate"];
@@ -284,7 +292,7 @@ interface FileBrowserRowProps {
 }
 
 const FileBrowserRow = memo(function FileBrowserRow({ item, rowIndex, selected, disabled, navigationDisabled, modifiedAtFormatter,
-  onToggle, onSelectRow, onNavigate, onNavigateLocation }: FileBrowserRowProps) {
+  showRename, renameDisabled, onRename, onToggle, onSelectRow, onNavigate, onNavigateLocation }: FileBrowserRowProps) {
   const { t } = useTranslation();
   const modifiedAt = formatModifiedAt(item.modified_at, modifiedAtFormatter);
   return <TableRow hover selected={selected} data-row-index={rowIndex} aria-rowindex={rowIndex + 2} tabIndex={-1}
@@ -297,20 +305,32 @@ const FileBrowserRow = memo(function FileBrowserRow({ item, rowIndex, selected, 
         slotProps={{ input: { "aria-label": t(item.is_directory ? "files:selectFolder" : "files:selectFile", { name: item.name }) } }} />
     </TableCell>
     <TableCell>
-      <Tooltip title={item.name} placement="top-start">
-        {item.is_directory ? <ButtonBase className="directory-name" disabled={navigationDisabled}
-          onClick={(event) => {
-            event.stopPropagation();
-            if (item.location && onNavigateLocation) onNavigateLocation(item.location);
-            else onNavigate(item.path);
-          }}>
-          <FolderRoundedIcon className="file-icon" fontSize="small" />
-          <span className="file-name">{item.name}</span>
-        </ButtonBase> : <span className="file-name-cell">
-          <InsertDriveFileOutlinedIcon className="file-icon" fontSize="small" />
-          <span className="file-name">{item.name}</span>
-        </span>}
-      </Tooltip>
+      <div className="file-name-actions">
+        <Tooltip title={item.name} placement="top-start">
+          {item.is_directory ? <ButtonBase className="directory-name" disabled={navigationDisabled}
+            onClick={(event) => {
+              event.stopPropagation();
+              if (item.location && onNavigateLocation) onNavigateLocation(item.location);
+              else onNavigate(item.path);
+            }}>
+            <FolderRoundedIcon className="file-icon" fontSize="small" />
+            <span className="file-name">{item.name}</span>
+          </ButtonBase> : <span className="file-name-cell">
+            <InsertDriveFileOutlinedIcon className="file-icon" fontSize="small" />
+            <span className="file-name">{item.name}</span>
+          </span>}
+        </Tooltip>
+        {showRename && onRename ? <Tooltip title={t("files:quickRename.title")} arrow>
+          <span className="file-rename-action" onClick={(event) => event.stopPropagation()}
+            onMouseDown={(event) => event.stopPropagation()}>
+            <PanelIconButton size="small" sx={{ width: 20, height: 20, p: 0, "& .MuiSvgIcon-root": { fontSize: 16 } }}
+              aria-label={t("files:quickRename.editLabel", { name: item.name })}
+              disabled={disabled || renameDisabled} onClick={() => onRename(item.id)}>
+              <EditRoundedIcon fontSize="small" />
+            </PanelIconButton>
+          </span>
+        </Tooltip> : onRename && <span className="file-rename-action" aria-hidden="true" />}
+      </div>
     </TableCell>
     <TableCell>{getExtension(item.name, item.is_directory, t("files:types.folder"))}</TableCell>
     <TableCell>{modifiedAt}</TableCell>

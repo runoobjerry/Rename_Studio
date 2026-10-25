@@ -17,6 +17,9 @@ from app.schemas.rename import (
     PreviewItem,
     RenameExecuteResponse,
     RenameProgress,
+    RenamePreviewRequest,
+    SingleRenameExecuteRequest,
+    SingleRenameExecuteResponse,
 )
 from app.services.preview_service import PreviewService
 from app.services.preview_store import PreviewSnapshot, PreviewStore
@@ -96,6 +99,43 @@ class ExecuteService:
                         item.error,
                     )
                 return response
+
+    async def execute_single(self, storage_id: str, request: SingleRenameExecuteRequest) -> SingleRenameExecuteResponse:
+        # 单项没有预览阶段；与批量共用执行锁，在写入前只读取并校验一次当前目录。
+        async with self._lock:
+            with self.providers.execution(storage_id, request.revision):
+                provider = self.providers.get(storage_id)
+                listing = await provider.list_directory(request.location)
+                source = next((item for item in listing.items if item.id == request.file_id), None)
+                if source is None or source.name != request.original_name:
+                    raise ValidationError("The selected item changed; reopen rename")
+                items, _, valid = await self.preview_service.evaluate(
+                    RenamePreviewRequest(storage_id=storage_id, location=listing.location,
+                                         file_ids=[source.id], target_name=request.target_name),
+                    files=[source], siblings=listing.items,
+                )
+                item = items[0]
+                result = ExecuteItem(file_id=source.id, original_name=source.name, new_name=item.new_name,
+                                     status="skipped" if not item.changed else "failed",
+                                     actual_name=source.name, current_file=source)
+                if not valid:
+                    result.status = "failed"
+                    result.error = item.error
+                    result.error_code = "RENAME_CONFLICT" if item.conflict else "VALIDATION_ERROR"
+                elif item.changed:
+                    # 共用已有写入封装：响应丢失时核对真实状态，不自动重放。
+                    outcomes = await self._rename_in_batches(provider, [RenameRequest(source.id, item.new_name)])
+                    outcome = outcomes[source.id]
+                    if isinstance(outcome, AppError):
+                        result.current_file = None
+                        self._record_failure(result, outcome)
+                    else:
+                        self._record_success(result, outcome)
+                logger.info("rename execution provider=%s file_id=%s status=%s error=%s",
+                            storage_id, source.id, result.status, result.error)
+                response = self._response(str(request.operation_id), {source.id: result})
+                return SingleRenameExecuteResponse(operation_id=response.preview_id,
+                                                   status=response.status, items=response.items)
 
     async def _revalidate(self, snapshot: PreviewSnapshot) -> list[FileItem]:
         if not snapshot.response.valid:

@@ -9,17 +9,18 @@ from urllib.parse import parse_qs, urlsplit
 from fastapi import APIRouter, Depends, Query, Response
 from fastapi.responses import HTMLResponse
 
-from app.api.dependencies import get_preview_service, get_preview_store, get_storage_manager
+from app.api.dependencies import get_execute_service, get_preview_service, get_preview_store, get_storage_manager
 from app.core.config import get_settings
 from app.core.errors import AppError, AuthenticationError, StorageConnectionChangedError, ValidationError
 from app.schemas.files import DirectoryListing
 from app.schemas.storage import LocalFolderPickResponse
-from app.schemas.rename import RenamePreviewRequest, RenamePreviewResponse
+from app.schemas.rename import RenamePreviewRequest, RenamePreviewResponse, SingleRenameExecuteRequest, SingleRenameExecuteResponse
 from app.schemas.storage import AuthorizationStatus, StorageAuthStartResponse, StorageCreate, StorageInfo, StorageListRequest, StoragePreviewRequest, StorageProviderInfo, StorageUpdate
 from app.services.connection_auth import ConnectionAuth
 from app.services.local_folder_picker import choose_local_directory
 from app.services.preview_service import PreviewService
 from app.services.preview_store import PreviewStore
+from app.services.execute_service import ExecuteService
 from app.services.storage_manager import StorageManager
 
 
@@ -155,7 +156,8 @@ async def preview(storage_id: str, request: StoragePreviewRequest, manager: Mana
     if not manager.registry.definition(record.provider_type).can_rename:
         raise ValidationError("This storage does not support rename previews")
     return await service.preview(RenamePreviewRequest(storage_id=storage_id, location=request.location,
-                                                      file_ids=request.file_ids, rules=request.rules),
+                                                      file_ids=request.file_ids, rules=request.rules,
+                                                      target_name=request.target_name),
                                  previous_preview_id=request.previous_preview_id)
 
 
@@ -167,3 +169,9 @@ async def release_preview(
     # 连接被删除后仍允许释放遗留快照，不读取 Provider，也不取消已经开始的执行。
     store.release(preview_id, storage_id)
     return Response(status_code=204)
+
+
+@router.post("/storages/{storage_id}/rename/single/execute", response_model=SingleRenameExecuteResponse)
+async def execute_single(storage_id: str, request: SingleRenameExecuteRequest,
+                         service: Annotated[ExecuteService, Depends(get_execute_service)]) -> SingleRenameExecuteResponse:
+    return await service.execute_single(storage_id, request)

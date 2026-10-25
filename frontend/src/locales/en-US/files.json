@@ -119,6 +119,14 @@
     "confirm": "Verified, unlock renaming"
   },
   "taskTitle": "Current task",
+  "quickRename": {
+    "title": "Rename",
+    "editLabel": "Rename {{name}}",
+    "name": "New name",
+    "extension": "Extension",
+    "applying": "Renaming",
+    "failed": "The item could not be renamed. Check the current file and try again."
+  },
   "endTask": "End current task",
   "emptyTask": "The current task is empty."
 }

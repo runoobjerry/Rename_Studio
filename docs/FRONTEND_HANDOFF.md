@@ -14,7 +14,9 @@
 |---|---|
 | `App.tsx`、`WorkspaceApp.tsx` | 应用入口、Provider 组合、工作区/设置内存视图、布局、导航保护与跨 Hook 协调；没有 URL 路由或深层链接 |
 | `workspace/hooks/useWorkspaceStorage.ts`、`workspace/workspaceSession.ts` | 连接与目录查询、本地根目录选择、默认云目录恢复/保存、标签会话路径记忆、手动刷新 |
-| `features/rename/useRenameWorkflow.ts` | 固定任务成员与有序有效选择、预览 ID 生命周期、预览/执行请求、未知结果保护、结果通知及确认元数据合并 |
+| `features/rename/useRenameWorkflow.ts` | 对外工作流入口；固定任务成员与有序有效选择、批量预览生命周期、确认执行及单项/批量协调 |
+| `features/rename/useSingleRename.ts` | 单项编辑会话、目录读取暂停、完整名称直接提交执行与弹窗错误 |
+| `features/rename/useRenameExecution.ts` | 单项与批量共用的一份执行请求、未知结果保护、确认元数据/任务结果合并及结果通知 |
 | `stores/useRenameStore.ts`、`types/index.ts` | 选择、规则链、任务原始快照与当前文件身份、预览读取门控与待核对执行信息；API 类型 |
 | `workspace/hooks/useFactoryReset.ts` | 重置禁用条件、请求状态、成功后的缓存和工作区清理 |
 | `features/settings/{SettingsPage,StorageSettingsPanel}.tsx` | 外观、多连接配置、授权与重置确认 |
@@ -23,12 +25,14 @@
 | `../scripts/check-i18n.mjs` | 翻译资源、静态键和显式注册 Rule/Provider 的词条检查；PR CI 的离线检查入口 |
 | `features/files/{FileBrowser,LocationBreadcrumbs}.tsx`、`fileSort.ts`、`defaultCloudLocation.ts` | 目录文件表、排序比较、筛选与选择、路径导航、默认目录账号匹配 |
 | `features/rules/{RuleEditor,RuleFields}.tsx` | 顺序规则链、添加菜单和显式字段配置 |
-| `features/rename/{PreviewPanel,RenameActions,RenameActionsWithProgress}.tsx` | 预览/结果展示、确认执行、局部进度订阅 |
+| `features/rename/{PreviewPanel,RenameActions,RenameActionsWithProgress,SingleRenameDialog}.tsx` | 预览/结果展示、确认执行、局部进度订阅与单项改名输入 |
 | `workspace/components/{StorageSidebar,StorageLocationPanel}.tsx` | 侧边栏与目录操作展示；Drawer 容器由 WorkspaceApp 管理 |
 | `components/`、`hooks/useVirtualTable.ts`、`theme.ts`、`styles.css` | 共享通知、筛选、图标按钮、表格虚拟化、主题与布局 |
 | `api/client.ts` | 共享 HTTP 层和连接级 API 客户端 |
 
 TanStack Query 管理服务端状态，Zustand 管理选择、规则、任务成员及原始快照、预览读取门控和待核对执行信息；筛选留在组件，文件排序由 WorkspaceApp 保存在页面内存并显式传给工作流与表格，不修改目录缓存。连接与重命名 Hook 不直接互相调用，由 WorkspaceApp 显式传入数据及重置动作，展示组件不承载工作流状态机。
+
+`useRenameWorkflow` 内部组合单项流程和公共执行 Hook，保持工作台、Dialog 与测试的调用接口。单项流程通过传入的执行函数及批量预览失效回调协作，不直接读写批量预览 mutation；互斥、连接上下文与任务身份继续由工作流入口统一协调。
 
 ## 已实现能力与限制
 
@@ -37,17 +41,19 @@ TanStack Query 管理服务端状态，Zustand 管理选择、规则、任务成
 - 服务端预览、冲突和无效名称展示、人工确认执行及逐项结果。首次刷新预览时将选中项固定为任务成员并保存原始快照，显示“当前任务”；同一任务可以修改规则、重新选择成员并多次执行，提交不设文件数量上限；Provider 内部的分组、并发与限流机制保留。
 - 文件和预览表已有虚拟化。选择、筛选、统计及列宽基于完整数据，不能只按挂载行计算；进度查询局部订阅，避免更新整个工作区。
 - 文件名和修改时间支持表头升降序排序，预览使用同一顺序；具体约定见下方“选择、筛选和排序”。
+- FileBrowser 唯一选中行在名称右侧显示 Edit 图标与重命名 Tooltip，支持文件和文件夹。Dialog 复用 MUI，应用按钮在校验和执行期间以 CircularProgress 替换文字，期间禁止编辑、重复提交及关闭；明确失败保留输入，成功关闭，未知结果保持待核对保护。
 - 主题和默认云目录由后端应用设置持久化；任务及原始快照、选择、排序及当前执行结果只在页面内存，刷新即丢失。没有持久化历史、撤销/重做、规则集 UI 或搜索；目录接口无前端分页，云盘分页由后端聚合。
 
 ## 必须保留的业务与交互约定
 
 ### 预览和执行
 
-- 先预览再确认执行，只提交服务端签发的 `preview_id`。预览不可由客户端改造，执行仍以服务端重校验为准；快照生命周期和错误码见 API 契约。
+- 规则批量改名先预览再确认执行，只提交服务端签发的 `preview_id`；单项快速改名直接提交文件身份、原名、完整目标名和连接版本，在服务端执行前复核后写入，不创建预览。两种流程共用名称/权限/冲突校验和写入结果处理；API 契约分别描述其输入。
 - 连接、目录、账号、连接版本、选择或规则变化使旧预览失效；过时预览应释放，迟到响应不能覆盖当前上下文。切换工作区清理任务、预览和选择，规则链及尚未核对的执行信息保留。
-- 创建预览后暂停自动目录读取，手动刷新保留。执行结果只合并 Provider 确认的 `current_file`，兼容 Local 路径 ID 改变，不按名称推断身份或成功。
+- 批量创建预览后暂停自动目录读取，手动刷新保留。单项改名从打开 Dialog 起暂停，失败保留 Dialog 时继续暂停；关闭或成功后，不在任务中且没有未知结果时恢复自动读取，任务中或结果未知时继续暂停。执行结果只合并 Provider 确认的 `current_file`，兼容 Local 路径 ID 改变，不按名称推断身份或成功。
 - 执行结束后可重新选择成功文件，再次修改须创建新预览。缺少执行结果、未知写入或未确认的回滚遗留名称会阻止新的预览和执行；用户核对真实存储后，通过“核对执行结果”明确解除锁定并重新选择。
 - 任务成员首次预览后不可新增；改变规则、排序、选择或刷新目录不重建任务和 before 快照。已确认的执行结果仅更新当前 ID 和最新结果，缺失文件保留展示但不能提交。结束任务释放预览并清空任务及选择，不撤销真实改名，也不清除独立的未知结果保护；原始快照尚未提供撤销能力。
+- 单项改名工作流只处理当前唯一选中项，文件分别编辑左侧主名和右侧扩展名，点号由界面补齐，扩展名可修改、添加或清空；文件夹只编辑完整名称。Dialog 不显示原文件名及说明文字，保留错误反馈；Edit 图标为 16px。不使用或改动规则链，不在普通目录创建固定任务。任务内复用结果合并，仅更新该成员的当前身份和最新结果，保留全部 before 快照及其他成员结果；成功后保持该项选择。打开/取消编辑不影响批量预览，提交时使其失效；缺少确认元数据的单项成功响应也进入待核对保护。
 - 无名称变化时不启用执行按钮；已消费的预览不能复用。
 - 进度来自只读服务端查询；轮询失败不重新执行、不模拟增长。已处理数量包含失败，进度完成不等于全部成功，逐项结果为准。
 

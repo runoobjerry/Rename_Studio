@@ -1,5 +1,6 @@
 from collections.abc import Iterator
 from pathlib import Path
+from uuid import uuid4
 
 import pytest
 from fastapi.testclient import TestClient
@@ -138,3 +139,102 @@ def test_preview_rule_limit_is_an_http_validation_error(api_client: TestClient, 
     })
     assert response.status_code == 422
     assert response.json()["error"]["code"] == "REQUEST_VALIDATION_ERROR"
+
+
+@pytest.mark.parametrize("is_directory", [False, True], ids=["file", "folder"])
+def test_single_target_executes_without_preview(
+    tmp_path: Path, api_client: TestClient, is_directory: bool,
+) -> None:
+    original = "archive.tar.gz" if not is_directory else "folder.v1"
+    target = "资料.tar.gz" if not is_directory else "资料.v2"
+    source = tmp_path / original
+    if is_directory:
+        source.mkdir()
+        (source / "child.txt").write_text("unchanged", encoding="utf-8")
+    else:
+        source.write_text("unchanged", encoding="utf-8")
+
+    operation_id = str(uuid4())
+    result = api_client.post("/storages/local/rename/single/execute", json={
+        "operation_id": operation_id, "revision": 1, "file_id": original,
+        "original_name": original, "target_name": target,
+    })
+    assert result.status_code == 200
+    assert result.json()["operation_id"] == operation_id
+    assert result.json()["status"] == "completed"
+    item = result.json()["items"][0]
+    assert item["status"] == "renamed"
+    assert item["file_id"] == original
+    assert item["current_file"]["id"] == target
+    assert not source.exists()
+    renamed = tmp_path / target
+    assert (renamed / "child.txt" if is_directory else renamed).read_text(encoding="utf-8") == "unchanged"
+    assert api_client.post("/rename/execute", json={"preview_id": operation_id}).status_code == 404
+
+
+@pytest.mark.parametrize("body", [
+    {"file_ids": ["one.txt", "two.txt"], "target_name": "new.txt"},
+    {"file_ids": ["one.txt"], "target_name": "new.txt", "rules": [{"type": "insert", "config": {"text": "X"}}]},
+    {"file_ids": ["one.txt"], "target_name": "new.txt", "rules": [{"type": "insert", "enabled": False}]},
+], ids=["multiple-items", "mixed-rules", "mixed-disabled-rule"])
+def test_single_target_rejects_ambiguous_requests(api_client: TestClient, body: dict[str, object]) -> None:
+    response = api_client.post("/storages/local/rename/preview", json=body)
+
+    assert response.status_code == 422
+    assert response.json()["error"]["code"] == "REQUEST_VALIDATION_ERROR"
+
+
+@pytest.mark.parametrize("target", ["", "bad/name.txt", "occupied.txt", "x" * 256],
+                         ids=["empty", "invalid-character", "occupied", "too-long"])
+def test_single_target_recheck_rejects_invalid_name_without_writing(
+    tmp_path: Path, api_client: TestClient, target: str,
+) -> None:
+    (tmp_path / "one.txt").write_text("source", encoding="utf-8")
+    (tmp_path / "occupied.txt").write_text("occupied", encoding="utf-8")
+
+    result = api_client.post("/storages/local/rename/single/execute", json={
+        "operation_id": str(uuid4()), "revision": 1, "file_id": "one.txt",
+        "original_name": "one.txt", "target_name": target,
+    })
+    assert result.status_code == 200
+    assert result.json()["status"] == "failed"
+    assert result.json()["items"][0]["error"]
+    assert result.json()["items"][0]["error_code"] == ("RENAME_CONFLICT" if target == "occupied.txt" else "VALIDATION_ERROR")
+    assert (tmp_path / "one.txt").read_text(encoding="utf-8") == "source"
+    assert (tmp_path / "occupied.txt").read_text(encoding="utf-8") == "occupied"
+
+
+@pytest.mark.parametrize("change", ["source", "target"], ids=["source-changed", "new-conflict"])
+def test_single_target_checks_current_source_and_conflicts_before_writing(
+    tmp_path: Path, api_client: TestClient, change: str,
+) -> None:
+    source = tmp_path / "one.txt"
+    source.write_text("source", encoding="utf-8")
+    changed_path = tmp_path / ("external.txt" if change == "source" else "new.txt")
+    if change == "source":
+        source.rename(changed_path)
+    changed_path.write_text("external change", encoding="utf-8")
+    result = api_client.post("/storages/local/rename/single/execute", json={
+        "operation_id": str(uuid4()), "revision": 1, "file_id": "one.txt",
+        "original_name": "one.txt", "target_name": "new.txt",
+    })
+    if change == "source":
+        assert result.status_code == 422
+    else:
+        assert result.status_code == 200
+        assert result.json()["items"][0]["error_code"] == "RENAME_CONFLICT"
+        assert source.read_text(encoding="utf-8") == "source"
+    assert changed_path.read_text(encoding="utf-8") == "external change"
+    if change == "source":
+        assert not (tmp_path / "new.txt").exists()
+
+
+def test_single_target_same_name_is_unchanged(tmp_path: Path, api_client: TestClient) -> None:
+    (tmp_path / "one.txt").write_text("source", encoding="utf-8")
+    result = api_client.post("/storages/local/rename/single/execute", json={
+        "operation_id": str(uuid4()), "revision": 1, "file_id": "one.txt",
+        "original_name": "one.txt", "target_name": "one.txt",
+    })
+    assert result.status_code == 200
+    assert result.json()["items"][0]["status"] == "skipped"
+    assert (tmp_path / "one.txt").read_text(encoding="utf-8") == "source"

@@ -18,6 +18,7 @@ import { LanguageProvider, useLanguagePreference } from "./i18n/LanguageProvider
 
 import { fetchRules } from "./api/client";
 import { UnknownExecutionNotice } from "./features/rename/UnknownExecutionNotice";
+import { SingleRenameDialog } from "./features/rename/SingleRenameDialog";
 import { StorageSidebar } from "./workspace/components/StorageSidebar";
 import { StorageLocationPanel } from "./workspace/components/StorageLocationPanel";
 import { useWorkspaceStorage } from "./workspace/hooks/useWorkspaceStorage";
@@ -97,7 +98,7 @@ function Workspace({ preference, setPreference, settingsError }: {
   const {
     storageId, location, setLocation, setPath, selectStorage, resetWorkspaceSession, locationReady,
     providers, activeStorage, providerId, providerName, cloudStatus,
-    providerDefinitions, providerError, metadataReady, requiresAuth, supportsLocalPicker, supportsLocation,
+    providerDefinitions, providerDefinition, providerError, metadataReady, requiresAuth, supportsLocalPicker, supportsLocation,
     cloudAccountId, cloudConnected, cloudSession, cloudReady, restoredCloudSession, appSettingsReady,
     files, workspaceKey, settingsLoading, pickLocalRoot,
     restoreDefaultCloudPath, setDefaultCloudPath, refreshFiles,
@@ -111,11 +112,14 @@ function Workspace({ preference, setPreference, settingsError }: {
     selectedIds, rules, browserItems, currentTask, changeSort, selectedCount,
     previewData, executionData, previewError, executeError, executionPreviewId,
     isPreviewing, isExecuting, hasExecuted,
+    singleRenameTarget, singleRenameError, canSingleRename, isSingleRenaming,
+    openSingleRename, closeSingleRename, applySingleRename,
     requestPreview, executeRename, onRulesChange,
     resetOperation, endTask, toggleFile, selectAllFiles, clearFiles, invertFiles,
     resetForStorageChange,
   } = useRenameWorkflow({
     storageId, location, workspaceKey, cloudSession, locationReady,
+    canRename: metadataReady && providerDefinition?.can_rename === true && !pickLocalRoot.isPending,
     sort: fileSort, onSortChange: setFileSort,
     activeStorage: activeStorage && { revision: activeStorage.revision, busy: activeStorage.busy },
     files: {
@@ -249,6 +253,8 @@ function Workspace({ preference, setPreference, settingsError }: {
                         items={browserItems}
                         hasTask={Boolean(currentTask)}
                         onEndTask={endTask}
+                        onRename={openSingleRename}
+                        renameDisabled={!canSingleRename}
                         sort={fileSort}
                         onSortChange={changeSort}
                         providerName={providerName}
@@ -317,6 +323,12 @@ function Workspace({ preference, setPreference, settingsError }: {
                     />
                   </div>
                 </div>
+                {singleRenameTarget && <SingleRenameDialog
+                  initialName={singleRenameTarget.name} isDirectory={singleRenameTarget.file.is_directory}
+                  extension={singleRenameTarget.extension} isRenaming={isSingleRenaming}
+                  canApply={canSingleRename} error={singleRenameError}
+                  onApply={applySingleRename} onClose={closeSingleRename}
+                />}
               </>
             )}
           </Box>

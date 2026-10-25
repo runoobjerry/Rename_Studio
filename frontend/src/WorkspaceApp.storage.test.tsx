@@ -112,12 +112,20 @@ describe("cloud default path integration", () => {
     fireEvent.click(screen.getByRole("button", { name: "文档" }));
     await waitFor(() => expect(api.fetchStorageFiles).toHaveBeenCalledWith("user-onedrive", { kind: "id", value: "document-id" }));
     await waitFor(() => expect(screen.getByRole("button", { name: "设为默认" })).toBeEnabled());
+    await waitFor(() => expect(readWorkspaceSession().session.locations["user-onedrive"].location)
+      .toEqual({ kind: "id", value: "document-id" }));
+    const cloudRequestsBeforeReentry = vi.mocked(api.fetchStorageFiles).mock.calls
+      .filter(([storageId]) => storageId === "user-onedrive").length;
     // 默认目录仍为“照片”，重新进入须使用尚未设为默认值的工作目录。
     fireEvent.click(screen.getByRole("button", { name: "本地文件" }));
+    await waitFor(() => expect(readWorkspaceSession().session.activeStorageId).toBe("default-local"));
     fireEvent.click(screen.getByRole("button", { name: "OneDrive" }));
-    await waitFor(() => expect(api.fetchStorageFiles).toHaveBeenLastCalledWith("user-onedrive", { kind: "id", value: "document-id" }));
+    await waitFor(() => expect(readWorkspaceSession().session.activeStorageId).toBe("user-onedrive"));
     await waitFor(() => expect(within(screen.getByLabelText("文件路径")).getByRole("button", { name: "文档" }))
       .toHaveAttribute("aria-current", "page"));
+    // 测试查询缓存长期有效；重进目录复用缓存，不依赖全局最后一次请求的顺序。
+    expect(vi.mocked(api.fetchStorageFiles).mock.calls.filter(([storageId]) => storageId === "user-onedrive"))
+      .toHaveLength(cloudRequestsBeforeReentry);
     expect(savedCloud("user-onedrive", "account-a")).toEqual({ kind: "path", value: "照片" });
     await waitFor(() => expect(screen.getByRole("button", { name: "设为默认" })).toBeEnabled());
     fireEvent.click(screen.getByRole("button", { name: "设为默认" }));

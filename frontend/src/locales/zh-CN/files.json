@@ -119,6 +119,14 @@
     "confirm": "已核对，解除锁定"
   },
   "taskTitle": "当前任务",
+  "quickRename": {
+    "title": "重命名",
+    "editLabel": "重命名 {{name}}",
+    "name": "新名称",
+    "extension": "扩展名",
+    "applying": "正在重命名",
+    "failed": "项目重命名失败，请核对当前文件后重试。"
+  },
   "endTask": "结束当前任务",
   "emptyTask": "当前任务为空。"
 }

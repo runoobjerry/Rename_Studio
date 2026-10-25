@@ -521,13 +521,19 @@ async def test_account_credentials_and_old_auth_objects_are_isolated(tmp_path: P
 
 
 @pytest.mark.asyncio
-async def test_preview_rejects_changed_connection_even_with_matching_files(tmp_path: Path) -> None:
+@pytest.mark.parametrize("single_target", [False, True], ids=["rules", "single-target"])
+async def test_preview_rejects_changed_connection_even_with_matching_files(tmp_path: Path, single_target: bool) -> None:
     manager = make_manager(tmp_path)
     root = Path(str(manager.record("default-local").config["root_path"]))
     (root / "a.txt").write_text("a", encoding="utf-8")
     (tmp_path / "a.txt").write_text("a", encoding="utf-8")
     preview, execute = services(manager)
-    response = await preview.preview(RenamePreviewRequest(storage_id="default-local", location=RootLocation(), file_ids=["a.txt"], rules=[RuleSpec(type="replace", config={"search": "a", "replacement": "b"})]))
+    request = RenamePreviewRequest(
+        storage_id="default-local", location=RootLocation(), file_ids=["a.txt"],
+        target_name="b.txt" if single_target else None,
+        rules=[] if single_target else [RuleSpec(type="replace", config={"search": "a", "replacement": "b"})],
+    )
+    response = await preview.preview(request)
     await manager.update("default-local", StorageUpdate(config={"root_path": str(tmp_path)}))
     with pytest.raises(StorageConnectionChangedError):
         await execute.execute(response.preview_id)

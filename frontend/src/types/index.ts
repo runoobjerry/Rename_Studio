@@ -105,6 +105,15 @@ export interface PreviewResponse {
   valid: boolean;
 }
 
+export interface SingleRenameExecuteRequest {
+  operation_id: string;
+  location: StorageLocation;
+  file_id: string;
+  original_name: string;
+  target_name: string;
+  revision: number;
+}
+
 export interface ExecuteItem {
   file_id: string;
   original_name: string;
@@ -120,6 +129,10 @@ export interface ExecuteResponse {
   preview_id: string;
   status: "completed" | "partial" | "failed";
   items: ExecuteItem[];
+}
+
+export interface SingleRenameExecuteResponse extends Omit<ExecuteResponse, "preview_id"> {
+  operation_id: string;
 }
 
 export type StorageLocation = { kind: "root" } | { kind: "id" | "path"; value: string };

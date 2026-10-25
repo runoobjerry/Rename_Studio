@@ -4,7 +4,7 @@ from typing import Annotated, Literal
 from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_validator, model_validator
 
 from app.core.paths import normalize_storage_path
-from app.schemas.rules import RuleSpec
+from app.schemas.rename_input import RenamePreviewInput
 
 
 class RootLocation(BaseModel):
@@ -163,9 +163,7 @@ class StorageListRequest(BaseModel):
     location: StorageLocation = Field(default_factory=RootLocation)
 
 
-class StoragePreviewRequest(StorageListRequest):
-    file_ids: list[str] = Field(min_length=1)
-    rules: list[RuleSpec] = Field(default_factory=list, max_length=20)
+class StoragePreviewRequest(StorageListRequest, RenamePreviewInput):
     previous_preview_id: str | None = Field(default=None, min_length=1)
 
 

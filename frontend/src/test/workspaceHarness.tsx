@@ -65,7 +65,8 @@ export async function setupWorkspace(count = 2) {
     const [sort, setSort] = useState<FileSort>(defaultFileSort);
     const previewActive = useRenameStore((state) => state.previewActive);
     const storage = useWorkspaceStorage({ pauseFileQueries: previewActive, onLocalRootSelected: (): void => workflow.resetForStorageChange() });
-    const workflow = useRenameWorkflow({ ...storage, sort, onSortChange: setSort });
+    const workflow = useRenameWorkflow({ ...storage, sort, onSortChange: setSort,
+      canRename: storage.metadataReady && storage.providerDefinition?.can_rename === true && !storage.pickLocalRoot.isPending });
     return { storage, workflow };
   }, { wrapper });
   await waitFor(() => expect(hook.result.current.storage.files.isSuccess).toBe(true));

@@ -45,6 +45,19 @@ it("renders distant rows on scroll and reaches the last row with the keyboard", 
   expect(screen.getAllByRole("row").length).toBeLessThan(40);
 });
 
+it("keeps a distant selected item's rename action attached to its opaque ID", async () => {
+  const callbacks = { ...props(), selectedIds: ["file-999"], onRename: vi.fn() };
+  render(<FileBrowser {...callbacks} />);
+  expect(screen.queryByRole("button", { name: /^重命名 / })).not.toBeInTheDocument();
+  const container = screen.getByRole("table").parentElement!;
+  fireEvent.keyDown(container, { key: "End" });
+  const rename = await screen.findByRole("button", { name: "重命名 file-999" });
+  fireEvent.click(rename);
+  expect(callbacks.onRename).toHaveBeenCalledWith("file-999");
+  expect(callbacks.onSelectAll).not.toHaveBeenCalled();
+  expect(screen.getAllByRole("row").length).toBeLessThan(40);
+});
+
 it("clears selections hidden by a filter across the entire dataset", () => {
   const callbacks = { ...props(), selectedIds: items.map((item) => item.id) };
   render(<FileBrowser {...callbacks} />);

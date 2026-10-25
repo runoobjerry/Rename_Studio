@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 import * as api from "./api/client";
 import { useRenameStore } from "./stores/useRenameStore";
 import { installWorkspaceAppTestHooks, renderWorkspace } from "./test/workspaceAppHarness";
-import { listing } from "./test/fixtures";
+import { fileItem, listing } from "./test/fixtures";
 
 vi.mock("./api/client", async (importOriginal) => {
   const { workspaceApiMock } = await import("./test/workspaceApiMock");
@@ -44,6 +44,46 @@ describe("workspace workflow wiring", () => {
     fireEvent.click(await screen.findByRole("checkbox", { name: "选择当前显示的全部项目" }));
     return items;
   };
+
+  it("renames directly from the row dialog with progress throughout server recheck and execution", async () => {
+    vi.mocked(api.fetchStorageFiles).mockResolvedValue(listing(1));
+
+    const execution = deferred<Awaited<ReturnType<typeof api.executeStorageSingleRename>>>();
+
+    vi.mocked(api.executeStorageSingleRename).mockReturnValueOnce(execution.promise);
+    renderWorkspace();
+    fireEvent.click(await screen.findByRole("checkbox", { name: "选择文件 file-0.txt" }));
+    fireEvent.click(screen.getByRole("button", { name: "重命名 file-0.txt" }));
+    const dialog = screen.getByRole("dialog", { name: "重命名" });
+    const input = within(dialog).getByRole("textbox", { name: "新名称" });
+    expect(input).toHaveValue("file-0");
+    fireEvent.change(input, { target: { value: "资料" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "应用" }));
+
+    await waitFor(() => expect(api.executeStorageSingleRename).toHaveBeenCalledWith("default-local", {
+      operation_id: expect.any(String), location: { kind: "root" }, file_id: "file-0.txt",
+      original_name: "file-0.txt", target_name: "资料.txt", revision: 1,
+    }));
+    expect(within(dialog).getByRole("progressbar", { name: "正在重命名" })).toBeInTheDocument();
+    expect(input).toBeDisabled();
+    expect(within(dialog).getByRole("button", { name: "取消" })).toBeDisabled();
+    expect(screen.getByLabelText("选择文件 file-0.txt")).toBeDisabled();
+    expect(api.executePreview).not.toHaveBeenCalled();
+    expect(within(dialog).getByRole("button", { name: "应用" })).toBeDisabled();
+    const current = fileItem("provider-new-id", { name: "资料.txt", path: "资料.txt" });
+    vi.mocked(api.fetchStorageFiles).mockResolvedValue({ ...listing(1), items: [current] });
+    await act(async () => execution.resolve({ preview_id: "single-ui", status: "completed", items: [{
+      file_id: "file-0.txt", original_name: "file-0.txt", new_name: "资料.txt",
+      status: "renamed", error: null, current_file: current,
+    }] }));
+
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    expect(screen.getByRole("checkbox", { name: "选择文件 资料.txt" })).toBeChecked();
+    expect(useRenameStore.getState().selectedIds).toEqual(["provider-new-id"]);
+    expect(useRenameStore.getState().task).toBeNull();
+    expect(api.createStoragePreview).not.toHaveBeenCalled();
+    expect(api.executeStorageSingleRename).toHaveBeenCalledTimes(1);
+  });
 
   it("connects selection and rule changes to preview invalidation", async () => {
     vi.mocked(api.fetchRules).mockResolvedValue([

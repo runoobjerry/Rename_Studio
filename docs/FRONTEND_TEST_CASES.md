@@ -33,6 +33,14 @@
 | 全选和过滤覆盖完整数据集，包括虚拟列表未挂载的行 | FileBrowser、[虚拟列表](../frontend/src/features/files/FileBrowser.virtual.test.tsx) |
 | 恢复出厂设置失败显示错误，保留规则、配置、路径记忆与当前连接，并保持确认框打开 | 工作台集成 |
 | 预览创建传递替换 ID，释放只针对指定预览；错误项不能计入可修改数量 | [API client](../frontend/src/api/client.test.ts)、[PreviewPanel](../frontend/src/features/rename/PreviewPanel.test.tsx) |
+| 单项改名直接提交完整目标名称、原名及连接版本，连接及位置使用真实 ID，不请求预览 | API client |
+| 单项改名保留文件扩展名，无扩展名文件（如 .env）与文件夹按完整名称处理；普通目录不创建任务，成功后保留服务端确认的新 ID 选择 | [单项改名工作流](../frontend/src/features/rename/useSingleRenameWorkflow.test.ts) |
+| 任务内单项改名保留成员、原始快照和其他成员结果，不修改规则链；打开或取消编辑保留批量预览，提交才失效并要求重新预览 | 单项改名工作流 |
+| 单项直接执行的重复提交保护及刷新错误/忙碌门控 | 单项改名工作流 |
+| 单项明确失败可重试；写入结果缺失、未知、响应丢失或成功但缺少确认元数据时锁定后续单项与批量改名 | 单项改名工作流 |
+| 虚拟列表滚动后，选中项的 Edit 仍使用正确文件 ID | [虚拟列表](../frontend/src/features/files/FileBrowser.virtual.test.tsx) |
+| 单项 Dialog 切换语言后更新标签，保留用户输入的主名与扩展名 | [SingleRenameDialog](../frontend/src/features/rename/SingleRenameDialog.test.tsx) |
+| 从行内 Edit 直接执行单项改名，请求中显示进度并禁用输入、取消和应用，成功更新选择 | [工作台重命名接线](../frontend/src/WorkspaceApp.test.tsx) |
 
 ## 业务功能、异常与交互
 

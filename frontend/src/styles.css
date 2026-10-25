@@ -158,12 +158,21 @@
   width: 160px;
 }
 
+.file-name-actions,
 .file-name-cell,
 .directory-name {
   display: flex;
   align-items: center;
   min-width: 0;
   gap: 8px;
+}
+
+/* 预留相同行内空间，单选出现编辑按钮时不改变列宽和虚拟列表行高。 */
+.file-rename-action {
+  display: inline-flex;
+  flex-shrink: 0;
+  width: 20px;
+  height: 20px;
 }
 
 .directory-name {
