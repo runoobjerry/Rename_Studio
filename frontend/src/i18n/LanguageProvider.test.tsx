@@ -28,7 +28,7 @@ function Wrapper({ children }: { children: ReactNode }) {
 }
 beforeEach(() => {
   client = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } });
-  server = { preferences: { language: "auto", theme: "dark", hide_batch_limit_hint: true, cloud_default_locations: {} } };
+  server = { preferences: { language: "auto", theme: "dark", cloud_default_locations: {} } };
   vi.mocked(api.fetchAppSettings).mockImplementation(async () => server);
   vi.mocked(api.patchAppSettings).mockImplementation(async (patch) => {
     server = { preferences: { ...server.preferences, language: patch.language ?? server.preferences.language } };
@@ -56,7 +56,7 @@ describe("persisted language preference", () => {
     await screen.findByText("设置");
     await act(async () => { await language.setPreference("en-US"); });
     expect(api.patchAppSettings).toHaveBeenCalledWith({ language: "en-US" });
-    expect(server.preferences).toEqual({ language: "en-US", theme: "dark", hide_batch_limit_hint: true, cloud_default_locations: {} });
+    expect(server.preferences).toEqual({ language: "en-US", theme: "dark", cloud_default_locations: {} });
     expect(document.documentElement.lang).toBe("en-US");
     expect(mounted).toHaveBeenCalledOnce();
     view.unmount();

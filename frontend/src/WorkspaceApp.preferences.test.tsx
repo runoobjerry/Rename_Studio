@@ -47,7 +47,6 @@ describe("language settings", () => {
     expect(screen.getByRole("checkbox", { name: "Select file 文件2.txt" })).toBeChecked();
     expect(screen.getByRole("columnheader", { name: "File name" })).toHaveAttribute("aria-sort", "descending");
     expect(fileOrder()).toEqual(originalOrder);
-    expect(useRenameStore.getState().task).toBe(before.task);
     expect(useRenameStore.getState().selectedIds).toEqual(before.selectedIds);
     expect(useRenameStore.getState().rules).toBe(before.rules);
     expect(api.createStoragePreview).toHaveBeenCalledOnce();

@@ -130,8 +130,8 @@ def test_execution_progress_api(tmp_path: Path, api_client: TestClient) -> None:
     assert api_client.get("/rename/progress/unknown").status_code == 404
 
 
-@pytest.mark.parametrize(("file_count", "rule_count"), [(1001, 0), (1, 21)])
-def test_preview_batch_limits_are_http_validation_errors(api_client: TestClient, file_count: int, rule_count: int) -> None:
+@pytest.mark.parametrize(("file_count", "rule_count"), [(1, 21)])
+def test_preview_rule_limit_is_an_http_validation_error(api_client: TestClient, file_count: int, rule_count: int) -> None:
     response = api_client.post("/storages/local/rename/preview", json={
         "file_ids": [f"file-{index}" for index in range(file_count)],
         "rules": [{"type": "padding", "config": {}} for _ in range(rule_count)],

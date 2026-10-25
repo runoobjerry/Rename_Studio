@@ -28,7 +28,7 @@
   "themeSaveFailed": "主题保存失败，已撤销本次更改：{{message}}",
   "resetFailed": "恢复出厂设置失败：{{message}}",
   "resetDone": "已重置应用",
-  "resetUnknown": "请先核对待核对项并结束当前任务。",
+  "resetUnknown": "请先核对结果未知的文件，并确认解除锁定。",
   "resetBusy": "重命名操作进行中，完成后才能重置。",
   "resetSaving": "连接正在保存，请稍后重试。",
   "connection": {
@@ -74,6 +74,5 @@
     "save": "保存连接",
     "editLabel": "编辑连接 {{name}}",
     "dialogTitle": "{{name}} 设置"
-  },
-  "hintSaveFailed": "提示偏好保存失败，已撤销本次更改：{{message}}"
+  }
 }

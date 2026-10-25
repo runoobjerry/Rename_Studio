@@ -3,7 +3,6 @@ import { act, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import * as api from "../../api/client";
 import { useRenameStore } from "../../stores/useRenameStore";
-import { previewResponse } from "../../test/fixtures";
 import type { ExecuteResponse } from "../../types";
 import { installWorkspaceTestHooks, client, listing, notify, preview, setupWorkspace } from "../../test/workspaceHarness";
 
@@ -48,8 +47,11 @@ describe("rename workflow", () => {
 
   it.each(["toggle", "select-all", "clear", "invert"] as const)("invalidates an old preview after %s selection", async (operation) => {
     const hook = await setupWorkspace();
-    if (operation === "select-all") act(() => hook.result.current.workflow.selectAllFiles(["file-0.txt"]));
     await preview(hook);
+    if (operation === "select-all") {
+      act(() => hook.result.current.workflow.selectAllFiles(["file-0.txt"]));
+      await preview(hook);
+    }
     act(() => {
       const workflow = hook.result.current.workflow;
       if (operation === "toggle") workflow.toggleFile("file-0.txt");
@@ -63,7 +65,7 @@ describe("rename workflow", () => {
     expect(api.executePreview).not.toHaveBeenCalled();
   });
 
-  it("preserves partial results during reconciliation and clears them on ordinary selection", async () => {
+  it("clears a completed preview when the selection changes", async () => {
     const hook = await setupWorkspace();
     await preview(hook);
     const response: Awaited<ReturnType<typeof api.executePreview>> = {
@@ -75,38 +77,14 @@ describe("rename workflow", () => {
     vi.mocked(api.executePreview).mockResolvedValue(response);
     act(() => hook.result.current.workflow.executeRename("task-preview"));
     await waitFor(() => expect(hook.result.current.workflow.executionData).toEqual(response));
-    act(() => hook.result.current.workflow.reconcileSelection([]));
-    expect(hook.result.current.workflow.executionData).toEqual(response);
-    expect(hook.result.current.workflow.previewData).toBeDefined();
+    act(() => hook.result.current.workflow.clearFiles());
+    expect(hook.result.current.workflow.executionData).toBeUndefined();
+    expect(hook.result.current.workflow.previewData).toBeUndefined();
     act(() => hook.result.current.workflow.toggleFile("file-0.txt"));
     expect(useRenameStore.getState().selectedIds).toEqual(["file-0.txt"]);
     expect(hook.result.current.workflow.executionData).toBeUndefined();
     expect(hook.result.current.workflow.previewData).toBeUndefined();
     expect(api.executePreview).toHaveBeenCalledTimes(1);
-  });
-
-  it("opens the batch hint only on request and cancels without creating a task", async () => {
-    const hook = await setupWorkspace(1001);
-    expect(hook.result.current.workflow.batchHintOpen).toBe(false);
-    act(() => hook.result.current.workflow.requestPreview());
-    expect(hook.result.current.workflow.batchHintOpen).toBe(true);
-    expect(useRenameStore.getState().task).toBeNull();
-    expect(api.createStoragePreview).not.toHaveBeenCalled();
-    act(() => hook.result.current.workflow.closeBatchHint());
-    expect(hook.result.current.workflow.batchHintOpen).toBe(false);
-    expect(useRenameStore.getState().selectedIds).toHaveLength(1001);
-    expect(api.createStoragePreview).not.toHaveBeenCalled();
-  });
-
-  it("retains a cleared preview ID and releases it on task end", async () => {
-    const hook = await setupWorkspace();
-    await preview(hook);
-    act(() => hook.result.current.workflow.toggleFile("file-0.txt"));
-    expect(hook.result.current.workflow.previewData).toBeUndefined();
-    expect(api.releaseStoragePreview).not.toHaveBeenCalled();
-    act(() => hook.result.current.workflow.endTask());
-    expect(api.releaseStoragePreview).toHaveBeenCalledWith("default-local", "task-preview");
-    expect(useRenameStore.getState().task).toBeNull();
   });
 
   it("releases a late preview after its selection context changes", async () => {
@@ -149,8 +127,24 @@ describe("rename workflow", () => {
     await act(async () => { await client.invalidateQueries({ queryKey: ["files"] }); });
     expect(api.fetchStorageFiles).toHaveBeenCalledTimes(1);
     act(() => hook.result.current.workflow.executeRename("task-preview"));
-    await waitFor(() => expect(useRenameStore.getState().task!.items.every((item) => item.status ===
-      (outcome === "success" ? "completed" : "unknown"))).toBe(true));
+    await waitFor(() => expect(hook.result.current.workflow.isExecuting).toBe(false));
+    if (outcome === "lost-response") {
+      const unknown = useRenameStore.getState().unknownExecution;
+      expect(unknown).not.toBeNull();
+      // Clearing the task record cannot clear the independent write guard.
+      act(() => useRenameStore.getState().resetTask());
+      expect(useRenameStore.getState().unknownExecution).toBe(unknown);
+    }
+    else {
+      expect(hook.result.current.workflow.executionData?.status).toBe("completed");
+      const ids = listing().items.map((file) => `renamed-${file.id}`);
+      act(() => hook.result.current.workflow.selectAllFiles(ids));
+      expect(useRenameStore.getState().selectedIds).toEqual(ids);
+      act(() => hook.result.current.workflow.requestPreview());
+      await waitFor(() => expect(api.createStoragePreview).toHaveBeenLastCalledWith(
+        "default-local", { kind: "root" }, ids, [], "task-preview",
+      ));
+    }
     expect(api.fetchStorageFiles).toHaveBeenCalledTimes(1);
     if (outcome === "success") expect(hook.result.current.storage.files.data!.items.map((file) => file.id))
       .toEqual(listing().items.map((file) => `renamed-${file.id}`));
@@ -184,10 +178,9 @@ describe("rename workflow", () => {
     expect(useRenameStore.getState().selectedIds).toEqual(["file-0.txt", "file-1.txt"]);
   });
 
-  it.each(["unknown-result", "missing-result"] as const)("keeps identity, snapshots and retry selection consistent after %s", async (outcome) => {
+  it.each(["unknown-result", "missing-result"] as const)("merges confirmed identities and blocks new writes after %s", async (outcome) => {
     const hook = await setupWorkspace(3);
     await preview(hook);
-    const before = useRenameStore.getState().task!;
     const files = listing(3).items;
     const confirmed = { ...files[0], id: "opaque-new-id", name: "renamed-file-0.txt" };
     const response: ExecuteResponse = {
@@ -207,45 +200,91 @@ describe("rename workflow", () => {
     act(() => hook.result.current.workflow.executeRename("task-preview"));
     await waitFor(() => expect(hook.result.current.workflow.executionData).toEqual(response));
 
-    const task = useRenameStore.getState().task!;
-    expect(task.taskId).toBe(before.taskId);
-    expect(task.items.map((item) => item.status)).toEqual(["completed", "unknown", "failed"]);
-    expect(task.items.map((item) => item.currentFileId)).toEqual([confirmed.id, files[1].id, files[2].id]);
-    task.items.forEach((item, index) => expect(item.before).toBe(before.items[index].before));
-    expect(task.batches[0].results).toEqual(response.items);
     expect(hook.result.current.storage.files.data!.items).toEqual([confirmed, files[1], files[2]]);
-    expect(useRenameStore.getState().selectedIds).toEqual([files[2].id]);
-
-    // 即使再次全选，成功和未知项也不得混入重试；下一次预览只提交明确失败项。
+    expect(useRenameStore.getState().unknownExecution?.items.map((item) => item.file_id)).toEqual([files[1].id]);
+    const calls = vi.mocked(api.createStoragePreview).mock.calls.length;
     act(() => hook.result.current.workflow.selectAllFiles([confirmed.id, files[1].id, files[2].id]));
-    expect(useRenameStore.getState().selectedIds).toEqual([files[2].id]);
-    vi.mocked(api.createStoragePreview).mockResolvedValueOnce(previewResponse([files[2].id], "retry-preview"));
     act(() => hook.result.current.workflow.requestPreview());
-    await waitFor(() => expect(hook.result.current.workflow.previewData?.preview_id).toBe("retry-preview"));
-    expect(api.createStoragePreview).toHaveBeenLastCalledWith("default-local", { kind: "root" }, [files[2].id], [], "task-preview");
+    expect(api.createStoragePreview).toHaveBeenCalledTimes(calls);
     expect(api.executePreview).toHaveBeenCalledTimes(1);
-    // TanStack Query 还会传入内部 context；这里只检查提交的业务参数。
-    expect(vi.mocked(api.executePreview).mock.calls[0][0]).toBe("task-preview");
     expect(api.fetchStorageFiles).toHaveBeenCalledTimes(1);
-    expect(useRenameStore.getState().task!.batches[0].results).toEqual(response.items);
   });
 
-  it("reorders preview items while keeping task identity, selection and original snapshots", async () => {
-    const hook = await setupWorkspace(3);
-    act(() => hook.result.current.workflow.selectAllFiles(["file-1.txt", "file-0.txt", "file-2.txt"]));
+  it("reorders preview items while preserving the selection", async () => {
+    const hook = await setupWorkspace(1001);
+    const selected = listing(1001).items.map((file) => file.id);
+    act(() => hook.result.current.workflow.selectAllFiles([...selected].reverse()));
     await preview(hook);
-    const task = useRenameStore.getState().task!;
-    const before = task.items[0].before;
     act(() => hook.result.current.workflow.changeSort({ field: "name", direction: "desc" }));
-    expect(useRenameStore.getState().selectedIds).toEqual(["file-1.txt", "file-0.txt", "file-2.txt"]);
+    expect(useRenameStore.getState().selectedIds).toEqual([...selected].reverse());
     await preview(hook);
     expect(api.createStoragePreview).toHaveBeenLastCalledWith("default-local", { kind: "root" },
-      ["file-2.txt", "file-1.txt", "file-0.txt"], [], "task-preview");
+      [...selected].reverse(), [], "task-preview");
     expect(hook.result.current.workflow.previewData!.items.map((item) => item.file_id))
-      .toEqual(["file-2.txt", "file-1.txt", "file-0.txt"]);
-    expect(useRenameStore.getState().task!.taskId).toBe(task.taskId);
-    expect(useRenameStore.getState().task!.items[2].before).toBe(before);
+      .toEqual([...selected].reverse());
     expect(api.executePreview).not.toHaveBeenCalled();
+  });
+
+  it("keeps the original task snapshots while executing confirmed local files more than once", async () => {
+    const hook = await setupWorkspace(1);
+    await preview(hook);
+    const original = useRenameStore.getState().task!;
+    let current = listing(1).items[0];
+    for (const [index, newId] of ["first.txt", "second.txt"].entries()) {
+      const previewId = hook.result.current.workflow.previewData!.preview_id;
+      const next = { ...current, id: newId, name: newId, path: newId };
+      vi.mocked(api.executePreview).mockResolvedValueOnce({ preview_id: previewId, status: "completed", items: [{
+        file_id: current.id, original_name: current.name, new_name: newId,
+        status: "renamed", error: null, current_file: next,
+      }] });
+      act(() => hook.result.current.workflow.executeRename(previewId));
+      await waitFor(() => expect(hook.result.current.workflow.executionData?.preview_id).toBe(previewId));
+      expect(useRenameStore.getState().task!.taskId).toBe(original.taskId);
+      expect(useRenameStore.getState().task!.items[0].before).toBe(original.items[0].before);
+      expect(useRenameStore.getState().task!.items[0].before.name).toBe("file-0.txt");
+      expect(useRenameStore.getState().task!.items[0].currentFileId).toBe(newId);
+      await waitFor(() => expect(hook.result.current.workflow.browserItems[0].id).toBe(newId));
+      if (index === 0) {
+        act(() => hook.result.current.workflow.selectAllFiles([newId]));
+        vi.mocked(api.createStoragePreview).mockResolvedValueOnce({ preview_id: "second-preview",
+          expires_at: "2099-01-01T00:00:00Z", valid: true, items: [{ file_id: newId, original_name: newId,
+            new_name: "second.txt", changed: true, valid: true, conflict: false, error: null }] });
+        act(() => hook.result.current.workflow.requestPreview());
+        await waitFor(() => expect(hook.result.current.workflow.previewData?.preview_id).toBe("second-preview"));
+        expect(api.createStoragePreview).toHaveBeenLastCalledWith("default-local", { kind: "root" }, [newId], [], "task-preview");
+      }
+      current = next;
+    }
+    expect(api.executePreview).toHaveBeenCalledTimes(2);
+  });
+
+  it("creates a fixed task on preview, preserves snapshots across rule changes and releases it on task end", async () => {
+    const hook = await setupWorkspace(3);
+    expect(useRenameStore.getState().task).toBeNull();
+    act(() => hook.result.current.workflow.selectAllFiles(["file-0.txt", "file-1.txt"]));
+    await preview(hook);
+    const task = useRenameStore.getState().task!;
+    expect(task.items.map((item) => item.before.id)).toEqual(["file-0.txt", "file-1.txt"]);
+    expect(hook.result.current.workflow.browserItems.map((item) => item.id)).toEqual(["file-0.txt", "file-1.txt"]);
+    act(() => hook.result.current.workflow.selectAllFiles(["file-0.txt", "file-2.txt"]));
+    expect(useRenameStore.getState().selectedIds).toEqual(["file-0.txt"]);
+    const rules = [{ type: "insert", enabled: true, config: { text: "new-" } }];
+    act(() => hook.result.current.workflow.onRulesChange(rules));
+    await preview(hook);
+    expect(useRenameStore.getState().task).toBe(task);
+    expect(api.createStoragePreview).toHaveBeenLastCalledWith(
+      "default-local", { kind: "root" }, ["file-0.txt"], rules, "task-preview",
+    );
+    vi.mocked(api.fetchStorageFiles).mockResolvedValue({ ...listing(3), items: listing(3).items.slice(1) });
+    await act(async () => { await hook.result.current.storage.files.refetch(); });
+    await waitFor(() => expect(useRenameStore.getState().selectedIds).toEqual([]));
+    expect(hook.result.current.workflow.browserItems.map((item) => item.id)).toEqual(["file-0.txt", "file-1.txt"]);
+    expect(useRenameStore.getState().task).toBe(task);
+    act(() => hook.result.current.workflow.endTask());
+    expect(useRenameStore.getState().task).toBeNull();
+    expect(useRenameStore.getState().selectedIds).toEqual([]);
+    expect(api.releaseStoragePreview).toHaveBeenCalledWith("default-local", "task-preview");
+    expect(hook.result.current.workflow.browserItems.map((item) => item.id)).toEqual(["file-1.txt", "file-2.txt"]);
   });
 
   it("uses timestamp order and releases a late preview when refreshed metadata changes that order", async () => {
@@ -274,54 +313,5 @@ describe("rename workflow", () => {
       ["file-0.txt", "file-1.txt", "file-2.txt"], []);
   });
 
-  it.each(["skipped", "failed", "lost-response"] as const)("locks sort after %s and unlocks only after task end", async (outcome) => {
-    const hook = await setupWorkspace();
-    await preview(hook);
-    if (outcome === "lost-response") vi.mocked(api.executePreview).mockRejectedValueOnce(new Error("Lost response"));
-    else vi.mocked(api.executePreview).mockResolvedValueOnce({ preview_id: "task-preview",
-      status: outcome === "failed" ? "failed" : "completed", items: listing().items.map((file) => ({
-        file_id: file.id, original_name: file.name, new_name: file.name, status: outcome, error: null,
-      })) });
-    act(() => hook.result.current.workflow.executeRename("task-preview"));
-    await waitFor(() => expect(hook.result.current.workflow.sortLocked).toBe(true));
-    await waitFor(() => expect(hook.result.current.workflow.isExecuting).toBe(false));
-    act(() => hook.result.current.workflow.changeSort({ field: "name", direction: "desc" }));
-    expect(hook.result.current.workflow.browserItems.map((item) => item.id)).toEqual(["file-0.txt", "file-1.txt"]);
-    act(() => hook.result.current.workflow.endTask());
-    act(() => hook.result.current.workflow.changeSort({ field: "name", direction: "desc" }));
-    expect(hook.result.current.workflow.sortLocked).toBe(false);
-    expect(hook.result.current.workflow.browserItems.map((item) => item.id)).toEqual(["file-1.txt", "file-0.txt"]);
-  });
 
-  it("splits descending order before the batch limit and freezes order across confirmed local ID changes", async () => {
-    const hook = await setupWorkspace(1001);
-    let previewNumber = 0;
-    vi.mocked(api.createStoragePreview).mockImplementation(async (_id, _location, ids) => ({
-      preview_id: `sorted-${++previewNumber}`, expires_at: "2099-01-01T00:00:00Z", valid: true,
-      items: ids.map((id) => ({ file_id: id, original_name: id, new_name: `new-${id}`,
-        changed: true, valid: true, conflict: false, error: null })),
-    }));
-    act(() => hook.result.current.workflow.changeSort({ field: "name", direction: "desc" }));
-    act(() => hook.result.current.workflow.requestPreview());
-    expect(hook.result.current.workflow.batchHintOpen).toBe(true);
-    act(() => hook.result.current.workflow.continueBatchPreview());
-    await waitFor(() => expect(hook.result.current.workflow.previewData?.preview_id).toBe("sorted-1"));
-    const firstIds = listing(1001).items.slice(1).reverse().map((file) => file.id);
-    expect(api.createStoragePreview).toHaveBeenCalledWith("default-local", { kind: "root" }, firstIds, []);
-    const byId = new Map(listing(1001).items.map((file) => [file.id, file]));
-    vi.mocked(api.executePreview).mockResolvedValueOnce({ preview_id: "sorted-1", status: "completed",
-      items: firstIds.map((id) => ({ file_id: id, original_name: id, new_name: `new-${id}`, status: "renamed", error: null,
-        current_file: { ...byId.get(id)!, id: `new-${id}`, name: `new-${id}`, modified_at: "2026-10-16T01:00:00Z" },
-      })) });
-    act(() => hook.result.current.workflow.executeRename("sorted-1"));
-    await waitFor(() => expect(hook.result.current.workflow.executionData?.status).toBe("completed"));
-    expect(hook.result.current.workflow.browserItems.map((file) => file.id))
-      .toEqual([...firstIds.map((id) => `new-${id}`), "file-0.txt"]);
-    act(() => hook.result.current.workflow.changeSort({ field: "modified_at", direction: "asc" }));
-    act(() => hook.result.current.workflow.requestPreview());
-    await waitFor(() => expect(hook.result.current.workflow.previewData?.preview_id).toBe("sorted-2"));
-    expect(api.createStoragePreview).toHaveBeenLastCalledWith("default-local", { kind: "root" },
-      ["file-0.txt"], [], "sorted-1");
-    expect(useRenameStore.getState().task!.items.filter((item) => item.status === "completed")).toHaveLength(1000);
-  });
 });

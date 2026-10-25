@@ -41,7 +41,7 @@ describe("directory refresh selection", () => {
     })),
   });
 
-  it("isolates a new connection revision and clears its previous task and preview", async () => {
+  it("isolates a new connection revision and clears its previous selection and preview", async () => {
     vi.mocked(api.fetchStorageFiles).mockResolvedValue(listing(["A"]));
     vi.mocked(api.createStoragePreview).mockResolvedValue({
       preview_id: "revision-preview", expires_at: "2099-01-01T00:00:00Z", valid: true,
@@ -51,13 +51,15 @@ describe("directory refresh selection", () => {
     fireEvent.click(await screen.findByRole("checkbox", { name: "选择当前显示的全部项目" }));
     fireEvent.click(screen.getByRole("button", { name: "刷新预览" }));
     await waitFor(() => expect(screen.getByRole("button", { name: "开始修改" })).toBeEnabled());
-    expect(useRenameStore.getState().task).not.toBeNull();
+    expect(useRenameStore.getState().previewActive).toBe(true);
+    expect(useRenameStore.getState().task?.items[0].before.id).toBe("A");
 
     vi.mocked(api.fetchStorageFiles).mockResolvedValue(listing(["B"]));
     act(() => client.setQueryData<StorageInfo[]>(["storages"], (storages) => storages!.map((storage) =>
       storage.storage_id === "default-local" ? { ...storage, revision: 2 } : storage)));
     await screen.findByRole("checkbox", { name: "选择文件 B.txt" });
     expect(useRenameStore.getState().selectedIds).toEqual([]);
+    expect(useRenameStore.getState().previewActive).toBe(false);
     expect(useRenameStore.getState().task).toBeNull();
     expect(screen.getByRole("button", { name: "开始修改" })).toBeDisabled();
     expect(screen.queryByText("new-A.txt")).not.toBeInTheDocument();

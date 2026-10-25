@@ -20,7 +20,7 @@ export const status = (accountId: string | null, connected = true): Authorizatio
 });
 
 export const appSettings = (): AppSettings => ({ preferences: {
-  language: "auto", theme: "system", hide_batch_limit_hint: false, cloud_default_locations: {},
+  language: "auto", theme: "system", cloud_default_locations: {},
 } });
 
 export const storages = (): StorageInfo[] => [

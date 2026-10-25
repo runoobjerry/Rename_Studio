@@ -23,6 +23,9 @@ class JsonStorageRepository:
         if self.path.exists():
             try:
                 payload = json.loads(self.path.read_text(encoding="utf-8"))
+                # Older v3 documents may still contain the retired batch-hint preference.
+                if isinstance(payload, dict) and isinstance(payload.get("preferences"), dict):
+                    payload["preferences"].pop("hide_batch_limit_hint", None)
                 state = StorageState.model_validate(payload)
                 if any(key != record.storage_id for key, record in state.connections.items()):
                     raise ValueError("Connection key mismatch")

@@ -98,9 +98,6 @@ class ExecuteService:
                 return response
 
     async def _revalidate(self, snapshot: PreviewSnapshot) -> list[FileItem]:
-        # 执行只使用服务端快照，仍限制实际执行范围，不能通过旧快照绕过上限。
-        if len(snapshot.sources) > 1000 or len(snapshot.request.file_ids) > 1000:
-            raise ValidationError("A rename batch cannot contain more than 1000 files")
         if not snapshot.response.valid:
             raise ValidationError("Rename preview contains invalid items")
 

@@ -23,7 +23,7 @@ export function installWorkspaceTestHooks() {
     notify.mockReset();
     window.localStorage.clear();
     window.sessionStorage.clear();
-    useRenameStore.setState({ selectedIds: [], rules: [], task: null });
+    useRenameStore.setState({ selectedIds: [], rules: [], task: null, previewActive: false, unknownExecution: null });
     client = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } });
     serverSettings = appSettings();
     vi.mocked(api.fetchAppSettings).mockImplementation(async () => serverSettings);
@@ -63,9 +63,9 @@ export async function setupWorkspace(count = 2) {
   const wrapper = ({ children }: { children: ReactNode }) => <QueryClientProvider client={client}>{children}</QueryClientProvider>;
   const hook = renderHook(() => {
     const [sort, setSort] = useState<FileSort>(defaultFileSort);
-    const task = useRenameStore((state) => state.task);
-    const storage = useWorkspaceStorage({ hasTask: Boolean(task), onLocalRootSelected: (): void => workflow.resetForStorageChange() });
-    const workflow = useRenameWorkflow({ ...storage, task, sort, onSortChange: setSort });
+    const previewActive = useRenameStore((state) => state.previewActive);
+    const storage = useWorkspaceStorage({ pauseFileQueries: previewActive, onLocalRootSelected: (): void => workflow.resetForStorageChange() });
+    const workflow = useRenameWorkflow({ ...storage, sort, onSortChange: setSort });
     return { storage, workflow };
   }, { wrapper });
   await waitFor(() => expect(hook.result.current.storage.files.isSuccess).toBe(true));

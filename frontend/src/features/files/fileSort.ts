@@ -28,13 +28,9 @@ export function sortFileItems(items: readonly FileItem[], sort: FileSort): FileI
   });
 }
 
-export function fileBrowserItems(
-  files: FileItem[], task: Pick<RenameTask, "items"> | null | undefined, sort: FileSort, locked: boolean,
-): FileItem[] {
-  if (!task) return sortFileItems(files, sort);
+export function taskFileItems(files: FileItem[], task: RenameTask): FileItem[] {
   const byId = new Map(files.map((file) => [file.id, file]));
-  // 缺项仍保留任务快照；执行后只更新元数据，不因名称或时间变化重排。
-  const items = task.items.map((item) => byId.get(item.currentFileId)
-    ?? item.after?.current_file ?? item.reconciliation?.file ?? { ...item.before, id: item.currentFileId });
-  return locked ? items : sortFileItems(items, sort);
+  // 刷新缺项仍展示原快照；身份只接受 Provider 确认的 ID，不按名称匹配。
+  return task.items.map((item) => byId.get(item.currentFileId)
+    ?? item.after?.current_file ?? { ...item.before, id: item.currentFileId });
 }

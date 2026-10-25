@@ -21,7 +21,7 @@ import {
   Tooltip,
 } from "@mui/material";
 
-import type { DirectoryListing, FileItem, RenameTask, StorageLocation } from "../../types";
+import type { DirectoryListing, FileItem, StorageLocation } from "../../types";
 import { CheckboxFilterMenu } from "../../components/CheckboxFilterMenu";
 import { PanelIconButton } from "../../components/PanelIconButton";
 import { useVirtualTable } from "../../hooks/useVirtualTable";
@@ -33,29 +33,21 @@ const fileFilters = [
   { value: "file", labelKey: "files:types.file" },
   { value: "folder", labelKey: "files:types.folder" },
 ] as const;
-const taskFilters = [
-  { value: "pending", labelKey: "files:filters.pending", dividerBefore: true },
-  { value: "completed", labelKey: "files:filters.completed" },
-  { value: "failed", labelKey: "files:filters.failed" },
-] as const;
 const fixedColumnWidths = [44] as const;
 // 直接约束控件，避免 MUI 自身内边距或表格列宽改变其 20px 几何。
 const fileCheckboxSx = {
   width: 20, minWidth: 20, maxWidth: 20, height: 20, p: 0,
   "& .MuiSvgIcon-root": { width: 20, height: 20, fontSize: 20 },
 };
-type FileFilter = typeof fileFilters[number]["value"] | typeof taskFilters[number]["value"];
+type FileFilter = typeof fileFilters[number]["value"];
 interface FileBrowserProps {
   listing: DirectoryListing;
   items: FileItem[];
   sort: FileSort;
-  sortLocked: boolean;
   onSortChange: (sort: FileSort) => void;
-  task?: Pick<RenameTask, "taskId" | "items"> | null;
-  taskCurrent?: boolean;
-  disabled?: boolean;
+  hasTask?: boolean;
   onEndTask?: () => void;
-  onReconcileSelection?: (fileIds: string[]) => void;
+  disabled?: boolean;
   providerName: string;
   selectedIds: string[];
   isRefreshing?: boolean;
@@ -83,8 +75,8 @@ function formatModifiedAt(value: string | null, formatter: Intl.DateTimeFormat):
 }
 
 export const FileBrowser = memo(function FileBrowser({
-  listing, items: panelItems, sort, sortLocked, onSortChange,
-  task, taskCurrent = false, disabled = false, onEndTask, onReconcileSelection,
+  listing, items: panelItems, sort, onSortChange,
+  hasTask = false, onEndTask, disabled = false,
   providerName,
   selectedIds,
   isRefreshing = false,
@@ -103,36 +95,21 @@ export const FileBrowser = memo(function FileBrowser({
     hour: "2-digit", minute: "2-digit", hour12: false,
   }), [i18n.resolvedLanguage]);
   const [filters, setFilters] = useState<FileFilter[]>([]);
-  useEffect(() => {
-    setFilters((current) => [...current.filter((filter) => filter === "file" || filter === "folder"), ...(task ? ["pending" as const] : [])]);
-  }, [task?.taskId]); // eslint-disable-line react-hooks/exhaustive-deps -- 新任务才应用默认筛选。
-  const taskItems = useMemo(() => new Map(task?.items.map((item) => [item.currentFileId, item])), [task?.items]);
   const listedItems = useMemo(() => new Map(listing.items.map((item) => [item.id, item])), [listing.items]);
-  const hasTask = Boolean(task);
-  const filteredItems = useCallback((nextFilters: FileFilter[]) => {
-    const types = nextFilters.filter((filter) => filter === "file" || filter === "folder");
-    const statuses = nextFilters.filter((filter) => filter !== "file" && filter !== "folder");
-    return panelItems.filter((item) => {
-      const status = taskItems.get(item.id)?.status;
-      return (types.length === 0 || types.includes(item.is_directory ? "folder" : "file")) &&
-        (!hasTask || statuses.length === 0 || statuses.some((filter) => filter === "failed"
-          ? status === "failed" || status === "unknown" : status === filter));
-    });
-  }, [panelItems, taskItems, hasTask]);
+  const filteredItems = useCallback((nextFilters: FileFilter[]) => panelItems.filter((item) =>
+    nextFilters.length === 0 || nextFilters.includes(item.is_directory ? "folder" : "file")), [panelItems]);
   const visibleItems = useMemo(() => filteredItems(filters), [filteredItems, filters]);
-  const filterOptions = useMemo(() => [...fileFilters, ...taskFilters.map((option) => ({ ...option, disabled: !hasTask }))]
-    .map((option) => ({ ...option, label: t(option.labelKey) })), [hasTask, t]);
+  const filterOptions = fileFilters.map((option) => ({ ...option, label: t(option.labelKey) }));
   const totalCount = panelItems.length;
   const visibleIds = useMemo(() => visibleItems.map((item) => item.id), [visibleItems]);
   const selectedSet = useMemo(() => new Set(selectedIds), [selectedIds]);
   const selectedCount = useMemo(() => panelItems.filter((item) => selectedSet.has(item.id)).length, [panelItems, selectedSet]);
   const visibleSelectedCount = useMemo(() => visibleItems.filter((item) => selectedSet.has(item.id)).length, [visibleItems, selectedSet]);
-  const selectableIds = useMemo(() => visibleIds.filter((id) => listedItems.has(id) && listedItems.get(id)!.can_rename !== false &&
-    taskItems.get(id)?.status !== "completed" && taskItems.get(id)?.status !== "unknown"), [visibleIds, listedItems, taskItems]);
+  const selectableIds = useMemo(() => visibleIds.filter((id) => listedItems.has(id) && listedItems.get(id)!.can_rename !== false), [visibleIds, listedItems]);
   const [selectionAnchor, setSelectionAnchor] = useState<string | null>(null);
   useEffect(() => {
     setSelectionAnchor(null);
-  }, [listing, task?.taskId, filters, sort]);
+  }, [listing, filters, sort]);
   const selectRow = useCallback((fileId: string, shiftKey: boolean) => {
     const anchorIndex = selectionAnchor !== null && selectedSet.has(selectionAnchor)
       ? selectableIds.indexOf(selectionAnchor) : -1;
@@ -145,33 +122,24 @@ export const FileBrowser = memo(function FileBrowser({
       onSelectAll([fileId]);
     }
   }, [selectionAnchor, selectedSet, selectableIds, onSelectAll]);
-  const scrollKey = useMemo(() => [listing.items, task?.taskId, filters, sort], [listing.items, task?.taskId, filters, sort]);
+  const scrollKey = useMemo(() => [listing.items, filters, sort], [listing.items, filters, sort]);
   const columnValues = useMemo(() => [visibleItems.map(() => ""), visibleItems.map((item) => item.name),
     visibleItems.map((item) => getExtension(item.name, item.is_directory, t("files:types.folder"))),
     visibleItems.map((item) => formatModifiedAt(item.modified_at, modifiedAtFormatter))], [visibleItems, modifiedAtFormatter, t]);
   const virtual = useVirtualTable(visibleItems.length, scrollKey, columnValues, fixedColumnWidths);
   const allSelected = selectableIds.length > 0 && selectableIds.every((id) => selectedSet.has(id));
-  // 任务结果改变状态后，隐藏的失败/完成项退出选择，记录仍留在任务中。
-  useEffect(() => {
-    if (!task || !taskCurrent || disabled) return;
-    const visible = new Set(selectableIds);
-    const next = selectedIds.filter((id) => visible.has(id));
-    if (next.length !== selectedIds.length) (onReconcileSelection ?? onSelectAll)(next);
-  }, [hasTask, taskCurrent, selectableIds, selectedIds, disabled, onReconcileSelection, onSelectAll]);
-
   return (
     <section className="panel browser" aria-labelledby="files-title" aria-busy={isRefreshing}>
       <div className="panel-heading">
         <div className="panel-title-line">
-          <h2 id="files-title">{task ? t("files:taskTitle") : t("files:title")}</h2>
+          <h2 id="files-title">{t(hasTask ? "files:taskTitle" : "files:title")}</h2>
           <p className="panel-summary">
             {t("files:summary", { total: totalCount, selected: selectedCount })}
             {filters.length > 0 && t("files:showing", { count: visibleItems.length })}
-            {sortLocked && t("files:sortLocked")}
           </p>
         </div>
         <div className="browser-heading-actions">
-          {task ? (
+          {hasTask ? (
             <Tooltip title={t("files:endTask")} arrow>
               <span><PanelIconButton size="small" aria-label={t("files:endTask")} disabled={disabled} onClick={onEndTask}>
                 <LogoutRoundedIcon fontSize="small" />
@@ -203,7 +171,7 @@ export const FileBrowser = memo(function FileBrowser({
                 size="small"
                 aria-label={t("files:invert")}
                 onClick={() => onInvertSelection(selectableIds)}
-                disabled={disabled || (Boolean(task) && !taskCurrent) || selectableIds.length === 0}
+                disabled={disabled || selectableIds.length === 0}
               >
                 <Box
                   component="span"
@@ -254,7 +222,7 @@ export const FileBrowser = memo(function FileBrowser({
                   sx={fileCheckboxSx}
                   checked={allSelected}
                   indeterminate={visibleSelectedCount > 0 && !allSelected}
-                  disabled={disabled || (Boolean(task) && !taskCurrent) || selectableIds.length === 0}
+                  disabled={disabled || selectableIds.length === 0}
                   onChange={() => (allSelected ? onClearSelection?.() : onSelectAll(selectableIds))}
                   slotProps={{ input: { "aria-label": t("files:selectAll") } }}
                 />
@@ -262,7 +230,7 @@ export const FileBrowser = memo(function FileBrowser({
               <TableCell sortDirection={sort.field === "name" ? sort.direction : false}>
                 <TableSortLabel active={sort.field === "name"} direction={sort.field === "name" ? sort.direction : "asc"}
                   slotProps={{ icon: { sx: { fontSize: 16 } } }}
-                  disabled={disabled || sortLocked} onClick={() => onSortChange({ field: "name",
+                  disabled={disabled} onClick={() => onSortChange({ field: "name",
                     direction: sort.field === "name" && sort.direction === "asc" ? "desc" : "asc" })}>
                   {t("files:columns.name")}
                 </TableSortLabel>
@@ -271,7 +239,7 @@ export const FileBrowser = memo(function FileBrowser({
               <TableCell className="file-modified-column" sortDirection={sort.field === "modified_at" ? sort.direction : false}>
                 <TableSortLabel active={sort.field === "modified_at"} direction={sort.field === "modified_at" ? sort.direction : "asc"}
                   slotProps={{ icon: { sx: { fontSize: 16 } } }}
-                  disabled={disabled || sortLocked} onClick={() => onSortChange({ field: "modified_at",
+                  disabled={disabled} onClick={() => onSortChange({ field: "modified_at",
                     direction: sort.field === "modified_at" && sort.direction === "asc" ? "desc" : "asc" })}>
                   {t("files:columns.modified")}
                 </TableSortLabel>
@@ -281,17 +249,17 @@ export const FileBrowser = memo(function FileBrowser({
           <TableBody>
             <VirtualTableSpacer height={virtual.top} columns={4} />
             {visibleItems.slice(virtual.start, virtual.end).map((item, offset) => (
-              <FileBrowserRow key={taskItems.get(item.id)?.taskItemId ?? item.id}
+              <FileBrowserRow key={item.id}
                 item={item} rowIndex={virtual.start + offset} selected={selectedSet.has(item.id)} modifiedAtFormatter={modifiedAtFormatter}
-                disabled={disabled || listedItems.get(item.id)?.can_rename === false || (hasTask && (!taskCurrent || !listedItems.has(item.id))) || taskItems.get(item.id)?.status === "completed" || taskItems.get(item.id)?.status === "unknown"}
-                navigationDisabled={hasTask || disabled} onToggle={onToggle} onSelectRow={selectRow}
+                disabled={disabled || !listedItems.has(item.id) || listedItems.get(item.id)?.can_rename === false}
+                navigationDisabled={disabled || hasTask} onToggle={onToggle} onSelectRow={selectRow}
                 onNavigate={onNavigate} onNavigateLocation={onNavigateLocation} />
             ))}
             <VirtualTableSpacer height={virtual.bottom} columns={4} />
             {visibleItems.length === 0 && (
               <TableRow>
                 <TableCell colSpan={4} align="center">
-                  {totalCount === 0 ? (task ? t("files:emptyTask") : t("files:emptyDirectory")) : t("common:noMatches")}
+                  {totalCount === 0 ? t(hasTask ? "files:emptyTask" : "files:emptyDirectory") : t("common:noMatches")}
                 </TableCell>
               </TableRow>
             )}

@@ -10,7 +10,7 @@ from app.schemas.storage import StorageLocation
 
 class RenamePreviewRequest(BaseModel):
     storage_id: str
-    file_ids: list[str] = Field(min_length=1, max_length=1000)
+    file_ids: list[str] = Field(min_length=1)
     rules: list[RuleSpec] = Field(default_factory=list, max_length=20)
     location: StorageLocation | None = None
 

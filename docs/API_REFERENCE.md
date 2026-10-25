@@ -9,7 +9,7 @@
 - `provider_type` 标识驱动类型（`local`、`onedrive`、`google_drive`），`storage_id` 标识独立配置与账号连接。`DirectoryListing.provider` 仍为用于展示的驱动类型。
 - Storage APIs 以 `storage_id` 和 `location` 为边界。仅自动创建 `default-local`，云连接由用户添加。Google Drive 支持连接、OAuth、My Drive 读取与 Preview First 重命名，没有直接重命名的 HTTP endpoint。
 - `file_id` 由 Provider 定义，客户端须视为不透明值。Local ID 为相对路径，重命名后会变化；OneDrive ID 为 Graph item ID。显示路径不能作为资源身份。
-- 目录 API 不接受分页、搜索、排序或筛选参数；后端聚合 OneDrive / Google Drive 分页后一次返回完整结果。目录加载和整体 UI 选择数量不设上限，单次预览仍受批次限制。
+- 目录 API 不接受分页、搜索、排序或筛选参数；后端聚合 OneDrive / Google Drive 分页后一次返回完整结果。目录加载、UI 选择和单次预览均不设应用级文件数量上限。
 
 ## 错误与客户端兼容
 
@@ -213,7 +213,7 @@ Array<{
 ```ts
 {
   location?: StorageLocation; // 默认 root；导航使用后端返回的位置
-  file_ids: string[];      // 1..1000 项，不允许重复
+  file_ids: string[];      // 至少 1 项，不允许重复，无文件数量上限
   rules?: RuleSpec[];      // 默认 []，最多 20 条规则
   previous_preview_id?: string; // 非空；新预览保存后释放同连接的旧预览
 }
@@ -231,8 +231,8 @@ Array<{
 ```
 
 - 不修改文件；未变化项目仍保留在 `items` 中，所有项目有效时 `valid` 才为 true。
-- `file_ids` 有序，rule context indices 与响应 `items` 均按该顺序；服务端快照保留顺序，执行前重校验不重新排序。预览限制为 1000 文件、20 条规则（包括 disabled 规则），execute 也检查快照大小。
-- 422：超过文件/规则上限、空选择、重复、跨目录、超出路径、选择根目录、无效路径或规则配置；404：项目或目录不存在；其他 Provider 错误见通用错误。
+- `file_ids` 有序，rule context indices 与响应 `items` 均按该顺序；服务端快照保留顺序，执行前重校验不重新排序。预览不设文件数量上限，规则最多 20 条（包括 disabled 规则）；Provider 内部仍按自身能力分组写入。
+- 422：超过规则上限、空选择、重复、跨目录、超出路径、选择根目录、无效路径或规则配置；404：项目或目录不存在；其他 Provider 错误见通用错误。
 - 预览在当前后端进程保留 10 分钟，后端重启即失效。
 - 新预览保存成功后，仅替换显式提供且属于同连接的 `previous_preview_id`，不影响其他预览。请求失败保留旧快照；保存的响应即使 `valid: false` 也替换旧快照。替换不改变执行重校验或 consume 语义。
 
@@ -240,7 +240,7 @@ Array<{
 
 仅释放指定连接的指定预览；不存在、过期、已消费或重复释放均返回 204，不影响其他连接的预览。连接删除后仍可清理。
 
-该操作不访问 Provider，不取消已开始的执行，不清除执行进度或目录元数据缓存。前端在任务结束或工作区变化时释放持有的预览，并丢弃旧上下文迟到的预览响应；清理失败则由到期机制回收。规则/选择变化导致预览展示重置时，保留 cleanup ID，供下次替换或任务结束时使用。
+该操作不访问 Provider，不取消已开始的执行，不清除执行进度或目录元数据缓存。前端在清理工作区或工作区变化时释放持有的预览，并丢弃旧上下文迟到的预览响应；清理失败则由到期机制回收。规则/选择变化导致预览展示重置时，保留 cleanup ID，供下次替换或清理工作区时使用。
 
 ## 重命名执行（Rename Execute）
 
@@ -304,7 +304,6 @@ Array<{
 interface AppPreferences {
   language: string; // "auto" 或语言代码，例如 "zh-CN"、"en-US"
   theme: "light" | "dark" | "system";
-  hide_batch_limit_hint: boolean;
   cloud_default_locations: Record<string, { account_id: string; location: StorageLocation }>;
 }
 ```

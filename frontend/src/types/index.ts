@@ -62,7 +62,6 @@ export interface CloudDefaultLocation {
 export interface AppPreferences {
   language: string;
   theme: ThemePreference;
-  hide_batch_limit_hint: boolean;
   cloud_default_locations: Record<string, CloudDefaultLocation>;
 }
 
@@ -73,7 +72,6 @@ export interface AppSettings {
 export interface AppSettingsPatch {
   language?: string;
   theme?: ThemePreference;
-  hide_batch_limit_hint?: boolean;
   cloud_default_locations?: Record<string, CloudDefaultLocation | null>;
 }
 
@@ -171,27 +169,22 @@ export interface StorageUpdate {
   client_secret?: string | null;
 }
 
-// 展示快照与任务记录独立；before 在创建后不再修改，版本标识留待 Provider 支持。
+// 创建任务时复制原始文件信息；重复执行仅更新当前身份和结果，不覆盖 before。
 export interface FileSnapshot extends Readonly<FileItem> {
   readonly storageId: string;
-  readonly version?: string;
 }
-export type TaskItemStatus = "pending" | "completed" | "failed" | "unknown";
+
 export interface RenameTaskItem {
-  taskItemId: string;
-  order: number;
-  before: FileSnapshot;
+  readonly taskItemId: string;
+  readonly before: FileSnapshot;
   currentFileId: string;
-  status: TaskItemStatus;
   after?: Readonly<ExecuteItem>;
-  reconciliation?: { file: FileSnapshot; completed: boolean; verifiedAt: string };
 }
+
 export interface RenameTask {
-  taskId: string;
-  contextKey: string;
-  storageId: string;
-  location: StorageLocation;
-  rules: RuleSpec[];
-  items: RenameTaskItem[];
-  batches: { batchId: string; taskItemIds: string[]; previewId?: string; outcome?: "reported" | "unknown"; results?: readonly Readonly<ExecuteItem>[] }[];
+  readonly taskId: string;
+  readonly contextKey: string;
+  readonly storageId: string;
+  readonly location: Readonly<StorageLocation>;
+  readonly items: readonly RenameTaskItem[];
 }

@@ -3,15 +3,7 @@
     "file": "文件",
     "folder": "文件夹"
   },
-  "filters": {
-    "pending": "待处理",
-    "completed": "已完成",
-    "failed": "失败/待核对"
-  },
-  "taskTitle": "当前任务",
   "title": "文件选择",
-  "sortLocked": " · 排序已锁定，结束任务后可调整",
-  "endTask": "结束当前任务",
   "parent": "返回上级",
   "invert": "反选",
   "filterItems": "筛选项目",
@@ -22,7 +14,6 @@
     "extension": "扩展名",
     "modified": "修改时间"
   },
-  "emptyTask": "当前任务为空。",
   "emptyDirectory": "此目录为空。",
   "breadcrumbs": {
     "label": "文件路径",
@@ -60,7 +51,6 @@
     "refreshing": "正在刷新…",
     "preview": "刷新预览",
     "start": "开始修改",
-    "unchangedBatch": "本批没有名称变化，确认后将记录为已完成。",
     "irreversible": "此操作不可恢复！",
     "progress": "修改进度",
     "returnedError": "返回错误：{{message}}，请尝试刷新文件目录。",
@@ -71,11 +61,7 @@
     "confirm_other": "将根据当前预览区新文件名修改 {{provider}} 中的 {{count}} 个项目。请注意，"
   },
   "notifications": {
-    "invalidPreview": "预览包含无效名称或冲突，请检查结果；其他批次尚未处理的文件仍占用名称，不能跳过冲突检查。",
-    "oldUnknownTask": "旧任务仍有待核对项，请先恢复原规则并核对执行结果。",
-    "fixedMembers": "本次任务的文件集合已固定；请先结束当前任务，再选择文件开始新任务。",
-    "noTaskFiles": "没有可处理的任务文件；失败项可单独选择重试，待核对项须先核对。",
-    "verifyBeforeRules": "本批存在待核对结果，请先核对实际文件，结束当前任务后再修改规则。",
+    "invalidPreview": "预览包含无效名称或冲突，请检查结果。",
     "rootSelected": "已选择本地根文件夹。",
     "sessionUnavailable": "浏览器会话存储不可用，刷新后无法保留工作路径。",
     "defaultUnavailable": "无法读取默认路径，将打开云盘根目录。",
@@ -84,20 +70,16 @@
     "completed": "修改全部成功：{{count}} 项已修改。",
     "partial": "修改部分完成：{{renamed}} 项已修改，{{failed}} 项失败。",
     "failed": "修改失败：{{renamed}} 项已修改，{{failed}} 项失败。",
-    "unknownOutcome": "执行未返回完整结果：{{message}}；请刷新目录并核对本批文件。",
+    "unknownOutcome": "执行未返回完整结果：{{message}}；请刷新目录并核对实际文件。",
     "pickFailed": "选择文件夹失败：{{message}}",
     "defaultSaved": "已将“{{path}}”设为当前账号的默认路径。",
     "defaultRootSaved": "已将“根目录”设为当前账号的默认路径。",
     "defaultSaveFailed": "默认路径保存失败：{{message}}",
     "refreshFailed": "刷新失败：{{message}}",
     "completed_one": "修改全部成功：{{count}} 项已修改。",
-    "completed_other": "修改全部成功：{{count}} 项已修改。"
-  },
-  "batch": {
-    "title": "大批量处理提示",
-    "hideHint": "下次不再提示",
-    "continue": "继续预览",
-    "description": "当前选择的文件超过 {{limit}} 项。为避免影响性能，本次只会修改前 {{limit}} 项。本次执行结束后，您可以在“筛选”中选择“待处理项目”，继续选择并处理剩余项目。"
+    "completed_other": "修改全部成功：{{count}} 项已修改。",
+    "verifyBeforeRetry": "执行结果尚未核对，请先核对真实文件，再确认解除锁定。",
+    "fixedMembers": "任务文件集合已固定，请结束当前任务后再加入其他文件。"
   },
   "location": {
     "title": "目录位置",
@@ -129,5 +111,14 @@
   "refreshFailed": "目录刷新失败，当前显示上次读取的内容：{{message}}",
   "listLabel": "{{provider}} 文件列表",
   "selectFile": "选择文件 {{name}}",
-  "selectFolder": "选择文件夹 {{name}}"
+  "selectFolder": "选择文件夹 {{name}}",
+  "verification": {
+    "review": "核对执行结果",
+    "required": "存储 {{storage}} 的执行结果尚未确定。请核对真实文件后再继续修改。",
+    "instructions": "请刷新目录或打开实际存储，核对以下文件的当前名称和执行进度。确认后将解除锁定并清空选择，再次修改必须重新选择和预览。",
+    "confirm": "已核对，解除锁定"
+  },
+  "taskTitle": "当前任务",
+  "endTask": "结束当前任务",
+  "emptyTask": "当前任务为空。"
 }

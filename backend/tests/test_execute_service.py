@@ -268,17 +268,3 @@ async def test_renames_selected_directory_without_renaming_children(
     assert result.status == "completed"
     assert (tmp_path / "season-01" / "episode-one.txt").exists()
     assert not (tmp_path / "season-01" / "episode-01.txt").exists()
-
-
-@pytest.mark.asyncio
-async def test_execute_rejects_oversized_legacy_snapshot_before_writing(tmp_path: Path) -> None:
-    (tmp_path / "one.txt").write_text("one", encoding="utf-8")
-    provider = TrackingLocalProvider(tmp_path)
-    preview_service, execute_service = build_services(tmp_path, provider)
-    preview = await preview_service.preview(request_for({"one.txt": "renamed.txt"}))
-    snapshot = preview_service.store.get(preview.preview_id)
-    # 模拟上限上线前已存在的服务端快照；客户端仍只能提交 preview_id。
-    snapshot.request.file_ids = [f"old-{index}.txt" for index in range(1001)]
-    with pytest.raises(ValidationError, match="1000"):
-        await execute_service.execute(preview.preview_id)
-    assert provider.rename_targets == []

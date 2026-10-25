@@ -114,12 +114,11 @@ describe("workspace provider capabilities", () => {
     expect(api.fetchStorageFiles).toHaveBeenCalledWith("oauth", { kind: "root" });
   });
 
-  it("pauses on a metadata refresh failure without losing the known account, task or selection", async () => {
+  it("pauses on a metadata refresh failure without losing the known account or selection", async () => {
     const hook = await setupWorkspace(1);
     await openCloud(hook);
     act(() => hook.result.current.workflow.selectAllFiles(["file-0.txt"]));
     await preview(hook);
-    const task = useRenameStore.getState().task;
     const selected = useRenameStore.getState().selectedIds;
     const cloudSession = hook.result.current.storage.cloudSession;
     const definitions = hook.result.current.storage.providerDefinitions.data!;
@@ -128,18 +127,16 @@ describe("workspace provider capabilities", () => {
     await waitFor(() => expect(hook.result.current.storage.providerDefinitions.isError).toBe(true));
     expect(hook.result.current.storage.locationReady).toBe(false);
     expect(hook.result.current.storage.cloudSession).toBe(cloudSession);
-    expect(useRenameStore.getState().task).toBe(task);
     expect(useRenameStore.getState().selectedIds).toEqual(selected);
     vi.mocked(api.fetchStorageProviders).mockResolvedValue(definitions);
     await act(async () => { await client.invalidateQueries({ queryKey: ["storage-providers"] }); });
     await waitFor(() => expect(hook.result.current.storage.locationReady).toBe(true));
-    expect(useRenameStore.getState().task).toBe(task);
   });
 });
 
 describe("workspace storage", () => {
 
-  it("keeps pending navigation and then the task, selection and preview when clicking the current connection", async () => {
+  it("keeps pending navigation and then selection and preview when clicking the current connection", async () => {
     const hook = await setupWorkspace(1);
     const resolveDirectory = deferred<DirectoryListing>();
     vi.mocked(api.fetchStorageFiles).mockImplementationOnce(() => resolveDirectory.promise);
@@ -152,11 +149,9 @@ describe("workspace storage", () => {
       .toEqual({ kind: "path", value: "任务目录" }));
     act(() => hook.result.current.workflow.selectAllFiles(["file-0.txt"]));
     await preview(hook);
-    const previousTask = useRenameStore.getState().task;
     const previousPreview = hook.result.current.workflow.previewData;
     act(() => hook.result.current.storage.selectStorage("default-local"));
     expect(hook.result.current.storage.location).toEqual({ kind: "path", value: "任务目录" });
-    expect(useRenameStore.getState().task).toBe(previousTask);
     expect(useRenameStore.getState().selectedIds).toEqual(["file-0.txt"]);
     expect(hook.result.current.workflow.previewData).toBe(previousPreview);
     expect(api.releaseStoragePreview).not.toHaveBeenCalled();
@@ -190,7 +185,7 @@ describe("workspace storage", () => {
 
 // 单独挂载存储 Hook，以新查询缓存模拟刷新；云目录仍由调用方显式触发恢复。
 function mountStorage() {
-  return renderHook(() => useWorkspaceStorage({ hasTask: false, onLocalRootSelected: vi.fn() }), {
+  return renderHook(() => useWorkspaceStorage({ pauseFileQueries: false, onLocalRootSelected: vi.fn() }), {
     wrapper: ({ children }: { children: ReactNode }) => createElement(QueryClientProvider, { client }, children),
   });
 }

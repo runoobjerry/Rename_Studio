@@ -125,7 +125,7 @@ def test_new_install_only_creates_local_and_restores_it(tmp_path: Path) -> None:
     assert manager.record("default-local").name == "Local Files"
     assert manager.state.schema_version == 3
     assert manager.state.preferences.model_dump() == {
-        "language": "auto", "theme": "system", "hide_batch_limit_hint": False,
+        "language": "auto", "theme": "system",
         "cloud_default_locations": {},
     }
     assert manager.record("default-local").config["root_path"] == str((tmp_path / "files").resolve())
@@ -151,15 +151,17 @@ def test_language_partial_patch_persists_without_changing_connections_or_other_p
     manager.update_app_settings(AppSettingsPatch.model_validate({
         "cloud_default_locations": {cloud.storage_id: {"account_id": "account-a", "location": {"kind": "id", "value": "folder-a"}}},
     }))
-    manager.update_app_settings(AppSettingsPatch(theme="dark", hide_batch_limit_hint=True))
+    manager.update_app_settings(AppSettingsPatch(theme="dark"))
     before = manager.state.model_copy(deep=True)
     # A future language is accepted without adding a Python enum member.
     manager.update_app_settings(AppSettingsPatch(language="fr-FR"))
-    manager.update_app_settings(AppSettingsPatch(hide_batch_limit_hint=False))
+    legacy = json.loads(manager.repository.path.read_text(encoding="utf-8"))
+    legacy["preferences"]["hide_batch_limit_hint"] = True
+    manager.repository.path.write_text(json.dumps(legacy), encoding="utf-8")
     restored = make_manager(tmp_path)
+    assert "hide_batch_limit_hint" not in restored.state.preferences.model_dump()
     assert restored.state.preferences.language == "fr-FR"
     assert restored.state.preferences.theme == "dark"
-    assert restored.state.preferences.hide_batch_limit_hint is False
     assert restored.state.preferences.cloud_default_locations == before.preferences.cloud_default_locations
     assert restored.state.connections == before.connections
 
@@ -300,19 +302,16 @@ def test_app_settings_api_partial_updates_preserve_other_fields_and_credentials(
         initial = client.get("/app-settings")
         assert initial.status_code == 200
         assert initial.json() == {"preferences": {
-            "language": "auto", "theme": "system", "hide_batch_limit_hint": False,
+            "language": "auto", "theme": "system",
             "cloud_default_locations": {},
         }}
         updated = client.patch("/app-settings", json={"theme": "dark"})
         assert updated.status_code == 200
         assert updated.json()["preferences"]["theme"] == "dark"
-        hint = client.patch("/app-settings", json={"hide_batch_limit_hint": True})
-        assert hint.status_code == 200
-        assert hint.json()["preferences"]["theme"] == "dark"
         last = client.patch("/app-settings", json={"theme": "light"})
         assert last.status_code == 200
         assert last.json() == {"preferences": {
-            "language": "auto", "theme": "light", "hide_batch_limit_hint": True, "cloud_default_locations": {},
+            "language": "auto", "theme": "light", "cloud_default_locations": {},
         }}
         rejected = client.patch("/app-settings", json={
             "credentials": {"refresh_token": "fixture-secret"},
@@ -323,7 +322,7 @@ def test_app_settings_api_partial_updates_preserve_other_fields_and_credentials(
             "rules": [{"type": "replace", "config": {}}],
         })
         assert unsupported_rules.status_code == 422
-        for response in (initial, updated, hint, last, rejected):
+        for response in (initial, updated, last, rejected):
             assert "fixture-secret" not in response.text
             assert "credentials" not in initial.text + updated.text
         assert manager.record(cloud.storage_id).credentials["refresh_token"] == "fixture-secret"
@@ -350,7 +349,7 @@ def test_factory_reset_api_rejects_busy_and_never_returns_credentials(tmp_path: 
         done = client.post("/app-settings/factory-reset")
         assert done.status_code == 200
         assert done.json() == {"preferences": {
-            "language": "auto", "theme": "system", "hide_batch_limit_hint": False, "cloud_default_locations": {},
+            "language": "auto", "theme": "system", "cloud_default_locations": {},
         }}
         assert "fixture-secret" not in busy.text + done.text
 
@@ -368,7 +367,7 @@ async def test_factory_reset_clears_connections_preferences_and_old_preview(tmp_
     manager._persist_auth(cloud.storage_id, {"client_id": "app"}, {"refresh_token": "fixture-secret", "account_id": "account-a"})
     auth = manager.auth(cloud.storage_id)
     manager.authorization_sessions["old-session"] = (cloud.storage_id, 1, "old-session", datetime.now(UTC))
-    manager.update_app_settings(AppSettingsPatch(language="en-US", theme="dark", hide_batch_limit_hint=True))
+    manager.update_app_settings(AppSettingsPatch(language="en-US", theme="dark"))
     preview, execute = services(manager)
     snapshot = await preview.preview(RenamePreviewRequest(
         storage_id="default-local", location=RootLocation(), file_ids=["keep.txt"], rules=[],
@@ -378,7 +377,7 @@ async def test_factory_reset_clears_connections_preferences_and_old_preview(tmp_
     result = await manager.factory_reset(tmp_path / "files", preview.store)
 
     assert result.preferences.model_dump() == {
-        "language": "auto", "theme": "system", "hide_batch_limit_hint": False, "cloud_default_locations": {},
+        "language": "auto", "theme": "system", "cloud_default_locations": {},
     }
     assert list(manager.state.connections) == ["default-local"]
     assert manager.record("default-local").revision == previous_revision + 1
