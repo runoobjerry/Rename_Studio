@@ -6,11 +6,12 @@ import pytest
 from fastapi.testclient import TestClient
 
 from provider_fixtures import registry_for
-from app.api.dependencies import get_execute_service, get_storage_manager, get_preview_service, get_preview_store
+from app.api.dependencies import get_execute_service, get_single_rename_service, get_storage_manager, get_preview_service, get_preview_store
 from app.main import create_app
 from app.providers.local.driver import LocalProvider
 from app.rules.registry import RuleRegistry
 from app.services.execute_service import ExecuteService
+from app.services.single_rename_service import SingleRenameService
 from app.services.preview_service import PreviewService
 from app.services.preview_store import PreviewStore
 from app.services.rename_engine import RenameEngine
@@ -27,6 +28,7 @@ def api_client(tmp_path: Path) -> Iterator[TestClient]:
     app.dependency_overrides[get_preview_service] = lambda: preview
     app.dependency_overrides[get_preview_store] = lambda: store
     app.dependency_overrides[get_execute_service] = lambda: execute
+    app.dependency_overrides[get_single_rename_service] = lambda: SingleRenameService(providers)
     with TestClient(app) as client:
         yield client
 
@@ -186,7 +188,7 @@ def test_single_target_rejects_ambiguous_requests(api_client: TestClient, body: 
 
 @pytest.mark.parametrize("target", ["", "bad/name.txt", "occupied.txt", "x" * 256],
                          ids=["empty", "invalid-character", "occupied", "too-long"])
-def test_single_target_recheck_rejects_invalid_name_without_writing(
+def test_single_target_provider_rejects_invalid_name_without_writing(
     tmp_path: Path, api_client: TestClient, target: str,
 ) -> None:
     (tmp_path / "one.txt").write_text("source", encoding="utf-8")
@@ -205,7 +207,7 @@ def test_single_target_recheck_rejects_invalid_name_without_writing(
 
 
 @pytest.mark.parametrize("change", ["source", "target"], ids=["source-changed", "new-conflict"])
-def test_single_target_checks_current_source_and_conflicts_before_writing(
+def test_single_target_returns_provider_missing_source_and_conflict_errors(
     tmp_path: Path, api_client: TestClient, change: str,
 ) -> None:
     source = tmp_path / "one.txt"
@@ -218,23 +220,21 @@ def test_single_target_checks_current_source_and_conflicts_before_writing(
         "operation_id": str(uuid4()), "revision": 1, "file_id": "one.txt",
         "original_name": "one.txt", "target_name": "new.txt",
     })
-    if change == "source":
-        assert result.status_code == 422
-    else:
-        assert result.status_code == 200
-        assert result.json()["items"][0]["error_code"] == "RENAME_CONFLICT"
+    assert result.status_code == 200
+    assert result.json()["items"][0]["error_code"] == ("NOT_FOUND" if change == "source" else "RENAME_CONFLICT")
+    if change != "source":
         assert source.read_text(encoding="utf-8") == "source"
     assert changed_path.read_text(encoding="utf-8") == "external change"
     if change == "source":
         assert not (tmp_path / "new.txt").exists()
 
 
-def test_single_target_same_name_is_unchanged(tmp_path: Path, api_client: TestClient) -> None:
+def test_single_target_same_name_returns_provider_confirmed_result(tmp_path: Path, api_client: TestClient) -> None:
     (tmp_path / "one.txt").write_text("source", encoding="utf-8")
     result = api_client.post("/storages/local/rename/single/execute", json={
         "operation_id": str(uuid4()), "revision": 1, "file_id": "one.txt",
         "original_name": "one.txt", "target_name": "one.txt",
     })
     assert result.status_code == 200
-    assert result.json()["items"][0]["status"] == "skipped"
+    assert result.json()["items"][0]["status"] == "renamed"
     assert (tmp_path / "one.txt").read_text(encoding="utf-8") == "source"

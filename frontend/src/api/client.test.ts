@@ -20,7 +20,7 @@ describe("API client", () => {
         original_name: "old.tar.gz", target_name: "资料.tar.gz", revision: 1,
       }),
     });
-    expect(result).toEqual({ preview_id: operationId, status: "completed", items: [] });
+    expect(result).toEqual({ operation_id: operationId, status: "completed", items: [] });
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
   it("reads app settings and submits only changed preference fields", async () => {

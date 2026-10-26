@@ -9,7 +9,7 @@ from urllib.parse import parse_qs, urlsplit
 from fastapi import APIRouter, Depends, Query, Response
 from fastapi.responses import HTMLResponse
 
-from app.api.dependencies import get_execute_service, get_preview_service, get_preview_store, get_storage_manager
+from app.api.dependencies import get_single_rename_service, get_preview_service, get_preview_store, get_storage_manager
 from app.core.config import get_settings
 from app.core.errors import AppError, AuthenticationError, StorageConnectionChangedError, ValidationError
 from app.schemas.files import DirectoryListing
@@ -20,7 +20,7 @@ from app.services.connection_auth import ConnectionAuth
 from app.services.local_folder_picker import choose_local_directory
 from app.services.preview_service import PreviewService
 from app.services.preview_store import PreviewStore
-from app.services.execute_service import ExecuteService
+from app.services.single_rename_service import SingleRenameService
 from app.services.storage_manager import StorageManager
 
 
@@ -173,5 +173,5 @@ async def release_preview(
 
 @router.post("/storages/{storage_id}/rename/single/execute", response_model=SingleRenameExecuteResponse)
 async def execute_single(storage_id: str, request: SingleRenameExecuteRequest,
-                         service: Annotated[ExecuteService, Depends(get_execute_service)]) -> SingleRenameExecuteResponse:
-    return await service.execute_single(storage_id, request)
+                         service: Annotated[SingleRenameService, Depends(get_single_rename_service)]) -> SingleRenameExecuteResponse:
+    return await service.execute(storage_id, request)

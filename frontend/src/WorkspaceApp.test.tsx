@@ -45,7 +45,7 @@ describe("workspace workflow wiring", () => {
     return items;
   };
 
-  it("renames directly from the row dialog with progress throughout server recheck and execution", async () => {
+  it("renames directly from the row dialog with progress throughout direct execution", async () => {
     vi.mocked(api.fetchStorageFiles).mockResolvedValue(listing(1));
 
     const execution = deferred<Awaited<ReturnType<typeof api.executeStorageSingleRename>>>();
@@ -72,7 +72,7 @@ describe("workspace workflow wiring", () => {
     expect(within(dialog).getByRole("button", { name: "应用" })).toBeDisabled();
     const current = fileItem("provider-new-id", { name: "资料.txt", path: "资料.txt" });
     vi.mocked(api.fetchStorageFiles).mockResolvedValue({ ...listing(1), items: [current] });
-    await act(async () => execution.resolve({ preview_id: "single-ui", status: "completed", items: [{
+    await act(async () => execution.resolve({ operation_id: "single-ui", status: "completed", items: [{
       file_id: "file-0.txt", original_name: "file-0.txt", new_name: "资料.txt",
       status: "renamed", error: null, current_file: current,
     }] }));

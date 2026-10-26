@@ -13,6 +13,7 @@ from app.core.errors import (
     AppError,
     AuthenticationError,
     NotFoundError,
+    PermissionDeniedError,
     ProviderError,
     RateLimitError,
     RenameConflictError,
@@ -244,7 +245,10 @@ class OneDriveProvider(StorageProvider):
             f"{GRAPH_ROOT}/me/drive/items/{encoded_id}",
             json={"name": new_name},
         )
-        return self._to_item(payload)
+        try:
+            return self._to_item(payload)
+        except ProviderError as exc:
+            raise RenameOutcomeUnknownError("Microsoft Graph returned incomplete write metadata") from exc
 
     async def rename_many(
         self, requests: list[RenameRequest]
@@ -537,6 +541,10 @@ class OneDriveProvider(StorageProvider):
         if status == 401:
             return AuthenticationError(
                 message or "OneDrive authorization failed", details=details
+            )
+        if status == 403:
+            return PermissionDeniedError(
+                message or "OneDrive permission denied", details=details
             )
         if status == 404:
             return NotFoundError(message or "OneDrive item was not found", details=details)

@@ -91,10 +91,8 @@ export const updateStorage = (id: string, body: StorageUpdate): Promise<StorageI
 export const deleteStorage = (id: string): Promise<void> => request(storageUrl(id), { method: "DELETE" });
 export const fetchStorageFiles = (id: string, location: StorageLocation): Promise<DirectoryListing> => request(`${storageUrl(id)}/files/list`, jsonPost({ location }));
 export const createStoragePreview = (id: string, location: StorageLocation, fileIds: string[], rules: RuleSpec[], previousPreviewId?: string): Promise<PreviewResponse> => request(`${storageUrl(id)}/rename/preview`, jsonPost({ location, file_ids: fileIds, rules, previous_preview_id: previousPreviewId }));
-export async function executeStorageSingleRename(id: string, input: SingleRenameExecuteRequest): Promise<ExecuteResponse> {
-  const result = await request<SingleRenameExecuteResponse>(`${storageUrl(id)}/rename/single/execute`, jsonPost(input));
-  // 只在结果展示层适配现有任务格式；operation_id 不用于创建或执行预览。
-  return { preview_id: result.operation_id, status: result.status, items: result.items };
+export function executeStorageSingleRename(id: string, input: SingleRenameExecuteRequest): Promise<SingleRenameExecuteResponse> {
+  return request(`${storageUrl(id)}/rename/single/execute`, jsonPost(input));
 }
 export const releaseStoragePreview = (id: string, previewId: string): Promise<void> => request(`${storageUrl(id)}/rename/previews/${encodeURIComponent(previewId)}`, { method: "DELETE" });
 export const fetchStorageAuthStatus = (id: string): Promise<AuthorizationStatus> => request(`${storageUrl(id)}/auth/status`);

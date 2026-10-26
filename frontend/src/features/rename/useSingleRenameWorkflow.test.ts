@@ -5,7 +5,7 @@ import { useRenameStore } from "../../stores/useRenameStore";
 import { deferred } from "../../test/deferred";
 import { fileItem, previewResponse, storages } from "../../test/fixtures";
 import { client, installWorkspaceTestHooks, listing, notify, preview, setupWorkspace } from "../../test/workspaceHarness";
-import type { ExecuteResponse, FileItem } from "../../types";
+import type { FileItem, SingleRenameExecuteResponse } from "../../types";
 
 vi.mock("../../api/client", async (importOriginal) => {
   const { workspaceApiMock } = await import("../../test/workspaceApiMock");
@@ -18,10 +18,10 @@ installWorkspaceTestHooks();
 
 const directoryKey = ["files", "default-local", 1, { kind: "root" }];
 
-function renamed(file: FileItem, current: FileItem, previewId = "single-preview"): ExecuteResponse {
-  return { preview_id: previewId, status: "completed", items: [{
+function renamed(file: FileItem, current: FileItem, operationId = "single-operation") {
+  return { operation_id: operationId, status: "completed" as const, items: [{
     file_id: file.id, original_name: file.name, new_name: current.name,
-    status: "renamed", error: null, current_file: current,
+    status: "renamed" as const, error: null, current_file: current,
   }] };
 }
 
@@ -40,7 +40,10 @@ describe("single rename workflow", () => {
     act(() => hook.result.current.workflow.openSingleRename(source.id));
     expect(hook.result.current.workflow.singleRenameTarget).toMatchObject({ name: example.name, extension: example.extension });
 
-    vi.mocked(api.executeStorageSingleRename).mockResolvedValueOnce(renamed(source, current));
+    const success = renamed(source, current);
+    vi.mocked(api.executeStorageSingleRename).mockResolvedValueOnce({ ...success, items: [{
+      ...success.items[0], current_file: { ...current, path: null, parent_path: null },
+    }] });
 
     act(() => hook.result.current.workflow.applySingleRename(example.input, example.extension));
 
@@ -128,7 +131,7 @@ describe("single rename workflow", () => {
     await preview(hook);
     const task = useRenameStore.getState().task;
 
-    const execution = deferred<ExecuteResponse>();
+    const execution = deferred<SingleRenameExecuteResponse>();
 
     vi.mocked(api.executeStorageSingleRename).mockReturnValueOnce(execution.promise);
     act(() => hook.result.current.workflow.openSingleRename("file-0.txt"));
@@ -166,7 +169,7 @@ describe("single rename workflow", () => {
 
     if (kind === "lost") vi.mocked(api.executeStorageSingleRename).mockRejectedValueOnce(new Error("Response lost"));
     else vi.mocked(api.executeStorageSingleRename).mockResolvedValueOnce({
-      preview_id: "single-preview", status: kind === "unconfirmed" ? "completed" : "failed",
+      operation_id: "single-operation", status: kind === "unconfirmed" ? "completed" : "failed",
       items: kind === "missing" ? [] : [{
         file_id: source.id, original_name: source.name, new_name: "new.txt",
         status: kind === "unconfirmed" ? "renamed" : "failed", error: kind === "unconfirmed" ? null : "Unknown write",
@@ -179,7 +182,7 @@ describe("single rename workflow", () => {
     await waitFor(() => expect(hook.result.current.workflow.isSingleRenaming).toBe(false));
     expect(useRenameStore.getState().unknownExecution).toMatchObject({
       storageId: "default-local", previewId: kind === "lost"
-        ? vi.mocked(api.executeStorageSingleRename).mock.calls[0][1].operation_id : "single-preview", items: [{ file_id: source.id }],
+        ? vi.mocked(api.executeStorageSingleRename).mock.calls[0][1].operation_id : "single-operation", items: [{ file_id: source.id }],
     });
     expect(hook.result.current.workflow.canSingleRename).toBe(false);
     expect(hook.result.current.workflow.singleRenameError).toBeDefined();
@@ -196,25 +199,57 @@ describe("single rename workflow", () => {
     expect(api.executePreview).not.toHaveBeenCalled();
   });
 
-  it("keeps an explicitly failed write retryable and preserves its error", async () => {
+  it.each([
+    { code: "PERMISSION_DENIED", message: "Permission changed", text: "没有执行此操作的权限。Permission changed" },
+    { code: "RENAME_CONFLICT", message: "Name occupied", text: "文件名存在冲突，修改后重试。Name occupied" },
+    { code: "RATE_LIMIT_ERROR", message: "Throttled", text: "请求过于频繁，请稍后重试。Throttled" },
+  ])("keeps a $code failure retryable and translates its code", async ({ code, message, text }) => {
     const hook = await setupWorkspace(1);
     const source = listing(1).items[0];
 
-    vi.mocked(api.executeStorageSingleRename).mockResolvedValueOnce({ preview_id: "single-preview", status: "failed", items: [{
+    vi.mocked(api.executeStorageSingleRename).mockResolvedValueOnce({ operation_id: "single-operation", status: "failed", items: [{
       file_id: source.id, original_name: source.name, new_name: "new.txt", status: "failed",
-      error: "Permission changed", error_code: "PERMISSION_DENIED", actual_name: source.name,
+      error: message, error_code: code, actual_name: source.name,
     }] });
     act(() => hook.result.current.workflow.openSingleRename(source.id));
     act(() => hook.result.current.workflow.applySingleRename("new", ".txt"));
 
     await waitFor(() => {
-      expect(hook.result.current.workflow.singleRenameError).toBe("Permission changed");
+      expect(hook.result.current.workflow.singleRenameError).toBe(text);
       expect(hook.result.current.workflow.isSingleRenaming).toBe(false);
     });
     expect(hook.result.current.workflow.canSingleRename).toBe(true);
     expect(hook.result.current.workflow.singleRenameTarget?.file).toEqual(source);
     expect(useRenameStore.getState().unknownExecution).toBeNull();
     expect(useRenameStore.getState().selectedIds).toEqual([source.id]);
+  });
+
+  it("shows a missing-file error and blocks applying until the dialog is closed", async () => {
+    const hook = await setupWorkspace(1);
+    vi.mocked(api.executeStorageSingleRename).mockResolvedValueOnce({ operation_id: "missing-file", status: "failed", items: [{
+      file_id: "file-0.txt", original_name: "file-0.txt", new_name: "new.txt", status: "failed",
+      error: "Missing file", error_code: "NOT_FOUND",
+    }] });
+    act(() => hook.result.current.workflow.openSingleRename("file-0.txt"));
+    act(() => hook.result.current.workflow.applySingleRename("new", ".txt"));
+    await waitFor(() => expect(hook.result.current.workflow.singleRenameError).toBe("请求的资源不存在。Missing file"));
+    expect(hook.result.current.workflow.canSingleRename).toBe(false);
+    expect(useRenameStore.getState().unknownExecution).toBeNull();
+    act(() => hook.result.current.workflow.applySingleRename("retry", ".txt"));
+    expect(api.executeStorageSingleRename).toHaveBeenCalledTimes(1);
+    act(() => hook.result.current.workflow.closeSingleRename());
+    await waitFor(() => expect(hook.result.current.workflow.canSingleRename).toBe(true));
+  });
+
+  it("shows an explicit HTTP rejection without locking either workflow", async () => {
+    const hook = await setupWorkspace(1);
+    vi.mocked(api.executeStorageSingleRename).mockRejectedValueOnce(new api.ApiError(403, "Denied", "PERMISSION_DENIED"));
+    act(() => hook.result.current.workflow.openSingleRename("file-0.txt"));
+    act(() => hook.result.current.workflow.applySingleRename("new", ".txt"));
+    await waitFor(() => expect(hook.result.current.workflow.singleRenameError).toBe("没有执行此操作的权限。Denied"));
+    expect(hook.result.current.workflow.canSingleRename).toBe(true);
+    expect(useRenameStore.getState().unknownExecution).toBeNull();
+    expect(api.executePreview).not.toHaveBeenCalled();
   });
 
   it.each(["refresh-failed", "storage-busy"])("blocks applying an open edit when %s", async (reason) => {

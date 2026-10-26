@@ -17,7 +17,7 @@ from pydantic import BaseModel, Field, ValidationError as ModelValidationError
 from app.core.errors import AppError, AuthenticationError, NotFoundError, PermissionDeniedError, ProviderError, RateLimitError, RenameConflictError, RenameOutcomeUnknownError, ValidationError
 from app.core.log_context import request_id_context
 from app.providers.base import RenameRequest, StorageProvider
-from app.schemas.files import DirectoryBreadcrumb, DirectoryListing, FileItem
+from app.schemas.files import DirectoryBreadcrumb, DirectoryListing, FileItem, RenameFile
 from app.schemas.storage import IdLocation, PathLocation, RootLocation, StorageLocation
 from app.services.connection_auth import ConnectionAuth
 
@@ -407,6 +407,34 @@ class GoogleDriveProvider(StorageProvider):
         if isinstance(outcome, AppError):
             raise outcome
         return outcome
+
+    @staticmethod
+    def _to_rename_file(item: _DriveFile) -> RenameFile:
+        # Identity and confirmed metadata do not require resolving ancestor names.
+        is_directory = item.mimeType == FOLDER_MIME
+        return RenameFile(
+            id=item.id, name=item.name, is_directory=is_directory,
+            size=None if is_directory else item.size, modified_at=item.modifiedTime,
+            location=IdLocation(value=item.id),
+            parent_location=IdLocation(value=item.parents[0]) if item.parents else None,
+            can_rename=item.capabilities.canRename, mime_type=item.mimeType,
+        )
+
+    async def get_single_metadata(self, file_id: str) -> RenameFile:
+        return self._to_rename_file(await self._get_file(file_id))
+
+    async def rename_single(self, file_id: str, new_name: str) -> RenameFile:
+        response = await self._request(
+            "PATCH", f"{DRIVE_ROOT}/files/{quote(file_id, safe='')}",
+            params={"fields": FILE_FIELDS, "supportsAllDrives": "false"},
+            content=json.dumps({"name": new_name}, ensure_ascii=True).encode("utf-8"),
+            headers={"Content-Type": "application/json"}, writing=True,
+        )
+        try:
+            current = self._parse_file(response, file_id)
+        except ProviderError as exc:
+            raise RenameOutcomeUnknownError("Google Drive returned invalid write metadata") from exc
+        return self._to_rename_file(current)
 
     async def rename_many(self, requests: list[RenameRequest]) -> dict[str, FileItem | AppError]:
         results: dict[str, FileItem | AppError] = {}

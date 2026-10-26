@@ -1,31 +1,30 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { ApiError, executePreview, executeStorageSingleRename } from "../../api/client";
+import { executePreview } from "../../api/client";
 import { useNotification } from "../../components/NotificationProvider";
 import { useRenameStore } from "../../stores/useRenameStore";
-import type { DirectoryListing, PreviewResponse, SingleRenameExecuteRequest } from "../../types";
+import type { DirectoryListing, PreviewResponse } from "../../types";
 
-export type ExecutionInput = {
+type BatchExecutionInput = {
   source: Pick<PreviewResponse, "preview_id" | "items"> & { storageId: string };
   workspaceSession: string;
   taskId?: string;
   directoryKey: readonly unknown[];
-} & ({ single: false } | { single: true; request: SingleRenameExecuteRequest });
+};
 
-// 单项直接执行、批量按预览执行，共用结果处理，由工作流统一控制操作互斥。
+// 批量执行只接受服务端预览，不承接单项改名。
 export function useRenameExecution(isCurrentSession: (session: string) => boolean) {
   const queryClient = useQueryClient();
   const notify = useNotification();
   const setSelectedIds = useRenameStore((state) => state.setSelectedIds);
   return useMutation({
     gcTime: 0,
-    mutationFn: (input: ExecutionInput) => input.single
-      ? executeStorageSingleRename(input.source.storageId, input.request) : executePreview(input.source.preview_id),
+    mutationFn: (input: BatchExecutionInput) => executePreview(input.source.preview_id),
     onSuccess: (result, input) => {
       const source = input.source;
       const outcomes = new Map(result.items.map((item) => [item.file_id, item]));
       const unknown = source.items.filter((item) => {
         const outcome = outcomes.get(item.file_id);
-        return !outcome || (input.single && outcome.status === "renamed" && !outcome.current_file) || (outcome.status === "failed" && (
+        return !outcome || (outcome.status === "failed" && (
           outcome.error_code === "RENAME_OUTCOME_UNKNOWN" ||
           (outcome.actual_name != null && outcome.actual_name !== outcome.original_name && !outcome.current_file)
         ));
@@ -40,14 +39,6 @@ export function useRenameExecution(isCurrentSession: (session: string) => boolea
         listing && { ...listing, items: listing.items.map((item) => confirmed.get(item.id) ?? item) });
       if (!isCurrentSession(input.workspaceSession)) return;
       if (input.taskId) useRenameStore.getState().applyTaskResults(input.taskId, result);
-      if (input.single) {
-        // 单项改名保留选择；先更新任务身份，再选择 Provider 确认的新 ID。
-        setSelectedIds(useRenameStore.getState().selectedIds.map((id) => confirmed.get(id)?.id ?? id));
-        if (!unknown.length && result.status === "completed") {
-          notify({ key: "files:notifications.completed", values: { count: 1 } }, "success");
-        }
-        return;
-      }
       if (result.status === "completed") {
         const renamed = result.items.filter((item) => item.status === "renamed").length;
         notify({ key: "files:notifications.completed", values: { count: renamed } }, "success");
@@ -65,13 +56,11 @@ export function useRenameExecution(isCurrentSession: (session: string) => boolea
       setSelectedIds(useRenameStore.getState().selectedIds.filter((id) => failed.has(id)).map((id) => confirmed.get(id)?.id ?? id));
     },
     onError: (error, input) => {
-      // 单项复核在写入前返回的明确拒绝不属于未知写入；网络错误和 5xx 仍保持锁定。
-      if (input.single && error instanceof ApiError && error.status >= 400 && error.status < 500) return;
       // 丢失响应不代表未写入；核对信息绑定原连接，不依赖当前预览展示。
       useRenameStore.getState().setUnknownExecution({
         storageId: input.source.storageId, previewId: input.source.preview_id, items: input.source.items,
       });
-      if (!input.single && isCurrentSession(input.workspaceSession)) {
+      if (isCurrentSession(input.workspaceSession)) {
         notify({ key: "files:notifications.unknownOutcome", error }, "error");
       }
     },

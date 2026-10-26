@@ -19,7 +19,7 @@ interface RenameUiState {
   setRules: (rules: RuleSpec[]) => void;
   createTask: (contextKey: string, storageId: string, location: StorageLocation, files: FileItem[]) => void;
   resetTask: () => void;
-  applyTaskResults: (taskId: string, response: ExecuteResponse) => void;
+  applyTaskResults: (taskId: string, response: Pick<ExecuteResponse, "items">) => void;
   setPreviewActive: (active: boolean) => void;
   setUnknownExecution: (execution: UnknownExecution | null) => void;
 }

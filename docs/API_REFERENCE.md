@@ -281,12 +281,12 @@ Array<{
 
 请求为 `{ operation_id: string, revision: number, location?: StorageLocation, file_id: string, original_name: string, target_name: string }`。`operation_id` 为客户端生成的 UUID，仅标识操作，不是 `preview_id` 或幂等键；`revision` 为当前连接版本（整数，≥ 1），`location` 默认 root，`file_id` 非空，`target_name` 为完整目标名称（文件含扩展名）。不接受额外字段。
 
-支持单个文件或文件夹，无需预览，不执行规则链。服务端校验当前连接版本、源项及原名、名称、权限和同目录冲突后立即执行。
+支持单个文件或文件夹，使用独立服务，无需预览，不执行规则链。服务端检查连接版本并持有连接执行锁，直接调用 Provider 单项改名，不读取整个目录或比对原名。`original_name`、`location` 保留为客户端上下文，不作为源状态一致性条件；操作按文件 ID 修改当前项。名称、权限及冲突由 Provider 和第三方 API 判断，Google Drive 允许同目录同名。Google 单项直接按 ID PATCH，不读取 My Drive 根目录、源项或祖先来预检范围、类型及权限，由 API 决定是否允许；仍发送 `supportsAllDrives=false`，不代表新增共享云端硬盘支持。浏览和批量的范围限制保留。
 
-响应为 `{ operation_id: string, status: "completed" | "partial" | "failed", items: ExecuteItem[] }`，返回本次 `operation_id`，逐项字段同上。HTTP 200 不保证成功：名称、权限或冲突校验失败返回 `failed` 项，同名返回 `skipped`。
+响应为 `{ operation_id: string, status: "completed" | "partial" | "failed", items: SingleExecuteItem[] }`，返回本次 `operation_id`，逐项状态及错误字段同上；单项 `current_file.path`、`parent_path` 可为 `null`，其余确认元数据保持不变。前端使用已知浏览上下文生成显示路径，路径不作为身份或成功依据。HTTP 200 不保证成功：Provider 明确拒绝返回 `failed` 项及统一 `error_code`；确认写入返回 `renamed` 和 `current_file`。前端同名时不提交；直接调用接口提交同名也按 Provider 的实际返回确认，不预先标为 `skipped`。
 
-- 请求格式无效返回 422 `REQUEST_VALIDATION_ERROR`；源项缺失或原名变化返回 422 `VALIDATION_ERROR`；连接版本变化返回 409 `STORAGE_CONNECTION_CHANGED`。其他错误见通用错误。
-- 写入结果未知时返回 `RENAME_OUTCOME_UNKNOWN`；网络失败或结果未知时不得自动重放请求。此接口不提供按 `operation_id` 查询进度的能力。
+- 请求格式无效返回 422 `REQUEST_VALIDATION_ERROR`；连接版本变化返回 409 `STORAGE_CONNECTION_CHANGED`；Provider 返回的文件缺失、权限、名称及冲突错误记录在 HTTP 200 的失败项中。原名变化不阻止按 ID 执行。其他错误见通用错误。
+- 写入结果未知时先按 ID 核对元数据（Google 使用一次 files.get，不读取祖先）；无法确认时返回 `RENAME_OUTCOME_UNKNOWN`。网络失败或结果未知时不得自动重放请求。此接口不提供按 `operation_id` 查询进度的能力。
 
 ## 执行进度（Rename Execution Progress）
 
@@ -348,7 +348,7 @@ auto 的浏览器语言解析、Vite 语言发现、词条回退和 MUI/日期�
 | 偏好保存 | 前端在单个 QueryClient 内串行保存，仅发送变化字段，每次保存前不重新读取设置；失败不阻断后续队列。后端基于当前内存偏好合并并原子保存完整状态；成功后，前端先取消更早的 in-flight settings reads，再更新 cache。 |
 | Google 分页 | 读取至 `nextPageToken` 缺失，包括空中间页。无效/重复 Token、incomplete search、重复 item ID、错误 parent、malformed data 或后续页失败均中止完整响应，客户端须从头刷新。 |
 | Google 元数据读取 | 每个 HTTP multipart request 最多 100 个 GET，保留请求顺序；同一操作共享祖先读取，不跨读取缓存。401 触发有界授权刷新；限流（429 或支持的 403 reasons）、transport errors 和 5xx reads 使用有限次 Retry-After / backoff 重试。成功 batch parts 保留，只重试可重试失败；永久失败、malformed / missing part 使整个调用失败，不返回部分元数据。Google error bodies 不回显。 |
-| Google 写入 | 单项/批量重命名使用 metadata-only PATCH parts，每个 multipart batch 最多 20 次写入，同时仅一个 batch 在途；只发送 `name`，不修改内容、parents 或 shortcut targets。每批重新校验项目范围、祖先和重命名权限；已知成功保留，仅对明确认证/限流拒绝做有界重试，逐项重试只含被拒绝 parts。 |
+| Google 写入 | 单项使用一次 metadata-only PATCH，无范围/权限预检和路径读取；批量使用 PATCH parts，每个 multipart batch 最多 20 次写入，同时仅一个 batch 在途；只发送 `name`，不修改内容、parents 或 shortcut targets。每批重新校验项目范围、祖先和重命名权限；已知成功保留，仅对明确认证/限流拒绝做有界重试，逐项重试只含被拒绝 parts。 |
 | Google 未知写入与回滚 | transport errors、5xx writes 或 malformed / incomplete successful responses 产生 `RENAME_OUTCOME_UNKNOWN`；既有 execution service 按 ID 查询元数据，不重放写入，未解决时停止后续分组并返回可空实际名称。循环、依赖及尽力回滚复用既有 Engine；Google Drive 第三阶段未引入状态格式迁移或新的公共 Schema。 |
 
 ## 未实现与已移除的契约

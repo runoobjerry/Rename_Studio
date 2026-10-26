@@ -1,6 +1,6 @@
 import asyncio
 import logging
-from collections.abc import Callable, Iterable
+from collections.abc import Callable
 from dataclasses import dataclass
 from itertools import chain
 from typing import Literal
@@ -18,11 +18,10 @@ from app.schemas.rename import (
     RenameExecuteResponse,
     RenameProgress,
     RenamePreviewRequest,
-    SingleRenameExecuteRequest,
-    SingleRenameExecuteResponse,
 )
 from app.services.preview_service import PreviewService
 from app.services.preview_store import PreviewSnapshot, PreviewStore
+from app.services.rename_write import drain_writes, reconcile_unknown_rename
 
 
 logger = logging.getLogger("rename_studio.rename")
@@ -100,43 +99,6 @@ class ExecuteService:
                     )
                 return response
 
-    async def execute_single(self, storage_id: str, request: SingleRenameExecuteRequest) -> SingleRenameExecuteResponse:
-        # 单项没有预览阶段；与批量共用执行锁，在写入前只读取并校验一次当前目录。
-        async with self._lock:
-            with self.providers.execution(storage_id, request.revision):
-                provider = self.providers.get(storage_id)
-                listing = await provider.list_directory(request.location)
-                source = next((item for item in listing.items if item.id == request.file_id), None)
-                if source is None or source.name != request.original_name:
-                    raise ValidationError("The selected item changed; reopen rename")
-                items, _, valid = await self.preview_service.evaluate(
-                    RenamePreviewRequest(storage_id=storage_id, location=listing.location,
-                                         file_ids=[source.id], target_name=request.target_name),
-                    files=[source], siblings=listing.items,
-                )
-                item = items[0]
-                result = ExecuteItem(file_id=source.id, original_name=source.name, new_name=item.new_name,
-                                     status="skipped" if not item.changed else "failed",
-                                     actual_name=source.name, current_file=source)
-                if not valid:
-                    result.status = "failed"
-                    result.error = item.error
-                    result.error_code = "RENAME_CONFLICT" if item.conflict else "VALIDATION_ERROR"
-                elif item.changed:
-                    # 共用已有写入封装：响应丢失时核对真实状态，不自动重放。
-                    outcomes = await self._rename_in_batches(provider, [RenameRequest(source.id, item.new_name)])
-                    outcome = outcomes[source.id]
-                    if isinstance(outcome, AppError):
-                        result.current_file = None
-                        self._record_failure(result, outcome)
-                    else:
-                        self._record_success(result, outcome)
-                logger.info("rename execution provider=%s file_id=%s status=%s error=%s",
-                            storage_id, source.id, result.status, result.error)
-                response = self._response(str(request.operation_id), {source.id: result})
-                return SingleRenameExecuteResponse(operation_id=response.preview_id,
-                                                   status=response.status, items=response.items)
-
     async def _revalidate(self, snapshot: PreviewSnapshot) -> list[FileItem]:
         if not snapshot.response.valid:
             raise ValidationError("Rename preview contains invalid items")
@@ -180,22 +142,8 @@ class ExecuteService:
         if on_unknown is not None and any(isinstance(outcome, RenameOutcomeUnknownError) for outcome in outcomes.values()):
             # 核查之前暂停补组，不能等元数据读取结束后才通知调度器。
             on_unknown()
-        # Never replay a write whose response was lost. Reconcile each opaque ID instead.
         for request in requests:
-            outcome = outcomes[request.file_id]
-            if not isinstance(outcome, RenameOutcomeUnknownError):
-                continue
-            try:
-                current = await provider.get_metadata(request.file_id)
-            except AppError:
-                continue
-            if current.name == request.new_name:
-                outcomes[request.file_id] = current
-            else:
-                outcomes[request.file_id] = ProviderError(
-                    "Rename target was not reached; current name was verified",
-                    details={"actual_name": current.name},
-                )
+            outcomes[request.file_id] = await reconcile_unknown_rename(provider.get_metadata, request, outcomes[request.file_id])
         return outcomes
 
     @staticmethod
@@ -240,7 +188,7 @@ class ExecuteService:
                     # 单组也保护已启动的写入，取消后等待其完成再释放执行锁。
                     batch_outcomes = await asyncio.shield(task)
                 except asyncio.CancelledError:
-                    await ExecuteService._drain_writes([task])
+                    await drain_writes([task])
                     raise
                 outcomes.update(batch_outcomes)
                 if progress is not None:
@@ -281,21 +229,10 @@ class ExecuteService:
                 start_batches()
         finally:
             if pending:
-                await ExecuteService._drain_writes(pending)
+                await drain_writes(pending)
         for request in requests[offset:]:
             outcomes[request.file_id] = ProviderError("Rename was not attempted after an unknown write outcome")
         return outcomes
-
-    @staticmethod
-    async def _drain_writes(tasks: Iterable[asyncio.Task[dict[str, FileItem | AppError]]]) -> None:
-        # 保留调用方的原异常/取消；等待所有在途写入结束后才允许释放执行锁。
-        draining = asyncio.gather(*tasks, return_exceptions=True)
-        while not draining.done():
-            try:
-                await asyncio.shield(draining)
-            except asyncio.CancelledError:
-                # 重复取消也不能遗留后台写入。
-                continue
 
     @staticmethod
     def _record_failure(result: ExecuteItem, outcome: AppError) -> None:

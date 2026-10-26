@@ -10,7 +10,7 @@
     "VALIDATION_ERROR": "The request did not pass validation. {{message}}",
     "REQUEST_VALIDATION_ERROR": "The request parameters are invalid. {{message}}",
     "RULE_CONFIGURATION_ERROR": "The rule configuration is invalid. Check the rules. {{message}}",
-    "RENAME_CONFLICT": "A rename conflict was detected. Review the preview. {{message}}",
+    "RENAME_CONFLICT": "Filename conflict. Please rename and try again. {{message}}",
     "PREVIEW_EXPIRED": "The preview has expired or file state has changed. Preview again. {{message}}",
     "PREVIEW_NOT_FOUND": "The preview was not found. Preview again. {{message}}",
     "STORAGE_BUSY": "The storage connection is busy. Wait for the current operation to finish. {{message}}",

@@ -2,7 +2,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 
 from app.core.errors import AppError
-from app.schemas.files import DirectoryListing, FileItem
+from app.schemas.files import DirectoryListing, FileItem, RenameFile
 from app.schemas.storage import PathLocation, RootLocation, StorageLocation
 from app.core.paths import normalize_storage_path
 
@@ -50,6 +50,13 @@ class StorageProvider(ABC):
     @abstractmethod
     async def rename(self, file_id: str, new_name: str) -> FileItem:
         raise NotImplementedError
+
+    async def rename_single(self, file_id: str, new_name: str) -> RenameFile:
+        """Direct rename can return confirmed metadata without a display path."""
+        return await self.rename(file_id, new_name)
+
+    async def get_single_metadata(self, file_id: str) -> RenameFile:
+        return await self.get_metadata(file_id)
 
     async def rename_many(
         self, requests: list[RenameRequest]

@@ -131,9 +131,20 @@ export interface ExecuteResponse {
   items: ExecuteItem[];
 }
 
-export interface SingleRenameExecuteResponse extends Omit<ExecuteResponse, "preview_id"> {
+export interface SingleRenameExecuteResponse {
   operation_id: string;
+  status: "completed" | "partial" | "failed";
+  items: SingleExecuteItem[];
 }
+
+export type RenameFile = Omit<FileItem, "path" | "parent_path"> & {
+  path?: string | null;
+  parent_path?: string | null;
+};
+
+export type SingleExecuteItem = Omit<ExecuteItem, "current_file"> & {
+  current_file?: RenameFile | null;
+};
 
 export type StorageLocation = { kind: "root" } | { kind: "id" | "path"; value: string };
 

@@ -124,10 +124,10 @@ export function useRenameWorkflow({
     canStart: canRename && locationReady && Boolean(activeStorage) && !activeStorage?.busy &&
       files.isSuccess && !files.isFetching && !files.error && !preview.isPending && !execution.isPending &&
       !unknownExecution && currentSelectedIds.length === 1,
-    isCurrentSession, execute: execution.mutateAsync, invalidateBatchPreview,
+    isCurrentSession, invalidateBatchPreview,
   });
   const isExecuting = execution.isPending || singleRename.isSingleRenaming;
-  const batchExecution = execution.variables?.single ? undefined : execution;
+  const batchExecution = execution;
   const previewData = preview.data && (preview.data.contextKey === previewContext || (batchExecution?.variables?.source.preview_id === preview.data.preview_id && (execution.isPending || execution.data || execution.error))) ? preview.data : undefined;
 
   const previousSession = useRef<string | null>(null);
@@ -240,7 +240,7 @@ export function useRenameWorkflow({
     if (isExecuting || isSinglePending() || execution.variables?.source.preview_id === previewId || useRenameStore.getState().unknownExecution ||
       !currentTask || previewData?.preview_id !== previewId || !previewData.valid) return;
     execution.mutate({ source: previewData, workspaceSession, taskId: currentTask.taskId,
-      directoryKey: ["files", storageId, activeStorage?.revision, location], single: false });
+      directoryKey: ["files", storageId, activeStorage?.revision, location] });
   };
 
   return {

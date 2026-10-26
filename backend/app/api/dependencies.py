@@ -10,6 +10,7 @@ from app.rules.padding import PaddingRule
 from app.rules.registry import RuleRegistry
 from app.rules.text_operations import RemoveRule, ReplaceRule
 from app.services.execute_service import ExecuteService
+from app.services.single_rename_service import SingleRenameService
 from app.services.preview_service import PreviewService
 from app.services.preview_store import PreviewStore
 from app.services.rename_engine import RenameEngine
@@ -61,3 +62,8 @@ def get_execute_service() -> ExecuteService:
         get_preview_store(),
         get_preview_service(),
     )
+
+
+@lru_cache
+def get_single_rename_service() -> SingleRenameService:
+    return SingleRenameService(get_provider_registry())
