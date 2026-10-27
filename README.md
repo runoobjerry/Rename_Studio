@@ -5,7 +5,7 @@
 ## 特性
 
 - **多存储连接**：支持 Local Files、OneDrive 和 Google Drive 多个文件源的独立配置与授权。
-- **多重规则链**：目前支持填充、替换、移除、插入的规则，可将多个重命名规则组合为规则链，按逻辑顺序应用每个规则操作。
+- **多重规则链**：目前支持填充、替换、移除、插入规则，可将多个重命名规则组合为规则链，按逻辑顺序应用每个规则操作。
 - **预览与冲突检查**：展示原名、新名、名称合法性及冲突；最终操作前服务端将重新校验。
 
 ## 兼容性
@@ -55,7 +55,7 @@ bash "/项目完整路径/Start.sh"
 2. 选择当前目录中的文件或子文件夹，添加规则并排列顺序。
 3. 生成预览，检查新名称与冲突，确认后执行并核对逐项结果。
 
-> 默认本地目录为后端系统用户的 Documents 文件夹。超过 1000 项时分批预览和处理，完成后通过“待处理”筛选继续。遇到超时或未知结果先核对进度和真实文件，不要盲目重试整批。
+> 默认本地目录为后端系统用户的 Documents 文件夹。首次刷新预览创建固定文件集合的当前任务，结束任务后可重新选文件。遇到超时或未知结果先核对进度和真实文件，不要盲目重试整批。
 
 ## 用户文档
 
@@ -63,7 +63,7 @@ bash "/项目完整路径/Start.sh"
 
 | 文档 | 内容 |
 | --- | --- |
-| [使用帮助](https://github.com/runoobjerry/Rename_Studio/wiki/Usage-Guide) | 文件选择、规则参数、预览执行、分批处理、目录记忆、更新与重置 |
+| [使用帮助](https://github.com/runoobjerry/Rename_Studio/wiki/Usage-Guide) | 文件选择、规则参数、预览执行、目录记忆、更新与重置 |
 | [配置说明](https://github.com/runoobjerry/Rename_Studio/wiki/Configuration) | 启动参数、环境变量、本地与云服务的配置与授权 |
 | [常见问题](https://github.com/runoobjerry/Rename_Studio/wiki/FAQ) | 安装失败、端口占用、目录权限、授权失败、密钥与执行结果 |
 | [隐私政策](https://github.com/runoobjerry/Rename_Studio/wiki/Privacy-Policy) | 数据处理、本地凭据、浏览器会话、第三方请求、日志与数据清理 |
@@ -80,7 +80,7 @@ bash "/项目完整路径/Start.sh"
 | 范围 | 技术 |
 | --- | --- |
 | 后端 | Python 3.12+、FastAPI、Pydantic / pydantic-settings、httpx、Uvicorn |
-| 前端 | React、TypeScript、Vite、MUI；TanStack Query 管理服务端状态，Zustand 管理工作台 UI 与批次状态 |
+| 前端 | React、TypeScript、Vite、MUI；TanStack Query 管理服务端状态，Zustand 管理文件选择、规则与执行保护状态 |
 | 持久化 | JSON 状态文档，原子保存连接配置、凭据和应用偏好；当前未使用数据库存储这些状态 |
 | 测试 | pytest / pytest-asyncio、Vitest、Testing Library、JSDOM |
 | 发布 | PowerShell / Bash 启动入口，Python 发布脚本，GitHub Actions |
@@ -113,7 +113,7 @@ frontend/
     hooks/         通用 hooks
     i18n/          语言发现、解析、偏好与格式化
     locales/       meta.json 与按命名空间组织的词典
-    stores/        工作台 UI 与批次状态
+    stores/        文件选择、规则与执行保护状态
     test/          测试环境与交互 harness
     types/         前端契约类型
     utils/         通用工具

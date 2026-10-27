@@ -5,11 +5,11 @@ from pydantic import BaseModel, Field
 from app.schemas.storage import StorageLocation
 
 
-class FileItem(BaseModel):
+class RenameFile(BaseModel):
     id: str
     name: str
-    path: str
-    parent_path: str
+    path: str | None = None
+    parent_path: str | None = None
     is_directory: bool
     size: int | None = None
     modified_at: datetime | None = None
@@ -17,6 +17,11 @@ class FileItem(BaseModel):
     parent_location: StorageLocation | None = None
     can_rename: bool | None = None
     mime_type: str | None = None
+
+
+class FileItem(RenameFile):
+    path: str
+    parent_path: str
 
 
 class DirectoryBreadcrumb(BaseModel):
@@ -34,3 +39,4 @@ class DirectoryListing(BaseModel):
     location: StorageLocation | None = None
     parent_location: StorageLocation | None = None
     breadcrumbs: list[DirectoryBreadcrumb] | None = None
+    directory_id: str | None = None

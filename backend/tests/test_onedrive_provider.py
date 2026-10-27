@@ -2,8 +2,9 @@ from typing import Any
 import asyncio
 
 import pytest
+import httpx
 
-from app.core.errors import ProviderError, ValidationError
+from app.core.errors import PermissionDeniedError, ProviderError, RenameOutcomeUnknownError, ValidationError
 from app.providers.base import RenameRequest
 from app.providers.onedrive.driver import GRAPH_ROOT, OneDriveProvider
 from app.schemas.files import FileItem
@@ -40,6 +41,35 @@ class StubOneDriveProvider(OneDriveProvider):
     ) -> dict[str, object]:
         self.calls.append((method, url, json))
         return self.responses.pop(0)
+
+
+@pytest.mark.asyncio
+async def test_single_patch_maps_graph_permission_denied() -> None:
+    class AuthorizedAuth(OneDriveAuthService):
+        async def access_token(self, *, force_refresh: bool = False) -> str:
+            return "fixture-token"
+
+    requests: list[httpx.Request] = []
+
+    def respond(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(403, json={"error": {"code": "accessDenied", "message": "Access denied"}})
+
+    auth = AuthorizedAuth("http://localhost/callback", initial_state={}, persist=lambda payload: None)
+    async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as client:
+        with pytest.raises(PermissionDeniedError) as caught:
+            await OneDriveProvider(auth, client=client).rename("opaque-id", "new.txt")
+    assert caught.value.code == "PERMISSION_DENIED"
+    assert caught.value.details == {"graph_status": 403}
+    assert [request.method for request in requests] == ["PATCH"]
+
+
+@pytest.mark.asyncio
+async def test_single_patch_incomplete_metadata_is_unknown() -> None:
+    provider = StubOneDriveProvider([{}])
+    with pytest.raises(RenameOutcomeUnknownError):
+        await provider.rename("opaque-id", "new.txt")
+    assert len(provider.calls) == 1
 
 
 @pytest.mark.asyncio
@@ -165,9 +195,21 @@ async def test_id_directory_and_parent_do_not_depend_on_names() -> None:
     provider = StubOneDriveProvider([root, folder("opaque-id", "same"), {"value": [folder("child-id", "same", "opaque-id")]}])
     listing = await provider.list_directory(IdLocation(value="opaque-id"))
     assert listing.location == IdLocation(value="opaque-id")
+    assert listing.directory_id == "opaque-id"
     assert listing.parent_location == RootLocation()
     assert listing.items[0].parent_location == IdLocation(value="opaque-id")
     assert any("/items/opaque-id/children" in url for _, url, _ in provider.calls)
+
+
+@pytest.mark.asyncio
+async def test_root_listing_exposes_real_identity_without_extra_requests() -> None:
+    root = {**folder("root-id", "root"), "root": {}}
+    provider = StubOneDriveProvider([root, {"value": [folder("child", "child")]}])
+    listing = await provider.list_directory(RootLocation())
+    assert listing.location == RootLocation()
+    assert listing.directory_id == "root-id"
+    assert listing.items[0].parent_location == IdLocation(value=listing.directory_id)
+    assert len(provider.calls) == 2
 
 
 @pytest.mark.asyncio

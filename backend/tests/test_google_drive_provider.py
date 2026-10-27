@@ -5,6 +5,7 @@ from collections.abc import AsyncIterator, Callable
 from email import policy
 from email.parser import BytesParser
 from urllib.parse import parse_qs, unquote, urlsplit
+from uuid import uuid4
 
 import httpx
 import pytest
@@ -16,10 +17,11 @@ from app.providers.base import RenameRequest
 from app.providers.google_drive.driver import BATCH_URL, FOLDER_MIME, READ_BATCH_SIZE, SHORTCUT_MIME, GoogleDriveProvider
 from app.rules.base import RenameRule, RuleContext
 from app.rules.registry import RuleRegistry
-from app.schemas.rename import RenamePreviewRequest
+from app.schemas.rename import RenamePreviewRequest, SingleRenameExecuteRequest
 from app.schemas.rules import RuleSpec
 from app.schemas.storage import AuthorizationStart, AuthorizationStatus, IdLocation, PathLocation, RootLocation
 from app.services.execute_service import ExecuteService
+from app.services.single_rename_service import SingleRenameService
 from app.services.preview_service import PreviewService
 from app.services.preview_store import PreviewStore
 from app.services.rename_engine import RenameEngine
@@ -131,6 +133,21 @@ class WritableDriveServer(DriveServer):
         self.fail_targets: set[str] = set()
 
     def __call__(self, request: httpx.Request) -> httpx.Response:
+        if request.method == "PATCH":
+            self.requests.append(request)
+            assert request.url.params["supportsAllDrives"] == "false"
+            file_id = unquote(request.url.path.removeprefix("/drive/v3/files/"))
+            data = json.loads(request.content)
+            assert set(data) == {"name"}
+            self.writes.append([(file_id, data["name"])])
+            status = self.reject_once.pop(file_id, 200)
+            if data["name"] in self.fail_targets:
+                status = 403
+            if status != 200:
+                reason = "insufficientFilePermissions" if data["name"] in self.fail_targets else "rateLimitExceeded"
+                return httpx.Response(status, json={"error": {"errors": [{"reason": reason}]}})
+            self.files[file_id] = {**self.files[file_id], "name": data["name"], "modifiedTime": "2026-10-18T02:00:00Z"}
+            return httpx.Response(200, json=self.files[file_id])
         if request.method == "GET" and request.url.path == "/drive/v3/files":
             parent = re.search(r"'([^']+)' in parents", request.url.params["q"])
             assert parent is not None
@@ -200,6 +217,7 @@ async def test_root_pagination_continues_empty_page_and_maps_types_permissions(p
     }
     listing = await provider_factory(server).list_directory(RootLocation())
     assert listing.location == RootLocation() and listing.parent_location is None and listing.path == ""
+    assert listing.directory_id == "root-id"
     assert [(entry.name, entry.location) for entry in listing.breadcrumbs] == [("My Drive", RootLocation())]
     by_id = {item.id: item for item in listing.items}
     assert len(by_id) == 5
@@ -224,6 +242,7 @@ async def test_same_name_folders_and_separator_names_use_real_ancestor_ids(provi
     provider = provider_factory(server)
     listing = await provider.list_directory(IdLocation(value="child"))
     assert listing.path == "same/with/slash"
+    assert listing.directory_id == "child"
     assert listing.parent_location == IdLocation(value="b") and listing.location == IdLocation(value="child")
     assert [entry.name for entry in listing.breadcrumbs] == ["My Drive", "same", "with/slash"]
     assert [entry.location for entry in listing.breadcrumbs] == [RootLocation(), IdLocation(value="b"), IdLocation(value="child")]
@@ -430,7 +449,7 @@ async def test_ancestry_is_reloaded_after_external_move(provider_factory: Callab
 @pytest.mark.asyncio
 async def test_name_policy_and_single_native_document_rename(provider_factory: Callable) -> None:
     mime = "application/vnd.google-apps.spreadsheet"
-    server = WritableDriveServer([drive_file("doc/?", "Budget", mime=mime)])
+    server = WritableDriveServer([drive_file("doc/?", "Budget", parent="external-parent", mime=mime, driveId="shared-drive")])
     provider = provider_factory(server)
     for name in ("", " \t", "bad\x00name"):
         assert provider.validate_name(name) is not None
@@ -438,15 +457,59 @@ async def test_name_policy_and_single_native_document_rename(provider_factory: C
         assert provider.validate_name(name) is None
         assert provider.normalize_name(name) == name
     assert provider.normalize_name("A") != provider.normalize_name("a")
-    item = await provider.rename("doc/?", "预算/2026")
+    item = await provider.rename_single("doc/?", "预算/2026")
     assert item.id == "doc/?" and item.name == "预算/2026"
-    assert item.location == IdLocation(value="doc/?") and item.parent_location == RootLocation()
+    assert item.location == IdLocation(value="doc/?") and item.parent_location == IdLocation(value="external-parent")
     assert item.mime_type == mime
     assert item.modified_at is not None
     assert server.writes == [[("doc/?", "预算/2026")]]
-    metadata = await provider.get_metadata(item.id)
+    assert [request.method for request in server.requests] == ["PATCH"]
+    assert item.path is None and item.parent_path is None
+    metadata = await provider.get_single_metadata(item.id)
     assert metadata == item
-    assert provider.parent_key(metadata) == provider.parent_key((await provider.list_siblings(metadata))[0])
+    assert [request.method for request in server.requests] == ["PATCH", "GET"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("fault", ["transport", "503", "malformed", "wrong_id", "moved"])
+async def test_single_patch_handles_response_without_replaying_writes(provider_factory: Callable, fault: str) -> None:
+    server = WritableDriveServer([drive_file("a", "A")])
+
+    def respond(request: httpx.Request) -> httpx.Response:
+        response = server(request)
+        if request.method != "PATCH":
+            return response
+        if fault == "transport":
+            raise httpx.ReadTimeout("Response lost", request=request)
+        if fault == "503":
+            return httpx.Response(503)
+        if fault == "malformed":
+            return httpx.Response(200, text="Response lost")
+        data = {**server.files["a"], **({"id": "other"} if fault == "wrong_id" else {"parents": ["elsewhere"]})}
+        return httpx.Response(200, json=data)
+
+    if fault == "moved":
+        result = await provider_factory(respond).rename_single("a", "AA")
+        assert result.name == "AA"
+        assert result.parent_location == IdLocation(value="elsewhere")
+        assert result.path is None
+    else:
+        with pytest.raises(RenameOutcomeUnknownError):
+            await provider_factory(respond).rename_single("a", "AA")
+    assert server.writes == [[("a", "AA")]]
+    assert [request.method for request in server.requests] == ["PATCH"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("status", [401, 429])
+async def test_single_patch_retries_explicit_auth_and_throttle_refusals(provider_factory: Callable, status: int) -> None:
+    server = WritableDriveServer([drive_file("a", "A")])
+    server.reject_once["a"] = status
+    auth = FakeAuth()
+    result = await provider_factory(server, auth).rename_single("a", "AA")
+    assert result.name == "AA"
+    assert server.writes == [[("a", "AA")], [("a", "AA")]]
+    assert auth.refreshes == (1 if status == 401 else 0)
 
 
 @pytest.mark.asyncio
@@ -471,8 +534,8 @@ async def test_write_part_retry_is_bounded(provider_factory: Callable, status: i
             server.reject_once["a"] = status
         return server(request)
 
-    with pytest.raises(error_type):
-        await provider_factory(respond).rename("a", "AA")
+    result = await provider_factory(respond).rename_many([RenameRequest("a", "AA")])
+    assert isinstance(result["a"], error_type)
     assert len(server.writes) == attempts
     assert server.files["a"]["name"] == "A"
 
@@ -501,7 +564,7 @@ async def test_write_batches_keep_successes_and_permanent_failures(provider_fact
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("kind", ["root", "shortcut", "readonly", "outside", "shared", "trashed"])
-async def test_write_preflight_enforces_scope_and_permissions(provider_factory: Callable, kind: str) -> None:
+async def test_batch_write_preflight_enforces_scope_and_permissions(provider_factory: Callable, kind: str) -> None:
     item = drive_file("item", "Old")
     if kind == "shortcut":
         item["mimeType"] = SHORTCUT_MIME
@@ -514,8 +577,9 @@ async def test_write_preflight_enforces_scope_and_permissions(provider_factory: 
     elif kind == "trashed":
         item["trashed"] = True
     server = WritableDriveServer([item])
-    with pytest.raises((ValidationError, PermissionDeniedError, NotFoundError)):
-        await provider_factory(server).rename("root-id" if kind == "root" else "item", "New")
+    file_id = "root-id" if kind == "root" else "item"
+    result = await provider_factory(server).rename_many([RenameRequest(file_id, "New")])
+    assert isinstance(result[file_id], (ValidationError, PermissionDeniedError, NotFoundError))
     assert not server.writes
 
 
@@ -550,14 +614,18 @@ async def test_unexpected_returned_name_is_reported_as_actual_name(provider_fact
 
     def respond(request: httpx.Request) -> httpx.Response:
         response = server(request)
-        if request.method == "POST" and b"\r\nPATCH " in request.content:
+        if request.method == "PATCH":
             server.files["a"]["name"] = "External"
-            return batch_response([(0, 200, server.files["a"])])
+            return httpx.Response(200, json=server.files["a"])
         return response
 
-    with pytest.raises(ProviderError) as caught:
-        await provider_factory(respond).rename("a", "AA")
-    assert caught.value.details["actual_name"] == "External"
+    provider = provider_factory(respond)
+    result = await SingleRenameService(registry_for([provider])).execute(provider.id, SingleRenameExecuteRequest(
+        operation_id=uuid4(), revision=1, file_id="a", original_name="A", target_name="AA",
+    ))
+    assert result.status == "failed"
+    assert result.items[0].error_code == "PROVIDER_ERROR"
+    assert result.items[0].actual_name == "External"
     assert len(server.writes) == 1
 
 

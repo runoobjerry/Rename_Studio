@@ -7,9 +7,9 @@
 - 后端路由不带 `/api` 前缀；开发环境由 Vite 将前端 `/api/*` 请求代理到后端 `/*`。
 - JSON 使用 `snake_case`；日期时间为 ISO 8601 字符串；HTTP 204 无响应体。
 - `provider_type` 标识驱动类型（`local`、`onedrive`、`google_drive`），`storage_id` 标识独立配置与账号连接。`DirectoryListing.provider` 仍为用于展示的驱动类型。
-- Storage APIs 以 `storage_id` 和 `location` 为边界。仅自动创建 `default-local`，云连接由用户添加。Google Drive 支持连接、OAuth、My Drive 读取与 Preview First 重命名，没有直接重命名的 HTTP endpoint。
+- Storage APIs 以 `storage_id` 和 `location` 为边界。仅自动创建 `default-local`，云连接由用户添加。Google Drive 支持连接、OAuth、My Drive 读取，以及下述预览执行和单项直接执行接口。
 - `file_id` 由 Provider 定义，客户端须视为不透明值。Local ID 为相对路径，重命名后会变化；OneDrive ID 为 Graph item ID。显示路径不能作为资源身份。
-- 目录 API 不接受分页、搜索、排序或筛选参数；后端聚合 OneDrive / Google Drive 分页后一次返回完整结果。目录加载和整体 UI 选择数量不设上限，单次预览仍受批次限制。
+- 目录 API 不接受分页、搜索、排序或筛选参数；后端聚合 OneDrive / Google Drive 分页后一次返回完整结果。目录加载、UI 选择和单次预览均不设应用级文件数量上限。
 
 ## 错误与客户端兼容
 
@@ -213,8 +213,9 @@ Array<{
 ```ts
 {
   location?: StorageLocation; // 默认 root；导航使用后端返回的位置
-  file_ids: string[];      // 1..1000 项，不允许重复
+  file_ids: string[];      // 至少 1 项，不允许重复，无文件数量上限
   rules?: RuleSpec[];      // 默认 []，最多 20 条规则
+  target_name?: string | null; // 单项完整目标名称；省略或 null 时使用规则链
   previous_preview_id?: string; // 非空；新预览保存后释放同连接的旧预览
 }
 ```
@@ -231,8 +232,10 @@ Array<{
 ```
 
 - 不修改文件；未变化项目仍保留在 `items` 中，所有项目有效时 `valid` 才为 true。
-- `file_ids` 有序，rule context indices 与响应 `items` 均按该顺序；服务端快照保留顺序，执行前重校验不重新排序。预览限制为 1000 文件、20 条规则（包括 disabled 规则），execute 也检查快照大小。
-- 422：超过文件/规则上限、空选择、重复、跨目录、超出路径、选择根目录、无效路径或规则配置；404：项目或目录不存在；其他 Provider 错误见通用错误。
+- `target_name` 为文件或文件夹的完整目标名称（文件含扩展名），不自动裁剪空格。非 null 时，`file_ids` 必须恰好 1 项，`rules` 必须为空或省略（包括 disabled 规则），否则返回 422 `REQUEST_VALIDATION_ERROR`；不执行规则链。
+- 名称、长度、权限及冲突按 Provider 校验，无效时返回 `valid: false` 和逐项错误；同名返回 `changed: false`。执行此预览仍须提交 `preview_id`；直接改名单项可使用下述单项执行接口。
+- `file_ids` 有序，rule context indices 与响应 `items` 均按该顺序；服务端快照保留顺序，执行前重校验不重新排序。预览不设文件数量上限，规则最多 20 条（包括 disabled 规则）；Provider 内部仍按自身能力分组写入。
+- 422：超过规则上限、空选择、重复、跨目录、超出路径、选择根目录、无效路径或规则配置；404：项目或目录不存在；其他 Provider 错误见通用错误。
 - 预览在当前后端进程保留 10 分钟，后端重启即失效。
 - 新预览保存成功后，仅替换显式提供且属于同连接的 `previous_preview_id`，不影响其他预览。请求失败保留旧快照；保存的响应即使 `valid: false` 也替换旧快照。替换不改变执行重校验或 consume 语义。
 
@@ -240,7 +243,7 @@ Array<{
 
 仅释放指定连接的指定预览；不存在、过期、已消费或重复释放均返回 204，不影响其他连接的预览。连接删除后仍可清理。
 
-该操作不访问 Provider，不取消已开始的执行，不清除执行进度或目录元数据缓存。前端在任务结束或工作区变化时释放持有的预览，并丢弃旧上下文迟到的预览响应；清理失败则由到期机制回收。规则/选择变化导致预览展示重置时，保留 cleanup ID，供下次替换或任务结束时使用。
+该操作不访问 Provider，不取消已开始的执行，不清除执行进度或目录元数据缓存。前端在清理工作区或工作区变化时释放持有的预览，并丢弃旧上下文迟到的预览响应；清理失败则由到期机制回收。规则/选择变化导致预览展示重置时，保留 cleanup ID，供下次替换或清理工作区时使用。
 
 ## 重命名执行（Rename Execute）
 
@@ -274,6 +277,17 @@ Array<{
 - `current_file` 保留成功重命名或回滚后经 Provider 确认的身份，包括变化后的 Local path ID；`file_id` 始终为原请求 ID。`null` 本身不能证明写入成功或失败。
 - `RENAME_OUTCOME_UNKNOWN` 表示可能已写入但当前状态无法确认，此时 `actual_name: null`。已知成功的写入不会因响应缺失而重放；回滚错误在可确认时报告遗留名称。
 
+### 单项执行：`POST /storages/{storage_id}/rename/single/execute`
+
+请求为 `{ operation_id: string, revision: number, location?: StorageLocation, file_id: string, original_name: string, target_name: string }`。`operation_id` 为客户端生成的 UUID，仅标识操作，不是 `preview_id` 或幂等键；`revision` 为当前连接版本（整数，≥ 1），`location` 默认 root，`file_id` 非空，`target_name` 为完整目标名称（文件含扩展名）。不接受额外字段。
+
+支持单个文件或文件夹，使用独立服务，无需预览，不执行规则链。服务端检查连接版本并持有连接执行锁，直接调用 Provider 单项改名，不读取整个目录或比对原名。`original_name`、`location` 保留为客户端上下文，不作为源状态一致性条件；操作按文件 ID 修改当前项。名称、权限及冲突由 Provider 和第三方 API 判断，Google Drive 允许同目录同名。Google 单项直接按 ID PATCH，不读取 My Drive 根目录、源项或祖先来预检范围、类型及权限，由 API 决定是否允许；仍发送 `supportsAllDrives=false`，不代表新增共享云端硬盘支持。浏览和批量的范围限制保留。
+
+响应为 `{ operation_id: string, status: "completed" | "partial" | "failed", items: SingleExecuteItem[] }`，返回本次 `operation_id`，逐项状态及错误字段同上；单项 `current_file.path`、`parent_path` 可为 `null`，其余确认元数据保持不变。前端使用已知浏览上下文生成显示路径，路径不作为身份或成功依据。HTTP 200 不保证成功：Provider 明确拒绝返回 `failed` 项及统一 `error_code`；确认写入返回 `renamed` 和 `current_file`。前端同名时不提交；直接调用接口提交同名也按 Provider 的实际返回确认，不预先标为 `skipped`。
+
+- 请求格式无效返回 422 `REQUEST_VALIDATION_ERROR`；连接版本变化返回 409 `STORAGE_CONNECTION_CHANGED`；Provider 返回的文件缺失、权限、名称及冲突错误记录在 HTTP 200 的失败项中。原名变化不阻止按 ID 执行。其他错误见通用错误。
+- 写入结果未知时先按 ID 核对元数据（Google 使用一次 files.get，不读取祖先）；无法确认时返回 `RENAME_OUTCOME_UNKNOWN`。网络失败或结果未知时不得自动重放请求。此接口不提供按 `operation_id` 查询进度的能力。
+
 ## 执行进度（Rename Execution Progress）
 
 ### `GET /rename/progress/{preview_id}`
@@ -304,7 +318,6 @@ Array<{
 interface AppPreferences {
   language: string; // "auto" 或语言代码，例如 "zh-CN"、"en-US"
   theme: "light" | "dark" | "system";
-  hide_batch_limit_hint: boolean;
   cloud_default_locations: Record<string, { account_id: string; location: StorageLocation }>;
 }
 ```
@@ -335,7 +348,7 @@ auto 的浏览器语言解析、Vite 语言发现、词条回退和 MUI/日期�
 | 偏好保存 | 前端在单个 QueryClient 内串行保存，仅发送变化字段，每次保存前不重新读取设置；失败不阻断后续队列。后端基于当前内存偏好合并并原子保存完整状态；成功后，前端先取消更早的 in-flight settings reads，再更新 cache。 |
 | Google 分页 | 读取至 `nextPageToken` 缺失，包括空中间页。无效/重复 Token、incomplete search、重复 item ID、错误 parent、malformed data 或后续页失败均中止完整响应，客户端须从头刷新。 |
 | Google 元数据读取 | 每个 HTTP multipart request 最多 100 个 GET，保留请求顺序；同一操作共享祖先读取，不跨读取缓存。401 触发有界授权刷新；限流（429 或支持的 403 reasons）、transport errors 和 5xx reads 使用有限次 Retry-After / backoff 重试。成功 batch parts 保留，只重试可重试失败；永久失败、malformed / missing part 使整个调用失败，不返回部分元数据。Google error bodies 不回显。 |
-| Google 写入 | 单项/批量重命名使用 metadata-only PATCH parts，每个 multipart batch 最多 20 次写入，同时仅一个 batch 在途；只发送 `name`，不修改内容、parents 或 shortcut targets。每批重新校验项目范围、祖先和重命名权限；已知成功保留，仅对明确认证/限流拒绝做有界重试，逐项重试只含被拒绝 parts。 |
+| Google 写入 | 单项使用一次 metadata-only PATCH，无范围/权限预检和路径读取；批量使用 PATCH parts，每个 multipart batch 最多 20 次写入，同时仅一个 batch 在途；只发送 `name`，不修改内容、parents 或 shortcut targets。每批重新校验项目范围、祖先和重命名权限；已知成功保留，仅对明确认证/限流拒绝做有界重试，逐项重试只含被拒绝 parts。 |
 | Google 未知写入与回滚 | transport errors、5xx writes 或 malformed / incomplete successful responses 产生 `RENAME_OUTCOME_UNKNOWN`；既有 execution service 按 ID 查询元数据，不重放写入，未解决时停止后续分组并返回可空实际名称。循环、依赖及尽力回滚复用既有 Engine；Google Drive 第三阶段未引入状态格式迁移或新的公共 Schema。 |
 
 ## 未实现与已移除的契约

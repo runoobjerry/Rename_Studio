@@ -99,20 +99,24 @@ class PreviewService:
 
         # 配置仅在本轮评估中解析一次；执行前重新评估时仍会重新校验。
         with _timed_phase(request.storage_id, "rules", len(files)):
-            prepared_rules = self.engine.prepare_rules(request.rules)
-            candidates = [
-                self.engine.apply_prepared(
-                    item.name,
-                    prepared_rules,
-                    RuleContext(
-                        file_id=item.id,
-                        index=index,
-                        total=len(files),
-                        is_directory=item.is_directory,
-                    ),
-                )
-                for index, item in enumerate(files)
-            ]
+            if request.target_name is not None:
+                # 请求模型保证单项且不混用规则；后续校验、快照与执行重校验共用原流程。
+                candidates = [request.target_name]
+            else:
+                prepared_rules = self.engine.prepare_rules(request.rules)
+                candidates = [
+                    self.engine.apply_prepared(
+                        item.name,
+                        prepared_rules,
+                        RuleContext(
+                            file_id=item.id,
+                            index=index,
+                            total=len(files),
+                            is_directory=item.is_directory,
+                        ),
+                    )
+                    for index, item in enumerate(files)
+                ]
             normalized_targets = [provider.normalize_name(name) for name in candidates]
 
         with _timed_phase(request.storage_id, "conflict_directory", len(files)):

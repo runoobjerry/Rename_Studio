@@ -28,7 +28,7 @@
   "themeSaveFailed": "Could not save the appearance. The change was reverted: {{message}}",
   "resetFailed": "Could not restore factory defaults: {{message}}",
   "resetDone": "App reset",
-  "resetUnknown": "Verify items with unknown outcomes and end the current task first.",
+  "resetUnknown": "Verify files with unknown outcomes and acknowledge the results first.",
   "resetBusy": "Wait for the rename operation to finish before resetting.",
   "resetSaving": "A connection is being saved. Try again shortly.",
   "connection": {
@@ -74,6 +74,5 @@
     "save": "Save",
     "editLabel": "Edit connection {{name}}",
     "dialogTitle": "{{name}} settings"
-  },
-  "hintSaveFailed": "Could not save the hint preference. The change was reverted: {{message}}"
+  }
 }

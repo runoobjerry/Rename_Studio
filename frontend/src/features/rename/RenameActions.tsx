@@ -25,7 +25,6 @@ export interface RenameActionsProps {
   isExecuting: boolean;
   isBlocked?: boolean;
   hasExecuted: boolean;
-  allowUnchangedBatch?: boolean;
   progress?: RenameProgress;
   progressError?: string;
   executeError?: string;
@@ -41,7 +40,6 @@ export function RenameActions({
   isExecuting,
   isBlocked = false,
   hasExecuted,
-  allowUnchangedBatch = false,
   progress,
   progressError,
   executeError,
@@ -88,7 +86,7 @@ export function RenameActions({
           fullWidth
           variant="contained"
           startIcon={<PlayArrowRoundedIcon />}
-          disabled={!preview?.valid || (changedCount === 0 && !allowUnchangedBatch) || isExecuting || hasExecuted || isBlocked}
+          disabled={!preview?.valid || changedCount === 0 || isExecuting || hasExecuted || isBlocked}
           onClick={() => { setApplied(false); setConfirming(true); }}
         >
           {t("files:rename.start")}
@@ -106,7 +104,6 @@ export function RenameActions({
             </DialogContentText>
           ) : (
             <DialogContentText>
-              {changedCount === 0 && allowUnchangedBatch && t("files:rename.unchangedBatch")}
               {t("files:rename.confirm", { provider: providerName, count: changedCount })}
               <Typography component="span" variant="inherit" sx={{ color: "error.main" }}>{t("files:rename.irreversible")}</Typography>
             </DialogContentText>

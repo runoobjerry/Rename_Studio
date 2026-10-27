@@ -5,19 +5,18 @@ import { useNotification } from "../../components/NotificationProvider";
 import { useTranslation } from "react-i18next";
 import { useAppSettings } from "../../features/settings/useAppSettings";
 import { useRenameStore } from "../../stores/useRenameStore";
-import type { RenameTask } from "../../types";
 
 interface FactoryResetOptions {
-  task: RenameTask | null;
+  hasUnknownOutcome: boolean;
   isExecuting: boolean;
   isPreviewing: boolean;
   storageBusy: boolean;
-  endTask: () => void;
+  resetOperation: () => void;
   resetWorkspaceSession: () => void;
 }
 
 export function useFactoryReset({
-  task, isExecuting, isPreviewing, storageBusy, endTask, resetWorkspaceSession,
+  hasUnknownOutcome, isExecuting, isPreviewing, storageBusy, resetOperation, resetWorkspaceSession,
 }: FactoryResetOptions) {
   const notify = useNotification();
   const { t } = useTranslation("settings");
@@ -28,7 +27,7 @@ export function useFactoryReset({
   const [resetEpoch, setResetEpoch] = useState(0);
 
   let resetDisabledReason: string | undefined;
-  if (task?.items.some((item) => item.status === "unknown")) {
+  if (hasUnknownOutcome) {
     resetDisabledReason = t("resetUnknown");
   } else if (isExecuting || isPreviewing || storageBusy) {
     resetDisabledReason = t("resetBusy");
@@ -47,7 +46,7 @@ export function useFactoryReset({
       }
       // Clear the workspace only after the backend reset succeeds.
       await queryClient.cancelQueries({ predicate: (query) => query.queryKey[0] !== "app-settings" });
-      endTask();
+      resetOperation();
       useRenameStore.getState().setRules([]);
       resetWorkspaceSession();
       setResetEpoch((current) => current + 1);

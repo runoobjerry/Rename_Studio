@@ -4,7 +4,7 @@ from typing import Annotated, Literal
 from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_validator, model_validator
 
 from app.core.paths import normalize_storage_path
-from app.schemas.rules import RuleSpec
+from app.schemas.rename_input import RenamePreviewInput
 
 
 class RootLocation(BaseModel):
@@ -65,7 +65,6 @@ class AppPreferences(BaseModel):
     model_config = ConfigDict(extra="forbid")
     language: LanguagePreference = "auto"
     theme: Literal["light", "dark", "system"] = "system"
-    hide_batch_limit_hint: bool = False
     cloud_default_locations: dict[str, CloudDefaultLocation] = Field(default_factory=dict)
 
     @model_validator(mode="after")
@@ -82,7 +81,6 @@ class AppSettingsPatch(BaseModel):
     model_config = ConfigDict(extra="forbid")
     language: LanguagePreference = "auto"
     theme: Literal["light", "dark", "system"] = "system"
-    hide_batch_limit_hint: bool = False
     # Replace one connection's current-account default; null removes it.
     cloud_default_locations: dict[str, CloudDefaultLocation | None] = Field(default_factory=dict)
 
@@ -165,9 +163,7 @@ class StorageListRequest(BaseModel):
     location: StorageLocation = Field(default_factory=RootLocation)
 
 
-class StoragePreviewRequest(StorageListRequest):
-    file_ids: list[str] = Field(min_length=1, max_length=1000)
-    rules: list[RuleSpec] = Field(default_factory=list, max_length=20)
+class StoragePreviewRequest(StorageListRequest, RenamePreviewInput):
     previous_preview_id: str | None = Field(default=None, min_length=1)
 
 

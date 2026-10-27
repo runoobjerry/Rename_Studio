@@ -6,7 +6,7 @@ import type {
 // 每次返回新对象；文件身份和展示名称可分别覆盖，不推测 Provider 的 ID 语义。
 export function fileItem(id: string, overrides: Partial<FileItem> = {}): FileItem {
   return { id, name: id, path: id, parent_path: "", is_directory: false,
-    size: 1, modified_at: null, ...overrides };
+    size: 1, modified_at: null, parent_location: { kind: "root" }, ...overrides };
 }
 
 export const listing = (count = 2): DirectoryListing => ({
@@ -20,7 +20,7 @@ export const status = (accountId: string | null, connected = true): Authorizatio
 });
 
 export const appSettings = (): AppSettings => ({ preferences: {
-  language: "auto", theme: "system", hide_batch_limit_hint: false, cloud_default_locations: {},
+  language: "auto", theme: "system", cloud_default_locations: {},
 } });
 
 export const storages = (): StorageInfo[] => [

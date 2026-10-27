@@ -9,11 +9,11 @@ import type { StorageLocation } from "../../types";
 import { clearWorkspaceSession, readWorkspaceSession, writeWorkspaceSession } from "../workspaceSession";
 
 interface WorkspaceStorageOptions {
-  hasTask: boolean;
+  pauseFileQueries: boolean;
   onLocalRootSelected: () => void;
 }
 
-export function useWorkspaceStorage({ hasTask, onLocalRootSelected }: WorkspaceStorageOptions) {
+export function useWorkspaceStorage({ pauseFileQueries, onLocalRootSelected }: WorkspaceStorageOptions) {
   const { t } = useTranslation();
   const notify = useNotification();
   const queryClient = useQueryClient();
@@ -116,7 +116,7 @@ export function useWorkspaceStorage({ hasTask, onLocalRootSelected }: WorkspaceS
   const files = useQuery({
     queryKey: ["files", storageId, activeStorage?.revision, location],
     queryFn: () => fetchStorageFiles(storageId, location),
-    enabled: !hasTask && Boolean(activeStorage) && locationReady,
+    enabled: !pauseFileQueries && Boolean(activeStorage) && locationReady,
   });
   useEffect(() => {
     if (!activeStorage || !locationReady || !files.isSuccess || files.isFetching || !files.data.location) return;

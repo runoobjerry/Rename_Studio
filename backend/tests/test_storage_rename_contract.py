@@ -182,7 +182,7 @@ async def test_independent_groups_roll_forward_and_keep_progress_in_completion_o
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("count", [7, 40, 41, 1000])
+@pytest.mark.parametrize("count", [7, 40, 41, 1001])
 async def test_concurrent_execution_keeps_batch_limits_and_submits_every_id_once(count: int) -> None:
     provider = ControlledBatchProvider(count)
     provider.release_everything()
@@ -483,20 +483,59 @@ async def test_provider_case_rules_and_permissions_are_used() -> None:
 
 
 @pytest.mark.asyncio
-async def test_two_thousand_stable_ids_use_two_independent_preview_execute_batches() -> None:
-    provider = StableIdProvider({str(index): f"old-{index}" for index in range(2000)})
-    provider.execution_batch_size = 20
+async def test_single_target_uses_provider_name_rules_without_text_rule_limits() -> None:
+    target = "  资料/" + "长" * 256 + ".txt"
+    provider = StableIdProvider({"opaque-id": "old.txt", "other": target.upper()})
     preview, execute = services(provider)
-    completed_ids: set[str] = set()
-    for offset in (0, 1000):
-        ids = [str(index) for index in range(offset, offset + 1000)]
-        snapshot = await preview.preview(request(ids, {f"old-{index}": f"new-{index}" for index in range(offset, offset + 1000)}))
-        assert snapshot.valid
-        assert len(snapshot.items) == 1000
-        result = await execute.execute(snapshot.preview_id)
+
+    response = await preview.preview(RenamePreviewRequest(
+        storage_id="stable", location=RootLocation(), file_ids=["opaque-id"], target_name=target,
+    ))
+
+    assert response.valid
+    assert response.items[0].new_name == target
+    assert provider.writes == []
+    result = await execute.execute(response.preview_id)
+    assert result.status == "completed"
+    assert result.items[0].current_file.id == "opaque-id"
+    assert provider.items["opaque-id"].name == target
+    assert provider.items["other"].name == target.upper()
+
+
+@pytest.mark.asyncio
+async def test_single_target_cannot_bypass_item_permissions() -> None:
+    provider = StableIdProvider({"opaque-id": "old.txt"})
+    provider.items["opaque-id"].can_rename = False
+    preview, _ = services(provider)
+
+    response = await preview.preview(RenamePreviewRequest(
+        storage_id="stable", location=RootLocation(), file_ids=["opaque-id"], target_name="new.txt",
+    ))
+
+    assert not response.valid
+    assert "permissions" in response.items[0].error
+    assert provider.writes == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("readable", [True, False], ids=["reconciled", "unresolved"])
+async def test_single_target_lost_response_never_replays_write(readable: bool) -> None:
+    provider = StableIdProvider({"opaque-id": "old.txt"})
+    preview, execute = services(provider)
+    response = await preview.preview(RenamePreviewRequest(
+        storage_id="stable", location=RootLocation(), file_ids=["opaque-id"], target_name="new.txt",
+    ))
+    provider.lose_response = True
+    provider.unreadable_after_write = not readable
+
+    result = await execute.execute(response.preview_id)
+
+    assert len(provider.writes) == 1
+    assert provider.items["opaque-id"].name == "new.txt"
+    if readable:
         assert result.status == "completed"
-        assert not completed_ids.intersection(item.file_id for item in result.items)
-        assert all(item.current_file.id == item.file_id for item in result.items)
-        completed_ids.update(item.file_id for item in result.items)
-    assert len(completed_ids) == 2000
-    assert all(item.name == f"new-{item.id}" for item in provider.items.values())
+        assert result.items[0].current_file.name == "new.txt"
+    else:
+        assert result.status == "failed"
+        assert result.items[0].error_code == "RENAME_OUTCOME_UNKNOWN"
+        assert result.items[0].actual_name is None

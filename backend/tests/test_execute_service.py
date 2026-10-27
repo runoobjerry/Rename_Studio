@@ -141,6 +141,24 @@ async def test_executes_valid_preview_once(tmp_path: Path) -> None:
 
 
 @pytest.mark.asyncio
+async def test_single_target_snapshot_ignores_later_request_and_response_changes(tmp_path: Path) -> None:
+    (tmp_path / "one.txt").write_text("source", encoding="utf-8")
+    preview_service, execute_service = build_services(tmp_path)
+    request = RenamePreviewRequest(storage_id="local", file_ids=["one.txt"], target_name="saved.txt")
+    preview = await preview_service.preview(request)
+    request.target_name = "request-tampered.txt"
+    preview.items[0].new_name = "response-tampered.txt"
+
+    result = await execute_service.execute(preview.preview_id)
+
+    assert result.status == "completed"
+    assert result.items[0].new_name == "saved.txt"
+    assert result.items[0].current_file.id == "saved.txt"
+    assert sorted(item.name for item in tmp_path.iterdir()) == ["saved.txt"]
+    assert (tmp_path / "saved.txt").read_text(encoding="utf-8") == "source"
+
+
+@pytest.mark.asyncio
 async def test_executes_swap_with_temporary_names(tmp_path: Path) -> None:
     (tmp_path / "a.txt").write_text("A", encoding="utf-8")
     (tmp_path / "b.txt").write_text("B", encoding="utf-8")
@@ -268,17 +286,3 @@ async def test_renames_selected_directory_without_renaming_children(
     assert result.status == "completed"
     assert (tmp_path / "season-01" / "episode-one.txt").exists()
     assert not (tmp_path / "season-01" / "episode-01.txt").exists()
-
-
-@pytest.mark.asyncio
-async def test_execute_rejects_oversized_legacy_snapshot_before_writing(tmp_path: Path) -> None:
-    (tmp_path / "one.txt").write_text("one", encoding="utf-8")
-    provider = TrackingLocalProvider(tmp_path)
-    preview_service, execute_service = build_services(tmp_path, provider)
-    preview = await preview_service.preview(request_for({"one.txt": "renamed.txt"}))
-    snapshot = preview_service.store.get(preview.preview_id)
-    # 模拟上限上线前已存在的服务端快照；客户端仍只能提交 preview_id。
-    snapshot.request.file_ids = [f"old-{index}.txt" for index in range(1001)]
-    with pytest.raises(ValidationError, match="1000"):
-        await execute_service.execute(preview.preview_id)
-    assert provider.rename_targets == []

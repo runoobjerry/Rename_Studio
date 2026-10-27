@@ -14,6 +14,7 @@ export function workspaceApiMock(original: typeof import("../api/client")) {
     factoryResetAppSettings: vi.fn<typeof original.factoryResetAppSettings>(),
     fetchRules: vi.fn<typeof original.fetchRules>(),
     createStoragePreview: vi.fn<typeof original.createStoragePreview>(),
+    executeStorageSingleRename: vi.fn<typeof original.executeStorageSingleRename>(),
     releaseStoragePreview: vi.fn<typeof original.releaseStoragePreview>(),
     executePreview: vi.fn<typeof original.executePreview>(),
     fetchRenameProgress: vi.fn<typeof original.fetchRenameProgress>(),

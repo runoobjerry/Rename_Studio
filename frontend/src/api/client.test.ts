@@ -1,13 +1,31 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { ApiError, createStoragePreview, releaseStoragePreview, disconnectStorage, fetchStorages, fetchRenameProgress, fetchAppSettings, patchAppSettings, factoryResetAppSettings } from "./client";
+import { ApiError, createStoragePreview, executeStorageSingleRename, releaseStoragePreview, disconnectStorage, fetchStorages, fetchRenameProgress, fetchAppSettings, patchAppSettings, factoryResetAppSettings } from "./client";
 
 afterEach(() => vi.unstubAllGlobals());
 
 describe("API client", () => {
+  it("submits a single rename directly without requesting a preview", async () => {
+    const operationId = "00000000-0000-4000-8000-000000000001";
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ operation_id: operationId, status: "completed", items: [] })));
+    vi.stubGlobal("fetch", fetchMock);
+    const result = await executeStorageSingleRename("connection/id", {
+      operation_id: operationId, location: { kind: "id", value: "directory-id" }, file_id: "opaque-id",
+      original_name: "old.tar.gz", target_name: "资料.tar.gz", revision: 1,
+    });
+    expect(fetchMock).toHaveBeenCalledWith("/api/storages/connection%2Fid/rename/single/execute", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        operation_id: operationId, location: { kind: "id", value: "directory-id" }, file_id: "opaque-id",
+        original_name: "old.tar.gz", target_name: "资料.tar.gz", revision: 1,
+      }),
+    });
+    expect(result).toEqual({ operation_id: operationId, status: "completed", items: [] });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
   it("reads app settings and submits only changed preference fields", async () => {
     const payload = { preferences: {
-      language: "auto", theme: "dark", hide_batch_limit_hint: false, cloud_default_locations: {},
+      language: "auto", theme: "dark", cloud_default_locations: {},
     } };
     const fetchMock = vi.fn().mockImplementation(async () => new Response(JSON.stringify(payload)));
     vi.stubGlobal("fetch", fetchMock);
@@ -21,7 +39,7 @@ describe("API client", () => {
   });
   it("requests the single factory reset endpoint", async () => {
     const response = { preferences: {
-      language: "auto", theme: "system", hide_batch_limit_hint: false, cloud_default_locations: {},
+      language: "auto", theme: "system", cloud_default_locations: {},
     } };
     const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify(response)));
     vi.stubGlobal("fetch", fetchMock);

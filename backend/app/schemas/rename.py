@@ -1,17 +1,16 @@
 from datetime import datetime
 from typing import Literal
+from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
-from app.schemas.files import FileItem
-from app.schemas.rules import RuleSpec
-from app.schemas.storage import StorageLocation
+from app.schemas.files import FileItem, RenameFile
+from app.schemas.rename_input import RenamePreviewInput
+from app.schemas.storage import RootLocation, StorageLocation
 
 
-class RenamePreviewRequest(BaseModel):
+class RenamePreviewRequest(RenamePreviewInput):
     storage_id: str
-    file_ids: list[str] = Field(min_length=1, max_length=1000)
-    rules: list[RuleSpec] = Field(default_factory=list, max_length=20)
     location: StorageLocation | None = None
 
 
@@ -36,7 +35,7 @@ class RenameExecuteRequest(BaseModel):
     preview_id: str = Field(min_length=1)
 
 
-class ExecuteItem(BaseModel):
+class RenameItemResult(BaseModel):
     file_id: str
     original_name: str
     new_name: str
@@ -44,13 +43,36 @@ class ExecuteItem(BaseModel):
     error: str | None = None
     error_code: str | None = None
     actual_name: str | None = None
+
+
+class ExecuteItem(RenameItemResult):
     current_file: FileItem | None = None
+
+
+class SingleExecuteItem(RenameItemResult):
+    current_file: RenameFile | None = None
 
 
 class RenameExecuteResponse(BaseModel):
     preview_id: str
     status: Literal["completed", "partial", "failed"]
     items: list[ExecuteItem]
+
+
+class SingleRenameExecuteRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    operation_id: UUID
+    file_id: str = Field(min_length=1)
+    original_name: str  # Display/history context; direct rename does not compare the current name.
+    target_name: str
+    revision: int = Field(ge=1)
+    location: StorageLocation = Field(default_factory=RootLocation)
+
+
+class SingleRenameExecuteResponse(BaseModel):
+    operation_id: str
+    status: Literal["completed", "partial", "failed"]
+    items: list[SingleExecuteItem]
 
 
 class RenameProgress(BaseModel):

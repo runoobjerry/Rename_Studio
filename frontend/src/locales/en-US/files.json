@@ -3,15 +3,7 @@
     "file": "File",
     "folder": "Folder"
   },
-  "filters": {
-    "pending": "Pending",
-    "completed": "Completed",
-    "failed": "Failed / Action Required"
-  },
-  "taskTitle": "Current task",
   "title": "File selection",
-  "sortLocked": " · Sorting is locked until the task ends",
-  "endTask": "End current task",
   "parent": "Back",
   "invert": "Invert selection",
   "filterItems": "Filter items",
@@ -22,7 +14,6 @@
     "extension": "Extension",
     "modified": "Modified"
   },
-  "emptyTask": "The current task is empty.",
   "emptyDirectory": "This directory is empty.",
   "breadcrumbs": {
     "label": "File path",
@@ -38,8 +29,8 @@
     "currentStorage": "Current storage",
     "title": "Preview",
     "filter": "Filter by status",
-    "original": "Original name",
-    "new": "New name",
+    "original": "Original",
+    "new": "New",
     "failed": "Rename failed",
     "conflict": "Name conflict",
     "invalid": "Cannot rename",
@@ -60,7 +51,6 @@
     "refreshing": "Refreshing…",
     "preview": "Refresh preview",
     "start": "Start renaming",
-    "unchangedBatch": "This batch has no name changes. Confirming will mark it as completed. ",
     "irreversible": "This action cannot be undone!",
     "progress": "Rename progress",
     "returnedError": "An error was returned: {{message}}. Try refreshing the file directory.",
@@ -71,11 +61,8 @@
     "confirm_other": "Rename {{count}} items in {{provider}} using the new names in the current preview. Please note: "
   },
   "notifications": {
-    "invalidPreview": "The preview contains invalid names or conflicts. Review the results. Files in unprocessed batches still occupy their names; conflict checks cannot be skipped.",
-    "oldUnknownTask": "The previous task has outcomes that need verification. Restore its rules and verify the results first.",
-    "fixedMembers": "The files in this task are fixed. End the current task before selecting files for a new one.",
-    "noTaskFiles": "No task files are available to process. Failed items can be selected for a retry; unknown outcomes must be verified first.",
-    "verifyBeforeRules": "This batch has outcomes that need verification. Check the actual files and end the task before changing rules.",
+    "renamedElsewhere": "Renamed successfully, but the item has moved to another directory.",
+    "invalidPreview": "The preview contains invalid names or conflicts. Review the results.",
     "rootSelected": "Local root folder selected.",
     "sessionUnavailable": "Browser session storage is unavailable. Your working location cannot be restored after a refresh.",
     "defaultUnavailable": "Could not read the default location. Opening the cloud drive root.",
@@ -84,20 +71,16 @@
     "completed": "Renaming completed successfully: {{count}} items renamed.",
     "partial": "Renaming partially completed: {{renamed}} renamed, {{failed}} failed.",
     "failed": "Renaming failed: {{renamed}} renamed, {{failed}} failed.",
-    "unknownOutcome": "Execution did not return complete results: {{message}}. Refresh the directory and verify the files in this batch.",
+    "unknownOutcome": "Execution did not return complete results: {{message}}. Refresh the directory and verify the actual files.",
     "pickFailed": "Could not select a folder: {{message}}",
     "defaultSaved": "Set “{{path}}” as the default location for the current account.",
     "defaultRootSaved": "Set the root directory as the default location for the current account.",
     "defaultSaveFailed": "Could not save the default location: {{message}}",
     "refreshFailed": "Refresh failed: {{message}}",
     "completed_one": "Renaming completed successfully: {{count}} item renamed.",
-    "completed_other": "Renaming completed successfully: {{count}} items renamed."
-  },
-  "batch": {
-    "title": "Large batch notice",
-    "hideHint": "Do not show this again",
-    "continue": "Continue",
-    "description": "More than {{limit}} files are selected. To maintain performance, only the first {{limit}} items will be renamed in this batch. After it finishes, filter for pending items to select and process the remaining files."
+    "completed_other": "Renaming completed successfully: {{count}} items renamed.",
+    "verifyBeforeRetry": "Verify the actual files and acknowledge the results before continuing.",
+    "fixedMembers": "The task files are fixed. End the current task before adding other files."
   },
   "location": {
     "title": "Directory location",
@@ -129,5 +112,22 @@
   "refreshFailed": "Could not refresh the directory. Showing the last loaded contents: {{message}}",
   "listLabel": "{{provider}} file list",
   "selectFile": "Select file {{name}}",
-  "selectFolder": "Select folder {{name}}"
+  "selectFolder": "Select folder {{name}}",
+  "verification": {
+    "review": "Verify execution results",
+    "required": "Execution results for storage {{storage}} are uncertain. Verify the actual files before renaming again.",
+    "instructions": "Refresh the directory or open the storage and verify the current names and execution progress of the files below. Acknowledging clears the selection and unlocks renaming. Select files and create a new preview before making further changes.",
+    "confirm": "Verified, unlock renaming"
+  },
+  "taskTitle": "Current task",
+  "quickRename": {
+    "title": "Rename",
+    "editLabel": "Rename {{name}}",
+    "name": "New name",
+    "extension": "Extension",
+    "applying": "Renaming",
+    "failed": "The item could not be renamed. Check the current file and try again."
+  },
+  "endTask": "End current task",
+  "emptyTask": "The current task is empty."
 }

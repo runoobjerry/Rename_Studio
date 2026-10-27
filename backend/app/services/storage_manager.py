@@ -70,8 +70,6 @@ class StorageManager:
             preferences.language = request.language
         if "theme" in fields:
             preferences.theme = request.theme
-        if "hide_batch_limit_hint" in fields:
-            preferences.hide_batch_limit_hint = request.hide_batch_limit_hint
         if "cloud_default_locations" in fields:
             for storage_id, default in request.cloud_default_locations.items():
                 if default is None:

@@ -44,6 +44,7 @@ export interface DirectoryListing {
   location?: StorageLocation;
   parent_location?: StorageLocation | null;
   breadcrumbs?: DirectoryBreadcrumb[] | null;
+  directory_id?: string | null;
 }
 
 export interface RuleSpec {
@@ -62,7 +63,6 @@ export interface CloudDefaultLocation {
 export interface AppPreferences {
   language: string;
   theme: ThemePreference;
-  hide_batch_limit_hint: boolean;
   cloud_default_locations: Record<string, CloudDefaultLocation>;
 }
 
@@ -73,7 +73,6 @@ export interface AppSettings {
 export interface AppSettingsPatch {
   language?: string;
   theme?: ThemePreference;
-  hide_batch_limit_hint?: boolean;
   cloud_default_locations?: Record<string, CloudDefaultLocation | null>;
 }
 
@@ -107,6 +106,15 @@ export interface PreviewResponse {
   valid: boolean;
 }
 
+export interface SingleRenameExecuteRequest {
+  operation_id: string;
+  location: StorageLocation;
+  file_id: string;
+  original_name: string;
+  target_name: string;
+  revision: number;
+}
+
 export interface ExecuteItem {
   file_id: string;
   original_name: string;
@@ -123,6 +131,21 @@ export interface ExecuteResponse {
   status: "completed" | "partial" | "failed";
   items: ExecuteItem[];
 }
+
+export interface SingleRenameExecuteResponse {
+  operation_id: string;
+  status: "completed" | "partial" | "failed";
+  items: SingleExecuteItem[];
+}
+
+export type RenameFile = Omit<FileItem, "path" | "parent_path"> & {
+  path?: string | null;
+  parent_path?: string | null;
+};
+
+export type SingleExecuteItem = Omit<ExecuteItem, "current_file"> & {
+  current_file?: RenameFile | null;
+};
 
 export type StorageLocation = { kind: "root" } | { kind: "id" | "path"; value: string };
 
@@ -171,27 +194,22 @@ export interface StorageUpdate {
   client_secret?: string | null;
 }
 
-// 展示快照与任务记录独立；before 在创建后不再修改，版本标识留待 Provider 支持。
+// 创建任务时复制原始文件信息；重复执行仅更新当前身份和结果，不覆盖 before。
 export interface FileSnapshot extends Readonly<FileItem> {
   readonly storageId: string;
-  readonly version?: string;
 }
-export type TaskItemStatus = "pending" | "completed" | "failed" | "unknown";
+
 export interface RenameTaskItem {
-  taskItemId: string;
-  order: number;
-  before: FileSnapshot;
+  readonly taskItemId: string;
+  readonly before: FileSnapshot;
   currentFileId: string;
-  status: TaskItemStatus;
-  after?: Readonly<ExecuteItem>;
-  reconciliation?: { file: FileSnapshot; completed: boolean; verifiedAt: string };
+  after?: Readonly<SingleExecuteItem>;
 }
+
 export interface RenameTask {
-  taskId: string;
-  contextKey: string;
-  storageId: string;
-  location: StorageLocation;
-  rules: RuleSpec[];
-  items: RenameTaskItem[];
-  batches: { batchId: string; taskItemIds: string[]; previewId?: string; outcome?: "reported" | "unknown"; results?: readonly Readonly<ExecuteItem>[] }[];
+  readonly taskId: string;
+  readonly contextKey: string;
+  readonly storageId: string;
+  readonly location: Readonly<StorageLocation>;
+  readonly items: readonly RenameTaskItem[];
 }

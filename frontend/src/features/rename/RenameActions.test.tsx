@@ -101,16 +101,3 @@ describe("RenameActions", () => {
     expect(screen.queryByText(/执行请求仍在进行/)).not.toBeInTheDocument();
   });
 });
-
-
-it("requires server execution confirmation even when a task batch has no changes", () => {
-  const onExecute = vi.fn();
-  const preview = { ...validPreview, items: validPreview.items.map((item) => ({ ...item, changed: false, new_name: item.original_name })) };
-  render(<RenameActions preview={preview} providerName="本地文件" selectedCount={1} isPreviewing={false} isExecuting={false}
-    hasExecuted={false} allowUnchangedBatch onPreview={vi.fn()} onExecute={onExecute} />);
-  fireEvent.click(screen.getByRole("button", { name: "开始修改" }));
-  expect(onExecute).not.toHaveBeenCalled();
-  expect(screen.getByText(/本批没有名称变化/)).toBeInTheDocument();
-  fireEvent.click(screen.getByRole("button", { name: "应用" }));
-  expect(onExecute).toHaveBeenCalledWith("preview-1");
-});

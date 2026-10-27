@@ -17,7 +17,8 @@ import { useTranslation } from "react-i18next";
 import { LanguageProvider, useLanguagePreference } from "./i18n/LanguageProvider";
 
 import { fetchRules } from "./api/client";
-import { BatchLimitDialog } from "./workspace/components/BatchLimitDialog";
+import { UnknownExecutionNotice } from "./features/rename/UnknownExecutionNotice";
+import { SingleRenameDialog } from "./features/rename/SingleRenameDialog";
 import { StorageSidebar } from "./workspace/components/StorageSidebar";
 import { StorageLocationPanel } from "./workspace/components/StorageLocationPanel";
 import { useWorkspaceStorage } from "./workspace/hooks/useWorkspaceStorage";
@@ -92,31 +93,33 @@ function Workspace({ preference, setPreference, settingsError }: {
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [view, setView] = useState<AppView>("workspace");
   const [fileSort, setFileSort] = useState<FileSort>(defaultFileSort);
-  // 任务订阅留在容器以暂停存储自动查询；两个业务 Hook 不互相调用。
-  const task = useRenameStore((state) => state.task);
+  const previewActive = useRenameStore((state) => state.previewActive);
+  const unknownExecution = useRenameStore((state) => state.unknownExecution);
   const {
     storageId, location, setLocation, setPath, selectStorage, resetWorkspaceSession, locationReady,
     providers, activeStorage, providerId, providerName, cloudStatus,
-    providerDefinitions, providerError, metadataReady, requiresAuth, supportsLocalPicker, supportsLocation,
+    providerDefinitions, providerDefinition, providerError, metadataReady, requiresAuth, supportsLocalPicker, supportsLocation,
     cloudAccountId, cloudConnected, cloudSession, cloudReady, restoredCloudSession, appSettingsReady,
     files, workspaceKey, settingsLoading, pickLocalRoot,
     restoreDefaultCloudPath, setDefaultCloudPath, refreshFiles,
   } = useWorkspaceStorage({
-    hasTask: Boolean(task),
+    pauseFileQueries: previewActive,
     // 选择器异步完成时才调用，工作流已经在当前 render 中初始化。
     onLocalRootSelected: () => resetForStorageChange(),
   });
   const definitions = useQuery({ queryKey: ["rules"], queryFn: fetchRules });
   const {
-    selectedIds, rules, browserTask, taskCurrent, browserItems, sortLocked, changeSort, selectedCount,
+    selectedIds, rules, browserItems, currentTask, changeSort, selectedCount,
     previewData, executionData, previewError, executeError, executionPreviewId,
     isPreviewing, isExecuting, hasExecuted,
-    batchHintOpen, skipBatchHint, closeBatchHint, changeBatchHintPreference, continueBatchPreview,
+    singleRenameTarget, singleRenameError, canSingleRename, isSingleRenaming,
+    openSingleRename, closeSingleRename, applySingleRename,
     requestPreview, executeRename, onRulesChange,
-    reconcileSelection, endTask, toggleFile, selectAllFiles, clearFiles, invertFiles,
+    resetOperation, endTask, toggleFile, selectAllFiles, clearFiles, invertFiles,
     resetForStorageChange,
   } = useRenameWorkflow({
-    storageId, location, workspaceKey, cloudSession, locationReady, task,
+    storageId, location, workspaceKey, cloudSession, locationReady,
+    canRename: metadataReady && providerDefinition?.can_rename === true && !pickLocalRoot.isPending,
     sort: fileSort, onSortChange: setFileSort,
     activeStorage: activeStorage && { revision: activeStorage.revision, busy: activeStorage.busy },
     files: {
@@ -132,9 +135,9 @@ function Workspace({ preference, setPreference, settingsError }: {
 
   const loadError = providers.error ?? providerError ?? definitions.error ?? (requiresAuth ? cloudStatus.error : null);
   const { factoryReset, resetDisabledReason, resetPending, resetEpoch } = useFactoryReset({
-    task, isExecuting, isPreviewing,
+    hasUnknownOutcome: Boolean(unknownExecution), isExecuting, isPreviewing,
     storageBusy: providers.data?.some((storage) => storage.busy) ?? false,
-    endTask, resetWorkspaceSession,
+    resetOperation, resetWorkspaceSession,
   });
 
   const navigate = useCallback((nextPath: string) => {
@@ -158,13 +161,6 @@ function Workspace({ preference, setPreference, settingsError }: {
   return (
     <>
       <CssBaseline />
-      <BatchLimitDialog
-        open={batchHintOpen}
-        checked={skipBatchHint}
-        onClose={closeBatchHint}
-        onCheckedChange={changeBatchHintPreference}
-        onContinue={continueBatchPreview}
-      />
       <Box sx={{ minHeight: "100vh", bgcolor: "background.default" }}>
         <Drawer
           variant={compactNavigation ? "temporary" : "permanent"}
@@ -210,6 +206,7 @@ function Workspace({ preference, setPreference, settingsError }: {
             className={view === "workspace" ? "workspace-page" : undefined}
             sx={{ width: "100%", maxWidth: 1680, mx: "auto", p: 1.5 }}
           >
+            <UnknownExecutionNotice />
             {loadError && <Alert severity="error" sx={{ mb: 2 }}>{t("files:workspace.loadFailed", { message: errorMessage(loadError, t) })}</Alert>}
             {(providers.isPending || providerDefinitions.isPending || definitions.isPending) && (
               <LinearProgress aria-label={t("files:workspace.loading")} sx={{ flexShrink: 0, mb: 1 }} />
@@ -254,16 +251,15 @@ function Workspace({ preference, setPreference, settingsError }: {
                         onNavigateLocation={navigateLocation}
                         listing={files.data}
                         items={browserItems}
+                        hasTask={Boolean(currentTask)}
+                        onEndTask={endTask}
+                        onRename={openSingleRename}
+                        renameDisabled={!canSingleRename}
                         sort={fileSort}
-                        sortLocked={sortLocked}
                         onSortChange={changeSort}
                         providerName={providerName}
                         selectedIds={selectedIds}
-                        task={browserTask}
-                        taskCurrent={taskCurrent}
                         disabled={isExecuting || isPreviewing || files.isFetching || Boolean(activeStorage?.busy)}
-                        onReconcileSelection={reconcileSelection}
-                        onEndTask={endTask}
                         isRefreshing={files.isFetching}
                         refreshError={files.error ? errorMessage(files.error, t) : undefined}
                         onNavigate={navigate}
@@ -318,9 +314,8 @@ function Workspace({ preference, setPreference, settingsError }: {
                       selectedCount={selectedCount}
                       isPreviewing={isPreviewing}
                       isExecuting={isExecuting}
-                      isBlocked={!locationReady || pickLocalRoot.isPending || !activeStorage || activeStorage.busy || files.isFetching || Boolean(files.error)}
+                      isBlocked={Boolean(unknownExecution) || !locationReady || pickLocalRoot.isPending || !activeStorage || activeStorage.busy || files.isFetching || Boolean(files.error)}
                       hasExecuted={hasExecuted}
-                      allowUnchangedBatch={taskCurrent}
                       executionPreviewId={executionPreviewId}
                       executeError={executeError}
                       onPreview={requestPreview}
@@ -328,6 +323,12 @@ function Workspace({ preference, setPreference, settingsError }: {
                     />
                   </div>
                 </div>
+                {singleRenameTarget && <SingleRenameDialog
+                  initialName={singleRenameTarget.name} isDirectory={singleRenameTarget.file.is_directory}
+                  extension={singleRenameTarget.extension} isRenaming={isSingleRenaming}
+                  canApply={canSingleRename} error={singleRenameError}
+                  onApply={applySingleRename} onClose={closeSingleRename}
+                />}
               </>
             )}
           </Box>
