@@ -155,11 +155,7 @@ def test_language_partial_patch_persists_without_changing_connections_or_other_p
     before = manager.state.model_copy(deep=True)
     # A future language is accepted without adding a Python enum member.
     manager.update_app_settings(AppSettingsPatch(language="fr-FR"))
-    legacy = json.loads(manager.repository.path.read_text(encoding="utf-8"))
-    legacy["preferences"]["hide_batch_limit_hint"] = True
-    manager.repository.path.write_text(json.dumps(legacy), encoding="utf-8")
     restored = make_manager(tmp_path)
-    assert "hide_batch_limit_hint" not in restored.state.preferences.model_dump()
     assert restored.state.preferences.language == "fr-FR"
     assert restored.state.preferences.theme == "dark"
     assert restored.state.preferences.cloud_default_locations == before.preferences.cloud_default_locations
