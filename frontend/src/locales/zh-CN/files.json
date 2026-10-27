@@ -61,6 +61,7 @@
     "confirm_other": "将根据当前预览区新文件名修改 {{provider}} 中的 {{count}} 个项目。请注意，"
   },
   "notifications": {
+    "renamedElsewhere": "重命名成功，但该项目已移动至其他目录。",
     "invalidPreview": "预览包含无效名称或冲突，请检查结果。",
     "rootSelected": "已选择本地根文件夹。",
     "sessionUnavailable": "浏览器会话存储不可用，刷新后无法保留工作路径。",

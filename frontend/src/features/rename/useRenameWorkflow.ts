@@ -59,11 +59,11 @@ export function useRenameWorkflow({
   const currentTask = task?.contextKey === workspaceSession ? task : null;
   const browserItems = useMemo(() => {
     const listed = files.data?.items ?? [];
-    return sortFileItems(currentTask ? taskFileItems(listed, currentTask) : listed, sort);
-  }, [files.data?.items, currentTask, sort]);
+    return sortFileItems(currentTask ? taskFileItems(listed, currentTask, files.data) : listed, sort);
+  }, [files.data, currentTask, sort]);
   const renamableFiles = useMemo(() => {
-    const available = new Map(files.data?.items.map((item) => [item.id, item]));
-    return browserItems.filter((item) => available.has(item.id) && available.get(item.id)!.can_rename !== false);
+    const availableIds = new Set(files.data?.items.map((item) => item.id));
+    return browserItems.filter((item) => item.can_rename !== false && availableIds.has(item.id));
   }, [browserItems, files.data?.items]);
   const currentSelectedIds = useMemo(() => {
     const selected = new Set(selectedIds);

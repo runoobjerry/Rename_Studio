@@ -2,7 +2,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { errorMessage, translateMessage, type NotificationMessage } from "../../i18n/messages";
-import { ApiError, executeStorageSingleRename } from "../../api/client";
+import { ApiError, executeStorageSingleRename, fetchStorageFiles } from "../../api/client";
+import { isInDirectory } from "../files/directoryIdentity";
 import { useNotification } from "../../components/NotificationProvider";
 import { useRenameStore } from "../../stores/useRenameStore";
 import type { DirectoryListing, FileItem, SingleRenameExecuteResponse, StorageLocation } from "../../types";
@@ -37,7 +38,6 @@ export function useSingleRename({ storageId, location, workspaceSession, revisio
   const queryClient = useQueryClient();
   const notify = useNotification();
   const setPreviewActive = useRenameStore((state) => state.setPreviewActive);
-  const unknownExecution = useRenameStore((state) => state.unknownExecution);
   const [singleTarget, setSingleTarget] = useState<SingleRenameTarget | null>(null);
   const [singleError, setSingleError] = useState<SingleRenameError | null>(null);
   const singlePending = useRef(false);
@@ -46,6 +46,20 @@ export function useSingleRename({ storageId, location, workspaceSession, revisio
     setSingleTarget(null);
     setSingleError(null);
   }, []);
+
+  const closeDialog = useCallback(() => {
+    const store = useRenameStore.getState();
+    setSingleTarget(null);
+    setSingleError(null);
+    if (!store.task && !store.unknownExecution) setPreviewActive(false);
+  }, [setPreviewActive]);
+
+  function removeFromDirectory(key: readonly unknown[], fileId: string) {
+    queryClient.setQueryData<DirectoryListing>(key, (listing) => listing && {
+      ...listing, items: listing.items.filter((file) => file.id !== fileId),
+    });
+    void queryClient.invalidateQueries({ queryKey: key, exact: true, refetchType: "none" });
+  }
 
   const singleRename = useMutation({
     gcTime: 0,
@@ -67,38 +81,61 @@ export function useSingleRename({ storageId, location, workspaceSession, revisio
         return;
       }
       const metadata = outcome.current_file;
-      // Display paths come from the browse context; success and identity come from the Provider.
+      const listing = queryClient.getQueryData<DirectoryListing>(input.directoryKey);
+      const membership = metadata ? isInDirectory(listing, metadata) : null;
+      const missingTaskFile = Boolean(input.target.taskId &&
+        outcome.status === "failed" && outcome.error_code === "NOT_FOUND");
+      // Only reuse browse paths after confirming the file still belongs to this directory.
       const parentPath = metadata?.parent_path ?? input.target.file.parent_path;
-      const current: FileItem | undefined = metadata ? {
+      const current: FileItem | undefined = metadata && membership === true ? {
         ...metadata, parent_path: parentPath,
         path: metadata.path ?? (parentPath ? `${parentPath}/${metadata.name}` : metadata.name),
       } : undefined;
-      const item = { ...outcome, current_file: current };
+      const item = { ...outcome, current_file: current ?? metadata };
       const unknown = (item.status === "renamed" && !item.current_file) ||
         (item.status === "failed" && (item.error_code === "RENAME_OUTCOME_UNKNOWN" ||
           (item.actual_name != null && item.actual_name !== item.original_name && !item.current_file)));
       if (unknown) recordUnknown(input, result.operation_id);
-      if (current) {
+      if (missingTaskFile) {
+        removeFromDirectory(input.directoryKey, input.target.file.id);
+      } else if (metadata) {
         queryClient.setQueryData<DirectoryListing>(input.directoryKey, (listing) => listing && {
-          ...listing, items: listing.items.map((file) => file.id === input.target.file.id ? current : file),
+          ...listing, items: listing.items.flatMap((file) => {
+            if (file.id !== input.target.file.id) return [file];
+            return current ? [current] : [];
+          }),
         });
+        if (membership !== true) {
+          void queryClient.invalidateQueries({ queryKey: input.directoryKey, exact: true, refetchType: "none" });
+          if (membership === null) {
+            // Tasks pause automatic queries, so explicitly resolve missing parent metadata once.
+            void queryClient.fetchQuery({ queryKey: input.directoryKey,
+              queryFn: () => fetchStorageFiles(input.storageId, input.location) }).catch((error: Error) => {
+              if (isCurrentSession(input.target.workspaceSession)) {
+                notify({ key: "files:notifications.refreshFailed", error }, "error");
+              }
+            });
+          }
+        }
       }
       if (!isCurrentSession(input.target.workspaceSession)) return;
       const store = useRenameStore.getState();
       if (input.target.taskId) store.applyTaskResults(input.target.taskId, { items: [item] });
-      if (current) store.setSelectedIds(store.selectedIds.map((id) =>
-        id === input.target.file.id ? current.id : id));
+      if (metadata || missingTaskFile) store.setSelectedIds(store.selectedIds.flatMap((id) => {
+        if (id !== input.target.file.id) return [id];
+        return current && !missingTaskFile ? [current.id] : [];
+      }));
       if (unknown) {
         setSingleError({ key: "files:notifications.verifyBeforeRetry" });
         return;
       }
       if (result.status === "completed" && item.status === "renamed") {
-        setSingleTarget(null);
-        if (!store.task) setPreviewActive(false);
-        notify({ key: "files:notifications.completed", values: { count: 1 } }, "success");
+        closeDialog();
+        notify(membership === false ? { key: "files:notifications.renamedElsewhere" }
+          : { key: "files:notifications.completed", values: { count: 1 } }, "success");
       } else {
         setSingleError(item.error ? { message: item.error, code: item.error_code } : { key: "files:quickRename.failed" });
-        if (item.current_file) setSingleTarget({ ...input.target, file: item.current_file });
+        if (current) setSingleTarget({ ...input.target, file: current });
       }
     },
     onError: (error, input) => {
@@ -113,8 +150,9 @@ export function useSingleRename({ storageId, location, workspaceSession, revisio
       singlePending.current = false;
     },
   });
-  const canSingleRename = canStart && !singleRename.isPending &&
-    !(singleError && typeof singleError === "object" && "code" in singleError && singleError.code === "NOT_FOUND");
+  const isMissingFile = Boolean(singleError && typeof singleError === "object" &&
+    "code" in singleError && singleError.code === "NOT_FOUND");
+  const canSingleRename = canStart && !singleRename.isPending && !isMissingFile;
 
   function recordUnknown(input: { target: SingleRenameTarget; targetName: string; storageId: string }, operationId: string) {
     // 核对展示复用公共记录格式，单项操作本身不创建预览。
@@ -128,13 +166,12 @@ export function useSingleRename({ storageId, location, workspaceSession, revisio
 
   useEffect(() => {
     if (singlePending.current || !singleTarget) return;
+    // NOT_FOUND clears selection on receipt; keep its error visible until the user dismisses it.
     if (singleTarget.workspaceSession !== workspaceSession || singleTarget.taskId !== taskId ||
-      !selectedFile || selectedFile.id !== singleTarget.file.id) {
-      setSingleTarget(null);
-      setSingleError(null);
-      if (!taskId && !unknownExecution) setPreviewActive(false);
+      (!isMissingFile && (!selectedFile || selectedFile.id !== singleTarget.file.id))) {
+      closeDialog();
     }
-  }, [singleTarget, workspaceSession, taskId, unknownExecution, selectedFile, singleRename.isPending, setPreviewActive]);
+  }, [singleTarget, workspaceSession, taskId, selectedFile, isMissingFile, singleRename.isPending, closeDialog]);
 
   const openSingleRename = (fileId: string) => {
     if (!canSingleRename || singlePending.current || selectedFile!.id !== fileId) return;
@@ -148,9 +185,7 @@ export function useSingleRename({ storageId, location, workspaceSession, revisio
   };
   const closeSingleRename = () => {
     if (singlePending.current) return;
-    setSingleTarget(null);
-    setSingleError(null);
-    if (!taskId && !unknownExecution) setPreviewActive(false);
+    closeDialog();
   };
   const applySingleRename = (name: string, extension: string) => {
     if (!singleTarget || singleTarget.workspaceSession !== workspaceSession || !canSingleRename ||

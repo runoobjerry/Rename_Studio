@@ -39,3 +39,4 @@ class DirectoryListing(BaseModel):
     location: StorageLocation | None = None
     parent_location: StorageLocation | None = None
     breadcrumbs: list[DirectoryBreadcrumb] | None = None
+    directory_id: str | None = None

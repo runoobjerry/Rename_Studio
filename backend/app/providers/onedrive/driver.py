@@ -91,7 +91,7 @@ class OneDriveProvider(StorageProvider):
             item.parent_location = IdLocation(value=directory_id)
         path = "" if isinstance(canonical, RootLocation) else directory.path
         return DirectoryListing(provider=self.id, path=path, parent_path=None if parent is None else directory.parent_path,
-                                location=canonical, parent_location=parent, items=items)
+                                location=canonical, directory_id=directory_id, parent_location=parent, items=items)
 
     async def list_files(self, path: str) -> list[FileItem]:
         normalized = path.replace("\\", "/").strip("/")

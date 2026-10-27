@@ -44,6 +44,7 @@ export interface DirectoryListing {
   location?: StorageLocation;
   parent_location?: StorageLocation | null;
   breadcrumbs?: DirectoryBreadcrumb[] | null;
+  directory_id?: string | null;
 }
 
 export interface RuleSpec {
@@ -202,7 +203,7 @@ export interface RenameTaskItem {
   readonly taskItemId: string;
   readonly before: FileSnapshot;
   currentFileId: string;
-  after?: Readonly<ExecuteItem>;
+  after?: Readonly<SingleExecuteItem>;
 }
 
 export interface RenameTask {

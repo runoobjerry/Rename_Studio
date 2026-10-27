@@ -98,17 +98,17 @@ export const FileBrowser = memo(function FileBrowser({
     hour: "2-digit", minute: "2-digit", hour12: false,
   }), [i18n.resolvedLanguage]);
   const [filters, setFilters] = useState<FileFilter[]>([]);
-  const listedItems = useMemo(() => new Map(listing.items.map((item) => [item.id, item])), [listing.items]);
+  const listedIds = useMemo(() => new Set(listing.items.map((item) => item.id)), [listing.items]);
   const filteredItems = useCallback((nextFilters: FileFilter[]) => panelItems.filter((item) =>
     nextFilters.length === 0 || nextFilters.includes(item.is_directory ? "folder" : "file")), [panelItems]);
   const visibleItems = useMemo(() => filteredItems(filters), [filteredItems, filters]);
   const filterOptions = fileFilters.map((option) => ({ ...option, label: t(option.labelKey) }));
   const totalCount = panelItems.length;
-  const visibleIds = useMemo(() => visibleItems.map((item) => item.id), [visibleItems]);
   const selectedSet = useMemo(() => new Set(selectedIds), [selectedIds]);
   const selectedCount = useMemo(() => panelItems.filter((item) => selectedSet.has(item.id)).length, [panelItems, selectedSet]);
   const visibleSelectedCount = useMemo(() => visibleItems.filter((item) => selectedSet.has(item.id)).length, [visibleItems, selectedSet]);
-  const selectableIds = useMemo(() => visibleIds.filter((id) => listedItems.has(id) && listedItems.get(id)!.can_rename !== false), [visibleIds, listedItems]);
+  const selectableIds = useMemo(() => visibleItems.filter((item) => item.can_rename !== false &&
+    listedIds.has(item.id)).map((item) => item.id), [visibleItems, listedIds]);
   const [selectionAnchor, setSelectionAnchor] = useState<string | null>(null);
   useEffect(() => {
     setSelectionAnchor(null);
@@ -254,7 +254,7 @@ export const FileBrowser = memo(function FileBrowser({
             {visibleItems.slice(virtual.start, virtual.end).map((item, offset) => (
               <FileBrowserRow key={item.id}
                 item={item} rowIndex={virtual.start + offset} selected={selectedSet.has(item.id)} modifiedAtFormatter={modifiedAtFormatter}
-                disabled={disabled || !listedItems.has(item.id) || listedItems.get(item.id)?.can_rename === false}
+                disabled={disabled || item.can_rename === false || !listedIds.has(item.id)}
                 showRename={selectedIds.length === 1 && selectedSet.has(item.id)}
                 renameDisabled={renameDisabled} onRename={onRename}
                 navigationDisabled={disabled || hasTask} onToggle={onToggle} onSelectRow={selectRow}

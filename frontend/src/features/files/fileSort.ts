@@ -1,4 +1,5 @@
-import type { FileItem, RenameTask } from "../../types";
+import type { DirectoryListing, FileItem, RenameTask } from "../../types";
+import { isInDirectory } from "./directoryIdentity";
 
 export interface FileSort {
   field: "name" | "modified_at";
@@ -28,9 +29,20 @@ export function sortFileItems(items: readonly FileItem[], sort: FileSort): FileI
   });
 }
 
-export function taskFileItems(files: FileItem[], task: RenameTask): FileItem[] {
+export function taskFileItems(files: FileItem[], task: RenameTask, listing: DirectoryListing | undefined): FileItem[] {
   const byId = new Map(files.map((file) => [file.id, file]));
-  // 刷新缺项仍展示原快照；身份只接受 Provider 确认的 ID，不按名称匹配。
-  return task.items.map((item) => byId.get(item.currentFileId)
-    ?? item.after?.current_file ?? { ...item.before, id: item.currentFileId });
+  // 固定任务保留不可用成员；目录缓存和 can_rename 决定其是否可选择。
+  return task.items.flatMap((item) => {
+    const current = item.after?.current_file;
+    const membership = current ? isInDirectory(listing, current) : undefined;
+    if (membership === false && current) return [{ ...current,
+      parent_path: current.parent_path ?? "", path: current.path ?? current.name, can_rename: false }];
+    const listed = byId.get(item.currentFileId);
+    if (listed) return [listed];
+    // An unlocated result must be resolved by a fresh listing, never by the old snapshot.
+    if (membership === null) return [];
+    if (!current) return [{ ...item.before, id: item.currentFileId, can_rename: false }];
+    // Same-directory single results are normalized before storage; batch results already have paths.
+    return [current as FileItem];
+  });
 }

@@ -61,6 +61,7 @@
     "confirm_other": "Rename {{count}} items in {{provider}} using the new names in the current preview. Please note: "
   },
   "notifications": {
+    "renamedElsewhere": "Renamed successfully, but the item has moved to another directory.",
     "invalidPreview": "The preview contains invalid names or conflicts. Review the results.",
     "rootSelected": "Local root folder selected.",
     "sessionUnavailable": "Browser session storage is unavailable. Your working location cannot be restored after a refresh.",

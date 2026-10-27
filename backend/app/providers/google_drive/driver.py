@@ -128,6 +128,7 @@ class GoogleDriveProvider(StorageProvider):
             provider=self.id, path=self._display_path(chain),
             parent_path=self._display_path(chain[:-1]) if len(chain) > 1 else None,
             location=self._location(directory, root),
+            directory_id=directory.id,
             parent_location=self._location(chain[-2], root) if len(chain) > 1 else None,
             breadcrumbs=[DirectoryBreadcrumb(name=item.name, location=self._location(item, root)) for item in chain],
             items=sorted(items, key=lambda item: (not item.is_directory, item.name.casefold(), item.name, item.id)),

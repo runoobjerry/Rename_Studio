@@ -5,7 +5,7 @@ import { useRenameStore } from "../../stores/useRenameStore";
 import { deferred } from "../../test/deferred";
 import { fileItem, previewResponse, storages } from "../../test/fixtures";
 import { client, installWorkspaceTestHooks, listing, notify, preview, setupWorkspace } from "../../test/workspaceHarness";
-import type { FileItem, SingleRenameExecuteResponse } from "../../types";
+import type { FileItem, SingleRenameExecuteResponse, StorageLocation } from "../../types";
 
 vi.mock("../../api/client", async (importOriginal) => {
   const { workspaceApiMock } = await import("../../test/workspaceApiMock");
@@ -26,6 +26,108 @@ function renamed(file: FileItem, current: FileItem, operationId = "single-operat
 }
 
 describe("single rename workflow", () => {
+  it.each(["google_drive", "onedrive", "custom-cloud"])(
+    "uses the real root identity for %s without refreshing the directory", async (provider) => {
+      const hook = await setupWorkspace(1);
+      const source = fileItem("file-0.txt");
+      const current = fileItem("confirmed-id", { name: "new.txt", path: "new.txt",
+        parent_location: { kind: "id", value: "real-root-id" } });
+      act(() => client.setQueryData(directoryKey, { ...listing(1), provider, directory_id: "real-root-id" }));
+      await waitFor(() => expect(hook.result.current.storage.files.data?.directory_id).toBe("real-root-id"));
+      vi.mocked(api.executeStorageSingleRename).mockResolvedValueOnce(renamed(source, current));
+      const reads = vi.mocked(api.fetchStorageFiles).mock.calls.length;
+      act(() => hook.result.current.workflow.openSingleRename(source.id));
+      act(() => hook.result.current.workflow.applySingleRename("new", ".txt"));
+      await waitFor(() => expect(hook.result.current.workflow.isSingleRenaming).toBe(false));
+      expect(hook.result.current.storage.files.data!.items).toEqual([current]);
+      expect(useRenameStore.getState().selectedIds).toEqual([current.id]);
+      expect(api.fetchStorageFiles).toHaveBeenCalledTimes(reads);
+      expect(notify).toHaveBeenLastCalledWith({ key: "files:notifications.completed", values: { count: 1 } }, "success");
+    });
+
+  it.each(["cloud", "local"])(
+    "keeps moved %s task members visible but unselectable as soon as the API confirms the move", async (kind) => {
+      const hook = await setupWorkspace(2);
+      if (kind === "cloud") {
+        act(() => client.setQueryData(directoryKey, { ...listing(2), directory_id: "real-root-id" }));
+      }
+      await preview(hook);
+      const original = useRenameStore.getState().task!;
+      act(() => hook.result.current.workflow.selectAllFiles(["file-0.txt"]));
+      const current = { ...fileItem("moved-id", { name: "new.txt",
+        parent_location: kind === "cloud" ? { kind: "id", value: "other-folder" }
+          : { kind: "path", value: "other-folder" } }), path: null, parent_path: null };
+      vi.mocked(api.executeStorageSingleRename).mockResolvedValueOnce({ operation_id: "moved", status: "completed",
+        items: [{ ...renamed(listing(2).items[0], fileItem("new.txt")).items[0], current_file: current }] });
+      act(() => hook.result.current.workflow.openSingleRename("file-0.txt"));
+      act(() => hook.result.current.workflow.applySingleRename("new", ".txt"));
+      await waitFor(() => expect(hook.result.current.workflow.isSingleRenaming).toBe(false));
+      expect(hook.result.current.workflow.singleRenameTarget).toBeNull();
+      const task = useRenameStore.getState().task!;
+      expect(task.items[0].before).toBe(original.items[0].before);
+      expect(task.items[0].after?.current_file).toEqual(current);
+      expect(task.items[0].currentFileId).toBe("moved-id");
+      expect(task.items[1]).toBe(original.items[1]);
+      expect(hook.result.current.storage.files.data!.items.map((file) => file.id)).toEqual(["file-1.txt"]);
+      expect(hook.result.current.workflow.browserItems.map((file) => file.id)).toEqual(["file-1.txt", "moved-id"]);
+      expect(hook.result.current.workflow.browserItems.find((file) => file.id === "moved-id")).toMatchObject({
+        name: "new.txt", can_rename: false, path: "new.txt", parent_path: "",
+      });
+      expect(useRenameStore.getState().selectedIds).toEqual([]);
+      expect(client.getQueryState(directoryKey)?.isInvalidated).toBe(true);
+      expect(notify).toHaveBeenLastCalledWith({ key: "files:notifications.renamedElsewhere" }, "success");
+      act(() => hook.result.current.workflow.selectAllFiles(["moved-id", "file-1.txt"]));
+      act(() => hook.result.current.workflow.requestPreview());
+      await waitFor(() => expect(api.createStoragePreview).toHaveBeenLastCalledWith(
+        "default-local", { kind: "root" }, ["file-1.txt"], [],
+      ));
+      // Even a stale list must not make a confirmed moved member selectable again.
+      act(() => client.setQueryData(directoryKey, { ...listing(2),
+        directory_id: kind === "cloud" ? "real-root-id" : null,
+        items: [fileItem("moved-id"), listing(2).items[1]] }));
+      await waitFor(() => expect(hook.result.current.workflow.browserItems.find((file) => file.id === "moved-id")?.can_rename).toBe(false));
+      act(() => hook.result.current.workflow.selectAllFiles(["moved-id"]));
+      await waitFor(() => expect(hook.result.current.workflow.selectedCount).toBe(0));
+    });
+
+  it.each([null, { kind: "id", value: "unresolved-root" }] as Array<StorageLocation | null>)(
+    "refreshes an unlocated result during a task without treating it as a move (%j)", async (parent) => {
+      const hook = await setupWorkspace(1);
+      await preview(hook);
+      const refresh = deferred<ReturnType<typeof listing>>();
+      vi.mocked(api.fetchStorageFiles).mockReturnValueOnce(refresh.promise);
+      const current = fileItem("file-0.txt", { name: "new.txt", parent_location: parent });
+      vi.mocked(api.executeStorageSingleRename).mockResolvedValueOnce(renamed(listing(1).items[0], current));
+      act(() => hook.result.current.workflow.openSingleRename("file-0.txt"));
+      act(() => hook.result.current.workflow.applySingleRename("new", ".txt"));
+      await waitFor(() => expect(api.fetchStorageFiles).toHaveBeenCalledTimes(2));
+      await waitFor(() => expect(hook.result.current.workflow.browserItems).toEqual([]));
+      expect(useRenameStore.getState().selectedIds).toEqual([]);
+      expect(useRenameStore.getState().unknownExecution).toBeNull();
+      expect(notify).toHaveBeenLastCalledWith({ key: "files:notifications.completed", values: { count: 1 } }, "success");
+      await act(async () => refresh.resolve({ ...listing(1), items: [current] }));
+      await waitFor(() => expect(hook.result.current.workflow.browserItems).toEqual([current]));
+      expect(api.executeStorageSingleRename).toHaveBeenCalledTimes(1);
+    });
+
+  it("keeps an unlocated task result out of the old directory when its refresh fails", async () => {
+    const hook = await setupWorkspace(1);
+    await preview(hook);
+    vi.mocked(api.fetchStorageFiles).mockRejectedValueOnce(new Error("Directory unavailable"));
+    const current = fileItem("confirmed-id", { name: "new.txt", parent_location: null });
+    vi.mocked(api.executeStorageSingleRename).mockResolvedValueOnce(renamed(listing(1).items[0], current));
+    act(() => hook.result.current.workflow.openSingleRename("file-0.txt"));
+    act(() => hook.result.current.workflow.applySingleRename("new", ".txt"));
+    await waitFor(() => expect(hook.result.current.storage.files.isError).toBe(true));
+    expect(hook.result.current.workflow.browserItems).toEqual([]);
+    expect(useRenameStore.getState().task!.items[0].after?.current_file).toEqual(current);
+    expect(useRenameStore.getState().unknownExecution).toBeNull();
+    expect(useRenameStore.getState().selectedIds).toEqual([]);
+    expect(api.executeStorageSingleRename).toHaveBeenCalledTimes(1);
+    expect(notify).toHaveBeenCalledWith({ key: "files:notifications.refreshFailed",
+      error: expect.objectContaining({ message: "Directory unavailable" }) }, "error");
+  });
+
   it.each([
     { original: "archive.tar.gz", name: "archive.tar", extension: ".gz", input: "资料.tar", target: "资料.tar.gz", folder: false },
     { original: ".env", name: ".env", extension: "", input: ".env.local", target: ".env.local", folder: false },
@@ -224,8 +326,11 @@ describe("single rename workflow", () => {
     expect(useRenameStore.getState().selectedIds).toEqual([source.id]);
   });
 
-  it("shows a missing-file error and blocks applying until the dialog is closed", async () => {
-    const hook = await setupWorkspace(1);
+  it("makes a missing task member unselectable on the API response while keeping its error dialog open", async () => {
+    const hook = await setupWorkspace(2);
+    await preview(hook);
+    const original = useRenameStore.getState().task!;
+    act(() => hook.result.current.workflow.selectAllFiles(["file-0.txt"]));
     vi.mocked(api.executeStorageSingleRename).mockResolvedValueOnce({ operation_id: "missing-file", status: "failed", items: [{
       file_id: "file-0.txt", original_name: "file-0.txt", new_name: "new.txt", status: "failed",
       error: "Missing file", error_code: "NOT_FOUND",
@@ -234,11 +339,33 @@ describe("single rename workflow", () => {
     act(() => hook.result.current.workflow.applySingleRename("new", ".txt"));
     await waitFor(() => expect(hook.result.current.workflow.singleRenameError).toBe("请求的资源不存在。Missing file"));
     expect(hook.result.current.workflow.canSingleRename).toBe(false);
+    expect(hook.result.current.workflow.singleRenameTarget).not.toBeNull();
+    expect(useRenameStore.getState().selectedIds).toEqual([]);
+    expect(hook.result.current.storage.files.data!.items.map((file) => file.id)).toEqual(["file-1.txt"]);
+    expect(hook.result.current.workflow.browserItems.map((file) => file.id)).toEqual(["file-0.txt", "file-1.txt"]);
+    expect(hook.result.current.workflow.browserItems[0].can_rename).toBe(false);
     expect(useRenameStore.getState().unknownExecution).toBeNull();
     act(() => hook.result.current.workflow.applySingleRename("retry", ".txt"));
     expect(api.executeStorageSingleRename).toHaveBeenCalledTimes(1);
+    const taskAfterResponse = useRenameStore.getState().task;
+    const directoryAfterResponse = hook.result.current.storage.files.data;
     act(() => hook.result.current.workflow.closeSingleRename());
-    await waitFor(() => expect(hook.result.current.workflow.canSingleRename).toBe(true));
+    await waitFor(() => expect(hook.result.current.workflow.singleRenameTarget).toBeNull());
+    expect(hook.result.current.workflow.canSingleRename).toBe(false);
+    expect(useRenameStore.getState().task).toBe(taskAfterResponse);
+    expect(hook.result.current.storage.files.data).toBe(directoryAfterResponse);
+    expect(useRenameStore.getState().selectedIds).toEqual([]);
+    expect(hook.result.current.storage.files.data!.items.map((file) => file.id)).toEqual(["file-1.txt"]);
+    expect(hook.result.current.workflow.browserItems.map((file) => file.id)).toEqual(["file-0.txt", "file-1.txt"]);
+    expect(hook.result.current.workflow.browserItems[0].can_rename).toBe(false);
+    expect(useRenameStore.getState().task!.items[0].before).toBe(original.items[0].before);
+    expect(useRenameStore.getState().task!.items[0].after).toMatchObject({ status: "failed", error_code: "NOT_FOUND" });
+    expect(useRenameStore.getState().task!.items[1]).toBe(original.items[1]);
+    act(() => hook.result.current.workflow.selectAllFiles(["file-0.txt", "file-1.txt"]));
+    act(() => hook.result.current.workflow.requestPreview());
+    await waitFor(() => expect(api.createStoragePreview).toHaveBeenLastCalledWith(
+      "default-local", { kind: "root" }, ["file-1.txt"], [],
+    ));
   });
 
   it("shows an explicit HTTP rejection without locking either workflow", async () => {

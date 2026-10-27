@@ -195,9 +195,21 @@ async def test_id_directory_and_parent_do_not_depend_on_names() -> None:
     provider = StubOneDriveProvider([root, folder("opaque-id", "same"), {"value": [folder("child-id", "same", "opaque-id")]}])
     listing = await provider.list_directory(IdLocation(value="opaque-id"))
     assert listing.location == IdLocation(value="opaque-id")
+    assert listing.directory_id == "opaque-id"
     assert listing.parent_location == RootLocation()
     assert listing.items[0].parent_location == IdLocation(value="opaque-id")
     assert any("/items/opaque-id/children" in url for _, url, _ in provider.calls)
+
+
+@pytest.mark.asyncio
+async def test_root_listing_exposes_real_identity_without_extra_requests() -> None:
+    root = {**folder("root-id", "root"), "root": {}}
+    provider = StubOneDriveProvider([root, {"value": [folder("child", "child")]}])
+    listing = await provider.list_directory(RootLocation())
+    assert listing.location == RootLocation()
+    assert listing.directory_id == "root-id"
+    assert listing.items[0].parent_location == IdLocation(value=listing.directory_id)
+    assert len(provider.calls) == 2
 
 
 @pytest.mark.asyncio

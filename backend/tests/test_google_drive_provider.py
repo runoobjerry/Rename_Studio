@@ -217,6 +217,7 @@ async def test_root_pagination_continues_empty_page_and_maps_types_permissions(p
     }
     listing = await provider_factory(server).list_directory(RootLocation())
     assert listing.location == RootLocation() and listing.parent_location is None and listing.path == ""
+    assert listing.directory_id == "root-id"
     assert [(entry.name, entry.location) for entry in listing.breadcrumbs] == [("My Drive", RootLocation())]
     by_id = {item.id: item for item in listing.items}
     assert len(by_id) == 5
@@ -241,6 +242,7 @@ async def test_same_name_folders_and_separator_names_use_real_ancestor_ids(provi
     provider = provider_factory(server)
     listing = await provider.list_directory(IdLocation(value="child"))
     assert listing.path == "same/with/slash"
+    assert listing.directory_id == "child"
     assert listing.parent_location == IdLocation(value="b") and listing.location == IdLocation(value="child")
     assert [entry.name for entry in listing.breadcrumbs] == ["My Drive", "same", "with/slash"]
     assert [entry.location for entry in listing.breadcrumbs] == [RootLocation(), IdLocation(value="b"), IdLocation(value="child")]

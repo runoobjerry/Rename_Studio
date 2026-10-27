@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import type { ExecuteResponse, FileItem, PreviewItem, RenameTask, RuleSpec, StorageLocation } from "../types";
+import type { FileItem, PreviewItem, RenameTask, RuleSpec, SingleRenameExecuteResponse, StorageLocation } from "../types";
 
 export interface UnknownExecution {
   storageId: string;
@@ -19,7 +19,7 @@ interface RenameUiState {
   setRules: (rules: RuleSpec[]) => void;
   createTask: (contextKey: string, storageId: string, location: StorageLocation, files: FileItem[]) => void;
   resetTask: () => void;
-  applyTaskResults: (taskId: string, response: Pick<ExecuteResponse, "items">) => void;
+  applyTaskResults: (taskId: string, response: Pick<SingleRenameExecuteResponse, "items">) => void;
   setPreviewActive: (active: boolean) => void;
   setUnknownExecution: (execution: UnknownExecution | null) => void;
 }
