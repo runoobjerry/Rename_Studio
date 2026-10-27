@@ -14,7 +14,7 @@ it("keeps original snapshots and confirmed identities across repeated renames", 
   expect(original.items[0].before.name).toBe("a.txt");
   expect(Object.isFrozen(original.items[0].before)).toBe(true);
   for (const [oldId, newId] of [["a.txt", "first.txt"], ["first.txt", "second.txt"]]) {
-    store.applyTaskResults(original.taskId, { preview_id: newId, status: "completed", items: [{
+    store.applyTaskResults(original.taskId, { items: [{
       file_id: oldId, original_name: oldId, new_name: newId, status: "renamed", error: null,
       current_file: fileItem(newId),
     }] });
