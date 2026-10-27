@@ -207,14 +207,12 @@ function ConnectionRow({ storage, executing, definition }: {
   const busy = renaming || operation.isPending || pick.isPending || connect.isPending || awaitingAuth;
   const isDefault = storage.storage_id === "default-local";
   const requestError = operation.error ?? pick.error ?? connect.error ?? status.error;
-  const saveDisabled = busy || !name.trim() || missingRequiredConfig(definition.config_fields, draft);
+  const nameTooLong = Array.from(name.trim()).length > 20;
+  const saveDisabled = busy || !name.trim() || nameTooLong || missingRequiredConfig(definition.config_fields, draft);
   const statusErrorMessage = authError !== undefined ? translateMessage(authError, t) : status.error ? errorMessage(status.error, t) : "";
   const requestErrorMessage = authError !== undefined ? translateMessage(authError, t) : requestError ? errorMessage(requestError, t) : "";
   const save = () => {
-    if (Array.from(name.trim()).length > 20) {
-      notify({ key: "settings:connection.nameTooLong" }, "error");
-      return;
-    }
+    if (nameTooLong) return;
     operation.mutate({
       run: () => updateStorage(storage.storage_id, {
         name: name.trim(),
@@ -325,6 +323,7 @@ function ConnectionRow({ storage, executing, definition }: {
       <DialogContent dividers>
         <Stack spacing={2}>
           <TextField variant="standard" label={t("settings:connection.name")} size="small" value={name} disabled={busy}
+            error={nameTooLong} helperText={nameTooLong ? t("settings:connection.nameTooLong") : undefined}
             onChange={(event) => setName(event.target.value)} />
           <ConfigFields definition={definition} draft={draft} clientSecret={clientSecret}
             disabled={busy} hasClientSecret={storage.has_client_secret}
@@ -424,7 +423,8 @@ export function StorageSettingsPanel({ executingStorageId }: { executingStorageI
   const addingBusy = create.isPending || pickDraft.isPending;
   const createError = create.error ?? pickDraft.error ?? providers.error;
   const activeProvider = providers.data?.find((definition) => definition.provider_type === provider);
-  const createDisabled = addingBusy || !activeProvider || providers.isError || !name.trim() ||
+  const nameTooLong = Array.from(name.trim()).length > 20;
+  const createDisabled = addingBusy || !activeProvider || providers.isError || !name.trim() || nameTooLong ||
     missingRequiredConfig(activeProvider.config_fields, draft);
   const selectedProvider = activeProvider?.provider_type ?? "";
   const openAddDialog = () => {
@@ -450,10 +450,7 @@ export function StorageSettingsPanel({ executingStorageId }: { executingStorageI
   };
   const saveConnection = () => {
     if (!activeProvider) return;
-    if (Array.from(name.trim()).length > 20) {
-      notify({ key: "settings:connection.nameTooLong" }, "error");
-      return;
-    }
+    if (nameTooLong) return;
     create.mutate(activeProvider);
   };
   return <>
@@ -541,6 +538,7 @@ export function StorageSettingsPanel({ executingStorageId }: { executingStorageI
             ))}
           </TextField>
           <TextField variant="standard" label={t("settings:connection.name")} size="small" value={name} disabled={addingBusy}
+            error={nameTooLong} helperText={nameTooLong ? t("settings:connection.nameTooLong") : undefined}
             onChange={(event) => setName(event.target.value)} />
           {activeProvider && (
             <ConfigFields definition={activeProvider} draft={draft} clientSecret={clientSecret}
