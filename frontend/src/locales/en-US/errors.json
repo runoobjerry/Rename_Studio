@@ -1,5 +1,9 @@
 {
   "resetInProgress": "Factory reset is in progress. Try again shortly.",
+  "validationReasons": {
+    "PREVIEW_DUPLICATE_FILE_IDS": "The following items were selected more than once. Select the items again and preview:",
+    "PREVIEW_ITEMS_NOT_IN_DIRECTORY": "The following items are not in the current directory. Reload the directory and select the items again:"
+  },
   "codes": {
     "APPLICATION_ERROR": "The app could not complete this operation. {{message}}",
     "NOT_FOUND": "The requested resource was not found. {{message}}",

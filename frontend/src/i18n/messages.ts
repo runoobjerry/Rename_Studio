@@ -16,7 +16,15 @@ const translatedCodes = [
   "STORAGE_CONNECTION_CHANGED", "RENAME_OUTCOME_UNKNOWN", "INTERNAL_ERROR",
 ];
 
-export function errorMessage(error: { message: string; code?: string | null }, t: TFunction = i18n.t): string {
+const translatedValidationReasons = [
+  "PREVIEW_DUPLICATE_FILE_IDS", "PREVIEW_ITEMS_NOT_IN_DIRECTORY",
+];
+
+export function errorMessage(error: { message: string; code?: string | null; details?: Record<string, unknown> }, t: TFunction = i18n.t): string {
+  const reason = error.details?.reason;
+  if (error.code === "VALIDATION_ERROR" && typeof reason === "string" && translatedValidationReasons.includes(reason)) {
+    return t(`errors:validationReasons.${reason}`);
+  }
   return error.code && translatedCodes.includes(error.code)
     ? t(`errors:codes.${error.code}`, { message: error.message }) : error.message;
 }

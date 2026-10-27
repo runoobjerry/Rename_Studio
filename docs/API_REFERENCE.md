@@ -41,6 +41,13 @@
 
 原文核对记录未发现 route / schema / client 字段不一致。前端将 HTTP 错误暴露为 `ApiError`，保留 `status`、`code`、`message`、`details`；非标准响应保留 HTTP status，使用 fallback message、`code: null` 和空 `details`。网络失败保留原始错误。现有 UI 可继续读取 `error.message`；按错误码恢复的专用交互仍由 `UI_TODO.md` 跟踪。
 
+预览选择校验保留 `VALIDATION_ERROR`，通过 `details.reason` 提供稳定业务标识供前端本地化；缺失或未知标识继续使用通用错误提示。以下两类错误均通过 `details.file_ids` 返回相关项目 ID，前端使用请求时保存的文件名在预览 Alert 中逐项列出，不按 ID 额外读取文件：
+
+| details.reason | 含义 |
+| --- | --- |
+| `PREVIEW_DUPLICATE_FILE_IDS` | 所选文件 ID 重复。 |
+| `PREVIEW_ITEMS_NOT_IN_DIRECTORY` | 所选项目不在请求目录中；`details.file_ids` 保留缺失项 ID。 |
+
 ## 公共类型
 
 ```ts

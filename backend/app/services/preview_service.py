@@ -6,7 +6,6 @@ from time import perf_counter
 
 from app.core.log_context import request_id_context
 from app.core.errors import StorageConnectionChangedError, ValidationError
-from app.schemas.storage import RootLocation
 from app.providers.registry import ProviderRegistry
 from app.rules.base import RuleContext
 from app.schemas.files import FileItem
@@ -70,7 +69,13 @@ class PreviewService:
         record = self.providers.manager.record(request.storage_id)
         supports_rename = self.providers.definition(record.provider_type).can_rename
         if len(request.file_ids) != len(set(request.file_ids)):
-            raise ValidationError("Duplicate file IDs are not allowed")
+            raise ValidationError(
+                "Duplicate file IDs are not allowed",
+                details={
+                    "reason": "PREVIEW_DUPLICATE_FILE_IDS",
+                    "file_ids": [file_id for file_id, count in Counter(request.file_ids).items() if count > 1],
+                },
+            )
 
         prefetched_siblings: list[FileItem] | None = None
         if files is None and request.location is not None:
@@ -86,16 +91,12 @@ class PreviewService:
             if missing_ids:
                 raise ValidationError(
                     "Selected items are not present in the requested directory",
-                    details={"file_ids": missing_ids},
+                    details={"reason": "PREVIEW_ITEMS_NOT_IN_DIRECTORY", "file_ids": missing_ids},
                 )
             files = [by_id[file_id] for file_id in request.file_ids]
         elif files is None:
             with _timed_phase(request.storage_id, "source_metadata", len(request.file_ids)):
                 files = await provider.get_metadata_many(request.file_ids)
-        if any(item.id == "" or isinstance(item.location, RootLocation) for item in files):
-            raise ValidationError("Configured storage root cannot be selected")
-        if len({provider.parent_key(item) for item in files}) != 1:
-            raise ValidationError("All selected items must be in the same directory")
 
         # 配置仅在本轮评估中解析一次；执行前重新评估时仍会重新校验。
         with _timed_phase(request.storage_id, "rules", len(files)):

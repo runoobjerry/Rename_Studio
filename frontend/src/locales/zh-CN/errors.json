@@ -1,5 +1,9 @@
 {
   "resetInProgress": "正在恢复出厂设置，请稍后重试。",
+  "validationReasons": {
+    "PREVIEW_DUPLICATE_FILE_IDS": "以下项目被重复选择，请重新选择后预览：",
+    "PREVIEW_ITEMS_NOT_IN_DIRECTORY": "以下项目不在当前目录中，请刷新目录后重新选择："
+  },
   "codes": {
     "APPLICATION_ERROR": "应用无法完成此操作。{{message}}",
     "NOT_FOUND": "请求的资源不存在。{{message}}",

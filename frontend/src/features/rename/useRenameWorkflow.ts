@@ -1,7 +1,7 @@
 import { useTranslation } from "react-i18next";
 import { useCallback, useEffect, useMemo, useRef } from "react";
 import { useMutation } from "@tanstack/react-query";
-import { createStoragePreview, releaseStoragePreview } from "../../api/client";
+import { ApiError, createStoragePreview, releaseStoragePreview } from "../../api/client";
 import { errorMessage, useNotification } from "../../components/NotificationProvider";
 import { useRenameStore } from "../../stores/useRenameStore";
 import { sortFileItems, taskFileItems, type FileSort } from "../files/fileSort";
@@ -88,7 +88,7 @@ export function useRenameWorkflow({
   const preview = useMutation({
     mutationKey: ["rename-preview"],
     gcTime: 0,
-    mutationFn: async (input: { contextKey: string; storageId: string; location: StorageLocation; fileIds: string[]; rules: RuleSpec[] }) => {
+    mutationFn: async (input: { contextKey: string; storageId: string; location: StorageLocation; fileIds: string[]; fileNames: Map<string, string>; rules: RuleSpec[] }) => {
       const retained = retainedPreview.current;
       const previousId = retained?.storageId === input.storageId ? retained.previewId : undefined;
       const result = previousId
@@ -102,12 +102,6 @@ export function useRenameWorkflow({
         return;
       }
       retainedPreview.current = { storageId: result.storageId, previewId: result.preview_id };
-      if (!result.valid) {
-        notify({ key: "files:notifications.invalidPreview" }, "warning");
-      }
-    },
-    onError: (error, input) => {
-      if (input.contextKey === currentWorkspace.current) notify({ key: "files:notifications.previewFailed", error }, "error");
     },
   });
   const execution = useRenameExecution(isCurrentSession);
@@ -181,7 +175,9 @@ export function useRenameWorkflow({
     // 同一事件内选择可能已更新，使用 Store 中的实际选择，避免迟到响应覆盖新上下文。
     const contextKey = JSON.stringify([workspaceKey, cloudSession, fileIds, rules, sort]);
     currentWorkspace.current = contextKey;
-    preview.mutate({ contextKey, storageId, location, fileIds, rules });
+    // 保存请求时的名称，目录刷新后仍能展示已消失项目的校验错误。
+    const fileNames = new Map(renamableFiles.map((item) => [item.id, item.name]));
+    preview.mutate({ contextKey, storageId, location, fileIds, fileNames, rules });
   };
 
   const resetOperation = useCallback(() => {
@@ -243,11 +239,27 @@ export function useRenameWorkflow({
       directoryKey: ["files", storageId, activeStorage?.revision, location] });
   };
 
+  let previewError: string | undefined;
+  if (preview.variables?.contextKey === previewContext && preview.error) {
+    previewError = errorMessage(preview.error, t);
+    if (preview.error instanceof ApiError && preview.error.code === "VALIDATION_ERROR") {
+      const fileIds = preview.error.details.file_ids;
+      if (Array.isArray(fileIds)) {
+        const fileNames = preview.variables.fileNames;
+        const names = fileIds.flatMap((id: unknown) => {
+          const name = typeof id === "string" ? fileNames.get(id) : undefined;
+          return name === undefined ? [] : [name];
+        });
+        if (names.length) previewError += `\n${names.map((name) => `• ${name}`).join("\n")}`;
+      }
+    }
+  }
+
   return {
     selectedIds, rules, browserItems, currentTask, changeSort,
     selectedCount: currentSelectedIds.length,
     previewData, executionData: batchExecution?.data,
-    previewError: preview.variables?.contextKey === previewContext && preview.error ? errorMessage(preview.error, t) : undefined,
+    previewError,
     executeError: batchExecution?.error ? errorMessage(batchExecution.error, t) : undefined,
     executionPreviewId: batchExecution?.variables?.source.preview_id,
     isPreviewing: preview.isPending, isExecuting, hasExecuted: Boolean(batchExecution?.data),

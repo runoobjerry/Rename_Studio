@@ -73,7 +73,7 @@ export const PreviewPanel = memo(function PreviewPanel({
         <CheckboxFilterMenu label={t("files:preview.filter")} options={filterOptions} selected={filters} onChange={setFilters} />
       </div>
 
-      {error && <Alert severity="error" sx={{ m: 2 }}>{error}</Alert>}
+      {error && <Alert severity="error" sx={{ m: 2, whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{error}</Alert>}
       {!preview && !error && (
         <p className="empty-state">{t("files:preview.empty", { provider: providerName ?? t("files:preview.currentStorage") })}</p>
       )}
