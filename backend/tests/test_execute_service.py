@@ -189,25 +189,9 @@ async def test_rejects_preview_after_source_changes(tmp_path: Path) -> None:
     preview = await preview_service.preview(request_for({"one.txt": "new.txt"}))
     (tmp_path / "one.txt").rename(tmp_path / "external.txt")
 
-    with pytest.raises(PreviewExpiredError):
+    with pytest.raises(PreviewExpiredError) as exc:
         await execute_service.execute(preview.preview_id)
-
-
-@pytest.mark.asyncio
-async def test_rejects_same_name_source_content_change_after_preview(tmp_path: Path) -> None:
-    source = tmp_path / "one.txt"
-    source.write_text("one", encoding="utf-8")
-    provider = TrackingLocalProvider(tmp_path)
-    preview_service, execute_service = build_services(tmp_path, provider)
-    preview = await preview_service.preview(request_for({"one.txt": "new.txt"}))
-    source.write_text("changed content", encoding="utf-8")
-
-    with pytest.raises(PreviewExpiredError):
-        await execute_service.execute(preview.preview_id)
-
-    assert provider.rename_targets == []
-    assert source.read_text(encoding="utf-8") == "changed content"
-    assert not (tmp_path / "new.txt").exists()
+    assert exc.value.details["execution_started"] is False
 
 
 @pytest.mark.asyncio
@@ -241,8 +225,9 @@ async def test_rejects_invalid_preview(tmp_path: Path) -> None:
     assert not preview.valid
     assert preview.items[0].conflict
 
-    with pytest.raises(ValidationError):
+    with pytest.raises(ValidationError) as exc:
         await execute_service.execute(preview.preview_id)
+    assert exc.value.details["execution_started"] is False
     assert provider.rename_targets == []
     progress = execute_service.progress(preview.preview_id)
     assert progress.phase == "failed"

@@ -16,6 +16,7 @@ import {
 } from "@mui/material";
 
 import type { PreviewResponse, RenameProgress } from "../../types";
+import { errorMessage } from "../../i18n/messages";
 
 export interface RenameActionsProps {
   preview?: PreviewResponse;
@@ -28,6 +29,7 @@ export interface RenameActionsProps {
   progress?: RenameProgress;
   progressError?: string;
   executeError?: string;
+  revalidationError?: string;
   onPreview: () => void;
   onExecute: (previewId: string) => void;
 }
@@ -43,6 +45,7 @@ export function RenameActions({
   progress,
   progressError,
   executeError,
+  revalidationError,
   onPreview,
   onExecute,
 }: RenameActionsProps) {
@@ -54,8 +57,8 @@ export function RenameActions({
   const total = currentProgress?.total ?? changedCount;
   const processed = hasExecuted ? total : currentProgress?.processed ?? 0;
   const percent = total > 0 ? Math.min(100, Math.floor(processed / total * 100)) : 0;
-  const started = applied || isExecuting || hasExecuted || Boolean(executeError);
-  const executionError = executeError ?? currentProgress?.error;
+  const started = applied || isExecuting || hasExecuted || Boolean(executeError || revalidationError);
+  const executionError = revalidationError ?? executeError ?? (currentProgress?.error ? errorMessage({ message: currentProgress.error }, t) : undefined);
   const phase = hasExecuted ? "finished" : executionError ? "failed" : currentProgress?.phase ?? "waiting";
   const isFailed = phase === "failed";
 
@@ -93,37 +96,51 @@ export function RenameActions({
         </Button>
       </Stack>
 
-      <Dialog open={confirming} onClose={() => !isExecuting && setConfirming(false)}>
+      <Dialog open={confirming} onClose={() => {
+        if (!isExecuting && !revalidationError) setConfirming(false);
+      }}>
         <DialogTitle>{t(`files:rename.phases.${phase}`)}</DialogTitle>
         <DialogContent>
-          {started ? (
-            <DialogContentText role="status" sx={{ color: executionError || (isExecuting && progressError) ? "error.main" : "text.secondary" }}>
-              {executionError ? t("files:rename.returnedError", { message: executionError }) : isExecuting && progressError
-                ? t("files:rename.progressUnavailable", { message: progressError })
-                : t("files:rename.processed", { processed, total })}
-            </DialogContentText>
-          ) : (
-            <DialogContentText>
+          <div style={{ position: "relative" }}>
+            {/* 保留确认文案占位，状态切换时弹窗尺寸保持不变。 */}
+            <DialogContentText sx={{ visibility: started ? "hidden" : "visible" }}>
               {t("files:rename.confirm", { provider: providerName, count: changedCount })}
               <Typography component="span" variant="inherit" sx={{ color: "error.main" }}>{t("files:rename.irreversible")}</Typography>
             </DialogContentText>
-          )}
+            {started && (
+              <DialogContentText role="status" sx={{ position: "absolute", inset: 0, overflowY: "auto",
+                color: executionError || (isExecuting && progressError) ? "error.main" : "text.secondary" }}>
+                {revalidationError ?? (executionError ? t("files:rename.returnedError", { message: executionError }) : isExecuting && progressError
+                  ? t("files:rename.progressUnavailable", { message: progressError })
+                  : t("files:rename.processed", { processed, total }))}
+              </DialogContentText>
+            )}
+          </div>
         </DialogContent>
         <DialogActions>
-          <Button disabled={isExecuting} onClick={() => setConfirming(false)}>
-            {isFailed ? t("common:close") : t("common:cancel")}
-          </Button>
-          {!isFailed && (
-            <Button
-              disabled={isExecuting || hasExecuted || !preview || isBlocked}
-              onClick={() => {
-                if (!preview) return;
-                setApplied(true);
-                onExecute(preview.preview_id);
-              }}
-            >
-              {t("common:apply")}
+          {revalidationError ? (
+            <Button disabled={selectedCount === 0 || isPreviewing || isExecuting || isBlocked}
+              onClick={() => { setConfirming(false); onPreview(); }}>
+              {t("files:rename.preview")}
             </Button>
+          ) : (
+            <>
+              <Button disabled={isExecuting} onClick={() => setConfirming(false)}>
+                {isFailed ? t("common:close") : t("common:cancel")}
+              </Button>
+              {!isFailed && (
+                <Button
+                  disabled={isExecuting || hasExecuted || !preview || isBlocked}
+                  onClick={() => {
+                    if (!preview) return;
+                    setApplied(true);
+                    onExecute(preview.preview_id);
+                  }}
+                >
+                  {t("common:apply")}
+                </Button>
+              )}
+            </>
           )}
         </DialogActions>
         <LinearProgress variant="determinate" color="primary" value={percent} aria-label={t("files:rename.progress")} sx={{ height: 4, flexShrink: 0, bgcolor: "transparent" }} />

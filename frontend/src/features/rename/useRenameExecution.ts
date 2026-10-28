@@ -1,5 +1,5 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { executePreview } from "../../api/client";
+import { ApiError, executePreview } from "../../api/client";
 import { useNotification } from "../../components/NotificationProvider";
 import { useRenameStore } from "../../stores/useRenameStore";
 import type { DirectoryListing, PreviewResponse } from "../../types";
@@ -56,6 +56,11 @@ export function useRenameExecution(isCurrentSession: (session: string) => boolea
       setSelectedIds(useRenameStore.getState().selectedIds.filter((id) => failed.has(id)).map((id) => confirmed.get(id)?.id ?? id));
     },
     onError: (error, input) => {
+      // 服务端确认复核未写入，或在读取预览/获取连接执行权时拒绝了请求。
+      if (error instanceof ApiError && (error.details.execution_started === false ||
+        ["PREVIEW_EXPIRED", "PREVIEW_NOT_FOUND", "STORAGE_CONNECTION_CHANGED", "STORAGE_BUSY"].includes(error.code ?? ""))) {
+        return;
+      }
       // 丢失响应不代表未写入；核对信息绑定原连接，不依赖当前预览展示。
       useRenameStore.getState().setUnknownExecution({
         storageId: input.source.storageId, previewId: input.source.preview_id, items: input.source.items,

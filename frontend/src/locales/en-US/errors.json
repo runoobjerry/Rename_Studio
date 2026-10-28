@@ -15,7 +15,7 @@
     "REQUEST_VALIDATION_ERROR": "The request parameters are invalid. {{message}}",
     "RULE_CONFIGURATION_ERROR": "The rule configuration is invalid. Check the rules. {{message}}",
     "RENAME_CONFLICT": "Filename conflict. Please rename and try again. {{message}}",
-    "PREVIEW_EXPIRED": "The preview has expired or file state has changed. Preview again. {{message}}",
+    "PREVIEW_EXPIRED": "The file status has changed, please refresh the preview.",
     "PREVIEW_NOT_FOUND": "The preview was not found. Preview again. {{message}}",
     "STORAGE_BUSY": "The storage connection is busy. Wait for the current operation to finish. {{message}}",
     "STORAGE_CONNECTION_CHANGED": "The storage connection or account has changed. Reload the directory and preview again. {{message}}",

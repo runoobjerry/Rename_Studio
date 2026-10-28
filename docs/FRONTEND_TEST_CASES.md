@@ -27,8 +27,10 @@
 | 排序作用于完整列表和全部选中项，超过 1000 项也一次提交；改变排序使旧预览失效 | 工作流 Hook、工作台集成、[虚拟列表](../frontend/src/features/files/FileBrowser.virtual.test.tsx) |
 | 刷新只移除已消失的选择，失败保留选择；过滤隐藏项不恢复旧选择 | 工作流 Hook、工作台集成、[FileBrowser](../frontend/src/features/files/FileBrowser.test.tsx) |
 | 执行成功或响应丢失后暂停自动目录读取，允许人工刷新；合并服务端确认的文件身份 | 工作流 Hook |
+| 未确认阶段的服务端故障仍保留未知结果保护 | [工作流 Hook](../frontend/src/features/rename/useRenameWorkflow.test.ts) |
 | 部分成功伴随未知/缺失结果时，只合并确认身份，阻止新的预览和写入；成功项可重新选择 | 工作流 Hook |
 | 执行前确认，无变化时禁止执行，进度失败不虚构结果，执行中锁定控件 | [RenameActions](../frontend/src/features/rename/RenameActions.test.tsx)、工作台集成 |
+| 复核失败仅在 Modal 展示 codes 译文，点击刷新预览创建新预览，不重放执行、不进入未知结果保护 | [RenameActions](../frontend/src/features/rename/RenameActions.test.tsx)、[工作流 Hook](../frontend/src/features/rename/useRenameWorkflow.test.ts) |
 | 未知执行结果由独立状态锁定；取消核对保留锁定，明确确认后清空选择并要求重新预览 | 工作台集成 |
 | 全选和过滤覆盖完整数据集，包括虚拟列表未挂载的行 | FileBrowser、[虚拟列表](../frontend/src/features/files/FileBrowser.virtual.test.tsx) |
 | 恢复出厂设置失败显示错误，保留规则、配置、路径记忆与当前连接，并保持确认框打开 | 工作台集成 |

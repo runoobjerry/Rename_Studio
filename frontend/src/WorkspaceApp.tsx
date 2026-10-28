@@ -110,7 +110,7 @@ function Workspace({ preference, setPreference, settingsError }: {
   const definitions = useQuery({ queryKey: ["rules"], queryFn: fetchRules });
   const {
     selectedIds, rules, browserItems, currentTask, changeSort, selectedCount,
-    previewData, executionData, previewError, executeError, executionPreviewId,
+    previewData, executionData, previewError, executeError, revalidationError, executionPreviewId,
     isPreviewing, isExecuting, hasExecuted,
     singleRenameTarget, singleRenameError, canSingleRename, isSingleRenaming,
     openSingleRename, closeSingleRename, applySingleRename,
@@ -298,7 +298,7 @@ function Workspace({ preference, setPreference, settingsError }: {
                       execution={executionData}
                       providerName={providerName}
                       error={previewError}
-                      executeError={executeError}
+                      executeError={revalidationError ? undefined : executeError}
                     />
                   </div>
                   <div className="workspace-rules">
@@ -318,6 +318,7 @@ function Workspace({ preference, setPreference, settingsError }: {
                       hasExecuted={hasExecuted}
                       executionPreviewId={executionPreviewId}
                       executeError={executeError}
+                      revalidationError={revalidationError}
                       onPreview={requestPreview}
                       onExecute={executeRename}
                     />

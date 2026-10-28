@@ -15,7 +15,7 @@
     "REQUEST_VALIDATION_ERROR": "请求参数不符合要求。{{message}}",
     "RULE_CONFIGURATION_ERROR": "规则配置无效，请检查规则。{{message}}",
     "RENAME_CONFLICT": "文件名存在冲突，修改后重试。{{message}}",
-    "PREVIEW_EXPIRED": "预览已过期或文件状态已变化，请重新预览。{{message}}",
+    "PREVIEW_EXPIRED": "文件状态已变化，请刷新预览。",
     "PREVIEW_NOT_FOUND": "预览不存在，请重新预览。{{message}}",
     "STORAGE_BUSY": "存储连接忙碌，请等待当前操作完成。{{message}}",
     "STORAGE_CONNECTION_CHANGED": "存储连接或账号已变化，请重新读取目录并预览。{{message}}",

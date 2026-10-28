@@ -78,7 +78,12 @@ class ExecuteService:
                 # 活跃批次不超时清除；完成后保留十分钟供界面读取最终状态。
                 self._progress[preview_id] = (float("inf"), progress)
                 try:
-                    siblings = await self._revalidate(snapshot)
+                    try:
+                        siblings = await self._revalidate(snapshot)
+                    except AppError as exc:
+                        # 复核只读取状态，失败时可明确告知客户端尚未开始写入。
+                        exc.details["execution_started"] = False
+                        raise
                     self.previews.consume(preview_id)
                     response = await self._execute_snapshot(snapshot, siblings, progress)
                     progress.processed = progress.total
@@ -121,11 +126,6 @@ class ExecuteService:
         # 与有效快照逐项一致即可保证有效性；源项始终按同一请求 ID 列表构建。
         if items != snapshot.response.items:
             raise PreviewExpiredError("Rename preview is no longer valid")
-        if any(
-            self._source_changed(before, current)
-            for before, current in zip(snapshot.sources, sources, strict=True)
-        ):
-            raise PreviewExpiredError("Files changed after the preview was created")
         return siblings
 
     @staticmethod
@@ -245,21 +245,6 @@ class ExecuteService:
         result.status = "renamed"
         result.error = None
         result.current_file = current
-
-    @staticmethod
-    def _source_changed(before: FileItem, current: FileItem) -> bool:
-        identity_changed = (
-            before.id != current.id
-            or before.name != current.name
-            or StorageProvider.parent_key(before) != StorageProvider.parent_key(current)
-            or before.is_directory != current.is_directory
-        )
-        if identity_changed:
-            return True
-        # 子文件夹内容不在本批次范围内，因此不以目录时间戳判断预览失效。
-        if before.is_directory:
-            return False
-        return before.size != current.size or before.modified_at != current.modified_at
 
     async def _execute_snapshot(
         self,

@@ -1,4 +1,4 @@
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { RenameActions } from "./RenameActions";
@@ -38,9 +38,10 @@ describe("RenameActions", () => {
     expect(onPreview).toHaveBeenCalledOnce();
   });
 
-  it("requires confirmation before starting a valid rename", () => {
+  it("requires confirmation and offers a new preview after revalidation fails", () => {
     const onExecute = vi.fn();
-    render(
+    const onPreview = vi.fn();
+    const { rerender } = render(
       <RenameActions
         preview={validPreview}
         providerName="本地文件"
@@ -48,7 +49,7 @@ describe("RenameActions", () => {
         isPreviewing={false}
         isExecuting={false}
         hasExecuted={false}
-        onPreview={vi.fn()}
+        onPreview={onPreview}
         onExecute={onExecute}
       />,
     );
@@ -60,8 +61,19 @@ describe("RenameActions", () => {
     fireEvent.click(screen.getByRole("button", { name: "应用" }));
     expect(onExecute).toHaveBeenCalledWith("preview-1");
     expect(screen.getByRole("status")).toHaveTextContent("当前任务已处理 0 项，共 1 项");
-    expect(screen.queryByText("此操作不可恢复！")).not.toBeInTheDocument();
+    expect(screen.getByText("此操作不可恢复！")).not.toBeVisible();
     expect(screen.getByRole("progressbar", { name: "修改进度" })).toHaveAttribute("aria-valuenow", "0");
+    const message = "文件状态已变化，请刷新预览。";
+    rerender(<RenameActions preview={validPreview} providerName="本地文件" selectedCount={1}
+      isPreviewing={false} isExecuting={false} hasExecuted={false}
+      revalidationError={message} executeError="Raw server diagnostic" onPreview={onPreview} onExecute={onExecute} />);
+    const modal = within(screen.getByRole("dialog"));
+    expect(modal.getByRole("status").textContent).toBe(message);
+    expect(modal.queryByRole("button", { name: "应用" })).not.toBeInTheDocument();
+    expect(modal.queryByRole("button", { name: "关闭" })).not.toBeInTheDocument();
+    fireEvent.click(modal.getByRole("button", { name: "刷新预览" }));
+    expect(onPreview).toHaveBeenCalledOnce();
+    expect(onExecute).toHaveBeenCalledTimes(1);
   });
 
   it("renders server counts and briefly shows completion before closing", () => {

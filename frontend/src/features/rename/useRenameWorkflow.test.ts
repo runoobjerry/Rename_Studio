@@ -153,6 +153,31 @@ describe("rename workflow", () => {
     await waitFor(() => expect(api.fetchStorageFiles).toHaveBeenCalledTimes(2));
   });
 
+  it("allows a new preview after revalidation failure but guards an unconfirmed write outcome", async () => {
+    const hook = await setupWorkspace();
+    await preview(hook);
+    vi.mocked(api.executePreview).mockRejectedValueOnce(new api.ApiError(409,
+      "Files changed after the preview was created", "PREVIEW_EXPIRED", { execution_started: false }));
+    act(() => hook.result.current.workflow.executeRename("task-preview"));
+    await waitFor(() => expect(hook.result.current.workflow.revalidationError)
+      .toBe("文件状态已变化，请刷新预览。"));
+    expect(useRenameStore.getState().unknownExecution).toBeNull();
+    act(() => hook.result.current.workflow.requestPreview());
+    await waitFor(() => expect(api.createStoragePreview).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(hook.result.current.workflow.previewData).toBeDefined());
+    expect(hook.result.current.workflow.revalidationError).toBeUndefined();
+    const error = new api.ApiError(502, "Upstream response lost", "PROVIDER_ERROR");
+    vi.mocked(api.executePreview).mockRejectedValueOnce(error);
+
+    act(() => hook.result.current.workflow.executeRename("task-preview"));
+    await waitFor(() => expect(hook.result.current.workflow.executeError).toBeDefined());
+    expect(useRenameStore.getState().unknownExecution?.previewId).toBe("task-preview");
+    expect(notify).toHaveBeenLastCalledWith({ key: "files:notifications.unknownOutcome", error }, "error");
+    act(() => hook.result.current.workflow.requestPreview());
+    expect(api.createStoragePreview).toHaveBeenCalledTimes(2);
+    expect(api.executePreview).toHaveBeenCalledTimes(2);
+  });
+
   it("prunes removed selection IDs after refresh and replaces the old preview", async () => {
     const hook = await setupWorkspace(3);
     await preview(hook);
