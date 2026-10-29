@@ -55,7 +55,7 @@
 | 默认云目录恢复、导航后保存；重新进入优先使用尚未设为默认值的工作路径；读取/目录请求失败不覆盖配置 | 工作台集成、[存储 Hook](../frontend/src/workspace/hooks/useWorkspaceStorage.test.ts) |
 | 标签会话记忆：刷新重挂载恢复当前连接与服务端规范位置、新会话回到根目录；旧连接版本、其他账号位置和损坏数据不复用，目录读取失败保留成功位置 | 存储 Hook；云端重新进入由 工作台集成 承接，真实刷新及关闭标签行为由人工验收 |
 | 同连接点击保留进行中的导航、选择和预览；设置页两种返回入口保留路径；连接删除返回默认 Local、非当前连接配置变化和断开授权清理旧记忆，旧连接/旧版本的迟到目录响应不覆盖记忆 | 存储 Hook、工作台集成 |
-| 普通选择变化清除旧预览和执行展示 | 工作流 Hook；[PreviewPanel](../frontend/src/features/rename/PreviewPanel.test.tsx) 验证结果和筛选展示 |
+| 任务中选择、规则和排序变化保留旧预览及执行结果，旧预览禁止执行；目录刷新校正选择后保留展示 | 工作流 Hook；[PreviewPanel](../frontend/src/features/rename/PreviewPanel.test.tsx) 验证结果和筛选展示 |
 | 显式主题保存与重挂载恢复、保存失败回退、前次保存失败后继续处理队列、迟到读取不覆盖保存 | [主题偏好 Hook](../frontend/src/features/settings/useThemePreference.test.ts) |
 | 自动发现语言、浏览器候选优先级与简繁边界、显式/不可用偏好和英文回退；有效语言日期格式化 | [语言解析](../frontend/src/i18n/languages.test.ts) |
 | 首次读取门控、语言即时切换与持久化恢复、保存失败回退、连续切换、auto 跟随浏览器且不重挂载 | [语言 Provider](../frontend/src/i18n/LanguageProvider.test.tsx) |

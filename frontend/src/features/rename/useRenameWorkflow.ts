@@ -1,5 +1,5 @@
 import { useTranslation } from "react-i18next";
-import { useCallback, useEffect, useMemo, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { ApiError, createStoragePreview, releaseStoragePreview } from "../../api/client";
 import { errorMessage, useNotification } from "../../components/NotificationProvider";
@@ -78,6 +78,8 @@ export function useRenameWorkflow({
   currentWorkspace.current = previewContext;
   // 界面 reset 不应丢失待释放 ID；规则和选择变化后仍可替代旧快照。
   const retainedPreview = useRef<{ storageId: string; previewId: string } | null>(null);
+  const [previewInvalidated, setPreviewInvalidated] = useState(false);
+  const preservePreviewDisplay = Boolean(currentTask || unknownExecution);
   const releaseRetainedPreview = useCallback(() => {
     const retained = retainedPreview.current;
     retainedPreview.current = null;
@@ -102,12 +104,22 @@ export function useRenameWorkflow({
         return;
       }
       retainedPreview.current = { storageId: result.storageId, previewId: result.preview_id };
+      setPreviewInvalidated(false);
       if (useRenameStore.getState().unknownExecution?.previewUnlocked) {
         useRenameStore.getState().setUnknownExecution(null);
       }
     },
   });
   const execution = useRenameExecution(isCurrentSession);
+  const invalidatePreviewForChanges = useCallback(() => {
+    if (preservePreviewDisplay) {
+      // 任务和待核对状态保留预览及执行结果；输入切回原值也不能恢复旧执行。
+      setPreviewInvalidated(true);
+    } else {
+      preview.reset();
+      execution.reset();
+    }
+  }, [preservePreviewDisplay, preview.reset, execution.reset]);
   const invalidateBatchPreview = useCallback(() => {
     releaseRetainedPreview();
     preview.reset();
@@ -125,7 +137,15 @@ export function useRenameWorkflow({
   });
   const isExecuting = execution.isPending || singleRename.isSingleRenaming;
   const batchExecution = execution;
-  const previewData = preview.data && (preview.data.contextKey === previewContext || (batchExecution?.variables?.source.preview_id === preview.data.preview_id && (execution.isPending || execution.data || execution.error))) ? preview.data : undefined;
+  const previewMatchesContext = preview.data?.contextKey === previewContext;
+  const hasPreviewExecution = Boolean(preview.data &&
+    batchExecution.variables?.source.preview_id === preview.data.preview_id &&
+    (execution.isPending || execution.data || execution.error));
+  const showPreview = previewMatchesContext || preservePreviewDisplay || hasPreviewExecution;
+  const previewIsStale = previewInvalidated || !previewMatchesContext;
+  // 展示只有三种结果：无预览、当前预览、仅供查看的旧预览；核对记录独立管理。
+  const previewData = !preview.data || !showPreview ? undefined
+    : previewIsStale ? { ...preview.data, valid: false } : preview.data;
 
   const previousSession = useRef<string | null>(null);
   useEffect(() => {
@@ -147,12 +167,9 @@ export function useRenameWorkflow({
     if (currentSelectedIds.length === selectedIds.length) return;
     setSelectedIds(currentSelectedIds);
     // 不因目录后台变化丢失正在执行的请求和进度。
-    if (!isExecuting && !useRenameStore.getState().unknownExecution) {
-      preview.reset();
-      execution.reset();
-    }
+    if (!isExecuting) invalidatePreviewForChanges();
   }, [files.isSuccess, files.dataUpdatedAt, locationReady, currentSelectedIds, selectedIds.length,
-    setSelectedIds, preview.reset, execution.reset, isExecuting, isSinglePending]);
+    setSelectedIds, invalidatePreviewForChanges, isExecuting, isSinglePending]);
 
   const requestPreview = () => {
     if (!files.data || files.isFetching || files.error || isExecuting || isSinglePending() || preview.isPending || activeStorage?.busy) return;
@@ -195,13 +212,14 @@ export function useRenameWorkflow({
     const unknown = useRenameStore.getState().unknownExecution;
     if (isExecuting || isSinglePending() || !unknown) return;
     // 保留旧预览和待核对展示，只允许创建新预览；旧执行仍被锁定。
+    invalidatePreviewForChanges();
     useRenameStore.getState().setUnknownExecution({ ...unknown, previewUnlocked: true });
   };
   const changeSelection = useCallback((update: () => void) => {
     if (isExecuting || isSinglePending()) return;
     update();
-    preview.reset(); execution.reset();
-  }, [isExecuting, isSinglePending, preview.reset, execution.reset]);
+    invalidatePreviewForChanges();
+  }, [isExecuting, isSinglePending, invalidatePreviewForChanges]);
   const toggleFile = useCallback((fileId: string) => {
     changeSelection(() => toggleSelected(fileId));
   }, [changeSelection, toggleSelected]);
@@ -220,18 +238,15 @@ export function useRenameWorkflow({
 
   const onRulesChange = (nextRules: RuleSpec[]) => {
     if (isExecuting || isSinglePending()) return;
-    // 规则变化后旧预览立即失效，避免用户误读过期结果。
     setRules(nextRules);
-    preview.reset();
-    execution.reset();
+    invalidatePreviewForChanges();
   };
 
   const changeSort = useCallback((nextSort: FileSort) => {
     if (isExecuting || isSinglePending() || preview.isPending) return;
     onSortChange(nextSort);
-    // 切回旧排序也不能重新启用旧预览；保留快照 ID 供下次替换或清理工作区时释放。
-    preview.reset(); execution.reset();
-  }, [isExecuting, isSinglePending, preview.isPending, onSortChange, preview.reset, execution.reset]);
+    invalidatePreviewForChanges();
+  }, [isExecuting, isSinglePending, preview.isPending, onSortChange, invalidatePreviewForChanges]);
 
   // 本地根目录选择和默认云路径恢复复用原有清理顺序；不丢失待释放 ID。
   const resetForStorageChange = useCallback(() => {

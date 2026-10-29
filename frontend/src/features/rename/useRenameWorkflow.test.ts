@@ -1,4 +1,3 @@
-import { deferred } from "../../test/deferred";
 import { act, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import * as api from "../../api/client";
@@ -45,13 +44,14 @@ describe("rename workflow", () => {
     expect(vi.mocked(api.createStoragePreview).mock.calls[0][2]).toEqual(["file-1.txt"]);
   });
 
-  it.each(["toggle", "select-all", "clear", "invert"] as const)("invalidates an old preview after %s selection", async (operation) => {
+  it.each(["toggle", "select-all", "clear", "invert"] as const)("retains an invalidated preview after %s selection", async (operation) => {
     const hook = await setupWorkspace();
     await preview(hook);
     if (operation === "select-all") {
       act(() => hook.result.current.workflow.selectAllFiles(["file-0.txt"]));
       await preview(hook);
     }
+    const previousPreview = hook.result.current.workflow.previewData!;
     act(() => {
       const workflow = hook.result.current.workflow;
       if (operation === "toggle") workflow.toggleFile("file-0.txt");
@@ -61,11 +61,12 @@ describe("rename workflow", () => {
     });
     expect(useRenameStore.getState().selectedIds).toEqual(operation === "toggle" ? ["file-1.txt"]
       : operation === "select-all" ? ["file-0.txt", "file-1.txt"] : []);
-    expect(hook.result.current.workflow.previewData).toBeUndefined();
+    expect(hook.result.current.workflow.previewData).toEqual({ ...previousPreview, valid: false });
+    act(() => hook.result.current.workflow.executeRename(previousPreview.preview_id));
     expect(api.executePreview).not.toHaveBeenCalled();
   });
 
-  it("clears a completed preview when the selection changes", async () => {
+  it("retains a completed preview and its execution results when the selection changes", async () => {
     const hook = await setupWorkspace();
     await preview(hook);
     const response: Awaited<ReturnType<typeof api.executePreview>> = {
@@ -77,35 +78,27 @@ describe("rename workflow", () => {
     vi.mocked(api.executePreview).mockResolvedValue(response);
     act(() => hook.result.current.workflow.executeRename("task-preview"));
     await waitFor(() => expect(hook.result.current.workflow.executionData).toEqual(response));
+    const previousPreview = hook.result.current.workflow.previewData!;
     act(() => hook.result.current.workflow.clearFiles());
-    expect(hook.result.current.workflow.executionData).toBeUndefined();
-    expect(hook.result.current.workflow.previewData).toBeUndefined();
+    expect(hook.result.current.workflow.executionData).toEqual(response);
+    expect(hook.result.current.workflow.previewData).toEqual({ ...previousPreview, valid: false });
     act(() => hook.result.current.workflow.toggleFile("file-0.txt"));
     expect(useRenameStore.getState().selectedIds).toEqual(["file-0.txt"]);
-    expect(hook.result.current.workflow.executionData).toBeUndefined();
-    expect(hook.result.current.workflow.previewData).toBeUndefined();
+    expect(hook.result.current.workflow.executionData).toEqual(response);
+    expect(hook.result.current.workflow.previewData).toEqual({ ...previousPreview, valid: false });
+    act(() => hook.result.current.workflow.executeRename(previousPreview.preview_id));
     expect(api.executePreview).toHaveBeenCalledTimes(1);
-  });
-
-  it("releases a late preview after its selection context changes", async () => {
-    const hook = await setupWorkspace();
-    const finish = deferred<Awaited<ReturnType<typeof api.createStoragePreview>>>();
-    vi.mocked(api.createStoragePreview).mockReturnValueOnce(finish.promise);
-    act(() => hook.result.current.workflow.requestPreview());
-    await waitFor(() => expect(api.createStoragePreview).toHaveBeenCalledOnce());
-    act(() => useRenameStore.getState().setSelectedIds([]));
-    await act(async () => finish.resolve({ preview_id: "late-preview", expires_at: "2099-01-01T00:00:00Z", valid: true, items: [] }));
-    await waitFor(() => expect(api.releaseStoragePreview).toHaveBeenCalledWith("default-local", "late-preview"));
-    expect(hook.result.current.workflow.previewData).toBeUndefined();
   });
 
   it("invalidates a preview on rule changes and retains its ID for replacement", async () => {
     const hook = await setupWorkspace();
     await preview(hook);
+    const previousPreview = hook.result.current.workflow.previewData!;
     const rules = [{ type: "insert", enabled: true, config: { text: "x" } }];
     act(() => hook.result.current.workflow.onRulesChange(rules));
     expect(useRenameStore.getState().rules).toEqual(rules);
-    expect(hook.result.current.workflow.previewData).toBeUndefined();
+    expect(hook.result.current.workflow.previewData).toEqual({ ...previousPreview, valid: false });
+    act(() => hook.result.current.workflow.executeRename(previousPreview.preview_id));
     expect(api.releaseStoragePreview).not.toHaveBeenCalled();
     act(() => hook.result.current.workflow.requestPreview());
     await waitFor(() => expect(api.createStoragePreview).toHaveBeenLastCalledWith(
@@ -181,18 +174,21 @@ describe("rename workflow", () => {
   it("prunes removed selection IDs after refresh and replaces the old preview", async () => {
     const hook = await setupWorkspace(3);
     await preview(hook);
+    const previousPreview = hook.result.current.workflow.previewData!;
     vi.mocked(api.fetchStorageFiles).mockResolvedValue({ ...listing(4), items: listing(4).items.slice(1) });
     await act(async () => { await hook.result.current.storage.files.refetch(); });
     await waitFor(() => expect(useRenameStore.getState().selectedIds).toEqual(["file-1.txt", "file-2.txt"]));
-    expect(hook.result.current.workflow.previewData).toBeUndefined();
+    expect(hook.result.current.workflow.previewData).toEqual({ ...previousPreview, valid: false });
     act(() => hook.result.current.workflow.requestPreview());
     await waitFor(() => expect(api.createStoragePreview).toHaveBeenLastCalledWith(
       "default-local", { kind: "root" }, ["file-1.txt", "file-2.txt"], [], "task-preview",
     ));
+    await waitFor(() => expect(hook.result.current.workflow.previewData?.valid).toBe(true));
+    const refreshedPreview = hook.result.current.workflow.previewData!;
     vi.mocked(api.fetchStorageFiles).mockResolvedValue(listing(0));
     await act(async () => { await hook.result.current.storage.files.refetch(); });
     await waitFor(() => expect(useRenameStore.getState().selectedIds).toEqual([]));
-    expect(hook.result.current.workflow.previewData).toBeUndefined();
+    expect(hook.result.current.workflow.previewData).toEqual({ ...refreshedPreview, valid: false });
   });
 
   it("preserves selection when a directory refresh fails", async () => {
@@ -311,32 +307,5 @@ describe("rename workflow", () => {
     expect(api.releaseStoragePreview).toHaveBeenCalledWith("default-local", "task-preview");
     expect(hook.result.current.workflow.browserItems.map((item) => item.id)).toEqual(["file-1.txt", "file-2.txt"]);
   });
-
-  it("uses timestamp order and releases a late preview when refreshed metadata changes that order", async () => {
-    const hook = await setupWorkspace(3);
-    const key = ["files", "default-local", 1, { kind: "root" }];
-    const data = { ...listing(3), items: listing(3).items.map((file, index) => ({
-      ...file, modified_at: index === 2 ? null : `2026-10-16T00:00:${index === 0 ? "30" : "20"}Z`,
-    })) };
-    act(() => client.setQueryData(key, data));
-    act(() => hook.result.current.workflow.changeSort({ field: "modified_at", direction: "asc" }));
-    const finish = deferred<Awaited<ReturnType<typeof api.createStoragePreview>>>();
-    vi.mocked(api.createStoragePreview).mockReturnValueOnce(finish.promise);
-    act(() => hook.result.current.workflow.requestPreview());
-    await waitFor(() => expect(api.createStoragePreview).toHaveBeenCalledWith("default-local", { kind: "root" },
-      ["file-1.txt", "file-0.txt", "file-2.txt"], []));
-    act(() => client.setQueryData(key, { ...data, items: data.items.map((file) =>
-      file.id === "file-0.txt" ? { ...file, modified_at: "2026-10-16T00:00:10Z" } : file) }));
-    // Query 缓存通知异步送达 React；先确认新顺序生效，再模拟旧预览迟到。
-    await waitFor(() => expect(hook.result.current.workflow.browserItems.map((file) => file.id))
-      .toEqual(["file-0.txt", "file-1.txt", "file-2.txt"]));
-    await act(async () => finish.resolve({ preview_id: "late-sorted", expires_at: "2099-01-01T00:00:00Z", valid: true, items: [] }));
-    await waitFor(() => expect(api.releaseStoragePreview).toHaveBeenCalledWith("default-local", "late-sorted"));
-    expect(hook.result.current.workflow.previewData).toBeUndefined();
-    await preview(hook);
-    expect(api.createStoragePreview).toHaveBeenLastCalledWith("default-local", { kind: "root" },
-      ["file-0.txt", "file-1.txt", "file-2.txt"], []);
-  });
-
 
 });

@@ -265,7 +265,7 @@ describe("single rename workflow", () => {
     expect(api.executeStorageSingleRename).toHaveBeenCalledTimes(1);
   });
 
-  it.each(["missing", "unknown", "lost", "unconfirmed"])("blocks all new writes after a %s execution result", async (kind) => {
+  it.each(["missing", "unknown", "lost", "unconfirmed"])("blocks new writes after a %s result until the task is explicitly ended", async (kind) => {
     const hook = await setupWorkspace(1);
     const source = listing(1).items[0];
 
@@ -293,12 +293,15 @@ describe("single rename workflow", () => {
       hook.result.current.workflow.requestPreview();
       hook.result.current.workflow.executeRename("single-preview");
       hook.result.current.workflow.closeSingleRename();
-      hook.result.current.workflow.endTask();
     });
     expect(useRenameStore.getState().unknownExecution).not.toBeNull();
     expect(api.executeStorageSingleRename).toHaveBeenCalledTimes(1);
     expect(api.createStoragePreview).not.toHaveBeenCalled();
     expect(api.executePreview).not.toHaveBeenCalled();
+    act(() => hook.result.current.workflow.endTask());
+    expect(useRenameStore.getState().unknownExecution).toBeNull();
+    expect(hook.result.current.workflow.singleRenameTarget).toBeNull();
+    expect(api.executeStorageSingleRename).toHaveBeenCalledTimes(1);
   });
 
   it.each([

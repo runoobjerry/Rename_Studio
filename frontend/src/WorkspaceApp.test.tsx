@@ -97,14 +97,14 @@ describe("workspace workflow wiring", () => {
     fireEvent.click(screen.getByRole("checkbox", { name: "选择文件 file-0.txt" }));
     expect(useRenameStore.getState().selectedIds).toEqual(["file-1.txt"]);
     expect(executeButton).toBeDisabled();
-    expect(screen.queryByText("renamed-file-0.txt")).not.toBeInTheDocument();
+    expect(screen.getByText("renamed-file-0.txt")).toBeInTheDocument();
     fireEvent.click(previewButton);
     await waitFor(() => expect(executeButton).toBeEnabled());
     fireEvent.click(screen.getByRole("button", { name: "添加规则" }));
     fireEvent.click(screen.getByRole("menuitem", { name: "插入" }));
     expect(useRenameStore.getState().rules).toEqual([expect.objectContaining({ type: "insert", enabled: true })]);
     expect(executeButton).toBeDisabled();
-    expect(screen.queryByText("renamed-file-1.txt")).not.toBeInTheDocument();
+    expect(screen.getByText("renamed-file-1.txt")).toBeInTheDocument();
     expect(api.executePreview).not.toHaveBeenCalled();
   });
 
