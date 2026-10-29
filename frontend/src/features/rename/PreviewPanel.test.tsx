@@ -23,15 +23,21 @@ const validPreview = {
 };
 
 describe("PreviewPanel", () => {
-  it("shows complete execution results and keeps full-list counts independent of filtering", () => {
+  it("shows confirmed and unverified results with independent counts and error filtering", () => {
     const item = validPreview.items[0];
-    const items = ["renamed", "failed", "skipped", "unchanged"].map((id) => ({
+    const items = ["renamed", "failed", "skipped", "unchanged", "unknown", "missing", "unrestored"].map((id) => ({
       ...item, file_id: id, original_name: `${id}.txt`, new_name: id === "unchanged" ? "unchanged.txt" : `new-${id}.txt`,
       changed: id !== "unchanged",
     }));
-    render(<PreviewPanel preview={{ ...validPreview, items }} execution={{
+    const unknownExecution = {
+      storageId: "default-local", previewId: validPreview.preview_id,
+      items: items.filter((item) => ["unknown", "missing", "unrestored"].includes(item.file_id)),
+    };
+    const { rerender } = render(<PreviewPanel preview={{ ...validPreview, items }} unknownExecution={unknownExecution} execution={{
       preview_id: validPreview.preview_id, status: "partial", items: [
         { file_id: "renamed", original_name: "renamed.txt", new_name: "new-renamed.txt", status: "renamed", error: null },
+        { file_id: "unknown", original_name: "unknown.txt", new_name: "new-unknown.txt", status: "failed", error: "Unknown outcome", error_code: "RENAME_OUTCOME_UNKNOWN" },
+        { file_id: "unrestored", original_name: "unrestored.txt", new_name: "new-unrestored.txt", status: "failed", error: "Rollback failed", actual_name: "temporary.txt" },
         { file_id: "failed", original_name: "failed.txt", new_name: "new-failed.txt", status: "failed", error: null },
         { file_id: "skipped", original_name: "skipped.txt", new_name: "new-skipped.txt", status: "skipped", error: null },
         { file_id: "unchanged", original_name: "unchanged.txt", new_name: "unchanged.txt", status: "skipped", error: null },
@@ -39,7 +45,14 @@ describe("PreviewPanel", () => {
     }} />);
     const table = within(screen.getByRole("table", { name: "修改预览" }));
     expect(table.getByText("已修改")).toHaveClass("valid");
-    expect(screen.queryByText(/执行结果/)).not.toBeInTheDocument();
+    expect(table.getAllByText("待核对")).toHaveLength(3);
+    expect(table.getAllByText("N/A")).toHaveLength(3);
+    const alert = screen.getByRole("alert");
+    expect(alert).toHaveTextContent("当前存在无法获取最新状态的文件，请刷新文件目录或前往文件源进行检查");
+    expect(screen.getByRole("region", { name: "修改预览" }).lastElementChild).toBe(alert);
+    expect(table.queryByText("new-unknown.txt")).not.toBeInTheDocument();
+    expect(table.queryByText("new-missing.txt")).not.toBeInTheDocument();
+    expect(table.queryByText("new-unrestored.txt")).not.toBeInTheDocument();
     expect(table.getByText("new-renamed.txt")).toHaveClass("renamed-name");
     expect(table.getByText("修改失败")).toHaveClass("invalid");
     expect(table.getAllByText("无变化")).toHaveLength(2);
@@ -54,6 +67,28 @@ describe("PreviewPanel", () => {
     expect(table.queryByText("new-skipped.txt")).not.toBeInTheDocument();
     expect(table.queryByText("unchanged.txt")).not.toBeInTheDocument();
     expect(screen.getByText("0 项待修改 · 2 项无需修改 · 显示 1 项")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "筛选状态" }));
+    fireEvent.click(screen.getByRole("menuitemcheckbox", { name: "已修改" }));
+    fireEvent.click(screen.getByRole("menuitemcheckbox", { name: "错误" }));
+    fireEvent.keyDown(screen.getByRole("menu"), { key: "Escape" });
+    expect(table.getAllByText("待核对")).toHaveLength(3);
+    expect(table.getAllByText("N/A")).toHaveLength(3);
+    expect(table.getByText("修改失败")).toBeInTheDocument();
+    expect(table.queryByText("new-renamed.txt")).not.toBeInTheDocument();
+    expect(screen.getByText("0 项待修改 · 2 项无需修改 · 显示 4 项")).toBeInTheDocument();
+    // 丢失整次响应且没有执行展示时，仍由待核对记录展示文件。
+    rerender(<PreviewPanel unknownExecution={unknownExecution} />);
+    expect(table.getAllByText("待核对")).toHaveLength(3);
+    expect(table.getAllByText("N/A")).toHaveLength(3);
+    expect(screen.getByText("0 项待修改 · 0 项无需修改 · 显示 3 项")).toBeInTheDocument();
+    fireEvent.click(within(screen.getByRole("alert")).getByRole("button", { name: "关闭" }));
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(table.getAllByText("待核对")).toHaveLength(3);
+    expect(table.getAllByText("N/A")).toHaveLength(3);
+    rerender(<PreviewPanel unknownExecution={{ ...unknownExecution, previewUnlocked: true }} />);
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    rerender(<PreviewPanel unknownExecution={{ ...unknownExecution, previewId: "next-execution" }} />);
+    expect(screen.getByRole("alert")).toHaveTextContent("当前存在无法获取最新状态的文件，请刷新文件目录或前往文件源进行检查");
   });
 
   it("keeps validation errors out of pending counts and uses their existing labels", () => {

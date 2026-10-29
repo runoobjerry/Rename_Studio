@@ -133,7 +133,7 @@ describe("workspace workflow wiring", () => {
     })) }));
   });
 
-  it("keeps unknown writes locked until the user verifies the actual files", async () => {
+  it("preserves unknown results across directory refresh failures and unlocks previews after a successful refresh", async () => {
     await setup(2);
     vi.mocked(api.executePreview).mockRejectedValueOnce(new Error("Execution response lost"));
     fireEvent.click(screen.getByRole("button", { name: "刷新预览" }));
@@ -145,18 +145,27 @@ describe("workspace workflow wiring", () => {
     await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
     expect(useRenameStore.getState().unknownExecution?.items).toHaveLength(2);
     expect(screen.getByRole("button", { name: "刷新预览" })).toBeDisabled();
-    fireEvent.click(screen.getByRole("button", { name: "核对执行结果" }));
-    fireEvent.click(within(screen.getByRole("dialog", { name: "核对执行结果" })).getByRole("button", { name: "取消" }));
-    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
-    expect(useRenameStore.getState().unknownExecution).not.toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: "核对执行结果" }));
-    fireEvent.click(screen.getByRole("button", { name: "已核对，解除锁定" }));
-    await waitFor(() => expect(useRenameStore.getState().unknownExecution).toBeNull());
-    expect(useRenameStore.getState().selectedIds).toEqual([]);
-    fireEvent.click(screen.getByRole("checkbox", { name: "选择文件 file-0.txt" }));
-    fireEvent.click(screen.getByRole("button", { name: "刷新预览" }));
-    await waitFor(() => expect(api.createStoragePreview).toHaveBeenCalledTimes(2));
+    expect(screen.getByRole("button", { name: "开始修改" })).toBeDisabled();
+    const panel = within(screen.getByRole("region", { name: "修改预览" }));
+    expect(panel.getByText("当前存在无法获取最新状态的文件，请刷新文件目录或前往文件源进行检查").closest('[role="alert"]')).toBeInTheDocument();
+    expect(panel.getAllByText("待核对")).toHaveLength(2);
+    expect(panel.getAllByText("N/A")).toHaveLength(2);
+    vi.mocked(api.fetchStorageFiles).mockRejectedValueOnce(new Error("Directory unavailable"));
+    fireEvent.click(screen.getByRole("button", { name: "刷新" }));
+    await screen.findByText(/目录刷新失败，当前显示上次读取的内容/);
+    expect(useRenameStore.getState().unknownExecution?.items).toHaveLength(2);
+    expect(screen.getByRole("button", { name: "刷新预览" })).toBeDisabled();
+    expect(panel.getAllByText("待核对")).toHaveLength(2);
+    fireEvent.click(screen.getByRole("button", { name: "刷新" }));
+    await waitFor(() => expect(useRenameStore.getState().unknownExecution?.previewUnlocked).toBe(true));
+    expect(panel.getAllByText("待核对")).toHaveLength(2);
+    expect(panel.getAllByText("N/A")).toHaveLength(2);
+    expect(panel.getByText("当前存在无法获取最新状态的文件，请刷新文件目录或前往文件源进行检查")).toBeInTheDocument();
+    expect(api.releaseStoragePreview).not.toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: "开始修改" })).toBeDisabled();
     expect(api.executePreview).toHaveBeenCalledTimes(1);
+    expect(api.createStoragePreview).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole("button", { name: "刷新预览" })).toBeEnabled();
   });
 
   it("releases a late preview to its original storage after switching connections", async () => {

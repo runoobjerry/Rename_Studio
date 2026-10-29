@@ -28,7 +28,7 @@
   "themeSaveFailed": "Could not save the appearance. The change was reverted: {{message}}",
   "resetFailed": "Could not restore factory defaults: {{message}}",
   "resetDone": "App reset",
-  "resetUnknown": "Verify files with unknown outcomes and acknowledge the results first.",
+  "resetUnknown": "Some file outcomes are unknown. Refresh the file directory or check the files at their source.",
   "resetBusy": "Wait for the rename operation to finish before resetting.",
   "resetSaving": "A connection is being saved. Try again shortly.",
   "connection": {

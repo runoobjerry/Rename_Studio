@@ -188,11 +188,14 @@ export function useWorkspaceStorage({ pauseFileQueries, onLocalRootSelected }: W
       .catch((error: Error) => notify({ key: "files:notifications.defaultSaveFailed", error }, "error"));
   }, [cloudAccountId, cloudReady, files.isSuccess, files.isFetching, files.error, files.data, storageId, notify, appSettings.save]);
 
-  const refreshFiles = useCallback(() => {
+  const refreshFiles = useCallback((onRefreshed?: () => void) => {
     if (!locationReady) return;
     void files.refetch().then((result) => {
       if (result.error) notify({ key: "files:notifications.refreshFailed", error: result.error }, "error");
-      else notify({ key: "files:notifications.refreshed" });
+      else {
+        onRefreshed?.();
+        notify({ key: "files:notifications.refreshed" });
+      }
     });
   }, [locationReady, files.refetch, notify]);
 

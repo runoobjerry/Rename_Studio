@@ -17,7 +17,6 @@ import { useTranslation } from "react-i18next";
 import { LanguageProvider, useLanguagePreference } from "./i18n/LanguageProvider";
 
 import { fetchRules } from "./api/client";
-import { UnknownExecutionNotice } from "./features/rename/UnknownExecutionNotice";
 import { SingleRenameDialog } from "./features/rename/SingleRenameDialog";
 import { StorageSidebar } from "./workspace/components/StorageSidebar";
 import { StorageLocationPanel } from "./workspace/components/StorageLocationPanel";
@@ -116,7 +115,7 @@ function Workspace({ preference, setPreference, settingsError }: {
     openSingleRename, closeSingleRename, applySingleRename,
     requestPreview, executeRename, onRulesChange,
     resetOperation, endTask, toggleFile, selectAllFiles, clearFiles, invertFiles,
-    resetForStorageChange,
+    resetForStorageChange, onDirectoryRefreshed,
   } = useRenameWorkflow({
     storageId, location, workspaceKey, cloudSession, locationReady,
     canRename: metadataReady && providerDefinition?.can_rename === true && !pickLocalRoot.isPending,
@@ -132,6 +131,14 @@ function Workspace({ preference, setPreference, settingsError }: {
     restoreDefaultCloudPath();
     resetForStorageChange();
   }, [isExecuting, metadataReady, requiresAuth, cloudSession, restoredCloudSession, appSettingsReady]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const refreshDirectory = () => {
+    const unknown = useRenameStore.getState().unknownExecution;
+    refreshFiles(() => {
+      // 迟到的目录刷新不能清除之后才产生的待核对记录。
+      if (unknown && useRenameStore.getState().unknownExecution === unknown) onDirectoryRefreshed();
+    });
+  };
 
   const loadError = providers.error ?? providerError ?? definitions.error ?? (requiresAuth ? cloudStatus.error : null);
   const { factoryReset, resetDisabledReason, resetPending, resetEpoch } = useFactoryReset({
@@ -151,6 +158,7 @@ function Workspace({ preference, setPreference, settingsError }: {
     setLocation(next);
   }, [locationReady, supportsLocation, isExecuting, pickLocalRoot.isPending, activeStorage?.busy, setLocation]);
 
+  const renameBlocked = !locationReady || pickLocalRoot.isPending || !activeStorage || activeStorage.busy || files.isFetching || Boolean(files.error);
   const selectProvider = (nextProviderId: string) => {
     if (isExecuting || pickLocalRoot.isPending) return;
     selectStorage(nextProviderId);
@@ -206,7 +214,6 @@ function Workspace({ preference, setPreference, settingsError }: {
             className={view === "workspace" ? "workspace-page" : undefined}
             sx={{ width: "100%", maxWidth: 1680, mx: "auto", p: 1.5 }}
           >
-            <UnknownExecutionNotice />
             {loadError && <Alert severity="error" sx={{ mb: 2 }}>{t("files:workspace.loadFailed", { message: errorMessage(loadError, t) })}</Alert>}
             {(providers.isPending || providerDefinitions.isPending || definitions.isPending) && (
               <LinearProgress aria-label={t("files:workspace.loading")} sx={{ flexShrink: 0, mb: 1 }} />
@@ -263,7 +270,7 @@ function Workspace({ preference, setPreference, settingsError }: {
                         isRefreshing={files.isFetching}
                         refreshError={files.error ? errorMessage(files.error, t) : undefined}
                         onNavigate={navigate}
-                        onRefresh={refreshFiles}
+                        onRefresh={refreshDirectory}
                         onToggle={toggleFile}
                         onSelectAll={selectAllFiles}
                         onClearSelection={clearFiles}
@@ -296,6 +303,7 @@ function Workspace({ preference, setPreference, settingsError }: {
                     <PreviewPanel
                       preview={previewData}
                       execution={executionData}
+                      unknownExecution={unknownExecution}
                       providerName={providerName}
                       error={previewError}
                       executeError={revalidationError ? undefined : executeError}
@@ -314,7 +322,8 @@ function Workspace({ preference, setPreference, settingsError }: {
                       selectedCount={selectedCount}
                       isPreviewing={isPreviewing}
                       isExecuting={isExecuting}
-                      isBlocked={Boolean(unknownExecution) || !locationReady || pickLocalRoot.isPending || !activeStorage || activeStorage.busy || files.isFetching || Boolean(files.error)}
+                      isBlocked={Boolean(unknownExecution) || renameBlocked}
+                      isPreviewBlocked={Boolean(unknownExecution && !unknownExecution.previewUnlocked) || renameBlocked}
                       hasExecuted={hasExecuted}
                       executionPreviewId={executionPreviewId}
                       executeError={executeError}

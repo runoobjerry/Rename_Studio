@@ -10,6 +10,7 @@ import TableContainer from "@mui/material/TableContainer";
 import TableHead from "@mui/material/TableHead";
 import TableRow from "@mui/material/TableRow";
 
+import type { UnknownExecution } from "../../stores/useRenameStore";
 import type { ExecuteResponse, PreviewResponse } from "../../types";
 import { useVirtualTable } from "../../hooks/useVirtualTable";
 import { VirtualTableSpacer } from "../../components/VirtualTableSpacer";
@@ -25,6 +26,7 @@ type StatusFilter = typeof statusFilters[number]["value"];
 interface PreviewPanelProps {
   preview?: PreviewResponse;
   execution?: ExecuteResponse;
+  unknownExecution?: UnknownExecution | null;
   providerName?: string;
   error?: string;
   executeError?: string;
@@ -33,30 +35,39 @@ interface PreviewPanelProps {
 export const PreviewPanel = memo(function PreviewPanel({
   preview,
   execution,
+  unknownExecution,
   providerName,
   error,
   executeError,
 }: PreviewPanelProps) {
   const { t } = useTranslation();
   const [filters, setFilters] = useState<StatusFilter[]>([]);
+  const [dismissedVerification, setDismissedVerification] = useState<string | null>(null);
+  const verificationKey = unknownExecution
+    ? JSON.stringify([unknownExecution.storageId, unknownExecution.previewId]) : null;
   const filterOptions = statusFilters.map((option) => ({ ...option, label: option.value === "pending" && execution
     ? t("files:preview.filters.renamed") : t(option.labelKey) }));
   const executionById = useMemo(() => new Map(execution?.items.map((item) => [item.file_id, item])), [execution?.items]);
+  const unknownIds = useMemo(() => new Set(
+    !preview || preview.preview_id === unknownExecution?.previewId
+      ? unknownExecution?.items.map((item) => item.file_id) : [],
+  ), [preview?.preview_id, unknownExecution]);
   const { rows, pendingCount, unchangedCount } = useMemo(() => {
     let pendingCount = 0;
     let unchangedCount = 0;
-    const rows = (preview?.items ?? []).map((item) => {
-      const status = statusFor(item, executionById.get(item.file_id), t);
+    // 预览展示被清理后，待核对记录仍保留原始项目供检查。
+    const rows = (preview?.items ?? unknownExecution?.items ?? []).map((item) => {
+      const status = statusFor(item, executionById.get(item.file_id), unknownIds.has(item.file_id), t);
       if (status.isPendingChange) pendingCount++;
       if (status.isUnchanged) unchangedCount++;
-      return { item, status };
+      return { item, status, newName: unknownIds.has(item.file_id) ? "N/A" : item.new_name };
     });
     return { rows, pendingCount, unchangedCount };
-  }, [preview?.items, executionById, t]);
+  }, [preview?.items, unknownExecution?.items, unknownIds, executionById, t]);
   const visibleItems = useMemo(() => rows.filter(({ status }) =>
     filters.length === 0 || filters.includes(status.category)), [rows, filters]);
   const scrollKey = useMemo(() => [preview?.preview_id, filters], [preview?.preview_id, filters]);
-  const columnValues = useMemo(() => [visibleItems.map(({ item }) => item.original_name), visibleItems.map(({ item }) => item.new_name),
+  const columnValues = useMemo(() => [visibleItems.map(({ item }) => item.original_name), visibleItems.map(({ newName }) => newName),
     visibleItems.map(({ status }) => status.label)], [visibleItems]);
   const virtual = useVirtualTable(visibleItems.length, scrollKey, columnValues);
 
@@ -67,17 +78,17 @@ export const PreviewPanel = memo(function PreviewPanel({
           <h2 id="preview-title">{t("files:preview.title")}</h2>
           <p className="panel-summary">
             {t("files:preview.summary", { pending: pendingCount, unchanged: unchangedCount })}
-            {preview && filters.length > 0 && t("files:showing", { count: visibleItems.length })}
+            {(preview || unknownExecution) && filters.length > 0 && t("files:showing", { count: visibleItems.length })}
           </p>
         </div>
         <CheckboxFilterMenu label={t("files:preview.filter")} options={filterOptions} selected={filters} onChange={setFilters} />
       </div>
 
       {error && <Alert severity="error" sx={{ m: 2, whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{error}</Alert>}
-      {!preview && !error && (
+      {!preview && !unknownExecution && !error && (
         <p className="empty-state">{t("files:preview.empty", { provider: providerName ?? t("files:preview.currentStorage") })}</p>
       )}
-      {preview && (
+      {(preview || unknownExecution) && (
         <TableContainer ref={virtual.containerRef} onScroll={virtual.onScroll} onKeyDown={virtual.onKeyDown} tabIndex={0} className="preview-table-wrap" sx={{ minWidth: 0, maxWidth: "100%" }}>
           <Table
             stickyHeader
@@ -103,8 +114,8 @@ export const PreviewPanel = memo(function PreviewPanel({
             </TableHead>
             <TableBody>
               <VirtualTableSpacer height={virtual.top} columns={3} />
-              {visibleItems.slice(virtual.start, virtual.end).map(({ item, status }, offset) => (
-                <PreviewRow key={item.file_id} item={item} label={status.label} statusClassName={status.className}
+              {visibleItems.slice(virtual.start, virtual.end).map(({ item, status, newName }, offset) => (
+                <PreviewRow key={item.file_id} item={item} newName={newName} label={status.label} statusClassName={status.className}
                   renamed={status.renamed} rowIndex={virtual.start + offset} />
               ))}
               <VirtualTableSpacer height={virtual.bottom} columns={3} />
@@ -121,21 +132,33 @@ export const PreviewPanel = memo(function PreviewPanel({
       {executeError && (
         <Alert severity="error" sx={{ m: 2 }}>{t("files:preview.executeFailed", { message: executeError })}</Alert>
       )}
+      {unknownExecution && dismissedVerification !== verificationKey && (
+        <Alert severity="warning" sx={{ m: 2 }} closeText={t("common:close")}
+          onClose={() => setDismissedVerification(verificationKey)}>
+          {t("files:verification.required")}
+        </Alert>
+      )}
     </section>
   );
 });
 
-const PreviewRow = memo(function PreviewRow({ item, label, statusClassName, renamed, rowIndex }: {
-  item: PreviewResponse["items"][number]; label: string; statusClassName: string; renamed: boolean; rowIndex: number;
+const PreviewRow = memo(function PreviewRow({ item, newName, label, statusClassName, renamed, rowIndex }: {
+  item: PreviewResponse["items"][number]; newName: string; label: string; statusClassName: string; renamed: boolean; rowIndex: number;
 }) {
   return <TableRow data-row-index={rowIndex} aria-rowindex={rowIndex + 2} tabIndex={0}>
     <TableCell>{item.original_name}</TableCell>
-    <TableCell className={renamed ? "renamed-name" : undefined}>{item.new_name}</TableCell>
+    <TableCell className={renamed ? "renamed-name" : undefined}>{newName}</TableCell>
     <TableCell><span className={`status ${statusClassName}`}>{label}</span></TableCell>
   </TableRow>;
 });
 
-function statusFor(item: PreviewResponse["items"][number], result: ExecuteResponse["items"][number] | undefined, t: TFunction) {
+function statusFor(item: PreviewResponse["items"][number], result: ExecuteResponse["items"][number] | undefined, needsVerification: boolean, t: TFunction) {
+  // 待核对状态仅消费执行流程已有的判断，不在展示层重新推断结果。
+  if (needsVerification) return {
+    category: "error" as const,
+    label: t("files:preview.needsVerification"), className: "invalid", renamed: false,
+    isPendingChange: false, isUnchanged: false,
+  };
   // 已修改项保留原预览分类；失败和跳过的执行结果覆盖分类。
   let category: StatusFilter = item.error || !item.valid || item.conflict ? "error"
     : item.changed ? "pending" : "unchanged";

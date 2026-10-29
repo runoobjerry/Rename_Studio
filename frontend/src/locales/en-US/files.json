@@ -36,7 +36,8 @@
     "invalid": "Cannot rename",
     "summary": "{{pending}} to rename · {{unchanged}} unchanged",
     "empty": "Click the preview button to see the new names. Previewing does not change anything in {{provider}}.",
-    "executeFailed": "Execution failed: {{message}}"
+    "executeFailed": "Execution failed: {{message}}",
+    "needsVerification": "Needs verification"
   },
   "rename": {
     "phases": {
@@ -79,7 +80,7 @@
     "refreshFailed": "Refresh failed: {{message}}",
     "completed_one": "Renaming completed successfully: {{count}} item renamed.",
     "completed_other": "Renaming completed successfully: {{count}} items renamed.",
-    "verifyBeforeRetry": "Verify the actual files and acknowledge the results before continuing.",
+    "verifyBeforeRetry": "Execution results are uncertain. Refresh the file directory or check the files at their source.",
     "fixedMembers": "The task files are fixed. End the current task before adding other files."
   },
   "location": {
@@ -114,10 +115,7 @@
   "selectFile": "Select file {{name}}",
   "selectFolder": "Select folder {{name}}",
   "verification": {
-    "review": "Verify execution results",
-    "required": "Execution results for storage {{storage}} are uncertain. Verify the actual files before renaming again.",
-    "instructions": "Refresh the directory or open the storage and verify the current names and execution progress of the files below. Acknowledging clears the selection and unlocks renaming. Select files and create a new preview before making further changes.",
-    "confirm": "Verified, unlock renaming"
+    "required": "The latest status of some files is unavailable. Refresh the file directory or check the files at their source."
   },
   "taskTitle": "Current task",
   "quickRename": {

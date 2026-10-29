@@ -5,6 +5,7 @@ export interface UnknownExecution {
   storageId: string;
   previewId: string;
   items: PreviewItem[];
+  previewUnlocked?: boolean;
 }
 
 interface RenameUiState {

@@ -36,7 +36,8 @@
     "invalid": "不可修改",
     "summary": "{{pending}} 项待修改 · {{unchanged}} 项无需修改",
     "empty": "刷新预览查看新名称；预览不会修改 {{provider}} 中的内容。",
-    "executeFailed": "执行失败：{{message}}"
+    "executeFailed": "执行失败：{{message}}",
+    "needsVerification": "待核对"
   },
   "rename": {
     "phases": {
@@ -79,7 +80,7 @@
     "refreshFailed": "刷新失败：{{message}}",
     "completed_one": "修改全部成功：{{count}} 项已修改。",
     "completed_other": "修改全部成功：{{count}} 项已修改。",
-    "verifyBeforeRetry": "执行结果尚未核对，请先核对真实文件，再确认解除锁定。",
+    "verifyBeforeRetry": "执行结果尚未确定，请刷新文件目录或前往文件源进行检查。",
     "fixedMembers": "任务文件集合已固定，请结束当前任务后再加入其他文件。"
   },
   "location": {
@@ -114,10 +115,7 @@
   "selectFile": "选择文件 {{name}}",
   "selectFolder": "选择文件夹 {{name}}",
   "verification": {
-    "review": "核对执行结果",
-    "required": "存储 {{storage}} 的执行结果尚未确定。请核对真实文件后再继续修改。",
-    "instructions": "请刷新目录或打开实际存储，核对以下文件的当前名称和执行进度。确认后将解除锁定并清空选择，再次修改必须重新选择和预览。",
-    "confirm": "已核对，解除锁定"
+    "required": "当前存在无法获取最新状态的文件，请刷新文件目录或前往文件源进行检查"
   },
   "taskTitle": "当前任务",
   "quickRename": {

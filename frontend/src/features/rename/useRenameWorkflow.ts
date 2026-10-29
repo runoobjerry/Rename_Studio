@@ -102,6 +102,9 @@ export function useRenameWorkflow({
         return;
       }
       retainedPreview.current = { storageId: result.storageId, previewId: result.preview_id };
+      if (useRenameStore.getState().unknownExecution?.previewUnlocked) {
+        useRenameStore.getState().setUnknownExecution(null);
+      }
     },
   });
   const execution = useRenameExecution(isCurrentSession);
@@ -144,7 +147,7 @@ export function useRenameWorkflow({
     if (currentSelectedIds.length === selectedIds.length) return;
     setSelectedIds(currentSelectedIds);
     // 不因目录后台变化丢失正在执行的请求和进度。
-    if (!isExecuting) {
+    if (!isExecuting && !useRenameStore.getState().unknownExecution) {
       preview.reset();
       execution.reset();
     }
@@ -153,7 +156,8 @@ export function useRenameWorkflow({
 
   const requestPreview = () => {
     if (!files.data || files.isFetching || files.error || isExecuting || isSinglePending() || preview.isPending || activeStorage?.busy) return;
-    if (useRenameStore.getState().unknownExecution) {
+    const unknown = useRenameStore.getState().unknownExecution;
+    if (unknown && !unknown.previewUnlocked) {
       notify({ key: "files:notifications.verifyBeforeRetry" }, "warning");
       return;
     }
@@ -183,9 +187,16 @@ export function useRenameWorkflow({
   const resetOperation = useCallback(() => {
     if (isExecuting || isSinglePending() || preview.isPending) return;
     releaseRetainedPreview();
+    useRenameStore.getState().setUnknownExecution(null);
     resetTask(); setPreviewActive(false); clearSelection(); preview.reset(); execution.reset();
     resetSingleRename();
   }, [isExecuting, isSinglePending, preview.isPending, releaseRetainedPreview, resetTask, setPreviewActive, clearSelection, preview.reset, execution.reset, resetSingleRename]);
+  const onDirectoryRefreshed = () => {
+    const unknown = useRenameStore.getState().unknownExecution;
+    if (isExecuting || isSinglePending() || !unknown) return;
+    // 保留旧预览和待核对展示，只允许创建新预览；旧执行仍被锁定。
+    useRenameStore.getState().setUnknownExecution({ ...unknown, previewUnlocked: true });
+  };
   const changeSelection = useCallback((update: () => void) => {
     if (isExecuting || isSinglePending()) return;
     update();
@@ -270,6 +281,6 @@ export function useRenameWorkflow({
     ...singleRename,
     requestPreview, executeRename, onRulesChange,
     resetOperation, endTask: resetOperation, toggleFile, selectAllFiles, clearFiles, invertFiles,
-    resetForStorageChange,
+    resetForStorageChange, onDirectoryRefreshed,
   };
 }
