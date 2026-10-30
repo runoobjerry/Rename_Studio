@@ -17,6 +17,7 @@
 | `features/rename/useRenameWorkflow.ts` | 对外工作流入口；固定任务成员与有序有效选择、批量预览生命周期、确认执行及单项/批量协调 |
 | `features/rename/useSingleRename.ts` | 单项编辑会话、独立 API 请求、目录读取暂停、错误码提示、结果合并与未知结果保护 |
 | `features/rename/useRenameExecution.ts` | 批量预览执行请求、未知结果保护、确认元数据/任务结果合并及结果通知 |
+| `features/rename/renameTask.ts` | 任务创建与固定原始快照、执行结果及当前身份更新、任务展示列表生成 |
 | `stores/useRenameStore.ts`、`types/index.ts` | 选择、规则链、任务原始快照与当前文件身份、预览读取门控与待核对执行信息；API 类型 |
 | `workspace/hooks/useFactoryReset.ts` | 重置禁用条件、请求状态、成功后的缓存和工作区清理 |
 | `features/settings/{SettingsPage,StorageSettingsPanel}.tsx` | 外观、多连接配置、授权与重置确认 |

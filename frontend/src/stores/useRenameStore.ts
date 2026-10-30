@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { applyRenameTaskResults, createRenameTask } from "../features/rename/renameTask";
 import type { FileItem, PreviewItem, RenameTask, RuleSpec, SingleRenameExecuteResponse, StorageLocation } from "../types";
 
 export interface UnknownExecution {
@@ -40,26 +41,12 @@ export const useRenameStore = create<RenameUiState>((set, get) => ({
   setRules: (rules) => set({ rules }),
   createTask: (contextKey, storageId, location, files) => set((state) => {
     if (state.task?.contextKey === contextKey) return {};
-    const selected = new Set(state.selectedIds);
-    return { task: {
-      taskId: crypto.randomUUID(), contextKey, storageId,
-      location: Object.freeze(structuredClone(location)),
-      items: files.filter((file) => selected.has(file.id)).map((file) => ({
-        taskItemId: crypto.randomUUID(), currentFileId: file.id,
-        before: Object.freeze({ ...structuredClone(file), storageId }),
-      })),
-    } };
+    return { task: createRenameTask(contextKey, storageId, location, files, state.selectedIds) };
   }),
   resetTask: () => set({ task: null }),
   applyTaskResults: (taskId, response) => set((state) => {
     if (state.task?.taskId !== taskId) return {};
-    const results = new Map(response.items.map((item) => [item.file_id, item]));
-    return { task: { ...state.task, items: state.task.items.map((item) => {
-      const result = results.get(item.currentFileId);
-      if (!result) return item;
-      const after = Object.freeze(structuredClone(result));
-      return { ...item, after, currentFileId: after.current_file?.id ?? item.currentFileId };
-    }) } };
+    return { task: applyRenameTaskResults(state.task, response) };
   }),
   setPreviewActive: (previewActive) => set({ previewActive }),
   setUnknownExecution: (unknownExecution) => set({ unknownExecution }),
