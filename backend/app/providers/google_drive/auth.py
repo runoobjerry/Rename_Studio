@@ -148,7 +148,7 @@ class GoogleDriveAuthService:
         self._before_change()
         self._require_scope(payload.scope)
         if payload.refresh_token is None:
-            raise AuthenticationError("Google did not grant offline access; connect again")
+            raise ProviderError("Google did not return a refresh token; connect again")
         expires_at = datetime.now(UTC) + timedelta(seconds=payload.expires_in)
         user = await self._load_account_profile(payload.access_token.get_secret_value())
         self._check_generation(pending.generation)
@@ -204,9 +204,11 @@ class GoogleDriveAuthService:
             raise RateLimitError("Google authorization service is rate limited; try again later")
         if response.status_code >= 500:
             raise ProviderError("Google authorization service is unavailable")
-        if response.is_error:
+        if response.status_code in (400, 401, 403):
             # Do not reflect Google's response body: it can contain credential-related input.
             raise AuthenticationError("Google authorization was rejected; check the client credentials and reconnect")
+        if response.is_error:
+            raise ProviderError("Google authorization service request failed")
         try:
             return _TokenResponse.model_validate_json(response.content)
         except ModelValidationError:

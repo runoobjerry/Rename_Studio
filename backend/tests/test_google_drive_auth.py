@@ -20,6 +20,7 @@ from app.rules.registry import RuleRegistry
 from app.rules.text_operations import ReplaceRule
 from app.schemas.storage import AppSettingsPatch, StorageCreate, StorageUpdate
 from app.providers.google_drive.auth import ABOUT_URL, SCOPE, TOKEN_URL, GoogleDriveAuthService
+from app.providers.onedrive.auth import GRAPH_ME_URL, TOKEN_URL as ONEDRIVE_TOKEN_URL, OneDriveAuthService
 from app.services.preview_service import PreviewService
 from app.services.preview_store import PreviewStore
 from app.services.execute_service import ExecuteService
@@ -201,14 +202,38 @@ def test_invalid_callback_never_commits_account(manager: StorageManager, failure
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("failure", ["no_scope", "wrong_scope", "no_refresh", "no_identity", "denied_identity", "invalid_client"])
-async def test_incomplete_or_rejected_grant_is_never_connected(manager: StorageManager, monkeypatch: pytest.MonkeyPatch, failure: str) -> None:
+@pytest.mark.parametrize("existing_account", [False, True])
+@pytest.mark.parametrize(("failure", "error_type"), [
+    ("no_scope", AuthenticationError), ("wrong_scope", AuthenticationError),
+    ("no_refresh", ProviderError), ("no_identity", ProviderError),
+    ("denied_identity", AuthenticationError), ("invalid_client", AuthenticationError),
+    ("token_throttled", RateLimitError), ("token_unavailable", ProviderError),
+    ("invalid_token_data", ProviderError), ("profile_throttled", RateLimitError),
+    ("profile_unavailable", ProviderError), ("profile_timeout", ProviderError),
+])
+async def test_incomplete_or_rejected_grant_is_never_connected(
+    manager: StorageManager, monkeypatch: pytest.MonkeyPatch, failure: str,
+    error_type: type[Exception], existing_account: bool,
+) -> None:
     storage_id, auth = google_connection(manager)
+    if existing_account:
+        mock_google(monkeypatch, google_response)
+        await authorize(auth)
+    before = manager.record(storage_id).model_copy(deep=True)
+    saved = manager.repository.path.read_bytes()
+    calls: list[str] = []
 
     def respond(request: httpx.Request) -> httpx.Response:
+        calls.append(request.method)
         if str(request.url) == TOKEN_URL:
             if failure == "invalid_client":
                 return httpx.Response(400, json={"error": "invalid_client", "error_description": CLIENT_SECRET})
+            if failure == "token_throttled":
+                return httpx.Response(429, text=CLIENT_SECRET)
+            if failure == "token_unavailable":
+                return httpx.Response(503, text=CLIENT_SECRET)
+            if failure == "invalid_token_data":
+                return httpx.Response(200, text=CLIENT_SECRET)
             return httpx.Response(200, json=tokens(
                 scope=None if failure == "no_scope" else SCOPE + ".readonly" if failure == "wrong_scope" else SCOPE,
                 refresh_token=None if failure == "no_refresh" else "fixture-refresh",
@@ -217,14 +242,24 @@ async def test_incomplete_or_rejected_grant_is_never_connected(manager: StorageM
             return httpx.Response(200, json={"user": {"displayName": "Test User"}})
         if failure == "denied_identity":
             return httpx.Response(403, json={"error": {"message": CLIENT_SECRET}})
+        if failure == "profile_throttled":
+            return httpx.Response(429, text=CLIENT_SECRET)
+        if failure == "profile_unavailable":
+            return httpx.Response(503, text=CLIENT_SECRET)
+        if failure == "profile_timeout":
+            raise httpx.ReadTimeout(CLIENT_SECRET, request=request)
         return google_response(request)
 
     mock_google(monkeypatch, respond)
-    with pytest.raises((AuthenticationError, ProviderError)) as caught:
+    with pytest.raises(error_type) as caught:
         await authorize(auth)
     assert CLIENT_SECRET not in str(caught.value)
-    assert not auth.status().connected
-    assert manager.record(storage_id).credentials == {"client_secret": CLIENT_SECRET}
+    assert auth.status().connected is existing_account
+    assert auth.status().account_id == ("account-a" if existing_account else None)
+    assert manager.record(storage_id) == before
+    assert manager.repository.path.read_bytes() == saved
+    profile_failures = {"no_identity", "denied_identity", "profile_throttled", "profile_unavailable", "profile_timeout"}
+    assert calls == (["POST", "GET"] if failure in profile_failures else ["POST"])
 
 
 @pytest.mark.asyncio
@@ -265,21 +300,73 @@ async def test_restart_refresh_retains_or_rotates_refresh_token_without_changing
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize(("status", "error_type", "connected"), [(200, AuthenticationError, False), (400, AuthenticationError, False), (429, RateLimitError, True), (503, ProviderError, True)])
-async def test_refresh_revocation_invalidates_but_service_failure_preserves_authorization(manager: StorageManager, monkeypatch: pytest.MonkeyPatch, status: int, error_type: type[Exception], connected: bool) -> None:
-    storage_id, auth = google_connection(manager)
-    mock_google(monkeypatch, google_response)
-    await authorize(auth)
-    revision = manager.record(storage_id).revision
-    payload = tokens(scope=SCOPE + ".readonly") if status == 200 else {"error": "invalid_grant", "error_description": CLIENT_SECRET}
-    mock_google(monkeypatch, lambda request: httpx.Response(status, json=payload))
-    with pytest.raises(error_type):
+@pytest.mark.parametrize("provider_type", ["onedrive", "google_drive"])
+@pytest.mark.parametrize(("failure", "error_type", "connected"), [
+    ("scope", AuthenticationError, False),
+    (400, AuthenticationError, False), (401, AuthenticationError, False), (403, AuthenticationError, False),
+    (429, RateLimitError, True), (503, ProviderError, True), (408, ProviderError, True),
+    ("timeout", ProviderError, True), ("malformed", ProviderError, True),
+    ("missing_access", ProviderError, True),
+])
+async def test_refresh_revocation_invalidates_but_service_failure_preserves_authorization(
+    manager: StorageManager, monkeypatch: pytest.MonkeyPatch, provider_type: str,
+    failure: int | str, error_type: type[Exception], connected: bool,
+) -> None:
+    if provider_type == "onedrive" and failure == "scope":
+        pytest.skip("OneDrive does not validate a returned scope")
+    info = manager.create(StorageCreate(
+        provider_type=provider_type, name="Cloud account", config={"client_id": "fixture-client"},
+        client_secret=CLIENT_SECRET if provider_type == "google_drive" else None,
+    ))
+    storage_id = info.storage_id
+    auth = cast(OneDriveAuthService | GoogleDriveAuthService, manager.auth(storage_id))
+
+    def respond(request: httpx.Request) -> httpx.Response:
+        if str(request.url) == ONEDRIVE_TOKEN_URL:
+            return httpx.Response(200, json=tokens())
+        if str(request.url) == GRAPH_ME_URL:
+            return httpx.Response(200, json={"id": "account-a"})
+        return google_response(request)
+
+    mock_google(monkeypatch, respond)
+    state = parse_qs(urlsplit(auth.start_authorization().authorization_url).query)["state"][0]
+    await auth.finish_authorization("fixture-code", state)
+    before = manager.record(storage_id).model_copy(deep=True)
+    saved = manager.repository.path.read_bytes()
+    calls = 0
+
+    def reject(request: httpx.Request) -> httpx.Response:
+        nonlocal calls
+        calls += 1
+        assert str(request.url) == (ONEDRIVE_TOKEN_URL if provider_type == "onedrive" else TOKEN_URL)
+        if failure == "timeout":
+            raise httpx.ReadTimeout(CLIENT_SECRET, request=request)
+        if failure == "malformed":
+            return httpx.Response(200, text=CLIENT_SECRET)
+        if failure == "missing_access":
+            return httpx.Response(200, json={"expires_in": 3600})
+        if failure == "scope":
+            return httpx.Response(200, json=tokens(scope=SCOPE + ".readonly"))
+        # No JSON body: the HTTP status alone must distinguish rejection from an outage.
+        return httpx.Response(failure, text=CLIENT_SECRET)
+
+    mock_google(monkeypatch, reject)
+    with pytest.raises(error_type) as caught:
         await auth.access_token(force_refresh=True)
+    assert calls == 1
+    assert CLIENT_SECRET not in str(caught.value)
     assert auth.status().connected is connected
     record = manager.record(storage_id)
-    assert record.credentials["client_secret"] == CLIENT_SECRET
     assert ("refresh_token" in record.credentials) is connected
-    assert record.revision == revision + (0 if connected else 1)
+    assert record.revision == before.revision + (0 if connected else 1)
+    if connected:
+        assert auth.status().account_id == "account-a"
+        assert record == before
+        assert manager.repository.path.read_bytes() == saved
+    elif provider_type == "google_drive":
+        assert record.credentials == {"client_secret": CLIENT_SECRET}
+    else:
+        assert record.credentials == {}
 
 
 @pytest.mark.asyncio

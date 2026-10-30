@@ -36,7 +36,7 @@
 | 409 | `STORAGE_BUSY` | 正在重命名的连接拒绝配置、授权和删除；恢复默认设置也拒绝活动重命名。 |
 | 422 | `REQUEST_VALIDATION_ERROR` | Pydantic 请求校验失败。 |
 | 422 | `VALIDATION_ERROR`, `RULE_CONFIGURATION_ERROR` | 路径、选择、名称或规则校验失败。 |
-| 429 | `RATE_LIMIT_ERROR` | 重试后仍受到云 Provider 限流。 |
+| 429 | `RATE_LIMIT_ERROR` | 云 Provider 限流；文件 API 有界重试耗尽，认证接口直接返回且不自动重试。 |
 | 502 | `PROVIDER_ERROR` | 本地文件系统、Graph、身份服务或连接状态持久化失败。 |
 | 500 | `INTERNAL_ERROR` | 未预期错误；`details.request_id` 可定位服务端日志。 |
 
@@ -187,6 +187,8 @@ Provider definitions 提供有序 `config_fields`、能力与侧栏 `icon`（`co
 Google 复用相同 callback 和授权 endpoints，使用用户提供的 Desktop OAuth client、PKCE S256、offline access 和固定 `https://www.googleapis.com/auth/drive.metadata` scope。Token exchange / refresh 均携带 Client ID 和 Secret；callback 校验授予的 scope，读取 Drive `about.user.permissionId` 作为不透明账号 ID，之后才发布 connected session。账号名称与邮箱可选。
 
 Access Token 仅在内存；Refresh Token、client secret、scope 和账号身份保存在 v3 文档。refresh 响应省略替换 Refresh Token 或 scope 时，保留既有 grant。正常 refresh / rotation 不改变连接 `revision`；授权被拒绝则清除账号凭据并改变 `revision`；临时 transport / 429 / 5xx 失败保留已保存 grant。status 表示本地 session 状态，不是在线 Token 有效性探测。
+
+OneDrive 与 Google 的 Token exchange / refresh、账号信息读取均只请求一次，不自动重试或等待 `Retry-After`。HTTP 429 返回 `RATE_LIMIT_ERROR`；5xx、transport failure、无效成功响应及其他非认证 HTTP 错误返回 `PROVIDER_ERROR`，保留已有凭据、账号身份和连接 `revision`。Token 接口的 400/401/403 属于认证拒绝；账号信息接口的 401/403 表示身份核验被拒绝。刷新被明确拒绝时清除失效授权；新登录失败则保留之前已提交的账号，不发布未完成的新会话。认证错误不回显第三方响应体。
 
 Google 设置 UI 接受 Client ID 和 write-only client secret；工作台共用云账号及默认目录处理，并使用服务端 breadcrumbs。用户配置见 [Google Drive setup and usage](https://github.com/runoobjerry/Rename_Studio/wiki/Configuration)。
 

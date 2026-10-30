@@ -9,7 +9,7 @@ from urllib.parse import urlencode
 
 import httpx
 
-from app.core.errors import AuthenticationError, ProviderError, StorageConnectionChangedError, ValidationError
+from app.core.errors import AuthenticationError, ProviderError, RateLimitError, StorageConnectionChangedError, ValidationError
 from app.schemas.storage import AuthorizationStart, AuthorizationStatus
 
 
@@ -241,18 +241,24 @@ class OneDriveAuthService:
                 )
         except httpx.HTTPError as exc:
             raise ProviderError("Microsoft Graph is unavailable") from exc
+        if response.status_code == 429:
+            raise RateLimitError("Microsoft Graph account service is rate limited; try again later")
+        if response.status_code in (401, 403):
+            raise AuthenticationError("Could not verify the connected Microsoft account")
+        if response.is_error:
+            raise ProviderError("Could not read the Microsoft account")
         try:
             payload = response.json()
         except ValueError as exc:
             raise ProviderError("Microsoft Graph returned invalid account data") from exc
-        if response.is_error or not isinstance(payload, dict):
-            raise AuthenticationError("Could not verify the connected Microsoft account")
+        if not isinstance(payload, dict):
+            raise ProviderError("Microsoft Graph returned invalid account data")
         if generation != self._generation:
             raise StorageConnectionChangedError("Storage changed while reading the account profile")
         # Graph 用户 ID 是账号标识，不是应用 client_id 或云盘 drive ID。
         account_id = payload.get("id")
         if not isinstance(account_id, str) or not account_id:
-            raise AuthenticationError("Microsoft Graph did not return an account ID")
+            raise ProviderError("Microsoft Graph did not return an account ID")
         self._account_id = account_id
         display_name = payload.get("displayName")
         mail = payload.get("mail")
@@ -274,17 +280,21 @@ class OneDriveAuthService:
                 response = await client.post(TOKEN_URL, data=form)
         except httpx.HTTPError as exc:
             raise ProviderError("Microsoft identity service is unavailable") from exc
+        # Classify refusals before parsing: throttling and outages may return non-JSON bodies.
+        if response.status_code == 429:
+            raise RateLimitError("Microsoft identity service is rate limited; try again later")
+        if response.status_code >= 500:
+            raise ProviderError("Microsoft identity service is unavailable")
+        if response.status_code in (400, 401, 403):
+            raise AuthenticationError("OneDrive authorization was rejected; check the App ID and reconnect")
+        if response.is_error:
+            raise ProviderError("Microsoft identity service request failed")
         try:
             payload = response.json()
         except ValueError as exc:
             raise ProviderError("Microsoft identity service returned invalid data") from exc
         if not isinstance(payload, dict):
             raise ProviderError("Microsoft identity service returned invalid data")
-        if response.is_error:
-            message = payload.get("error_description")
-            raise AuthenticationError(
-                str(message) if message else "OneDrive authorization failed"
-            )
         return payload
 
     def _store_tokens(
@@ -298,11 +308,11 @@ class OneDriveAuthService:
         refresh_token = payload.get("refresh_token", fallback_refresh_token)
         expires_in = payload.get("expires_in", 3600)
         if not isinstance(access_token, str) or not access_token:
-            raise AuthenticationError("Microsoft did not return an access token")
+            raise ProviderError("Microsoft did not return an access token")
         if not isinstance(refresh_token, str):
             refresh_token = fallback_refresh_token
         if not refresh_token:
-            raise AuthenticationError("Microsoft did not return a refresh token")
+            raise ProviderError("Microsoft did not return a refresh token")
         if not isinstance(expires_in, (int, float)):
             expires_in = 3600
         self._tokens = TokenSet(
