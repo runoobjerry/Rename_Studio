@@ -300,20 +300,22 @@ async def test_restart_refresh_retains_or_rotates_refresh_token_without_changing
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("provider_type", ["onedrive", "google_drive"])
-@pytest.mark.parametrize(("failure", "error_type", "connected"), [
-    ("scope", AuthenticationError, False),
-    (400, AuthenticationError, False), (401, AuthenticationError, False), (403, AuthenticationError, False),
-    (429, RateLimitError, True), (503, ProviderError, True), (408, ProviderError, True),
-    ("timeout", ProviderError, True), ("malformed", ProviderError, True),
-    ("missing_access", ProviderError, True),
+@pytest.mark.parametrize(("provider_type", "failure", "error_type", "connected"), [
+    (provider_type, failure, error_type, connected)
+    for provider_type in ("onedrive", "google_drive")
+    for failure, error_type, connected in [
+        ("scope", AuthenticationError, False),
+        (400, AuthenticationError, False), (401, AuthenticationError, False), (403, AuthenticationError, False),
+        (429, RateLimitError, True), (503, ProviderError, True), (408, ProviderError, True),
+        ("timeout", ProviderError, True), ("malformed", ProviderError, True),
+        ("missing_access", ProviderError, True),
+    ]
+    if failure != "scope" or provider_type == "google_drive"
 ])
 async def test_refresh_revocation_invalidates_but_service_failure_preserves_authorization(
     manager: StorageManager, monkeypatch: pytest.MonkeyPatch, provider_type: str,
     failure: int | str, error_type: type[Exception], connected: bool,
 ) -> None:
-    if provider_type == "onedrive" and failure == "scope":
-        pytest.skip("OneDrive does not validate a returned scope")
     info = manager.create(StorageCreate(
         provider_type=provider_type, name="Cloud account", config={"client_id": "fixture-client"},
         client_secret=CLIENT_SECRET if provider_type == "google_drive" else None,

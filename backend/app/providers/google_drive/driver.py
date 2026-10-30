@@ -264,16 +264,19 @@ class GoogleDriveProvider(StorageProvider):
             content = ("".join(parts) + f"--{boundary}--\r\n").encode("utf-8")
             response = await self._request("POST", BATCH_URL, content=content, headers={"Content-Type": f"multipart/mixed; boundary={boundary}"})
             responses = self._batch_responses(response, len(pending))
-            for outcome in responses:
-                self._record_throttle(outcome, attempt)
+            # Classify all failures before processing can stop on another item.
+            errors = {
+                index: self._classify_error(outcome, attempt)
+                for index, outcome in enumerate(responses) if not outcome.is_success
+            }
             retry: list[str] = []
             retry_delay = 0.0
             refresh = False
-            for file_id, outcome in zip(pending, responses, strict=True):
+            for index, (file_id, outcome) in enumerate(zip(pending, responses, strict=True)):
                 if outcome.is_success:
                     results[file_id] = self._parse_file(outcome, file_id)
                     continue
-                error = self._response_error(outcome)
+                error = errors[index]
                 if outcome.status_code == 401 and not refreshed and attempt < MAX_RETRIES:
                     refresh = True
                 elif self._retryable(outcome, error) and attempt < MAX_RETRIES:
@@ -344,12 +347,11 @@ class GoogleDriveProvider(StorageProvider):
                     continue
                 raise ProviderError("Google Drive is unavailable") from exc
             logger.info("drive_request provider=google_drive request_id=%s method=%s writing=%s status=%s duration_ms=%.2f", request_id_context.get(), method, writing, response.status_code, (perf_counter() - started) * 1000)
-            self._record_throttle(response, attempt)
             if response.is_success:
                 return response
             if writing and response.status_code >= 500:
                 raise RenameOutcomeUnknownError("Google Drive write outcome is unknown; verify metadata before continuing")
-            error = self._response_error(response)
+            error = self._classify_error(response, attempt)
             if response.status_code == 401 and not refreshed and attempt < MAX_RETRIES:
                 await self.auth.access_token(force_refresh=True)
                 refreshed = True
@@ -390,9 +392,12 @@ class GoogleDriveProvider(StorageProvider):
     def _retryable(response: httpx.Response, error: AppError) -> bool:
         return isinstance(error, RateLimitError) or response.status_code >= 500
 
-    def _record_throttle(self, response: httpx.Response, attempt: int) -> None:
-        if response.status_code in (403, 429) and isinstance(self._response_error(response), RateLimitError):
+    def _classify_error(self, response: httpx.Response, attempt: int) -> AppError:
+        """Classify once and record throttling before the caller handles the error."""
+        error = self._response_error(response)
+        if isinstance(error, RateLimitError):
             self._cooldown.defer(self._retry_delay(response, attempt))
+        return error
 
     @staticmethod
     def _retry_delay(response: httpx.Response, attempt: int) -> float:
@@ -500,11 +505,14 @@ class GoogleDriveProvider(StorageProvider):
                 results.update({request.file_id: RenameOutcomeUnknownError("Google Drive returned an incomplete write batch response") for request in pending})
                 break
 
-            for outcome in responses:
-                self._record_throttle(outcome, attempt)
+            # Classify all failures before processing can stop on another item.
+            errors = {
+                index: self._classify_error(outcome, attempt)
+                for index, outcome in enumerate(responses) if not outcome.is_success
+            }
             retry: list[RenameRequest] = []
             refresh = False
-            for request, outcome in zip(pending, responses, strict=True):
+            for index, (request, outcome) in enumerate(zip(pending, responses, strict=True)):
                 if outcome.is_success:
                     try:
                         current = self._parse_file(outcome, request.file_id)
@@ -523,7 +531,7 @@ class GoogleDriveProvider(StorageProvider):
                 if outcome.status_code >= 500:
                     results[request.file_id] = RenameOutcomeUnknownError("Google Drive write outcome is unknown")
                     continue
-                error = self._response_error(outcome)
+                error = errors[index]
                 if outcome.status_code == 401 and not refreshed and attempt < MAX_RETRIES:
                     refresh = True
                 elif not (isinstance(error, RateLimitError) and attempt < MAX_RETRIES):

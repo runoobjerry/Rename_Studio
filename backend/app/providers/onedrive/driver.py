@@ -531,7 +531,7 @@ class OneDriveProvider(StorageProvider):
                 self._cooldown.defer(self._retry_delay(value, attempt))
 
     @staticmethod
-    def _retry_delay(value: object, attempt: int) -> float:
+    def _retry_delay(value: str | None, attempt: int) -> float:
         return retry_after_delay(value, min(2**attempt, 8))
 
     @staticmethod

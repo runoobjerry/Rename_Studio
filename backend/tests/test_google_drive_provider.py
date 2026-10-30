@@ -363,7 +363,8 @@ async def test_metadata_batches_cannot_bypass_my_drive_boundary(provider_factory
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("failure", ["not_multipart", "missing", "duplicate", "unexpected", "bad_http", "bad_json", "truncated"])
-async def test_malformed_batch_never_returns_partial_metadata(provider_factory: Callable, failure: str) -> None:
+async def test_malformed_batch_never_returns_partial_metadata(provider_factory: Callable, failure: str, monkeypatch: pytest.MonkeyPatch) -> None:
+    clock = CooldownClock(monkeypatch)
     server = DriveServer()
     first, second = drive_file("first", "first"), drive_file("second", "second")
 
@@ -380,18 +381,33 @@ async def test_malformed_batch_never_returns_partial_metadata(provider_factory: 
             outcomes[1] = (0, 200, second)
         elif failure == "unexpected":
             outcomes[1] = (2, 200, second)
+        elif failure == "bad_json":
+            outcomes[1] = (1, 429, {"error": {"errors": [{"reason": "rateLimitExceeded"}]}})
         response = batch_response(outcomes)
         content = response.content
         if failure == "bad_http":
             content = content.replace(b"HTTP/1.1 200", b"INVALID 200", 1)
         elif failure == "bad_json":
             content = content.replace(json.dumps(first).encode(), b"not-json", 1)
+            content = content.replace(b"Retry-After: 0", b"Retry-After: 60")
         elif failure == "truncated":
             content = content.removesuffix(b"--test-boundary--\r\n")
         return httpx.Response(200, headers=response.headers, content=content)
 
+    provider = provider_factory(respond)
     with pytest.raises(ProviderError):
-        await provider_factory(respond).get_metadata_many(["first", "second"])
+        await provider.get_metadata_many(["first", "second"])
+    if failure == "bad_json":
+        # An earlier malformed success must not hide a later part's cooldown.
+        task = asyncio.create_task(provider.get_single_metadata("root-id"))
+        try:
+            assert await clock.next_wait() == 60
+            clock.advance(60)
+            assert (await asyncio.wait_for(task, 5)).id == "root-id"
+        finally:
+            if not task.done():
+                task.cancel()
+            await asyncio.gather(task, return_exceptions=True)
 
 
 @pytest.mark.asyncio

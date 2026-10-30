@@ -24,15 +24,14 @@ class ConnectionCooldown:
             # Another in-flight response may have extended the deadline while we slept.
 
 
-def retry_after_delay(value: object, fallback: float) -> float:
-    if isinstance(value, str):
+def retry_after_delay(value: str | None, fallback: float) -> float:
+    if value is None:
+        return fallback
+    try:
+        delay = float(value)
+    except ValueError:
         try:
-            delay = float(value)
-        except ValueError:
-            try:
-                delay = (parsedate_to_datetime(value) - datetime.now(UTC)).total_seconds()
-            except (TypeError, ValueError, OverflowError):
-                return fallback
-        if isfinite(delay):
-            return max(0.0, delay)
-    return fallback
+            delay = (parsedate_to_datetime(value) - datetime.now(UTC)).total_seconds()
+        except (TypeError, ValueError, OverflowError):
+            return fallback
+    return max(0.0, delay) if isfinite(delay) else fallback
