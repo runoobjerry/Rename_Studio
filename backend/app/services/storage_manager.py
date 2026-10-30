@@ -7,7 +7,7 @@ from pathlib import Path
 
 from pydantic import SecretStr
 
-from app.core.errors import NotFoundError, StorageBusyError, StorageConnectionChangedError, ValidationError
+from app.core.errors import NotFoundError, StorageAccountAlreadyConnectedError, StorageBusyError, StorageConnectionChangedError, ValidationError
 from app.providers.base import StorageProvider
 from app.providers.registry import ProviderRegistry
 from app.repositories.storage_repository import JsonStorageRepository
@@ -199,6 +199,16 @@ class StorageManager:
 
     def _persist_auth(self, storage_id: str, config: dict[str, object], credentials: dict[str, str]) -> None:
         before = self.record(storage_id)
+        account_id = credentials.get("account_id")
+        # Existing grants may refresh unchanged; only a new account binding needs checking.
+        if account_id and account_id != before.credentials.get("account_id"):
+            for other in self.state.connections.values():
+                if (other.storage_id != storage_id and other.provider_type == before.provider_type
+                        and other.credentials.get("account_id") == account_id):
+                    raise StorageAccountAlreadyConnectedError(
+                        f'This account is already connected to "{other.name}". Use the existing connection.',
+                        details={"storage_id": other.storage_id, "storage_name": other.name},
+                    )
         record = before.model_copy(deep=True)
         record.config = self.validate_config(record.provider_type, config)
         record.credentials = credentials

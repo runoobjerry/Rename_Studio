@@ -32,6 +32,7 @@
 | 404 | `NOT_FOUND`, `PREVIEW_NOT_FOUND` | 项目、目录或预览不存在，或预览已消费。 |
 | 409 | `RENAME_CONFLICT`, `PREVIEW_EXPIRED` | 重命名冲突、预览过期或源状态变化。 |
 | 409 | `STORAGE_CONNECTION_CHANGED` | 连接配置或账号变化使旧预览失效，或云默认目录记录属于其他账号。 |
+| 409 | `STORAGE_ACCOUNT_ALREADY_CONNECTED` | 同一 Provider 的账号已绑定其他连接。 |
 | 409 | `STORAGE_BUSY` | 正在重命名的连接拒绝配置、授权和删除；恢复默认设置也拒绝活动重命名。 |
 | 422 | `REQUEST_VALIDATION_ERROR` | Pydantic 请求校验失败。 |
 | 422 | `VALIDATION_ERROR`, `RULE_CONFIGURATION_ERROR` | 路径、选择、名称或规则校验失败。 |
@@ -169,17 +170,19 @@ Provider definitions 提供有序 `config_fields`、能力与侧栏 `icon`（`co
 
 | Method / route | 请求 | 响应 |
 | --- | --- | --- |
-| `GET /storages/{storage_id}/auth/status` | 无 | `{configured,connected,account_id,account_display_name,account_email}`；profile 字段可空 |
+| `GET /storages/{storage_id}/auth/status` | 无 | `{configured,connected,account_id,account_display_name,account_email}`；已授权时 account_id 必填；名称、邮箱可空 |
 | `POST /storages/{storage_id}/auth/start` | 无 | `{authorization_url,redirect_uri}` |
 | `DELETE /storages/{storage_id}/auth/session` | 无 | 204；保留客户端配置 |
 
 `GET /auth/storage/callback` 是接收 `code` / `state` / `error` query parameters 的 HTML callback。Microsoft 应用需配置 `STORAGE_REDIRECT_URI`；OAuth state 单次使用、有有效期，并绑定连接和 `revision`。callback 发送消息：
 
 ```ts
-{ type: "storage-auth"; storage_id: string | null; status: "connected" | "failed"; message: string }
+{ type: "storage-auth"; storage_id: string | null; status: "connected" | "failed"; message: string; error_code: string | null; details: Record<string, unknown> }
 ```
 
 前端校验 `redirect_uri` 对应的 callback origin、popup window source、message shape 和 `storage_id`。
+
+同一 `provider_type + account_id` 只能绑定一个连接。重复授权时 callback 返回 HTTP 400、`status: "failed"` 和 `error_code: "STORAGE_ACCOUNT_ALREADY_CONNECTED"`，`details` 包含已有连接的 `storage_id`、`storage_name`。登录成功后才替换原授权；失败保留连接配置及原授权。
 
 Google 复用相同 callback 和授权 endpoints，使用用户提供的 Desktop OAuth client、PKCE S256、offline access 和固定 `https://www.googleapis.com/auth/drive.metadata` scope。Token exchange / refresh 均携带 Client ID 和 Secret；callback 校验授予的 scope，读取 Drive `about.user.permissionId` 作为不透明账号 ID，之后才发布 connected session。账号名称与邮箱可选。
 

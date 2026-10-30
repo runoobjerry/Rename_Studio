@@ -3,6 +3,7 @@ from urllib.parse import parse_qs, urlparse
 import httpx
 import pytest
 
+from app.core.errors import AuthenticationError
 from app.providers.onedrive.auth import OneDriveAuthService
 
 
@@ -22,21 +23,24 @@ def test_authorization_url_uses_consumers_tenant_state_and_pkce() -> None:
 
 
 @pytest.mark.parametrize("action", ["disconnect", "start_authorization"])
-def test_account_change_clears_credentials_and_retains_app_id(action: str) -> None:
+def test_account_actions_only_disconnect_clears_credentials(action: str) -> None:
     committed = {}
     service = auth({"client_id": "client-id", "refresh_token": "fixture-token", "account_id": "account-a"}, committed.update)
     if action == "disconnect":
         service.disconnect()
+        assert not service.status().connected
+        assert service.status().account_id is None
+        assert committed == {"client_id": "client-id"}
     else:
         service.start_authorization()
-    assert not service.status().connected
-    assert service.status().account_id is None
-    assert committed == {"client_id": "client-id"}
+        assert service.status().connected
+        assert service.status().account_id == "account-a"
+        assert committed == {}
 
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("account_id", ["graph-user-id", None, "", 123])
-async def test_account_identity_is_persisted_and_restored(monkeypatch: pytest.MonkeyPatch, account_id: object) -> None:
+async def test_only_valid_account_identity_is_persisted_and_restored(monkeypatch: pytest.MonkeyPatch, account_id: object) -> None:
     committed = {}
     service = auth({"client_id": "client-id"}, lambda payload: (committed.clear(), committed.update(payload)))
     state = parse_qs(urlparse(service.start_authorization().authorization_url).query)["state"][0]
@@ -49,12 +53,18 @@ async def test_account_identity_is_persisted_and_restored(monkeypatch: pytest.Mo
     original_client = httpx.AsyncClient
     transport = httpx.MockTransport(respond)
     monkeypatch.setattr(httpx, "AsyncClient", lambda **kwargs: original_client(transport=transport, **kwargs))
+    if account_id != "graph-user-id":
+        with pytest.raises(AuthenticationError, match="account ID"):
+            await service.finish_authorization("fixture-code", state)
+        assert not service.status().connected
+        assert service.status().account_id is None
+        assert committed == {}
+        return
     await service.finish_authorization("fixture-code", state)
-    expected = "graph-user-id" if account_id == "graph-user-id" else None
-    assert service.status().account_id == expected
-    assert committed.get("account_id") == expected
+    assert service.status().account_id == "graph-user-id"
+    assert committed["account_id"] == "graph-user-id"
     assert "access_token" not in committed
     restarted = auth(committed.copy(), lambda payload: None)
     assert restarted.status().connected
-    assert restarted.status().account_id == expected
+    assert restarted.status().account_id == "graph-user-id"
     assert restarted.status().account_email == "test@example.com"

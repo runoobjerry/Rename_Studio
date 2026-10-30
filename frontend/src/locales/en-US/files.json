@@ -90,7 +90,6 @@
     "picking": "Waiting for selection…",
     "browse": "Browse…",
     "storageMissing": "This storage connection has been deleted. Select another connection.",
-    "accountIdMissing": "The current account has no account ID. You can still browse files; sign in again before setting a default location.",
     "pickerFailed": "Could not open the folder picker: {{message}}",
     "connectAccount": "Go to Settings and connect your {{service}} account first."
   },

@@ -35,6 +35,7 @@
     "browseDraft": "Browse local folder",
     "browse": "Browse local directory",
     "authFailed": "Authorization failed. Try again.",
+    "accountAlreadyConnected": "This account is already connected to “{{name}}”. Use the existing connection.",
     "connectedNotice": "Account connected.",
     "authClosed": "The authorization window was closed. Sign in again.",
     "nameTooLong": "Connection names can contain at most 20 characters.",

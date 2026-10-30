@@ -65,6 +65,11 @@ class StorageBusyError(AppError):
     status_code = 409
 
 
+class StorageAccountAlreadyConnectedError(AppError):
+    code = "STORAGE_ACCOUNT_ALREADY_CONNECTED"
+    status_code = 409
+
+
 class StorageConnectionChangedError(AppError):
     code = "STORAGE_CONNECTION_CHANGED"
     status_code = 409

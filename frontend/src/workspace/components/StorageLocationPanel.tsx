@@ -17,7 +17,6 @@ interface StorageLocationPanelProps {
   browseDisabled: boolean;
   isPickingFolder: boolean;
   storageMissing: boolean;
-  accountIdMissing: boolean;
   pickerError: Error | null;
   cloudDisconnected: boolean;
   onOpenNavigation: () => void;
@@ -29,7 +28,7 @@ interface StorageLocationPanelProps {
 export function StorageLocationPanel({
   compactNavigation, listing, rootLabel, serviceName, requiresAuth, supportsLocalPicker, navigationDisabled,
   defaultPathDisabled, browseDisabled, isPickingFolder, storageMissing,
-  accountIdMissing, pickerError, cloudDisconnected, onOpenNavigation,
+  pickerError, cloudDisconnected, onOpenNavigation,
   onNavigate, onSetDefaultPath, onBrowse,
 }: StorageLocationPanelProps) {
   const { t } = useTranslation();
@@ -74,9 +73,6 @@ export function StorageLocationPanel({
       </div>
       <div className="location-feedback">
         {storageMissing && <Alert severity="warning">{t("files:location.storageMissing")}</Alert>}
-        {accountIdMissing && (
-          <Alert severity="info">{t("files:location.accountIdMissing")}</Alert>
-        )}
         {supportsLocalPicker && pickerError && (
           <Alert severity="error">{t("files:location.pickerFailed", { message: errorMessage(pickerError, t) })}</Alert>
         )}

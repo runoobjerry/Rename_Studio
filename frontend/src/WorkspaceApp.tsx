@@ -242,7 +242,6 @@ function Workspace({ preference, setPreference, settingsError }: {
                   browseDisabled={!activeStorage || pickLocalRoot.isPending || isExecuting || activeStorage.busy}
                   isPickingFolder={pickLocalRoot.isPending}
                   storageMissing={!activeStorage && !providers.isPending}
-                  accountIdMissing={cloudConnected && !cloudAccountId}
                   pickerError={pickLocalRoot.error}
                   cloudDisconnected={metadataReady && requiresAuth && cloudStatus.isSuccess && !cloudStatus.data.connected}
                   onOpenNavigation={() => setMobileNavOpen(true)}

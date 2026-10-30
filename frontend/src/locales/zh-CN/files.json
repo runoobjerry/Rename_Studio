@@ -90,7 +90,6 @@
     "picking": "等待选择…",
     "browse": "浏览…",
     "storageMissing": "当前存储已删除，请选择其他连接。",
-    "accountIdMissing": "当前账号缺少账号 ID，仍可浏览文件；请重新登录后设置默认路径。",
     "pickerFailed": "无法打开文件夹选择器：{{message}}",
     "connectAccount": "请先前往设置页面连接 {{service}} 账号。"
   },

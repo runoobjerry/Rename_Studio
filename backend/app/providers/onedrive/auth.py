@@ -1,7 +1,6 @@
 import asyncio
 import base64
 import hashlib
-import logging
 import secrets
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -21,7 +20,6 @@ GRAPH_ME_URL = (
     "?$select=id,displayName,mail,userPrincipalName"
 )
 SCOPES = "offline_access Files.ReadWrite User.Read"
-logger = logging.getLogger("rename_studio.onedrive_auth")
 
 
 @dataclass(slots=True)
@@ -92,8 +90,11 @@ class OneDriveAuthService:
 
     def start_authorization(self, redirect_uri: str | None = None) -> AuthorizationStart:
         client_id = self._require_client_id()
-        # 每次发起登录都先清除旧账号令牌，确保切换账号不会回退到旧会话。
-        self.disconnect()
+        # Keep the committed account until the replacement authorization is accepted.
+        if self._before_change is not None:
+            self._before_change()
+        self._generation += 1
+        self._pending.clear()
         # 本地单用户界面只保留最新流程，限制无效 state 的内存增长。
         state = secrets.token_urlsafe(32)
         verifier = secrets.token_urlsafe(64)
@@ -151,11 +152,7 @@ class OneDriveAuthService:
             if self._before_change is not None:
                 self._before_change()
             self._store_tokens(payload, persist=False)
-            try:
-                await self._load_account_profile()
-            except (AuthenticationError, ProviderError):
-                # 账号资料只用于显示，读取失败不能让有效的 OneDrive 授权失效。
-                logger.warning("could not load connected OneDrive account profile")
+            await self._load_account_profile()
             if pending.generation != self._generation:
                 raise StorageConnectionChangedError("Storage changed during authorization")
             if self._before_change is not None:
@@ -254,9 +251,9 @@ class OneDriveAuthService:
             raise StorageConnectionChangedError("Storage changed while reading the account profile")
         # Graph 用户 ID 是账号标识，不是应用 client_id 或云盘 drive ID。
         account_id = payload.get("id")
-        self._account_id = (
-            account_id if isinstance(account_id, str) and account_id else None
-        )
+        if not isinstance(account_id, str) or not account_id:
+            raise AuthenticationError("Microsoft Graph did not return an account ID")
+        self._account_id = account_id
         display_name = payload.get("displayName")
         mail = payload.get("mail")
         principal_name = payload.get("userPrincipalName")
@@ -343,11 +340,7 @@ class OneDriveAuthService:
                 refresh_token=refresh_token,
                 expires_at=datetime.now(UTC),
             )
-            # 账号资料读取可能失败；缺少 ID 时仍保留授权。
-            account_id = payload.get("account_id")
-            self._account_id = (
-                account_id if isinstance(account_id, str) and account_id else None
-            )
+            self._account_id = payload["account_id"]
             display_name = payload.get("account_display_name")
             email = payload.get("account_email")
             self._account_display_name = (

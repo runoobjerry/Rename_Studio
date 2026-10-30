@@ -112,7 +112,9 @@ class GoogleDriveAuthService:
 
     def start_authorization(self, redirect_uri: str | None = None) -> AuthorizationStart:
         client_id, _ = self._require_client_credentials()
-        self.disconnect()
+        self._before_change()
+        # Keep the committed account until the replacement authorization is accepted.
+        self._generation += 1
         state = secrets.token_urlsafe(32)
         verifier = secrets.token_urlsafe(64)
         challenge = base64.urlsafe_b64encode(hashlib.sha256(verifier.encode("ascii")).digest()).rstrip(b"=").decode("ascii")
@@ -125,7 +127,7 @@ class GoogleDriveAuthService:
             "client_id": client_id, "response_type": "code", "redirect_uri": pending.redirect_uri,
             "scope": SCOPE, "state": state, "code_challenge": challenge,
             "code_challenge_method": "S256", "access_type": "offline",
-            # A new login discards the old account grant, so request a fresh offline grant.
+            # Request a fresh offline grant for the selected account.
             "prompt": "consent select_account",
         })
         return AuthorizationStart(authorization_url=f"{AUTHORIZE_URL}?{query}")

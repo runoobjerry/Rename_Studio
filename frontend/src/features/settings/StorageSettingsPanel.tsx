@@ -168,7 +168,6 @@ function ConnectionRow({ storage, executing, definition }: {
     onError: (error) => {
       popup.current?.close();
       setAuthError(error);
-      notify(error, "error");
     },
   });
   useEffect(() => {
@@ -181,11 +180,17 @@ function ConnectionRow({ storage, executing, definition }: {
         !("storage_id" in data) || data.storage_id !== storage.storage_id ||
         !("status" in data) || (data.status !== "connected" && data.status !== "failed")
       ) return;
-      const message = "message" in data && typeof data.message === "string" ? data.message : { key: "settings:connection.authFailed" };
+      let message: NotificationMessage = "message" in data && typeof data.message === "string"
+        ? data.message : { key: "settings:connection.authFailed" };
+      if (data.status === "failed" && "error_code" in data && data.error_code === "STORAGE_ACCOUNT_ALREADY_CONNECTED" &&
+        "details" in data && typeof data.details === "object" && data.details !== null &&
+        "storage_name" in data.details && typeof data.details.storage_name === "string") {
+        message = { key: "settings:connection.accountAlreadyConnected", values: { name: data.details.storage_name } };
+      }
       setAwaitingAuth(false);
       popup.current = null;
       setAuthError(data.status === "failed" ? message : undefined);
-      notify(data.status === "connected" ? { key: "settings:connection.connectedNotice" } : message, data.status === "connected" ? "success" : "error");
+      if (data.status === "connected") notify({ key: "settings:connection.connectedNotice" });
       refresh();
     };
     window.addEventListener("message", receive);
@@ -209,7 +214,6 @@ function ConnectionRow({ storage, executing, definition }: {
   const requestError = operation.error ?? pick.error ?? connect.error ?? status.error;
   const nameTooLong = Array.from(name.trim()).length > 20;
   const saveDisabled = busy || !name.trim() || nameTooLong || missingRequiredConfig(definition.config_fields, draft);
-  const statusErrorMessage = authError !== undefined ? translateMessage(authError, t) : status.error ? errorMessage(status.error, t) : "";
   const requestErrorMessage = authError !== undefined ? translateMessage(authError, t) : requestError ? errorMessage(requestError, t) : "";
   const save = () => {
     if (nameTooLong) return;
@@ -297,12 +301,6 @@ function ConnectionRow({ storage, executing, definition }: {
         {renaming && (
           <Typography variant="caption" component="div" color="text.secondary" sx={{ mt: 0.5 }}>
             {t("settings:connection.executing")}
-          </Typography>
-        )}
-        {(status.error || authError) && (
-          <Typography variant="caption" component="div" color="error"
-            sx={{ mt: 0.5, maxWidth: 260, overflowWrap: "anywhere" }}>
-            {statusErrorMessage}
           </Typography>
         )}
       </TableCell>

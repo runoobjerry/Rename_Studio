@@ -129,6 +129,8 @@ async def disconnect(storage_id: str, manager: Manager) -> Response:
 async def callback(manager: Manager, code: str | None = Query(default=None), state: str | None = Query(default=None),
                    error: str | None = Query(default=None)) -> HTMLResponse:
     success = False
+    error_code: str | None = None
+    details: dict[str, object] = {}
     message = "Authorization failed. You can close this window."
     storage_id: str | None = None
     try:
@@ -144,7 +146,9 @@ async def callback(manager: Manager, code: str | None = Query(default=None), sta
         message = "Storage connected. You can close this window."
     except AppError as exc:
         message = exc.message
-    payload = json.dumps({"type": "storage-auth", "storage_id": storage_id, "status": "connected" if success else "failed", "message": message}).replace("<", "\\u003c")
+        error_code = exc.code
+        details = exc.details
+    payload = json.dumps({"type": "storage-auth", "storage_id": storage_id, "status": "connected" if success else "failed", "message": message, "error_code": error_code, "details": details}).replace("<", "\\u003c")
     origin = json.dumps(get_settings().frontend_origin)
     return HTMLResponse(f'<!doctype html><html><head><meta charset="utf-8"><title>Storage authorization</title></head><body><p>{escape(message)}</p><script>if(window.opener)window.opener.postMessage({payload},{origin});setTimeout(()=>window.close(),500);</script></body></html>', status_code=200 if success else 400)
 

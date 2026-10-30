@@ -291,7 +291,7 @@ def test_app_settings_noop_and_failed_save_do_not_change_state(tmp_path: Path, m
 def test_app_settings_api_partial_updates_preserve_other_fields_and_credentials(tmp_path: Path) -> None:
     manager = make_manager(tmp_path)
     cloud = manager.create(StorageCreate(provider_type="onedrive", name="Account", config={"client_id": "app"}))
-    manager._persist_auth(cloud.storage_id, {"client_id": "app"}, {"refresh_token": "fixture-secret"})
+    manager._persist_auth(cloud.storage_id, {"client_id": "app"}, {"account_id": "account-a", "refresh_token": "fixture-secret"})
     app = create_app()
     app.dependency_overrides[get_storage_manager] = lambda: manager
     with TestClient(app) as client:
@@ -328,7 +328,7 @@ def test_app_settings_api_partial_updates_preserve_other_fields_and_credentials(
 def test_factory_reset_api_rejects_busy_and_never_returns_credentials(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     manager = make_manager(tmp_path)
     cloud = manager.create(StorageCreate(provider_type="onedrive", name="Cloud", config={"client_id": "app"}))
-    manager._persist_auth(cloud.storage_id, {"client_id": "app"}, {"refresh_token": "fixture-secret"})
+    manager._persist_auth(cloud.storage_id, {"client_id": "app"}, {"account_id": "account-a", "refresh_token": "fixture-secret"})
     previews = PreviewStore()
     monkeypatch.setattr(app_settings_router, "get_settings", lambda: app_config.Settings(
         _env_file=None, local_storage_root=tmp_path / "files",
@@ -395,7 +395,7 @@ async def test_factory_reset_clears_connections_preferences_and_old_preview(tmp_
 async def test_factory_reset_busy_and_failed_save_leave_state_untouched(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     manager = make_manager(tmp_path)
     cloud = manager.create(StorageCreate(provider_type="onedrive", name="Cloud", config={"client_id": "app"}))
-    manager._persist_auth(cloud.storage_id, {"client_id": "app"}, {"refresh_token": "fixture-secret"})
+    manager._persist_auth(cloud.storage_id, {"client_id": "app"}, {"account_id": "account-a", "refresh_token": "fixture-secret"})
     before = manager.state.model_copy(deep=True)
     disk = manager.repository.path.read_bytes()
     previews = PreviewStore()
@@ -450,8 +450,10 @@ async def test_unchanged_update_does_not_write(
 ) -> None:
     manager = make_manager(tmp_path)
     info = manager.create(StorageCreate(provider_type="onedrive", name="Account", config={"client_id": "app"}))
+    manager._persist_auth(info.storage_id, {"client_id": "app"}, {
+        "account_id": "account-a", "refresh_token": "fixture-refresh",
+    })
     auth = cast(OneDriveAuthService, manager.auth(info.storage_id))
-    auth._store_tokens({"access_token": "fixture-access", "refresh_token": "fixture-refresh"})
     before = manager.info(info.storage_id)
     state = manager.state.model_copy(deep=True)
 
@@ -469,8 +471,10 @@ async def test_unchanged_update_does_not_write(
 async def test_name_only_update_persists_without_invalidating_authorization(tmp_path: Path) -> None:
     manager = make_manager(tmp_path)
     info = manager.create(StorageCreate(provider_type="onedrive", name="Account", config={"client_id": "app"}))
+    manager._persist_auth(info.storage_id, {"client_id": "app"}, {
+        "account_id": "account-a", "refresh_token": "fixture-refresh",
+    })
     auth = cast(OneDriveAuthService, manager.auth(info.storage_id))
-    auth._store_tokens({"access_token": "fixture-access", "refresh_token": "fixture-refresh"})
     before = manager.record(info.storage_id).model_copy(deep=True)
 
     result = await manager.update(info.storage_id, StorageUpdate(name="Renamed"))
@@ -501,10 +505,14 @@ async def test_account_credentials_and_old_auth_objects_are_isolated(tmp_path: P
     manager = make_manager(tmp_path)
     first = manager.create(StorageCreate(provider_type="onedrive", name="First", config={"client_id": "first"}))
     second = manager.create(StorageCreate(provider_type="onedrive", name="Second", config={"client_id": "second"}))
+    manager._persist_auth(first.storage_id, {"client_id": "first"}, {
+        "account_id": "account-a", "refresh_token": "fixture-first",
+    })
+    manager._persist_auth(second.storage_id, {"client_id": "second"}, {
+        "account_id": "account-b", "refresh_token": "fixture-second",
+    })
     first_auth = cast(OneDriveAuthService, manager.auth(first.storage_id))
     second_auth = cast(OneDriveAuthService, manager.auth(second.storage_id))
-    first_auth._store_tokens({"access_token": "fixture-access", "refresh_token": "fixture-first"})
-    second_auth._store_tokens({"access_token": "fixture-access", "refresh_token": "fixture-second"})
     revision = manager.record(first.storage_id).revision
     first_auth._store_tokens({"access_token": "fixture-new", "refresh_token": "fixture-rotated"})
     assert manager.record(first.storage_id).revision == revision
@@ -595,8 +603,10 @@ async def test_old_oauth_response_cannot_overwrite_new_configuration(tmp_path: P
 async def test_failed_auth_save_restores_the_previous_session(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     manager = make_manager(tmp_path)
     info = manager.create(StorageCreate(provider_type="onedrive", name="Account", config={"client_id": "app"}))
+    manager._persist_auth(info.storage_id, {"client_id": "app"}, {
+        "account_id": "account-a", "refresh_token": "committed-token",
+    })
     auth = cast(OneDriveAuthService, manager.auth(info.storage_id))
-    auth._store_tokens({"access_token": "fixture-access", "refresh_token": "committed-token"})
     def fail(state):
         raise ProviderError("Disk unavailable")
     monkeypatch.setattr(manager.repository, "save", fail)

@@ -35,6 +35,7 @@
     "browseDraft": "浏览本地目录",
     "browse": "浏览本地目录",
     "authFailed": "授权失败，请重试。",
+    "accountAlreadyConnected": "该账号已连接到「{{name}}」，请使用已有连接",
     "connectedNotice": "账号已连接。",
     "authClosed": "授权窗口已关闭，请重新登录。",
     "nameTooLong": "连接名称最多为 20 个字符。",
