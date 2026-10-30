@@ -1,3 +1,4 @@
+import asyncio
 import json
 import re
 from collections import Counter
@@ -25,7 +26,7 @@ from app.services.single_rename_service import SingleRenameService
 from app.services.preview_service import PreviewService
 from app.services.preview_store import PreviewStore
 from app.services.rename_engine import RenameEngine
-from provider_fixtures import registry_for
+from provider_fixtures import CooldownClock, registry_for
 
 
 class FakeAuth:
@@ -395,9 +396,10 @@ async def test_malformed_batch_never_returns_partial_metadata(provider_factory: 
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("status", [401, 403, 429, 503])
-async def test_only_failed_metadata_parts_are_retried(provider_factory: Callable, status: int) -> None:
+async def test_only_failed_metadata_parts_are_retried(provider_factory: Callable, status: int, monkeypatch: pytest.MonkeyPatch) -> None:
+    clock = CooldownClock(monkeypatch)
     first, second = drive_file("first", "first"), drive_file("second", "second")
-    server = DriveServer([first, second])
+    server = DriveServer([first, second, drive_file("peer", "peer")])
     auth = FakeAuth()
     batches: list[list[str]] = []
 
@@ -407,10 +409,34 @@ async def test_only_failed_metadata_parts_are_retried(provider_factory: Callable
         ids = batch_requests(request)
         batches.append(ids)
         if len(batches) == 1:
-            return batch_response([(0, 200, first), (1, status, {"error": {"errors": [{"reason": "userRateLimitExceeded"}]}})])
+            response = batch_response([(0, 200, first), (1, status, {"error": {"errors": [{"reason": "userRateLimitExceeded"}]}})])
+            if status in (403, 429):
+                return httpx.Response(200, headers=response.headers, content=response.content.replace(b"Retry-After: 0", b"Retry-After: 60"))
+            return response
         return batch_response([(0, 200, second)])
 
-    items = await provider_factory(respond, auth).get_metadata_many(["first", "second"])
+    provider = provider_factory(respond, auth)
+    if status in (403, 429):
+        task = asyncio.create_task(provider.get_metadata_many(["first", "second"]))
+        peer = None
+        try:
+            assert await clock.next_wait() == 60
+            peer = asyncio.create_task(provider.get_single_metadata("peer"))
+            assert await clock.next_wait() == 60
+            assert not any(request.url.path.endswith("/peer") for request in server.requests)
+            assert (await provider_factory(server).get_single_metadata("peer")).id == "peer"
+            assert batches == [["first", "second"]]
+            clock.advance(60)
+            items = await asyncio.wait_for(task, 5)
+            assert (await asyncio.wait_for(peer, 5)).id == "peer"
+        finally:
+            tasks = [entry for entry in (task, peer) if entry is not None]
+            for entry in tasks:
+                if not entry.done():
+                    entry.cancel()
+            await asyncio.gather(*tasks, return_exceptions=True)
+    else:
+        items = await provider.get_metadata_many(["first", "second"])
     assert [item.id for item in items] == ["first", "second"]
     assert batches == [["first", "second"], ["second"]]
     assert auth.refreshes == (1 if status == 401 else 0)
@@ -418,20 +444,37 @@ async def test_only_failed_metadata_parts_are_retried(provider_factory: Callable
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(("status", "reason", "error_type"), [(401, "authError", AuthenticationError), (403, "insufficientFilePermissions", PermissionDeniedError), (403, "rateLimitExceeded", RateLimitError), (404, "notFound", NotFoundError), (429, "rateLimitExceeded", RateLimitError), (503, "backendError", ProviderError)])
-async def test_read_errors_are_classified_and_retries_bounded(provider_factory: Callable, status: int, reason: str, error_type: type[Exception]) -> None:
+async def test_read_errors_are_classified_and_retries_bounded(provider_factory: Callable, status: int, reason: str, error_type: type[Exception], monkeypatch: pytest.MonkeyPatch) -> None:
+    clock = CooldownClock(monkeypatch)
     calls = 0
     auth = FakeAuth()
 
     def respond(request: httpx.Request) -> httpx.Response:
         nonlocal calls
         calls += 1
-        return httpx.Response(status, headers={"Retry-After": "0"}, json={"error": {"message": "fixture-secret-must-not-echo", "errors": [{"reason": reason}]}})
+        if calls > 4:
+            return httpx.Response(200, json=drive_file("after", "after"))
+        delay = "60" if error_type is RateLimitError and calls == 4 else "0"
+        return httpx.Response(status, headers={"Retry-After": delay}, json={"error": {"message": "fixture-secret-must-not-echo", "errors": [{"reason": reason}]}})
 
+    provider = provider_factory(respond, auth)
     with pytest.raises(error_type) as caught:
-        await provider_factory(respond, auth).list_directory(RootLocation())
+        await provider.list_directory(RootLocation())
     assert "fixture-secret-must-not-echo" not in str(caught.value)
     assert calls == (2 if status == 401 else 4 if status in (429, 503) or reason == "rateLimitExceeded" else 1)
     assert auth.refreshes == (1 if status == 401 else 0)
+    if error_type is RateLimitError:
+        task = asyncio.create_task(provider.get_single_metadata("after"))
+        try:
+            assert await clock.next_wait() == 60
+            assert calls == 4
+            clock.advance(60)
+            assert (await asyncio.wait_for(task, 5)).id == "after"
+            assert calls == 5
+        finally:
+            if not task.done():
+                task.cancel()
+            await asyncio.gather(task, return_exceptions=True)
 
 
 @pytest.mark.asyncio
@@ -502,11 +545,29 @@ async def test_single_patch_handles_response_without_replaying_writes(provider_f
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("status", [401, 429])
-async def test_single_patch_retries_explicit_auth_and_throttle_refusals(provider_factory: Callable, status: int) -> None:
+async def test_single_patch_retries_explicit_auth_and_throttle_refusals(provider_factory: Callable, status: int, monkeypatch: pytest.MonkeyPatch) -> None:
+    clock = CooldownClock(monkeypatch)
     server = WritableDriveServer([drive_file("a", "A")])
     server.reject_once["a"] = status
     auth = FakeAuth()
-    result = await provider_factory(server, auth).rename_single("a", "AA")
+
+    def respond(request: httpx.Request) -> httpx.Response:
+        response = server(request)
+        if response.status_code == 429:
+            return httpx.Response(429, headers={"Retry-After": "60"}, content=response.content)
+        return response
+
+    task = asyncio.create_task(provider_factory(respond, auth).rename_single("a", "AA"))
+    try:
+        if status == 429:
+            assert await clock.next_wait() == 60
+            assert server.writes == [[("a", "AA")]]
+            clock.advance(60)
+        result = await asyncio.wait_for(task, 5)
+    finally:
+        if not task.done():
+            task.cancel()
+        await asyncio.gather(task, return_exceptions=True)
     assert result.name == "AA"
     assert server.writes == [[("a", "AA")], [("a", "AA")]]
     assert auth.refreshes == (1 if status == 401 else 0)
@@ -514,11 +575,37 @@ async def test_single_patch_retries_explicit_auth_and_throttle_refusals(provider
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("status", [401, 403, 429])
-async def test_write_batch_retries_only_explicitly_refused_parts(provider_factory: Callable, status: int) -> None:
+async def test_write_batch_retries_only_explicitly_refused_parts(provider_factory: Callable, status: int, monkeypatch: pytest.MonkeyPatch) -> None:
+    clock = CooldownClock(monkeypatch)
     server = WritableDriveServer([drive_file("a", "A"), drive_file("b", "B")])
     server.reject_once["b"] = status
     auth = FakeAuth()
-    result = await provider_factory(server, auth).rename_many([RenameRequest("a", "AA"), RenameRequest("b", "BB")])
+
+    def respond(request: httpx.Request) -> httpx.Response:
+        response = server(request)
+        if status in (403, 429) and request.method == "POST" and b"\r\nPATCH " in request.content:
+            return httpx.Response(200, headers=response.headers, content=response.content.replace(b"Retry-After: 0", b"Retry-After: 60"))
+        return response
+
+    provider = provider_factory(respond, auth)
+    task = asyncio.create_task(provider.rename_many([RenameRequest("a", "AA"), RenameRequest("b", "BB")]))
+    peer = None
+    try:
+        if status in (403, 429):
+            assert await clock.next_wait() == 60
+            peer = asyncio.create_task(provider.get_single_metadata("a"))
+            assert await clock.next_wait() == 60
+            assert server.writes == [[("a", "AA"), ("b", "BB")]]
+            clock.advance(60)
+        result = await asyncio.wait_for(task, 5)
+        if peer is not None:
+            assert (await asyncio.wait_for(peer, 5)).name == "AA"
+    finally:
+        tasks = [entry for entry in (task, peer) if entry is not None]
+        for entry in tasks:
+            if not entry.done():
+                entry.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
     assert result["a"].name == "AA" and result["b"].name == "BB"
     assert server.writes == [[("a", "AA"), ("b", "BB")], [("b", "BB")]]
     assert auth.refreshes == (1 if status == 401 else 0)
@@ -526,18 +613,35 @@ async def test_write_batch_retries_only_explicitly_refused_parts(provider_factor
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(("status", "error_type", "attempts"), [(401, AuthenticationError, 2), (429, RateLimitError, 4)])
-async def test_write_part_retry_is_bounded(provider_factory: Callable, status: int, error_type: type[Exception], attempts: int) -> None:
+async def test_write_part_retry_is_bounded(provider_factory: Callable, status: int, error_type: type[Exception], attempts: int, monkeypatch: pytest.MonkeyPatch) -> None:
+    clock = CooldownClock(monkeypatch)
     server = WritableDriveServer([drive_file("a", "A")])
 
     def respond(request: httpx.Request) -> httpx.Response:
         if request.method == "POST" and b"\r\nPATCH " in request.content:
             server.reject_once["a"] = status
+            response = server(request)
+            if status == 429 and len(server.writes) == attempts:
+                return httpx.Response(200, headers=response.headers, content=response.content.replace(b"Retry-After: 0", b"Retry-After: 60"))
+            return response
         return server(request)
 
-    result = await provider_factory(respond).rename_many([RenameRequest("a", "AA")])
+    provider = provider_factory(respond)
+    result = await provider.rename_many([RenameRequest("a", "AA")])
     assert isinstance(result["a"], error_type)
     assert len(server.writes) == attempts
     assert server.files["a"]["name"] == "A"
+    if status == 429:
+        task = asyncio.create_task(provider.get_single_metadata("a"))
+        try:
+            assert await clock.next_wait() == 60
+            assert len(server.writes) == attempts
+            clock.advance(60)
+            assert (await asyncio.wait_for(task, 5)).name == "A"
+        finally:
+            if not task.done():
+                task.cancel()
+            await asyncio.gather(task, return_exceptions=True)
 
 
 @pytest.mark.asyncio

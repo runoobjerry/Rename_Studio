@@ -1,16 +1,20 @@
 from typing import Any
 import asyncio
+import json
+from datetime import UTC, datetime, timedelta
+from email.utils import format_datetime
 
 import pytest
 import httpx
 
-from app.core.errors import PermissionDeniedError, ProviderError, RenameOutcomeUnknownError, ValidationError
+from app.core.errors import PermissionDeniedError, ProviderError, RateLimitError, RenameOutcomeUnknownError, ValidationError
 from app.providers.base import RenameRequest
 from app.providers.onedrive.driver import GRAPH_ROOT, OneDriveProvider
 from app.schemas.files import FileItem
 from app.schemas.storage import IdLocation, PathLocation, RootLocation
 from app.providers.onedrive.auth import OneDriveAuthService
 from app.services.execute_service import ExecuteService
+from provider_fixtures import CooldownClock
 
 
 def drive_item(item_id: str, name: str, *, folder: bool = False) -> dict[str, Any]:
@@ -44,7 +48,16 @@ class StubOneDriveProvider(OneDriveProvider):
 
 
 @pytest.mark.asyncio
-async def test_single_patch_maps_graph_permission_denied() -> None:
+@pytest.mark.parametrize("final_status", [403, 429])
+@pytest.mark.parametrize(("retry_after", "delay"), [
+    ("60", 60), ("date", 60), (None, 1), ("invalid", 1), ("nan", 1), ("0", 0),
+])
+async def test_single_patch_maps_graph_permission_denied(
+    monkeypatch: pytest.MonkeyPatch, retry_after: str | None, delay: float, final_status: int,
+) -> None:
+    clock = CooldownClock(monkeypatch)
+    if retry_after == "date":
+        retry_after = format_datetime(datetime.fromtimestamp(1793318400, UTC) + timedelta(seconds=60), usegmt=True)
     class AuthorizedAuth(OneDriveAuthService):
         async def access_token(self, *, force_refresh: bool = False) -> str:
             return "fixture-token"
@@ -53,15 +66,38 @@ async def test_single_patch_maps_graph_permission_denied() -> None:
 
     def respond(request: httpx.Request) -> httpx.Response:
         requests.append(request)
+        if len(requests) == 1:
+            return httpx.Response(429, headers={"Retry-After": retry_after} if retry_after is not None else {})
+        if final_status == 429 and len(requests) <= 4:
+            return httpx.Response(429, headers={"Retry-After": "60" if len(requests) == 4 else "0"})
+        if request.method == "GET":
+            return httpx.Response(200, json=drive_item("after", "after"))
         return httpx.Response(403, json={"error": {"code": "accessDenied", "message": "Access denied"}})
 
     auth = AuthorizedAuth("http://localhost/callback", initial_state={}, persist=lambda payload: None)
     async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as client:
-        with pytest.raises(PermissionDeniedError) as caught:
-            await OneDriveProvider(auth, client=client).rename("opaque-id", "new.txt")
-    assert caught.value.code == "PERMISSION_DENIED"
-    assert caught.value.details == {"graph_status": 403}
-    assert [request.method for request in requests] == ["PATCH"]
+        provider = OneDriveProvider(auth, client=client)
+        task = asyncio.create_task(provider.rename("opaque-id", "new.txt"))
+        try:
+            if delay:
+                assert await clock.next_wait() == delay
+                assert len(requests) == 1
+                clock.advance(delay)
+            with pytest.raises(RateLimitError if final_status == 429 else PermissionDeniedError) as caught:
+                await asyncio.wait_for(task, 5)
+            if final_status == 429:
+                task = asyncio.create_task(provider.get_metadata("after"))
+                assert await clock.next_wait() == delay + 60
+                assert len(requests) == 4
+                clock.advance(delay + 60)
+                assert (await asyncio.wait_for(task, 5)).id == "after"
+        finally:
+            if not task.done():
+                task.cancel()
+            await asyncio.gather(task, return_exceptions=True)
+    assert caught.value.code == ("RATE_LIMIT_ERROR" if final_status == 429 else "PERMISSION_DENIED")
+    assert caught.value.details == {"graph_status": final_status}
+    assert [request.method for request in requests] == (["PATCH"] * 4 + ["GET"] if final_status == 429 else ["PATCH", "PATCH"])
 
 
 @pytest.mark.asyncio
@@ -93,27 +129,100 @@ async def test_lists_path_with_pagination_and_maps_folders() -> None:
 
 
 @pytest.mark.asyncio
-async def test_rename_many_uses_graph_batch_response() -> None:
-    provider = StubOneDriveProvider(
-        [
-            {
-                "responses": [
-                    {"id": "0", "status": 200, "body": drive_item("a", "new-a.txt")},
-                    {"id": "1", "status": 200, "body": drive_item("b", "new-b.txt")},
-                ]
-            }
-        ]
-    )
+@pytest.mark.parametrize("operation", ["read", "write"])
+@pytest.mark.parametrize("throttle", ["outer", "part"])
+async def test_rename_many_uses_graph_batch_response(
+    monkeypatch: pytest.MonkeyPatch, operation: str, throttle: str,
+) -> None:
+    class AuthorizedAuth(OneDriveAuthService):
+        async def access_token(self, *, force_refresh: bool = False) -> str:
+            return "fixture-token"
 
-    results = await provider.rename_many(
-        [RenameRequest("a", "new-a.txt"), RenameRequest("b", "new-b.txt")]
-    )
+    clock = CooldownClock(monkeypatch)
+    started: asyncio.Queue[str] = asyncio.Queue()
+    gates = {key: asyncio.Event() for key in ("extend", "short")}
+    batches: list[list[str]] = []
+    sent: list[tuple[str, float]] = []
+    attempts: dict[str, int] = {}
 
-    assert provider.calls[0][1] == f"{GRAPH_ROOT}/$batch"
-    request_body = provider.calls[0][2]
-    assert request_body is not None
-    assert len(request_body["requests"]) == 2  # type: ignore[arg-type]
-    assert results["a"].name == "new-a.txt"  # type: ignore[union-attr]
+    async def respond(request: httpx.Request) -> httpx.Response:
+        if request.method == "GET":
+            key = request.url.path.rsplit("/", 1)[-1]
+            sent.append((key, clock.now))
+            attempts[key] = attempts.get(key, 0) + 1
+            if key in gates and attempts[key] == 1:
+                started.put_nowait(key)
+                await gates[key].wait()
+                return httpx.Response(429, headers={"Retry-After": "90" if key == "extend" else "1"})
+            return httpx.Response(200, json=drive_item(key, key))
+        entries = json.loads(request.content)["requests"]
+        ids = [entry["url"].split("?")[0].rsplit("/", 1)[-1] for entry in entries]
+        sent.append(("batch", clock.now))
+        batches.append(ids)
+        if len(batches) == 1 and throttle == "outer":
+            return httpx.Response(429, headers={"Retry-After": "60"})
+        responses = []
+        for entry, key in zip(entries, ids, strict=True):
+            if len(batches) == 1 and key == "b":
+                responses.append({"id": entry["id"], "status": 429, "headers": {"retry-after": "60"}})
+            else:
+                responses.append({"id": entry["id"], "status": 200, "body": drive_item(key, f"new-{key}.txt")})
+        return httpx.Response(200, json={"responses": responses})
+
+    auth = AuthorizedAuth("http://localhost/callback", initial_state={}, persist=lambda payload: None)
+    async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as client:
+        provider = OneDriveProvider(auth, client=client)
+        tasks: list[asyncio.Task] = []
+        try:
+            # These requests are already in flight when the first batch reports throttling.
+            for key in gates:
+                tasks.append(asyncio.create_task(provider.get_metadata(key)))
+                assert await asyncio.wait_for(started.get(), 5) == key
+            if operation == "write":
+                batch_task = asyncio.create_task(provider.rename_many([RenameRequest("a", "new-a.txt"), RenameRequest("b", "new-b.txt")]))
+            else:
+                batch_task = asyncio.create_task(provider.get_metadata_many(["a", "b"]))
+            tasks.append(batch_task)
+            assert await clock.next_wait() == 60
+            queued = asyncio.create_task(provider.get_metadata("queued"))
+            tasks.append(queued)
+            assert await clock.next_wait() == 60
+            # A distinct connection shares neither the deadline nor cancellation state.
+            independent = OneDriveProvider(auth, client=client)
+            assert (await independent.get_metadata("independent")).id == "independent"
+            assert batches == [["a", "b"]]
+            assert "queued" not in attempts
+
+            clock.advance(5)
+            gates["extend"].set()
+            assert await clock.next_wait() == 95
+            clock.advance(10)
+            gates["short"].set()
+            assert await clock.next_wait() == 95
+            clock.advance(60)
+            # Waking at the original deadline must recheck the extended deadline.
+            assert [await clock.next_wait(), await clock.next_wait()] == [95, 95]
+            assert batches == [["a", "b"]]
+            assert "queued" not in attempts
+            queued.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await queued
+            survivor = asyncio.create_task(provider.get_metadata("survivor"))
+            tasks.append(survivor)
+            assert await clock.next_wait() == 95
+            clock.advance(95)
+            await asyncio.wait_for(asyncio.gather(*(task for task in tasks if task is not queued)), 5)
+            result = batch_task.result()
+            items = list(result.values()) if operation == "write" else result
+            assert [item.name for item in items] == ["new-a.txt", "new-b.txt"]
+            assert batches == [["a", "b"], ["a", "b"] if throttle == "outer" else ["b"]]
+            assert all(at in (0, 95) for _, at in sent)
+            assert "queued" not in attempts
+        finally:
+            for task in tasks:
+                if not task.done():
+                    task.cancel()
+            await asyncio.gather(*tasks, return_exceptions=True)
 
 
 def test_rejects_onedrive_reserved_names() -> None:

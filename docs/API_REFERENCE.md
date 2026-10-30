@@ -358,6 +358,8 @@ auto 的浏览器语言解析、Vite 语言发现、词条回退和 MUI/日期�
 | --- | --- |
 | 预览回收 | 新快照保存、访问过期 ID 时移除过期快照，并由 lifecycle-managed sweep 每 60 秒清理；不设 global capacity limit。 |
 | 偏好保存 | 前端在单个 QueryClient 内串行保存，仅发送变化字段，每次保存前不重新读取设置；失败不阻断后续队列。后端基于当前内存偏好合并并原子保存完整状态；成功后，前端先取消更早的 in-flight settings reads，再更新 cache。 |
+| 云盘连接共享冷却 | 每个缓存的 OneDrive / Google Provider 对应独立连接，目录、分页、元数据和改名请求（含新批次及重试）共用一个内存截止时间。HTTP 429、batch 子项 429 和 Google 已支持的 403 限流 reasons 都延长截止时间：`max(当前截止时间, 单调时钟当前值 + 等待秒数)`。即使当前请求已耗尽重试，也记录限流；等待结束后重新检查截止时间，取消某个等待者不会清除共享状态。有效 `Retry-After` 秒数/HTTP 日期优先且不截断（0 表示无需新增等待），缺失或无效时沿用各 Provider 的指数退避。限流不再逐批单独 sleep；其他网络/5xx 读取退避保留。 |
+| 冷却范围与恢复 | 已发出的请求正常收尾，其限流响应可以继续延长截止时间；成功响应或较短等待不能提前解除冷却。不同连接互不影响，截止时间不落盘，连接配置/账号版本变化导致 Provider 重建时重新开始。到期后仍按现有并发上限发送，不增加额外串行队列或自动降并发。OAuth Token / 账号核验接口维持独立单次请求策略，不加入自动重试。 |
 | Google 分页 | 读取至 `nextPageToken` 缺失，包括空中间页。无效/重复 Token、incomplete search、重复 item ID、错误 parent、malformed data 或后续页失败均中止完整响应，客户端须从头刷新。 |
 | Google 元数据读取 | 每个 HTTP multipart request 最多 100 个 GET，保留请求顺序；同一操作共享祖先读取，不跨读取缓存。401 触发有界授权刷新；限流（429 或支持的 403 reasons）、transport errors 和 5xx reads 使用有限次 Retry-After / backoff 重试。成功 batch parts 保留，只重试可重试失败；永久失败、malformed / missing part 使整个调用失败，不返回部分元数据。Google error bodies 不回显。 |
 | Google 写入 | 单项使用一次 metadata-only PATCH，无范围/权限预检和路径读取；批量使用 PATCH parts，每个 multipart batch 最多 20 次写入，同时仅一个 batch 在途；只发送 `name`，不修改内容、parents 或 shortcut targets。每批重新校验项目范围、祖先和重命名权限；已知成功保留，仅对明确认证/限流拒绝做有界重试，逐项重试只含被拒绝 parts。 |

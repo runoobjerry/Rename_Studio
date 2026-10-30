@@ -2,10 +2,9 @@ import asyncio
 import json
 import logging
 import random
-from datetime import UTC, datetime
+from datetime import datetime
 from email import policy
 from email.parser import BytesParser
-from email.utils import parsedate_to_datetime
 from time import perf_counter
 from typing import Literal
 from urllib.parse import quote, urlencode
@@ -17,6 +16,7 @@ from pydantic import BaseModel, Field, ValidationError as ModelValidationError
 from app.core.errors import AppError, AuthenticationError, NotFoundError, PermissionDeniedError, ProviderError, RateLimitError, RenameConflictError, RenameOutcomeUnknownError, ValidationError
 from app.core.log_context import request_id_context
 from app.providers.base import RenameRequest, StorageProvider
+from app.providers.cooldown import ConnectionCooldown, retry_after_delay
 from app.schemas.files import DirectoryBreadcrumb, DirectoryListing, FileItem, RenameFile
 from app.schemas.storage import IdLocation, PathLocation, RootLocation, StorageLocation
 from app.services.connection_auth import ConnectionAuth
@@ -77,6 +77,7 @@ class GoogleDriveProvider(StorageProvider):
         self.timeout = timeout
         self._client = client
         self._owns_client = client is None
+        self._cooldown = ConnectionCooldown()
 
     async def list_directory(self, location: StorageLocation) -> DirectoryListing:
         if isinstance(location, PathLocation):
@@ -263,6 +264,8 @@ class GoogleDriveProvider(StorageProvider):
             content = ("".join(parts) + f"--{boundary}--\r\n").encode("utf-8")
             response = await self._request("POST", BATCH_URL, content=content, headers={"Content-Type": f"multipart/mixed; boundary={boundary}"})
             responses = self._batch_responses(response, len(pending))
+            for outcome in responses:
+                self._record_throttle(outcome, attempt)
             retry: list[str] = []
             retry_delay = 0.0
             refresh = False
@@ -274,7 +277,8 @@ class GoogleDriveProvider(StorageProvider):
                 if outcome.status_code == 401 and not refreshed and attempt < MAX_RETRIES:
                     refresh = True
                 elif self._retryable(outcome, error) and attempt < MAX_RETRIES:
-                    retry_delay = max(retry_delay, self._retry_delay(outcome, attempt))
+                    if not isinstance(error, RateLimitError):
+                        retry_delay = max(retry_delay, self._retry_delay(outcome, attempt))
                 else:
                     raise error
                 retry.append(file_id)
@@ -323,7 +327,10 @@ class GoogleDriveProvider(StorageProvider):
         refreshed = False
         attempt = 0
         while True:
+            await self._cooldown.wait()
             token = await self.auth.access_token()
+            # Token refresh can yield while another response extends the cooldown.
+            await self._cooldown.wait()
             started = perf_counter()
             try:
                 response = await self._http_client().request(method, url, params=params, content=content, headers={**(headers or {}), "Authorization": f"Bearer {token}"})
@@ -337,6 +344,7 @@ class GoogleDriveProvider(StorageProvider):
                     continue
                 raise ProviderError("Google Drive is unavailable") from exc
             logger.info("drive_request provider=google_drive request_id=%s method=%s writing=%s status=%s duration_ms=%.2f", request_id_context.get(), method, writing, response.status_code, (perf_counter() - started) * 1000)
+            self._record_throttle(response, attempt)
             if response.is_success:
                 return response
             if writing and response.status_code >= 500:
@@ -349,7 +357,8 @@ class GoogleDriveProvider(StorageProvider):
                 continue
             # Read batches can be replayed; write batches only retry explicit auth/throttle refusals.
             if self._retryable(response, error) and attempt < MAX_RETRIES:
-                await asyncio.sleep(self._retry_delay(response, attempt))
+                if not isinstance(error, RateLimitError):
+                    await asyncio.sleep(self._retry_delay(response, attempt))
                 attempt += 1
                 continue
             raise error
@@ -381,18 +390,13 @@ class GoogleDriveProvider(StorageProvider):
     def _retryable(response: httpx.Response, error: AppError) -> bool:
         return isinstance(error, RateLimitError) or response.status_code >= 500
 
+    def _record_throttle(self, response: httpx.Response, attempt: int) -> None:
+        if response.status_code in (403, 429) and isinstance(self._response_error(response), RateLimitError):
+            self._cooldown.defer(self._retry_delay(response, attempt))
+
     @staticmethod
     def _retry_delay(response: httpx.Response, attempt: int) -> float:
-        value = response.headers.get("Retry-After")
-        if value is not None:
-            try:
-                return max(0.0, float(value))
-            except ValueError:
-                try:
-                    return max(0.0, (parsedate_to_datetime(value) - datetime.now(UTC)).total_seconds())
-                except (ValueError, TypeError):
-                    return min(2**attempt + random.random(), 8)
-        return min(2**attempt + random.random(), 8)
+        return retry_after_delay(response.headers.get("Retry-After"), min(2**attempt + random.random(), 8))
 
     def _http_client(self) -> httpx.AsyncClient:
         if self._client is None:
@@ -496,8 +500,9 @@ class GoogleDriveProvider(StorageProvider):
                 results.update({request.file_id: RenameOutcomeUnknownError("Google Drive returned an incomplete write batch response") for request in pending})
                 break
 
+            for outcome in responses:
+                self._record_throttle(outcome, attempt)
             retry: list[RenameRequest] = []
-            retry_delay = 0.0
             refresh = False
             for request, outcome in zip(pending, responses, strict=True):
                 if outcome.is_success:
@@ -521,9 +526,7 @@ class GoogleDriveProvider(StorageProvider):
                 error = self._response_error(outcome)
                 if outcome.status_code == 401 and not refreshed and attempt < MAX_RETRIES:
                     refresh = True
-                elif isinstance(error, RateLimitError) and attempt < MAX_RETRIES:
-                    retry_delay = max(retry_delay, self._retry_delay(outcome, attempt))
-                else:
+                elif not (isinstance(error, RateLimitError) and attempt < MAX_RETRIES):
                     results[request.file_id] = error
                     continue
                 retry.append(request)
@@ -538,8 +541,6 @@ class GoogleDriveProvider(StorageProvider):
                     results.update({request.file_id: exc for request in retry})
                     break
                 refreshed = True
-            if retry_delay:
-                await asyncio.sleep(retry_delay)
             pending = retry
             attempt += 1
         return results

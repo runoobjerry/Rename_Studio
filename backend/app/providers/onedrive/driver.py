@@ -3,7 +3,6 @@ import logging
 from time import perf_counter
 from collections.abc import Awaitable, Callable
 from datetime import datetime
-from email.utils import parsedate_to_datetime
 from urllib.parse import quote, urlsplit
 
 import httpx
@@ -21,6 +20,7 @@ from app.core.errors import (
     RenameOutcomeUnknownError,
 )
 from app.providers.base import RenameRequest, StorageProvider
+from app.providers.cooldown import ConnectionCooldown, retry_after_delay
 from app.providers.name_validation import validate_onedrive_name
 from app.schemas.files import DirectoryListing, FileItem
 from app.schemas.storage import IdLocation, PathLocation, RootLocation, StorageLocation
@@ -53,6 +53,7 @@ class OneDriveProvider(StorageProvider):
         self.timeout = timeout
         self._client = client
         self._owns_client = client is None
+        self._cooldown = ConnectionCooldown()
         self._root_id: str | None = None
         self._root_item: FileItem | None = None
 
@@ -190,6 +191,7 @@ class OneDriveProvider(StorageProvider):
         raw_responses = payload.get("responses")
         if not isinstance(raw_responses, list):
             raise ProviderError("Microsoft Graph returned an invalid batch response")
+        self._record_batch_throttle(raw_responses, attempt)
         by_index = {
             str(response.get("id")): response
             for response in raw_responses
@@ -216,20 +218,20 @@ class OneDriveProvider(StorageProvider):
                 results[file_id] = self._to_item(response_body)
             elif self._is_retryable(status) and attempt < MAX_RETRIES:
                 retry.append(file_id)
-                headers = response.get("headers")
-                if isinstance(headers, dict):
-                    retry_after = max(
-                        retry_after,
-                        self._retry_delay(headers.get("Retry-After"), attempt),
-                    )
+                if status != 429:
+                    headers = response.get("headers")
+                    value = httpx.Headers(headers).get("Retry-After") if isinstance(headers, dict) else None
+                    retry_after = max(retry_after, self._retry_delay(value, attempt))
             elif status == 401 and attempt < MAX_RETRIES:
                 retry.append(file_id)
                 retry_auth = True
+                retry_after = max(retry_after, min(2**attempt, 8))
             else:
                 body_value = response_body if isinstance(response_body, dict) else {}
                 results[file_id] = self._graph_error(status, body_value)
         if retry:
-            await asyncio.sleep(retry_after or min(2**attempt, 8))
+            if retry_after:
+                await asyncio.sleep(retry_after)
             if retry_auth:
                 await self.auth.access_token(force_refresh=True)
             results.update(await self._metadata_batch(retry, attempt=attempt + 1))
@@ -305,6 +307,7 @@ class OneDriveProvider(StorageProvider):
         if not isinstance(raw_responses, list):
             return {**invalid, **{request.file_id: RenameOutcomeUnknownError("Microsoft Graph returned an invalid write batch response") for request in valid}}
 
+        self._record_batch_throttle(raw_responses, attempt)
         by_index = {
             str(response.get("id")): response
             for response in raw_responses
@@ -336,24 +339,20 @@ class OneDriveProvider(StorageProvider):
                     results[request.file_id] = RenameOutcomeUnknownError("Microsoft Graph returned incomplete write metadata")
             elif status >= 500:
                 results[request.file_id] = RenameOutcomeUnknownError("Remote write outcome is unknown")
-            elif self._is_retryable(status) and attempt < MAX_RETRIES:
+            elif status == 429 and attempt < MAX_RETRIES:
                 retry.append(request)
-                headers = response.get("headers")
-                if isinstance(headers, dict):
-                    retry_after = max(
-                        retry_after,
-                        self._retry_delay(headers.get("Retry-After"), attempt),
-                    )
             elif status == 401 and attempt < MAX_RETRIES:
                 retry.append(request)
                 retry_auth = True
+                retry_after = max(retry_after, min(2**attempt, 8))
             else:
                 body_value = response_body if isinstance(response_body, dict) else {}
                 results[request.file_id] = self._graph_error(status, body_value)
 
         if retry:
             # Graph 批处理需单独重试被限流的子请求，而不是重放已成功的项目。
-            await asyncio.sleep(retry_after or min(2**attempt, 8))
+            if retry_after:
+                await asyncio.sleep(retry_after)
             try:
                 if retry_auth:
                     await self.auth.access_token(force_refresh=True)
@@ -391,9 +390,12 @@ class OneDriveProvider(StorageProvider):
             request["method"] == "PATCH" for request in json["requests"]
         ))
         for attempt in range(MAX_RETRIES + 1):
-            attempt_started = perf_counter()
+            await self._cooldown.wait()
             token = await self.auth.access_token(force_refresh=force_refresh)
             force_refresh = False
+            # Token refresh can yield while another response extends the cooldown.
+            await self._cooldown.wait()
+            attempt_started = perf_counter()
             try:
                 response = await self._http_client().request(
                     method,
@@ -417,6 +419,11 @@ class OneDriveProvider(StorageProvider):
                 "graph_request provider=onedrive request_id=%s method=%s attempt=%s status=%s duration_ms=%.2f",
                 request_id_context.get(), method, attempt + 1, response.status_code, (perf_counter() - attempt_started) * 1000,
             )
+            if response.status_code == 429:
+                self._cooldown.defer(self._retry_delay(response.headers.get("Retry-After"), attempt))
+                if attempt < MAX_RETRIES:
+                    continue
+                raise self._graph_error(429, {})
             if response.status_code == 401 and attempt < MAX_RETRIES:
                 force_refresh = True
                 continue
@@ -516,20 +523,16 @@ class OneDriveProvider(StorageProvider):
     def _is_retryable(status: int) -> bool:
         return status in {429, 500, 502, 503, 504}
 
+    def _record_batch_throttle(self, responses: list[object], attempt: int) -> None:
+        for response in responses:
+            if isinstance(response, dict) and response.get("status") == 429:
+                headers = response.get("headers")
+                value = httpx.Headers(headers).get("Retry-After") if isinstance(headers, dict) else None
+                self._cooldown.defer(self._retry_delay(value, attempt))
+
     @staticmethod
     def _retry_delay(value: object, attempt: int) -> float:
-        if isinstance(value, str):
-            try:
-                return min(max(float(value), 0.0), 30.0)
-            except ValueError:
-                try:
-                    delay = (
-                        parsedate_to_datetime(value) - datetime.now().astimezone()
-                    ).total_seconds()
-                    return min(max(delay, 0.0), 30.0)
-                except (TypeError, ValueError, OverflowError):
-                    pass
-        return min(2**attempt, 8)
+        return retry_after_delay(value, min(2**attempt, 8))
 
     @staticmethod
     def _graph_error(status: int, payload: dict[str, object]) -> AppError:
