@@ -21,7 +21,7 @@ from app.core.errors import (
 )
 from app.providers.base import RenameRequest, StorageProvider
 from app.providers.cooldown import ConnectionCooldown, retry_after_delay
-from app.providers.name_validation import validate_onedrive_name
+from app.providers.name_validation import NameValidationIssue, validate_onedrive_name
 from app.schemas.files import DirectoryListing, FileItem
 from app.schemas.storage import IdLocation, PathLocation, RootLocation, StorageLocation
 from app.services.connection_auth import ConnectionAuth
@@ -240,7 +240,7 @@ class OneDriveProvider(StorageProvider):
     async def rename(self, file_id: str, new_name: str) -> FileItem:
         validation_error = self.validate_name(new_name)
         if validation_error is not None:
-            raise ValidationError(validation_error, details={"new_name": new_name})
+            raise ValidationError(validation_error.message, details={"new_name": new_name, **validation_error.details})
         encoded_id = quote(file_id, safe="")
         payload = await self._request_json(
             "PATCH",
@@ -282,7 +282,7 @@ class OneDriveProvider(StorageProvider):
                 valid.append(request)
             else:
                 invalid[request.file_id] = ValidationError(
-                    error, details={"new_name": request.new_name}
+                    error.message, details={"new_name": request.new_name, **error.details}
                 )
         if not valid:
             return invalid
@@ -361,21 +361,24 @@ class OneDriveProvider(StorageProvider):
                 results.update({request.file_id: exc for request in retry})
         return results
 
-    def validate_name(self, name: str) -> str | None:
+    def validate_name(self, name: str) -> NameValidationIssue | None:
         # OneDrive 同样会同步到 Windows，本阶段沿用更严格的跨平台文件名规则。
         return validate_onedrive_name(name)
 
-    def validate_target_name(self, item: FileItem, name: str) -> str | None:
+    def validate_target_name(self, item: FileItem, name: str) -> NameValidationIssue | None:
         error = self.validate_name(name)
         if error is not None:
             return error
-        if item.parent_path == "" and name.casefold() == "forms":
-            return "'forms' is reserved at the OneDrive root"
-        if item.is_directory and name.startswith(("゛", "ဧ")):
-            return "OneDrive folder name starts with a restricted character"
+        reserved_root_name = "forms"
+        if item.parent_path == "" and name.casefold() == reserved_root_name:
+            return NameValidationIssue("NAME_RESERVED_IN_ROOT", "'forms' is reserved at the OneDrive root", {"name": reserved_root_name})
+        invalid_folder_prefixes = ("゛", "ဧ")
+        if item.is_directory and name.startswith(invalid_folder_prefixes):
+            return NameValidationIssue("ONEDRIVE_FOLDER_INVALID_PREFIX", "OneDrive folder name starts with a restricted character", {"prefixes": list(invalid_folder_prefixes)})
         decoded_path = f"{item.parent_path}/{name}".strip("/")
-        if len(decoded_path) > 400:
-            return "OneDrive path is longer than 400 characters"
+        max_path_length = 400
+        if len(decoded_path) > max_path_length:
+            return NameValidationIssue("ONEDRIVE_PATH_TOO_LONG", f"OneDrive path is longer than {max_path_length} characters", {"max_length": max_path_length})
         return None
 
     async def _request_json(

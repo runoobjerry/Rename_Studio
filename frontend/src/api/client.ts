@@ -18,6 +18,7 @@ export class ApiError extends Error {
   readonly status: number;
   readonly code: string | null;
   readonly details: Record<string, unknown>;
+  operation?: "read" | "write";
 
   constructor(
     status: number,
@@ -49,13 +50,24 @@ function responseError(status: number, body: unknown): ApiError {
 }
 
 async function request<T>(url: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(`/api${url}`, init);
-  if (!response.ok) {
-    const body: unknown = await response.json().catch(() => null);
-    throw responseError(response.status, body);
+  try {
+    const response = await fetch(`/api${url}`, init);
+    if (!response.ok) {
+      const body: unknown = await response.json().catch(() => null);
+      throw responseError(response.status, body);
+    }
+    if (response.status === 204) return undefined as T;
+    return (await response.json()) as T;
+  } catch (error) {
+    const failure = error instanceof Error ? error : new Error("Invalid response");
+    // POST 也用于只读目录查询，按实际端点区分读取和写入。
+    const operation = !init?.method || init.method === "GET" || url.endsWith("/files/list") || url.endsWith("/rename/preview")
+      ? "read" : "write";
+    Object.assign(failure, { operation });
+    // 保留浏览器异常的身份、类型和堆栈，同时标记未收到可用响应。
+    if (!(failure instanceof ApiError)) Object.assign(failure, { status: 0 });
+    throw failure;
   }
-  if (response.status === 204) return undefined as T;
-  return (await response.json()) as T;
 }
 
 export function fetchRules(): Promise<RuleDefinition[]> {

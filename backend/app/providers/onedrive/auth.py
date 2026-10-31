@@ -173,7 +173,7 @@ class OneDriveAuthService:
         if self._finishing:
             raise AuthenticationError("OneDrive authorization is still being completed")
         if self._tokens is None:
-            raise AuthenticationError("OneDrive account is not connected")
+            raise AuthenticationError("OneDrive account is not connected", details={"reason": "ACCOUNT_NOT_CONNECTED", "params": {}})
         token_before_refresh = self._tokens.access_token
         expires_soon = self._tokens.expires_at <= datetime.now(UTC) + timedelta(
             seconds=60
@@ -182,7 +182,7 @@ class OneDriveAuthService:
             # 并发批次共用一次刷新，避免刷新令牌被重复轮换。
             async with self._refresh_lock:
                 if self._tokens is None:
-                    raise AuthenticationError("OneDrive account is not connected")
+                    raise AuthenticationError("OneDrive account is not connected", details={"reason": "ACCOUNT_NOT_CONNECTED", "params": {}})
                 token_was_refreshed = (
                     self._tokens.access_token != token_before_refresh
                 )
@@ -193,13 +193,17 @@ class OneDriveAuthService:
                 if not token_was_refreshed and (force_refresh or expires_soon):
                     await self._refresh_access_token()
         if self._tokens is None:
-            raise AuthenticationError("OneDrive account is not connected")
+            raise AuthenticationError("OneDrive account is not connected", details={"reason": "ACCOUNT_NOT_CONNECTED", "params": {}})
         return self._tokens.access_token
 
     async def _refresh_access_token(self) -> None:
         if self._tokens is None or not self._tokens.refresh_token:
+            # 提前刷新也可能发生在到期前；缺少刷新凭据本身不能证明授权已过期。
+            reason = ("ACCOUNT_NOT_CONNECTED" if self._tokens is None else
+                      "AUTHORIZATION_EXPIRED" if self._tokens.expires_at <= datetime.now(UTC) else None)
             self._expire_session()
-            raise AuthenticationError("OneDrive authorization expired; connect again")
+            raise AuthenticationError("OneDrive authorization expired; connect again",
+                                      details={"reason": reason, "params": {}} if reason else None)
         client_id = self._require_client_id()
         previous_refresh_token = self._tokens.refresh_token
         generation = self._generation
@@ -232,7 +236,7 @@ class OneDriveAuthService:
     async def _load_account_profile(self) -> None:
         generation = self._generation
         if self._tokens is None:
-            raise AuthenticationError("OneDrive account is not connected")
+            raise AuthenticationError("OneDrive account is not connected", details={"reason": "ACCOUNT_NOT_CONNECTED", "params": {}})
         try:
             async with httpx.AsyncClient(timeout=self.timeout) as client:
                 response = await client.get(

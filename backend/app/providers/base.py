@@ -5,6 +5,7 @@ from app.core.errors import AppError
 from app.schemas.files import DirectoryListing, FileItem, RenameFile
 from app.schemas.storage import PathLocation, RootLocation, StorageLocation
 from app.core.paths import normalize_storage_path
+from app.providers.name_validation import NameValidationIssue
 
 
 @dataclass(frozen=True, slots=True)
@@ -72,11 +73,11 @@ class StorageProvider(ABC):
         return results
 
     @abstractmethod
-    def validate_name(self, name: str) -> str | None:
-        """Return a user-facing validation error, or None when valid."""
+    def validate_name(self, name: str) -> NameValidationIssue | None:
+        """Return a stable reason, display parameters and diagnostic, or None when valid."""
         raise NotImplementedError
 
-    def validate_target_name(self, item: FileItem, name: str) -> str | None:
+    def validate_target_name(self, item: FileItem, name: str) -> NameValidationIssue | None:
         return self.validate_name(name)
 
     def normalize_name(self, name: str) -> str:

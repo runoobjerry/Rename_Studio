@@ -216,7 +216,7 @@ function Workspace({ preference, setPreference, settingsError, hasSettings }: {
             className={view === "workspace" ? "workspace-page" : undefined}
             sx={{ width: "100%", maxWidth: 1680, mx: "auto", p: 1.5 }}
           >
-            {loadError && <Alert severity="error" sx={{ mb: 2 }}>{t("files:workspace.loadFailed", { message: errorMessage(loadError, t) })}</Alert>}
+            {loadError && <Alert severity="error" sx={{ mb: 2 }}>{t("files:workspace.loadFailed")}</Alert>}
             {(providers.isPending || providerDefinitions.isPending || definitions.isPending) && (
               <LinearProgress aria-label={t("files:workspace.loading")} sx={{ flexShrink: 0, mb: 1 }} />
             )}

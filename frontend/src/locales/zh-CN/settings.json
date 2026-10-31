@@ -34,10 +34,10 @@
   "connection": {
     "browseDraft": "浏览本地目录",
     "browse": "浏览本地目录",
-    "authFailed": "授权失败，请重试。",
+    "authFailed": "未能完成授权。请返回连接设置，检查配置后重新授权。",
     "accountAlreadyConnected": "该账号已连接到「{{name}}」，请使用已有连接",
     "connectedNotice": "账号已连接。",
-    "authClosed": "授权窗口已关闭，请重新登录。",
+    "authClosed": "授权窗口已关闭。请检查连接状态；若仍未连接，再重新授权。",
     "nameTooLong": "连接名称最多为 20 个字符。",
     "updated": "存储连接设置已更新。",
     "popupBlocked": "登录窗口被浏览器拦截，请允许弹窗。",

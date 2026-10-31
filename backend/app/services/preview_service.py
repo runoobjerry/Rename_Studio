@@ -143,9 +143,15 @@ class PreviewService:
             for item, new_name, normalized_target in zip(
                 files, candidates, normalized_targets, strict=True
             ):
-                error = provider.validate_target_name(item, new_name)
+                validation = provider.validate_target_name(item, new_name)
+                error = validation.message if validation is not None else None
+                details = validation.details if validation is not None else None
                 if (not supports_rename or item.can_rename is False) and item.name != new_name:
                     error = "This item cannot be renamed with the current permissions"
+                    details = {
+                        "reason": "RENAME_UNSUPPORTED" if not supports_rename else "ITEM_RENAME_UNAVAILABLE",
+                        "params": {},
+                    }
                 # Pre-existing duplicate names may remain unchanged; only new targets create conflicts.
                 conflict = item.name != new_name and (
                     normalized_target in duplicate_targets
@@ -162,6 +168,7 @@ class PreviewService:
                         valid=error is None and not conflict,
                         conflict=conflict,
                         error=error,
+                        details=details,
                     )
                 )
 

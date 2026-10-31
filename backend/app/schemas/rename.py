@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Literal
+from typing import Any, Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -22,6 +22,7 @@ class PreviewItem(BaseModel):
     valid: bool
     conflict: bool
     error: str | None = None
+    details: dict[str, Any] | None = None
 
 
 class RenamePreviewResponse(BaseModel):
@@ -42,6 +43,7 @@ class RenameItemResult(BaseModel):
     status: Literal["renamed", "skipped", "failed"]
     error: str | None = None
     error_code: str | None = None
+    details: dict[str, Any] | None = None
     actual_name: str | None = None
 
 

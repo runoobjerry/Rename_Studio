@@ -180,8 +180,7 @@ function ConnectionRow({ storage, executing, definition }: {
         !("storage_id" in data) || data.storage_id !== storage.storage_id ||
         !("status" in data) || (data.status !== "connected" && data.status !== "failed")
       ) return;
-      let message: NotificationMessage = "message" in data && typeof data.message === "string"
-        ? data.message : { key: "settings:connection.authFailed" };
+      let message: NotificationMessage = { key: "settings:connection.authFailed" };
       if (data.status === "failed" && "error_code" in data && data.error_code === "STORAGE_ACCOUNT_ALREADY_CONNECTED" &&
         "details" in data && typeof data.details === "object" && data.details !== null &&
         "storage_name" in data.details && typeof data.details.storage_name === "string") {

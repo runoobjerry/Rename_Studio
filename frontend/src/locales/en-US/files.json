@@ -4,7 +4,7 @@
     "folder": "Folder"
   },
   "title": "File selection",
-  "parent": "Back",
+  "parent": "Up one level",
   "invert": "Invert selection",
   "filterItems": "Filter items",
   "refreshingDirectory": "Refreshing directory",
@@ -114,7 +114,7 @@
     "loadingSettings": "Loading storage settings…",
     "loadingDirectory": "Loading directory…",
     "unavailable": "The directory is temporarily unavailable. Check your storage settings.",
-    "loadFailed": "Could not connect to the backend: {{message}}",
+    "loadFailed": "Could not load the home page information. Restart the app.",
     "directoryFailed": "Could not load the directory: {{message}}",
     "connectToBrowse": "Connect {{service}} to browse cloud directories.",
     "definitionMissing": "Could not load service information for this connection. Refresh the page and try again."

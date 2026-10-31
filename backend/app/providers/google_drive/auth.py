@@ -255,7 +255,7 @@ class GoogleDriveAuthService:
 
     def _require_session(self) -> _Session:
         if self._session is None:
-            raise AuthenticationError("Google Drive account is not connected")
+            raise AuthenticationError("Google Drive account is not connected", details={"reason": "ACCOUNT_NOT_CONNECTED", "params": {}})
         return self._session
 
     def _check_generation(self, generation: int) -> None:

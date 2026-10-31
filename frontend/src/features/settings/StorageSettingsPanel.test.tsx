@@ -241,10 +241,10 @@ describe("storage settings", () => {
       name: "OAuth", config: { application_id: "desktop-id" },
     }));
     await waitFor(() => expect(screen.getByRole("button", { name: "保存" })).toBeEnabled());
-    vi.mocked(api.updateStorage).mockRejectedValueOnce(new Error("Save failed"));
+    vi.mocked(api.updateStorage).mockRejectedValueOnce(new api.ApiError(422, "Save failed", "VALIDATION_ERROR"));
     fireEvent.change(screen.getByLabelText("client_secret"), { target: { value: "replacement-secret" } });
     fireEvent.click(screen.getByRole("button", { name: "保存" }));
-    await within(screen.getByRole("dialog")).findByText("Save failed");
+    await within(screen.getByRole("dialog")).findByText("无法使用当前输入完成操作，请检查名称和设置后重试。");
     expect(screen.getByLabelText("client_secret")).toHaveValue("replacement-secret");
     fireEvent.click(screen.getByRole("button", { name: "保存" }));
     await waitFor(() => expect(screen.getByLabelText("client_secret")).toHaveValue(""));
@@ -411,12 +411,12 @@ describe("storage settings", () => {
   it("retains creation drafts on failure and cancels without another request", async () => {
     const { client } = setup();
     await screen.findByRole("button", { name: "编辑连接 Local" });
-    vi.mocked(api.createStorage).mockRejectedValueOnce(new Error("Unable to save"));
+    vi.mocked(api.createStorage).mockRejectedValueOnce(new api.ApiError(422, "Unable to save", "VALIDATION_ERROR"));
     fireEvent.click(screen.getByRole("button", { name: "添加连接" }));
     fireEvent.change(screen.getByRole("textbox", { name: "连接名称" }), { target: { value: "Other" } });
     fireEvent.change(screen.getByRole("textbox", { name: "directory" }), { target: { value: "D:\\other" } });
     fireEvent.click(screen.getByRole("button", { name: "保存连接" }));
-    expect(await within(screen.getByRole("dialog")).findByText("Unable to save")).toBeInTheDocument();
+    expect(await within(screen.getByRole("dialog")).findByText("无法使用当前输入完成操作，请检查名称和设置后重试。")).toBeInTheDocument();
     expect(screen.getByRole("textbox", { name: "连接名称" })).toHaveValue("Other");
     fireEvent.click(screen.getByRole("button", { name: "取消" }));
     await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());

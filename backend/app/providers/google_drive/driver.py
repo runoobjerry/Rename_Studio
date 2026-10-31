@@ -13,10 +13,11 @@ from uuid import uuid4
 import httpx
 from pydantic import BaseModel, Field, ValidationError as ModelValidationError
 
-from app.core.errors import AppError, AuthenticationError, NotFoundError, PermissionDeniedError, ProviderError, RateLimitError, RenameConflictError, RenameOutcomeUnknownError, ValidationError
+from app.core.errors import AppError, AuthenticationError, NotFoundError, PermissionDeniedError, ProviderError, RateLimitError, RenameOutcomeUnknownError, ValidationError
 from app.core.log_context import request_id_context
 from app.providers.base import RenameRequest, StorageProvider
 from app.providers.cooldown import ConnectionCooldown, retry_after_delay
+from app.providers.name_validation import NameValidationIssue
 from app.schemas.files import DirectoryBreadcrumb, DirectoryListing, FileItem, RenameFile
 from app.schemas.storage import IdLocation, PathLocation, RootLocation, StorageLocation
 from app.services.connection_auth import ConnectionAuth
@@ -384,8 +385,6 @@ class GoogleDriveProvider(StorageProvider):
             return PermissionDeniedError("Google Drive permission denied", details=details)
         if response.status_code == 400:
             return ValidationError("Google Drive rejected the request; refresh before continuing", details=details)
-        if response.status_code in (409, 412):
-            return RenameConflictError("Google Drive rejected the rename because the file changed", details=details)
         return ProviderError("Google Drive request failed", details=details)
 
     @staticmethod
@@ -473,7 +472,7 @@ class GoogleDriveProvider(StorageProvider):
             source = self._to_item(self._chain(sources[request.file_id], root, cache))
             error = self.validate_target_name(source, request.new_name)
             if error is not None:
-                results[request.file_id] = ValidationError(error)
+                results[request.file_id] = ValidationError(error.message, details=error.details)
             elif source.can_rename is False:
                 results[request.file_id] = PermissionDeniedError("This Google Drive item cannot be renamed")
             else:
@@ -553,19 +552,19 @@ class GoogleDriveProvider(StorageProvider):
             attempt += 1
         return results
 
-    def validate_name(self, name: str) -> str | None:
+    def validate_name(self, name: str) -> NameValidationIssue | None:
         # Application policy for metadata titles; do not impose Windows names or a guessed length limit.
         if not name.strip():
-            return "Google Drive name cannot be empty"
+            return NameValidationIssue("NAME_EMPTY", "Google Drive name cannot be empty")
         if "\x00" in name:
-            return "Google Drive name cannot contain a null character"
+            return NameValidationIssue("NAME_NULL_CHARACTER", "Google Drive name cannot contain a null character")
         return None
 
-    def validate_target_name(self, item: FileItem, name: str) -> str | None:
+    def validate_target_name(self, item: FileItem, name: str) -> NameValidationIssue | None:
         if isinstance(item.location, RootLocation):
-            return "The My Drive root cannot be renamed"
+            return NameValidationIssue("ROOT_RENAME_UNSUPPORTED", "The My Drive root cannot be renamed")
         if item.mime_type == SHORTCUT_MIME:
-            return "Google Drive shortcuts cannot be renamed by this application"
+            return NameValidationIssue("GOOGLE_DRIVE_SHORTCUT_RENAME_UNSUPPORTED", "Google Drive shortcuts cannot be renamed by this application")
         return self.validate_name(name)
 
     def normalize_name(self, name: str) -> str:

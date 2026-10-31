@@ -141,7 +141,7 @@ describe("rename workflow", () => {
     expect(api.fetchStorageFiles).toHaveBeenCalledTimes(1);
     if (outcome === "success") expect(hook.result.current.storage.files.data!.items.map((file) => file.id))
       .toEqual(listing().items.map((file) => `renamed-${file.id}`));
-    else expect(hook.result.current.workflow.executeError).toBe("Execution response lost");
+    else expect(hook.result.current.workflow.executeError).toBe("未收到完整的修改结果。请刷新目录并核对实际名称，核对前不要重复执行。");
     act(() => hook.result.current.storage.refreshFiles());
     await waitFor(() => expect(api.fetchStorageFiles).toHaveBeenCalledTimes(2));
   });

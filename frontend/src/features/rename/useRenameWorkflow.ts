@@ -283,7 +283,7 @@ export function useRenameWorkflow({
   }
 
   const revalidationError = batchExecution.error instanceof ApiError && batchExecution.error.details.execution_started === false
-    ? t(`errors:codes.${batchExecution.error.code}`, { message: "" }).trim() : undefined;
+    ? errorMessage(batchExecution.error, t) : undefined;
 
   return {
     selectedIds, rules, browserItems, currentTask, changeSort,
@@ -291,7 +291,8 @@ export function useRenameWorkflow({
     previewData, executionData: batchExecution?.data,
     previewError,
     revalidationError,
-    executeError: batchExecution?.error ? errorMessage(batchExecution.error, t) : undefined,
+    executeError: batchExecution?.error ? unknownExecution?.previewId === batchExecution.variables?.source.preview_id
+      ? t("files:rename.unknownOutcome") : errorMessage(batchExecution.error, t) : undefined,
     executionPreviewId: batchExecution?.variables?.source.preview_id,
     isPreviewing: preview.isPending, isExecuting, hasExecuted: Boolean(batchExecution?.data),
     ...singleRename,

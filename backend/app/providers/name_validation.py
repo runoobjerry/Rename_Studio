@@ -1,4 +1,16 @@
 import re
+from dataclasses import dataclass, field
+
+
+@dataclass(frozen=True, slots=True)
+class NameValidationIssue:
+    reason: str
+    message: str
+    params: dict[str, str | int | list[str]] = field(default_factory=dict)
+
+    @property
+    def details(self) -> dict[str, object]:
+        return {"reason": self.reason, "params": self.params}
 
 
 _WINDOWS_RESERVED_NAMES = {
@@ -9,33 +21,40 @@ _WINDOWS_RESERVED_NAMES = {
     *(f"COM{index}" for index in range(10)),
     *(f"LPT{index}" for index in range(10)),
 }
-_INVALID_NAME = re.compile(r'[<>:"/\\|?*\x00-\x1f]')
+_INVALID_CHARACTERS = '<>:"/\\|?*'
+_CONTROL_CHARACTER_MAX = 0x1F
+_INVALID_NAME = re.compile(rf'[{re.escape(_INVALID_CHARACTERS)}\x00-\x{_CONTROL_CHARACTER_MAX:02x}]')
+_MAX_NAME_LENGTH = 255
 
 
-def validate_portable_name(name: str) -> str | None:
+def validate_portable_name(name: str) -> NameValidationIssue | None:
     if not name or not name.strip():
-        return "Filename cannot be empty"
+        return NameValidationIssue("NAME_EMPTY", "Filename cannot be empty")
     if name in {".", ".."}:
-        return "Filename cannot be '.' or '..'"
+        return NameValidationIssue("NAME_DOT_SEGMENT", "Filename cannot be '.' or '..'")
     if _INVALID_NAME.search(name):
-        return "Filename contains invalid characters"
+        return NameValidationIssue("NAME_INVALID_CHARACTERS", "Filename contains invalid characters", {
+            "characters": list(_INVALID_CHARACTERS),
+            "control_characters": f"U+0000–U+{_CONTROL_CHARACTER_MAX:04X}",
+        })
     if name.endswith((" ", ".")):
-        return "Filename cannot end with a space or period"
+        return NameValidationIssue("NAME_INVALID_ENDING", "Filename cannot end with a space or period")
     stem = name.split(".", maxsplit=1)[0].upper()
     if stem in _WINDOWS_RESERVED_NAMES:
-        return "Filename uses a reserved Windows name"
-    if len(name) > 255:
-        return "Filename is longer than 255 characters"
+        return NameValidationIssue("NAME_RESERVED_WINDOWS", "Filename uses a reserved Windows name")
+    if len(name) > _MAX_NAME_LENGTH:
+        return NameValidationIssue("NAME_TOO_LONG", f"Filename is longer than {_MAX_NAME_LENGTH} characters", {"max_length": _MAX_NAME_LENGTH})
     return None
 
 
-def validate_onedrive_name(name: str) -> str | None:
+def validate_onedrive_name(name: str) -> NameValidationIssue | None:
     portable_error = validate_portable_name(name)
     if portable_error is not None:
         return portable_error
     lowered = name.casefold()
-    if name.startswith((" ", "~$")):
-        return "OneDrive filename cannot start with a space or '~$'"
+    invalid_prefixes = (" ", "~$")
+    if name.startswith(invalid_prefixes):
+        return NameValidationIssue("ONEDRIVE_NAME_INVALID_PREFIX", "OneDrive filename cannot start with a space or '~$'", {"prefixes": list(invalid_prefixes)})
     if lowered in {".lock", "desktop.ini"} or "_vti_" in lowered:
-        return "Filename is reserved by OneDrive"
+        return NameValidationIssue("NAME_RESERVED_ONEDRIVE", "Filename is reserved by OneDrive")
     return None

@@ -96,12 +96,13 @@ describe("PreviewPanel", () => {
     render(<PreviewPanel preview={{ ...validPreview, valid: false, items: [
       { ...item, file_id: "conflict", valid: false, conflict: true },
       { ...item, file_id: "invalid", valid: false },
-      { ...item, file_id: "error", valid: false, error: "禁止字符" },
+      { ...item, file_id: "error", valid: false, error: "Filename cannot end with a space or period",
+        details: { reason: "NAME_INVALID_ENDING", params: {} } },
     ] }} />);
     const table = within(screen.getByRole("table", { name: "修改预览" }));
     expect(table.getByText("名称冲突")).toHaveClass("invalid");
     expect(table.getByText("不可修改")).toHaveClass("invalid");
-    expect(table.getByText("禁止字符")).toHaveClass("invalid");
+    expect(table.getByText("名称不能以空格或句点结尾，请修改后重试。")).toHaveClass("invalid");
     expect(screen.getByText("0 项待修改 · 0 项无需修改")).toBeInTheDocument();
   });
 

@@ -30,7 +30,7 @@ class StorageManager:
 
     def record(self, storage_id: str) -> StorageRecord:
         if storage_id not in self.state.connections:
-            raise NotFoundError("Storage connection was not found")
+            raise NotFoundError("Storage connection was not found", details={"reason": "CONNECTION_NOT_FOUND", "params": {}})
         return self.state.connections[storage_id]
 
     def info(self, storage_id: str) -> StorageInfo:
@@ -161,7 +161,7 @@ class StorageManager:
         self.ensure_mutable(storage_id)
         record = self.record(storage_id)
         if record.storage_id == "default-local":
-            raise ValidationError("The default Local connection cannot be deleted")
+            raise ValidationError("The default Local connection cannot be deleted", details={"reason": "DEFAULT_CONNECTION_DELETE_FORBIDDEN", "params": {}})
         self._commit(None, record.storage_id)
         await self._invalidate(record.storage_id)
 

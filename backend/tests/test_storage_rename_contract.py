@@ -5,6 +5,7 @@ import pytest
 
 from app.core.errors import NotFoundError, ProviderError, RenameOutcomeUnknownError
 from app.providers.base import RenameRequest, StorageProvider
+from app.providers.name_validation import NameValidationIssue
 from app.rules.base import RenameRule, RuleContext
 from app.rules.registry import RuleRegistry
 from app.schemas.files import DirectoryListing, FileItem
@@ -70,8 +71,8 @@ class StableIdProvider(StorageProvider):
             raise RenameOutcomeUnknownError("Response lost after the write")
         return outcomes
 
-    def validate_name(self, name: str) -> str | None:
-        return None if name else "Empty name"
+    def validate_name(self, name: str) -> NameValidationIssue | None:
+        return None if name else NameValidationIssue("NAME_EMPTY", "Empty name")
 
     def normalize_name(self, name: str) -> str:
         return name

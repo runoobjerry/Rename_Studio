@@ -17,7 +17,7 @@ interface SingleRenameTarget {
   taskId?: string;
 }
 
-type SingleRenameError = NotificationMessage | { message: string; code?: string | null };
+type SingleRenameError = NotificationMessage | { message: string; code?: string | null; details?: Record<string, unknown> };
 
 interface SingleRenameOptions {
   storageId: string;
@@ -134,7 +134,7 @@ export function useSingleRename({ storageId, location, workspaceSession, revisio
         notify(membership === false ? { key: "files:notifications.renamedElsewhere" }
           : { key: "files:notifications.completed", values: { count: 1 } }, "success");
       } else {
-        setSingleError(item.error ? { message: item.error, code: item.error_code } : { key: "files:quickRename.failed" });
+        setSingleError(item.error ? { message: item.error, code: item.error_code, details: item.details ?? undefined } : { key: "files:quickRename.failed" });
         if (current) setSingleTarget({ ...input.target, file: current });
       }
     },

@@ -1,5 +1,6 @@
 import { useTranslation } from "react-i18next";
 import { executionItemMessage } from "./resultMessages";
+import { errorMessage } from "../../i18n/messages";
 import type { TFunction } from "i18next";
 import { memo, useMemo, useState } from "react";
 import Alert from "@mui/material/Alert";
@@ -178,7 +179,8 @@ function statusFor(item: PreviewResponse["items"][number], result: ExecuteRespon
     label = t("files:preview.filters.unchanged");
     className = "neutral";
   } else if (item.error) {
-    label = item.error;
+    label = item.conflict && !item.details?.reason ? t("errors:reasons.duplicateNames")
+      : errorMessage({ code: "VALIDATION_ERROR", message: item.error, details: item.details ?? undefined }, t);
     className = "invalid";
   } else if (!item.valid) {
     label = item.conflict ? t("files:preview.conflict") : t("files:preview.invalid");

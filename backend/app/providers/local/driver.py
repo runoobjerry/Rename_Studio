@@ -8,7 +8,7 @@ from app.core.errors import (
     ValidationError,
 )
 from app.providers.base import StorageProvider
-from app.providers.name_validation import validate_portable_name
+from app.providers.name_validation import NameValidationIssue, validate_portable_name
 from app.schemas.files import FileItem
 from app.schemas.storage import PathLocation, RootLocation
 
@@ -27,12 +27,12 @@ class LocalProvider(StorageProvider):
         for part in Path(normalized).parts:
             candidate = candidate / part
             if self._is_link(candidate):
-                raise ValidationError("Symbolic links and directory junctions are not supported")
+                raise ValidationError("Symbolic links and directory junctions are not supported", details={"reason": "SYMBOLIC_LINK_UNSUPPORTED", "params": {}})
         candidate = candidate.resolve()
         try:
             candidate.relative_to(self.root)
         except ValueError as exc:
-            raise ValidationError("Path is outside the configured storage root") from exc
+            raise ValidationError("Path is outside the configured storage root", details={"reason": "LOCATION_OUTSIDE_ROOT", "params": {}}) from exc
         return candidate
 
     @staticmethod
@@ -83,12 +83,12 @@ class LocalProvider(StorageProvider):
     async def rename(self, file_id: str, new_name: str) -> FileItem:
         source = self._resolve(file_id)
         if source == self.root:
-            raise ValidationError("Configured storage root cannot be renamed")
+            raise ValidationError("Configured storage root cannot be renamed", details={"reason": "ROOT_RENAME_UNSUPPORTED", "params": {}})
         if not source.exists():
             raise NotFoundError("File or directory not found", details={"file_id": file_id})
         validation_error = self.validate_name(new_name)
         if validation_error is not None:
-            raise ValidationError(validation_error, details={"new_name": new_name})
+            raise ValidationError(validation_error.message, details={"new_name": new_name, **validation_error.details})
 
         target = source.with_name(new_name)
         if (target.exists() or self._is_link(target)) and target != source:
@@ -105,5 +105,5 @@ class LocalProvider(StorageProvider):
             ) from exc
         return self._to_item(renamed)
 
-    def validate_name(self, name: str) -> str | None:
+    def validate_name(self, name: str) -> NameValidationIssue | None:
         return validate_portable_name(name)

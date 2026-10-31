@@ -114,7 +114,7 @@
     "loadingSettings": "正在读取存储设置…",
     "loadingDirectory": "正在读取目录…",
     "unavailable": "目录暂不可用，请检查存储设置。",
-    "loadFailed": "无法连接后端：{{message}}",
+    "loadFailed": "无法加载主页信息，请重启应用。",
     "directoryFailed": "目录读取失败：{{message}}",
     "connectToBrowse": "连接 {{service}} 后可浏览云端目录。",
     "definitionMissing": "无法加载此连接的服务信息，请刷新页面后重试。"

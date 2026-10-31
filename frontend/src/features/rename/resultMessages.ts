@@ -16,5 +16,6 @@ export function executionItemMessage(item: ExecuteItem, t: TFunction): string {
     return t("files:preview.restoreFailed");
   }
   if (item.current_file && item.actual_name === item.original_name) return t("files:preview.restored");
-  return item.error === null ? t("files:preview.failed") : errorMessage({ code: item.error_code, message: item.error }, t);
+  return item.error === null ? t("files:preview.failed")
+    : errorMessage({ code: item.error_code, message: item.error, details: item.details ?? undefined }, t);
 }

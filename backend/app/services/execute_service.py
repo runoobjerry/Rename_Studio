@@ -238,12 +238,14 @@ class ExecuteService:
     def _record_failure(result: ExecuteItem, outcome: AppError) -> None:
         result.error = outcome.message
         result.error_code = outcome.code
+        result.details = outcome.details or None
         result.actual_name = outcome.details.get("actual_name")
 
     @staticmethod
     def _record_success(result: ExecuteItem, current: FileItem) -> None:
         result.status = "renamed"
         result.error = None
+        result.details = None
         result.current_file = current
 
     async def _execute_snapshot(
@@ -404,10 +406,12 @@ class ExecuteService:
         for staged_item in staged:
             result = results[staged_item.preview.file_id]
             result.error = reason
+            result.details = None
             outcome = outcomes[staged_item.temporary.id]
             if isinstance(outcome, AppError):
                 result.error = f"{result.error}; rollback failed: {outcome.message}"
                 result.error_code = outcome.code
+                result.details = outcome.details or None
                 result.actual_name = None if isinstance(outcome, RenameOutcomeUnknownError) else outcome.details.get("actual_name", staged_item.temporary.name)
             else:
                 result.actual_name = outcome.name
@@ -428,10 +432,12 @@ class ExecuteService:
             result = results[item.preview.file_id]
             result.status = "failed"
             result.error = "Batch rename failed; direct rename was rolled back"
+            result.details = None
             outcome = outcomes[item.current.id]
             if isinstance(outcome, AppError):
                 result.error = f"{result.error}; rollback failed: {outcome.message}"
                 result.error_code = outcome.code
+                result.details = outcome.details or None
                 result.actual_name = None if isinstance(outcome, RenameOutcomeUnknownError) else outcome.details.get("actual_name", item.current.name)
             else:
                 result.actual_name = outcome.name
@@ -454,6 +460,7 @@ class ExecuteService:
             # 明确报告恢复失败，避免把遗留临时文件误报为已恢复。
             result.error = f"{result.error}; rollback failed: {outcome.message}"
             result.error_code = outcome.code
+            result.details = outcome.details or None
             result.actual_name = None if isinstance(outcome, RenameOutcomeUnknownError) else outcome.details.get("actual_name", staged.temporary.name)
         else:
             result.actual_name = outcome.name

@@ -87,6 +87,7 @@ interface PreviewItem {
   valid: boolean;
   conflict: boolean;
   error: string | null;
+  details?: Record<string, unknown> | null;
 }
 ```
 
@@ -94,7 +95,10 @@ interface PreviewItem {
 - `parent_path === null` 仅用于 Provider 根目录列表；目录的 `size` 为 `null`。
 - 连接级扩展列表增加 `storage_id`、`revision`、`location`、`parent_location`；列表项增加 `location`、`parent_location`、`can_rename`，原有显示路径字段保留。根目录列表的 `parent_location` 为 `null`。
 - `can_rename: null` 表示权限未知，不保证远端写入成功。文件夹导航使用 `item.location`，返回上级使用 `listing.parent_location`。
-- `conflict` 只是无效状态的一类，UI 应优先展示项目的 `error` 文本。
+- `conflict` 只是无效状态的一类。名称校验失败时，`error` 保留英文诊断，UI 按 `details.reason` 和 `details.params` 展示本地化说明。
+- Provider 名称校验通过返回 `None`，失败返回 `NameValidationIssue(reason, message, params)`。整体错误响应继续使用 `VALIDATION_ERROR`，具体原因和参数置于 `error.details.reason`、`error.details.params`；预览项及批量／单项执行项通过可选 `details` 传递同一结构。长度、字符和前缀参数来自实际 Provider 校验逻辑；缺少具体原因的第三方错误保持通用提示，未知写入核对提示优先。
+- 连接不存在使用 `NOT_FOUND + CONNECTION_NOT_FOUND`；账号未连接及明确过期使用 `AUTHENTICATION_ERROR + ACCOUNT_NOT_CONNECTED/AUTHORIZATION_EXPIRED`；超出存储根目录、链接不受支持、禁止删除默认连接使用 `VALIDATION_ERROR + LOCATION_OUTSIDE_ROOT/SYMBOLIC_LINK_UNSUPPORTED/DEFAULT_CONNECTION_DELETE_FORBIDDEN`。这些场景的 `details.params` 当前为空对象。未携带 reason 的旧响应仍按原错误码显示通用提示；普通授权拒绝、401 或缺少刷新凭据不直接推断为已过期。
+- 预览项本身不携带错误码，前端按 `VALIDATION_ERROR` 解释其校验原因。原有“当前权限下不能重命名”诊断通过 `details.reason` 区分连接不支持重命名（`RENAME_UNSUPPORTED`）与项目当前不可重命名（`ITEM_RENAME_UNAVAILABLE`），`params` 均为空对象；后者还包含不支持的项目类型，不单独推断为权限不足。
 
 ## 存储连接与 Provider 元数据
 
@@ -276,6 +280,7 @@ Array<{
     status: "renamed" | "skipped" | "failed";
     error: string | null;
     error_code?: string | null;
+    details?: Record<string, unknown> | null;
     actual_name?: string | null;
     current_file?: FileItem | null; // 成功重命名或成功回滚后经 Provider 确认的元数据
   }>;

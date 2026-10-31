@@ -305,9 +305,9 @@ describe("single rename workflow", () => {
   });
 
   it.each([
-    { code: "PERMISSION_DENIED", message: "Permission changed", text: "没有执行此操作的权限。Permission changed" },
-    { code: "RENAME_CONFLICT", message: "Name occupied", text: "文件名存在冲突，修改后重试。Name occupied" },
-    { code: "RATE_LIMIT_ERROR", message: "Throttled", text: "请求过于频繁，请稍后重试。Throttled" },
+    { code: "PERMISSION_DENIED", message: "Permission changed", text: "没有修改此项目的权限，请检查访问权限，或使用有权限的账号。" },
+    { code: "RENAME_CONFLICT", message: "Name occupied", text: "此目录中已存在同名项目，请修改新名称后重试。" },
+    { code: "RATE_LIMIT_ERROR", message: "Throttled", text: "请求过于频繁，请稍后重试。" },
   ])("keeps a $code failure retryable and translates its code", async ({ code, message, text }) => {
     const hook = await setupWorkspace(1);
     const source = listing(1).items[0];
@@ -340,7 +340,7 @@ describe("single rename workflow", () => {
     }] });
     act(() => hook.result.current.workflow.openSingleRename("file-0.txt"));
     act(() => hook.result.current.workflow.applySingleRename("new", ".txt"));
-    await waitFor(() => expect(hook.result.current.workflow.singleRenameError).toBe("请求的资源不存在。Missing file"));
+    await waitFor(() => expect(hook.result.current.workflow.singleRenameError).toBe("未找到此文件或目录，请刷新目录后重新选择。"));
     expect(hook.result.current.workflow.canSingleRename).toBe(false);
     expect(hook.result.current.workflow.singleRenameTarget).not.toBeNull();
     expect(useRenameStore.getState().selectedIds).toEqual([]);
@@ -376,7 +376,7 @@ describe("single rename workflow", () => {
     vi.mocked(api.executeStorageSingleRename).mockRejectedValueOnce(new api.ApiError(403, "Denied", "PERMISSION_DENIED"));
     act(() => hook.result.current.workflow.openSingleRename("file-0.txt"));
     act(() => hook.result.current.workflow.applySingleRename("new", ".txt"));
-    await waitFor(() => expect(hook.result.current.workflow.singleRenameError).toBe("没有执行此操作的权限。Denied"));
+    await waitFor(() => expect(hook.result.current.workflow.singleRenameError).toBe("没有修改此项目的权限，请检查访问权限，或使用有权限的账号。"));
     expect(hook.result.current.workflow.canSingleRename).toBe(true);
     expect(useRenameStore.getState().unknownExecution).toBeNull();
     expect(api.executePreview).not.toHaveBeenCalled();

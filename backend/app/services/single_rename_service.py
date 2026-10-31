@@ -36,6 +36,7 @@ class SingleRenameService:
             if isinstance(outcome, AppError):
                 result.error = outcome.message
                 result.error_code = outcome.code
+                result.details = outcome.details or None
                 result.actual_name = outcome.details.get("actual_name")
             else:
                 result.status = "renamed"

@@ -7,6 +7,7 @@ from app.core.errors import (
     AppError, NotFoundError, RenameOutcomeUnknownError, StorageBusyError, StorageConnectionChangedError,
 )
 from app.providers.base import StorageProvider
+from app.providers.name_validation import NameValidationIssue
 from app.schemas.files import FileItem
 from app.schemas.rename import SingleRenameExecuteRequest
 from app.services.single_rename_service import SingleRenameService
@@ -42,7 +43,7 @@ class DirectProvider(StorageProvider):
             raise self.error
         return self.item(new_name)
 
-    def validate_name(self, name: str) -> str | None:
+    def validate_name(self, name: str) -> NameValidationIssue | None:
         return None
 
 

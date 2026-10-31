@@ -34,10 +34,10 @@
   "connection": {
     "browseDraft": "Browse local folder",
     "browse": "Browse local directory",
-    "authFailed": "Authorization failed. Try again.",
+    "authFailed": "Authorization could not be completed. Return to connection settings, check the configuration, and authorize again.",
     "accountAlreadyConnected": "This account is already connected to “{{name}}”. Use the existing connection.",
     "connectedNotice": "Account connected.",
-    "authClosed": "The authorization window was closed. Sign in again.",
+    "authClosed": "The authorization window has closed. Check the connection status; authorize again if the account is still disconnected.",
     "nameTooLong": "Connection names can contain at most 20 characters.",
     "updated": "Storage connection settings updated.",
     "popupBlocked": "The browser blocked the sign-in window. Allow pop-ups to continue.",

@@ -85,14 +85,14 @@ it("sorts all rows before virtualization and resets the scroll position", () => 
 it("filters errors across unmounted preview rows without losing full preview statistics", async () => {
   const preview = { preview_id: "preview", expires_at: "2099-01-01T00:00:00Z", valid: false,
     items: items.map((item, index) => ({ file_id: item.id, original_name: item.name, new_name: `new-${item.name}`,
-      changed: true, valid: index !== 999, conflict: index === 999, error: index === 999 ? "名称冲突" : null })) };
+      changed: true, valid: index !== 999, conflict: index === 999, error: index === 999 ? "目标名称出现重复" : null })) };
   render(<PreviewPanel preview={preview} />);
   expect(screen.getAllByRole("row").length).toBeLessThan(40);
   expect(screen.getByText("999 项待修改 · 0 项无需修改")).toBeInTheDocument();
-  expect(screen.queryByText("名称冲突")).not.toBeInTheDocument();
+  expect(screen.queryByText("新名称存在重复或已被占用，请调整规则后刷新预览。")).not.toBeInTheDocument();
   fireEvent.click(screen.getByRole("button", { name: "筛选状态" }));
   fireEvent.click(screen.getByRole("menuitemcheckbox", { name: "错误" }));
-  expect(screen.getByText("名称冲突")).toBeInTheDocument();
+  expect(screen.getByText("新名称存在重复或已被占用，请调整规则后刷新预览。")).toBeInTheDocument();
   // 菜单打开时 MUI 隐藏背景的可访问角色，关闭后再检查表格。
   fireEvent.keyDown(screen.getByRole("menu"), { key: "Escape" });
   const table = await screen.findByRole("table", { name: "修改预览" });

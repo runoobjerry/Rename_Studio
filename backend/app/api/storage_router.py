@@ -1,7 +1,6 @@
 import asyncio
 import json
 from datetime import UTC, datetime, timedelta
-from html import escape
 from pathlib import Path
 from typing import Annotated, cast
 from urllib.parse import parse_qs, urlsplit
@@ -150,7 +149,10 @@ async def callback(manager: Manager, code: str | None = Query(default=None), sta
         details = exc.details
     payload = json.dumps({"type": "storage-auth", "storage_id": storage_id, "status": "connected" if success else "failed", "message": message, "error_code": error_code, "details": details}).replace("<", "\\u003c")
     origin = json.dumps(get_settings().frontend_origin)
-    return HTMLResponse(f'<!doctype html><html><head><meta charset="utf-8"><title>Storage authorization</title></head><body><p>{escape(message)}</p><script>if(window.opener)window.opener.postMessage({payload},{origin});setTimeout(()=>window.close(),500);</script></body></html>', status_code=200 if success else 400)
+    # 回调页仅使用英文；原始错误只留在诊断载荷中。
+    display_message = ("The account is connected. You can close this window." if success else
+                       "Authorization could not be completed. Return to connection settings, check the configuration, and authorize again.")
+    return HTMLResponse(f'<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Account authorization</title></head><body><p>{display_message}</p><script>if(window.opener)window.opener.postMessage({payload},{origin});setTimeout(()=>window.close(),500);</script></body></html>', status_code=200 if success else 400)
 
 
 @router.post("/storages/{storage_id}/rename/preview", response_model=RenamePreviewResponse)

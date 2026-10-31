@@ -68,8 +68,8 @@ describe("shared notifications", () => {
     expect(errorMessage(new ApiError(409, "Expired", "PREVIEW_EXPIRED"))).toBe("预览已失效，请刷新预览。");
   });
 
-  it("keeps other error messages available", () => {
-    expect(errorMessage(new Error("Network unavailable"))).toBe("Network unavailable");
+  it("shows a localized recovery hint for an unclassified error", () => {
+    expect(errorMessage(new Error("Network unavailable"))).toBe("无法读取数据，请检查网络和应用是否正在运行后重试。");
   });
 });
 

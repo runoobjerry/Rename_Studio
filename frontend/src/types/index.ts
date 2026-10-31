@@ -97,6 +97,7 @@ export interface PreviewItem {
   valid: boolean;
   conflict: boolean;
   error: string | null;
+  details?: Record<string, unknown> | null;
 }
 
 export interface PreviewResponse {
@@ -122,6 +123,7 @@ export interface ExecuteItem {
   status: "renamed" | "skipped" | "failed";
   error: string | null;
   error_code?: string | null;
+  details?: Record<string, unknown> | null;
   actual_name?: string | null;
   current_file?: FileItem | null;
 }
