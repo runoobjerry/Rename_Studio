@@ -172,7 +172,7 @@ Frontend CI 在相关前端、Rule/Provider 注册代码的 PR 或手动触发�
 
 规则位于 `backend/app/rules`；各 Provider 的配置、定义、认证与驱动位于 `backend/app/providers`，经 `builtin.py` 显式注册。前端依据 Provider 元数据渲染连接配置与操作；`StorageManager` 管理连接生命周期、版本和执行互斥，Repository 原子保存完整状态。新增规则或 Provider 不应将具体存储逻辑引入 Rename Engine。
 
-Rule/Provider 的界面文案维护在 `frontend/src/locales`：规则使用 `rules:types.<type>`，Provider 及配置字段使用 `providers:<provider_type>.fields.<key>`。新增实现需同步补齐语言文案；后端元数据仅保留稳定标识、配置结构与能力，接口形状见 [API 参考](docs/API_REFERENCE.md)。
+Rule/Provider 的界面文案维护在 `frontend/src/locales`：规则使用 `rules:types.<type>`，Provider 及配置字段使用 `providers:<provider_type>.fields.<key>`。新增实现需同步补齐语言文案；后端元数据仅保留稳定标识、配置结构与能力，接口形状见 [API 参考](docs/api/README.md)。
 
 
 ### 许可与免责声明
