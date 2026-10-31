@@ -1,6 +1,16 @@
 {
   "name": "rename-studio-browser",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
-  "type": "module"
+  "type": "module",
+  "scripts": {
+    "build": "node scripts/build.mjs production",
+    "build:dev": "node scripts/build.mjs development"
+  },
+  "dependencies": {
+    "@material/web": "^2.5.0"
+  },
+  "devDependencies": {
+    "vite": "^8.3.5"
+  }
 }

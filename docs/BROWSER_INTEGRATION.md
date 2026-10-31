@@ -4,7 +4,7 @@
 
 ## 当前交付与支持范围
 
-阶段一已交付可加载的 MV3 扩展、OneDrive 页面提取和临时 action 脱敏诊断。阶段二实现本体内部导航业务入口，尚未接浏览器传输，不查找或激活本体标签页、不添加悬浮按钮成品。
+阶段一建立提取和协议，阶段二建立本体导航业务入口，阶段三接通独立悬浮按钮、ready 握手与消息桥。阶段一临时 action、debug-content 和调试日志已移除。源码及必要模拟回归已编写；真实扩展端到端验收仍由用户执行，不将静态检查表述为联调通过。
 
 目标环境为桌面 Chrome / Edge，普通窗口，同一浏览器配置文件；个人版 OneDrive 当前账号默认云盘的普通 `/my`“我的文件”根目录及子目录。最终流程只导航，不选择文件、不预览、不重命名、不添加连接、不重新授权。
 
@@ -31,7 +31,7 @@ type NavigationReply =
   | { version: 1; request_id: string; status: "rejected"; code: string };
 ```
 
-传输封装命名空间固定为 `rename-studio.browser.v1`。上述请求为逻辑载荷，后续传输接线须在入口校验来源、版本、类型和载荷，不信任页面传入的数据。当前没有网页 `postMessage` 桥、外部扩展消息入口或本体浏览器消息接收器。阶段二 `frontend/src/integrations/onedrive/navigation.ts` 的 `openOneDriveFolder` 只接收已经校验的内部类型；不是不可信消息入口。
+传输封装命名空间固定为 `rename-studio.browser.v1`。本体不可信消息入口为 browserBridge.ts，校验来源、版本、类型、request_id 和完整载荷后，再调用 `frontend/src/integrations/onedrive/navigation.ts` 的 `openOneDriveFolder`。后者仍只接收已校验内部类型。本集成没有外部扩展消息入口、HTTP 导航端点或特权代理接口。
 
 `accepted` 仅表示已接收，不表示目录已打开；只有现有目录 API 成功返回规范位置、当前工作区显示对应目录后才能回复 `opened`。最终结果保留相同 request_id；每次点击生成新 ID，只处理当前请求，忽略迟到结果，不承诺幂等、不持久化排队、不自动重放。阶段二内部入口返回最终结果 Promise，可选回调接收 accepted；同步匹配或保护失败直接 rejected，不先发送 accepted。
 
@@ -49,7 +49,7 @@ storage_id 为独立连接 ID，不硬编码、不由 CID 构造。account_cid�
 
 ## 页面提取边界
 
-`src/onedrive-page.js` 是唯一页面适配模块，通过 scripting 在 MAIN 执行完整读取与同源 GET。普通 ISOLATED 内容脚本不读取网页全局；仅接收 worker 筛选后的有界脱敏摘要。MAIN 返回值也视为外部数据并经过协议校验。页面内部实现不是微软公共稳定契约，当前 Console 实测不能当作真实扩展联调已通过。
+`src/onedrive-page.js` 是唯一页面适配模块，通过 scripting 在 MAIN 执行完整读取与同源 GET。普通 ISOLATED 内容脚本不读取网页全局；OneDrive 内容脚本只接收 accepted 和有界结果，worker 负责校验 MAIN 返回值后投递有界目标。本体内容脚本只桥接该目标及有界回复。页面内部实现不是微软公共稳定契约，当前 Console 实测不能当作真实扩展联调已通过。
 
 每次读取当前 URL、`_spPageContextInfo` 的 userHexCid / userCid、webAbsoluteUrl、listUrl，以及可选 userEmail、userDisplayName；邮箱缺失时读取 `$Config.email`。不用 `$Config.isAuthenticated` 判断登录。userHexCid 按明确十六进制字段处理；只有 userCid 时，仅接受恰好 16 位且含 A–F 的十六进制字符串，纯数字或数字类型明确失败，不猜进制。
 
@@ -57,7 +57,7 @@ storage_id 为独立连接 ID，不硬编码、不由 CID 构造。account_cid�
 
 根目录 GET `{webAbsoluteUrl}/_api/v2.0/drive/root`；子目录 GET `.../drive/root:/{relativePath}`，每段独立 encodeURIComponent，带 `credentials: include` 和 `Accept: application/json;odata=nometadata`，禁止重定向，整次提取 10 秒超时，不自动重试。检查 HTTP、id、folder，拒绝 remoteItem 快捷方式。子目录另读默认根目录，比较两者 parentReference.driveId；任一缺失则 scope_unverified，不同则 unsupported_scope，防止经快捷方式进入其他云盘后看似普通的后代目录。根目录自身提取允许该字段缺失，绝不由 CID 构造 drive ID；若实际根响应没有该字段，子目录将保守失败，此兼容限制须由真实扩展验证确认。此阶段不宣称已完成 Provider 侧默认云盘身份核对。
 
-提取期间监听 Navigation API、popstate、hashchange，并每 50ms 重读 URL/账号/上下文；fetch 和 JSON 解析后及返回前再次比较。发现变化即中止并返回 page_changed，要求重新点击。worker 再核对当前标签页 URL，以 documentId 定向回传；新点击使旧结果失效。整页跳转导致文档消失时报告传输失败，不向新页面投递旧结果。
+仅在用户点击后提取；提取期间监听 Navigation API、popstate、hashchange，并每 50ms 重读 URL/账号/上下文，结束即清理；fetch 和 JSON 解析后及返回前再次比较。发现变化即中止并返回 page_changed，要求重新点击。worker 在标签页查找前保存当前 URL，查找后和提取后重新核对，以来源 documentId 绑定 MAIN 注入和 accepted 回传。整页跳转导致文档消失时不向新页面投递旧结果；没有持续浏览记录收集或后台 URL 轮询。
 
 ## 失败语义
 
@@ -89,7 +89,7 @@ useWorkspaceStorage.openExternalTarget 一次安装目标连接、版本、账�
 
 目录仍经 POST `/storages/{storage_id}/files/list`，无新增导航端点。为核对默认云盘，DirectoryListing 最小新增可选 `drive_id: string | null`（其他 Provider 可为空）；OneDrive 仅从已有默认根目录响应 parentReference.driveId 提供，不构造、不增加请求。请求含 drive_id 时要求响应存在且逐值相同；缺失则 scope_unverified，不同则 unsupported_scope。请求缺 drive_id 仅允许服务端规范位置为 root，以兼容网页根响应尚未证实包含 drive ID 的情况；缺失 drive ID 的子目录拒绝。
 
-每次外部目录读取采用唯一临时查询 key，保证缓存命中也发出真实请求，禁止自动重试。响应须对应 storage_id、revision、directory_id，且规范位置为 id/root；接受真实根 ID 被规范化成 root。成功后以 Provider 的规范位置接回普通目录缓存，显示后才返回 opened，并按已有会话机制保存位置。目录读取失败停留在目标的错误界面，保留真实错误和已有成功位置记忆；可用“重试读取目录”或现有连接切换，重试仍执行相同范围校验，不静默回根目录、不自动回滚。阶段二尚未完成真实扩展到本体联调。
+每次外部目录读取采用唯一临时查询 key，保证缓存命中也发出真实请求，禁止自动重试。响应须对应 storage_id、revision、directory_id，且规范位置为 id/root；接受真实根 ID 被规范化成 root。成功后以 Provider 的规范位置接回普通目录缓存，显示后才返回 opened，并按已有会话机制保存位置。目录读取失败停留在目标的错误界面，保留真实错误和已有成功位置记忆；可用“重试读取目录”或现有连接切换，重试仍执行相同范围校验，不静默回根目录、不自动回滚。
 
 用户建议运行：frontend 中 `npm test -- src/WorkspaceApp.externalNavigation.test.tsx src/workspace/hooks/useWorkspaceStorage.test.ts src/WorkspaceApp.storage.test.tsx`、`npm run check`；后端运行 `pytest tests/test_onedrive_provider.py`。Codex 仅静态检查，不运行这些命令。验收重点包括 Local/账号 A→B、默认/记忆位置竞争、预览释放、未知写入拒绝、并发及迟到取消、根规范化、权限失败后手动重试。
 
@@ -107,13 +107,44 @@ await openOneDriveFolder({
 
 此入口假定传入值已符合上文契约；示例占位符必须替换，勿将原始个人数据贴到公开日志。只用本地开发模块调用，不安装 window 调试全局、不新增调试按钮或浏览器传输入口。使用网络节流等待目录请求时手动切换连接、进入设置，或发第二次请求，分别核对 cancelled / busy 且迟到响应不夺回工作区；在真实忙碌操作及未知结果状态下调用时应立即拒绝。
 
-## 权限与诊断生命周期
+## 阶段三：传输、就绪与生命周期
 
-当前只有 `scripting` 和 `https://onedrive.live.com/*` host 权限；无 all_urls、cookies、debugger、webRequest、activeTab、tabs 权限，无本体注入。本体明确允许地址预定为 `http://localhost:8000`、`http://127.0.0.1:8000`、开发用两主机的 `:5173`；后续接线只接受这些精确 origin（Chrome host 匹配模式不能约束端口时，仍须代码再次核对 origin）。本阶段无需访问本体，暂不申请该权限。
+发布构建只允许 `http://localhost:8000`，开发构建显式指定 `http://localhost:5173`，每次构建只含一个本体 origin；本体桥分别使用 Vite 的生产/开发配置，与扩展构建对应。127.0.0.1、其他端口和公网地址不支持，不扫描端口。扩展需要构建后加载 dist/production 或 dist/development，不再直接加载源码目录。
+
+内容脚本 → worker 只发送 `{namespace, type:'open-current-folder', request_id}`，不接收来自网页的任意 URL、方法、API 请求或代码。worker 校验 extension ID、OneDrive origin、顶层 frame、普通窗口及来源 documentId，每个来源标签页同时仅一个请求。先查询 localhost 标签页并精确过滤构建 origin，然后分别发送 `{namespace, version:1, type:'probe', request_id}`（1.5 秒内等待）；回复必须为 `{namespace, version:1, type:'ready', project:'rename-studio', request_id, instance_id}`。本体业务入口挂载后才答 ready。标题和域名命中本身不算项目就绪；零个就绪页返回 workspace_not_found，多个返回 multiple_workspaces，不广播导航、不新建标签页。
+
+本体 ISOLATED 内容脚本的 instance_id 为本次文档生成的随机 UUID；worker 导航投递携带该值，刷新后的内容脚本不会接收旧文档的投递。该值用于文档关联，不是同源网页不可伪造的认证凭据。只有唯一就绪页才继续 MAIN 提取，worker 校验结果后向该页顶层发送 `{namespace, version:1, type:'navigate', request_id, instance_id, request}`。
+
+window.postMessage 桥固定准确 targetOrigin，包裹格式如下：
+
+```ts
+// extension → app
+{ namespace, direction: 'extension-to-app', version: 1, type: 'probe', request_id }
+{ namespace, direction: 'extension-to-app', version: 1, type: 'navigate', request_id, request }
+// app → extension
+{ namespace, direction: 'app-to-extension', version: 1, type: 'ready', request_id, project: 'rename-studio' }
+{ namespace, direction: 'app-to-extension', version: 1, type: 'navigation-reply', request_id, reply }
+```
+
+两端均核对 event.source 为当前 window、event.origin 为构建 origin、方向、命名空间、版本、类型和 request_id。目标入口拒绝额外字段并沿用 v1 长度限制；回复仅允许有界 accepted/opened/rejected，opened 的 storage_id 上限 256、拒绝码为 1–64 位 ASCII 字母数字/下划线。无回声转发、无 `*` targetOrigin。同源检查与 ready 标记不证明消息一定来自扩展，也不防御控制了相同 origin 的恶意网页；桥只接受受限目录导航意图，账号、连接、授权和范围仍由业务入口与现有 Provider 核对，不提供凭据或通用 API 能力。
+
+本体内容脚本收到 accepted 时向 worker 发送 `{namespace, type:'navigation-accepted', request_id, instance_id}`。worker 只接受当前目标标签页/顶层 frame/精确 origin/extension ID/文档 instance 的关联消息，最多激活一次目标标签页及窗口，并向来源 documentId 发送 `{namespace, type:'accepted', request_id}`。标签页激活为 UI 操作，其失败不改变目录操作的真实结果；本体内容脚本等待此回传处理完成后再结束最终结果通道，避免极快完成时漏掉激活。仅 opened 显示跳转成功，本体和来源分别使用自己的语言显示最终结果；业务错误码不改写为统一目录不存在。
+
+通信采用一次 runtime.sendMessage 的最终响应通道和一次 accepted 事件，不使用长连接、定时保活或持久消息队列。worker 的请求映射只保存在本次运行内存，最终回执/超时即清理，重启或来源关闭不重放。提取自身 10 秒、注入等待最多 12 秒；本体内容脚本等待结果 19.5 秒，worker 20 秒，来源整体 35 秒。本体窗口桥 20 秒清理通信状态并显示未确认提示，真实业务请求仍由阶段二的状态和取消规则管理。
+
+投递后的失联、非最终回执或超时返回扩展传输结果 `{transport:'unconfirmed', code:'result_timeout'}`；该 code 表示没有收到打开结果，不代表目录操作失败，固定提示“未收到打开结果，请查看 Rename Studio”。投递前的明确提取/范围/本体查找错误为 `{transport:'rejected', code}`，保留其真实 code。来源等待结束即解绑 request_id；应用/内容脚本通过当前 entry 身份丢弃迟到回复，不覆盖后续请求、不自动重试。扩展实际断连也使用未确认语义，不假定 worker 永远运行。
+
+## 权限与界面
+
+OneDrive 页面增加独立 `material.js` 内容脚本，在 MAIN / document_start 仅注册 Material 自定义元素；原 `onedrive.js` 显式运行在 ISOLATED / document_idle，仅创建 DOM、处理交互和使用扩展通信。Chromium 的 ISOLATED 中 customElements 为 null，不在该环境导入自动注册的 Material 入口。此拆分不向 MAIN 提供 Chrome API、消息转发能力或账号目录数据，也不扩大 host 权限；原有按点击执行的 MAIN 提取模块保持独立。
+
+仅 `scripting`、`https://onedrive.live.com/*` 与 `http://localhost/*` host 权限；无 all_urls、cookies、debugger、webRequest、activeTab、tabs 权限。Chrome match pattern 不表达端口，故 localhost 内容脚本匹配与 host 权限一致，但在执行任何桥接前必须精确核对构建 origin；worker 候选筛选同样精确核对。只在已获 host 权限的标签页读取 URL。最低 Chrome/Edge 111（静态 MAIN 内容脚本），生命周期不依赖永久 worker。
 
 MAIN 注入使用声明的 scripting 与 OneDrive host 权限，遵循 [Chrome scripting 文档](https://developer.chrome.com/docs/extensions/reference/api/scripting)；世界隔离见 [Content scripts 文档](https://developer.chrome.com/docs/extensions/develop/concepts/content-scripts)。
 
-临时 action 只输出字段是否存在及长度，不输出邮箱、姓名、CID、目录 ID/名、URL或原始响应；不持久化数据。悬浮按钮接通后必须移除 action、debug-content 以及调试日志。扩展语言使用 Chrome en_US / zh_CN，对应本体 en-US / zh-CN。
+右中间默认 44px 圆角正方形，拖拽移动不导航，resize 后留边并限制在窗口内，无位置持久化。原生 button 提供 Tab 焦点、Enter/Space，显式名称、焦点样式、tooltip 和 aria-live 短提示；pending 拦截重复点击并展示 `@material/web` md-circular-progress。md-icon 使用内嵌 Material open_in_new SVG，不依赖远程字体；配色取本体 theme.ts 的绿色、背景与圆角。支持视图无法单凭静态 URL 完全判定，按钮保留，点击后由适配器明确拒绝不支持视图，绝不默认打开根目录。按钮挂在 documentElement 下以避开 SPA body 替换，仅观察根的直接子节点以保证单实例，不后台轮询。
+
+临时 action、debug-content、调试名称/文案和所有提取日志均已删除。不输出/持久化邮箱、姓名、CID、目录 ID/名、URL或原始响应。扩展使用 Chrome en_US / zh_CN，本体使用现有 i18next en-US / zh-CN。Material 组件按 [官方 Icon](https://github.com/material-components/material-web/blob/main/docs/components/icon.md) 与 [Progress](https://github.com/material-components/material-web/blob/main/docs/components/progress.md) 文档使用。生命周期参考 [Chrome 文档](https://developer.chrome.com/docs/extensions/develop/concepts/service-workers/lifecycle)，不通过保活规避其限制。
 
 ## 用户验证
 

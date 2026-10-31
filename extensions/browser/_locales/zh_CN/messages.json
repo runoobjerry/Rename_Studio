@@ -1,7 +1,119 @@
 {
-  "extensionName": { "message": "Rename Studio 浏览器扩展（提取预览）" },
-  "extensionDescription": { "message": "阶段一：读取支持的 OneDrive 目录，不向 Rename Studio 发送导航。" },
-  "debugAction": { "message": "提取 OneDrive 目录（临时诊断）" },
-  "debugSuccess": { "message": "目录已提取。脱敏详情见扩展控制台；未发送导航。" },
-  "debugFailure": { "message": "提取失败。请检查诊断码，返回“我的文件”后重新点击。" }
+  "extensionName": {
+    "message": "Rename Studio 浏览器扩展"
+  },
+  "developmentName": {
+    "message": "Rename Studio 浏览器扩展（开发版）"
+  },
+  "extensionDescription": {
+    "message": "将 OneDrive 当前“我的文件”目录打开到已有的 Rename Studio 标签页。"
+  },
+  "openInStudio": {
+    "message": "在 Rename Studio 中打开"
+  },
+  "dragHint": {
+    "message": "可拖拽移动按钮，按 Enter 或空格打开目录。"
+  },
+  "opening": {
+    "message": "正在打开目录…"
+  },
+  "accepted": {
+    "message": "Rename Studio 已接收请求，正在等待打开结果…"
+  },
+  "openSuccess": {
+    "message": "跳转成功"
+  },
+  "navigationRejected": {
+    "message": "无法打开目录（$1），请查看 Rename Studio 中的提示。"
+  },
+  "reason_workspace_not_found": {
+    "message": "请先启动并打开 Rename Studio"
+  },
+  "reason_multiple_workspaces": {
+    "message": "请仅保留一个 Rename Studio 标签页后重试"
+  },
+  "reason_result_timeout": {
+    "message": "未收到打开结果，请查看 Rename Studio"
+  },
+  "reason_transport_unavailable": {
+    "message": "浏览器通信暂不可用，请刷新两边页面后重试。"
+  },
+  "reason_unsupported_view": {
+    "message": "暂不支持此视图，请进入“我的文件”中的普通目录。"
+  },
+  "reason_unsupported_scope": {
+    "message": "此目录不属于支持的个人版默认云盘范围。"
+  },
+  "reason_scope_unverified": {
+    "message": "无法核对目录所属云盘，请检查集成适配后重试。"
+  },
+  "reason_page_changed": {
+    "message": "提取期间账号或目录发生变化，请重新点击。"
+  },
+  "reason_context_unavailable": {
+    "message": "未能读取 OneDrive 页面上下文，请返回“我的文件”后重试。"
+  },
+  "reason_invalid_page_data": {
+    "message": "暂不支持此 OneDrive 页面格式，请返回“我的文件”后重试。"
+  },
+  "reason_account_format_unsupported": {
+    "message": "无法确认账号标识的格式。"
+  },
+  "reason_auth_required": {
+    "message": "请检查 OneDrive 和 Rename Studio 中此账号的授权状态。"
+  },
+  "reason_permission_denied": {
+    "message": "无权访问此目录，请检查权限。"
+  },
+  "reason_directory_unavailable": {
+    "message": "此目录不可用，请检查目录是否仍然存在。"
+  },
+  "reason_rate_limited": {
+    "message": "OneDrive 正在限制请求，请稍后重试。"
+  },
+  "reason_provider_error": {
+    "message": "存储服务返回错误，请稍后重试。"
+  },
+  "reason_network_error": {
+    "message": "请检查网络连接后重试。"
+  },
+  "reason_request_timeout": {
+    "message": "目录提取超时，请检查网络后重试。"
+  },
+  "reason_invalid_response": {
+    "message": "OneDrive 返回的目录数据不受支持。"
+  },
+  "reason_invalid_request": {
+    "message": "导航请求不合法，请检查集成版本。"
+  },
+  "reason_unsupported_version": {
+    "message": "集成协议版本不兼容，请更新扩展和本体。"
+  },
+  "reason_connection_not_found": {
+    "message": "请在 Rename Studio 中添加或检查对应的 OneDrive 连接。"
+  },
+  "reason_busy": {
+    "message": "Rename Studio 正忙，请完成当前操作后重试。"
+  },
+  "reason_outcome_unresolved": {
+    "message": "请先在 Rename Studio 中处理待核对的重命名结果。"
+  },
+  "reason_cancelled": {
+    "message": "工作区变化后导航已取消，如需跳转请重新点击。"
+  },
+  "reason_authentication_error": {
+    "message": "请在 Rename Studio 中检查此账号的授权状态。"
+  },
+  "reason_not_found": {
+    "message": "目录或连接已不可用，请检查 Rename Studio。"
+  },
+  "reason_rate_limit_error": {
+    "message": "存储服务正在限制请求，请稍后重试。"
+  },
+  "reason_storage_busy": {
+    "message": "存储连接正忙，请完成操作后重试。"
+  },
+  "reason_storage_connection_changed": {
+    "message": "连接已变化，请核对账号后重新点击。"
+  }
 }

@@ -4,6 +4,7 @@ import { useNotification } from "../../components/NotificationProvider";
 import { useRenameStore } from "../../stores/useRenameStore";
 import type { useWorkspaceStorage } from "../../workspace/hooks/useWorkspaceStorage";
 import { matchOneDriveTarget, NavigationError, registerOneDriveNavigator } from "./navigation";
+import { installBrowserBridge } from "./browserBridge";
 
 interface Options {
   storage: ReturnType<typeof useWorkspaceStorage>;
@@ -43,6 +44,7 @@ export function useOneDriveNavigation(options: Options) {
         const result = storage.openExternalTarget(target, () => latest.current.beforeSwitch(), guard);
         onAccepted?.({ version: 1, request_id: request.request_id, status: "accepted" });
         await result;
+        notify({ key: "files:externalNavigation.opened" });
         return { version: 1, request_id: request.request_id, status: "opened", storage_id: target.storage.storage_id };
       } finally { pending.current = false; }
     } catch (error) {
@@ -55,5 +57,9 @@ export function useOneDriveNavigation(options: Options) {
         values: { code } }, "warning");
       return rejected(code);
     }
+  }), [notify]);
+  useEffect(() => installBrowserBridge((code) => {
+    notify({ key: code === "result_timeout" ? "files:externalNavigation.unconfirmed" : "files:externalNavigation.rejected",
+      values: { code } }, "warning");
   }), [notify]);
 }

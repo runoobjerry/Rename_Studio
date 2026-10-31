@@ -1,7 +1,119 @@
 {
-  "extensionName": { "message": "Rename Studio Browser (extraction preview)" },
-  "extensionDescription": { "message": "Stage 1: inspect a supported OneDrive folder without navigating Rename Studio." },
-  "debugAction": { "message": "Extract OneDrive folder (temporary diagnostic)" },
-  "debugSuccess": { "message": "Folder extracted. Redacted details are in the extension console; no navigation was sent." },
-  "debugFailure": { "message": "Extraction failed. Check the diagnostic code, return to My files and click again." }
+  "extensionName": {
+    "message": "Rename Studio Browser"
+  },
+  "developmentName": {
+    "message": "Rename Studio Browser (development)"
+  },
+  "extensionDescription": {
+    "message": "Open your current OneDrive My files folder in an existing Rename Studio tab."
+  },
+  "openInStudio": {
+    "message": "Open in Rename Studio"
+  },
+  "dragHint": {
+    "message": "Drag to reposition. Press Enter or Space to open."
+  },
+  "opening": {
+    "message": "Opening folder…"
+  },
+  "accepted": {
+    "message": "Rename Studio accepted the request. Waiting for the open result…"
+  },
+  "openSuccess": {
+    "message": "Folder opened successfully."
+  },
+  "navigationRejected": {
+    "message": "Could not open the folder ($1). Check Rename Studio for details."
+  },
+  "reason_workspace_not_found": {
+    "message": "Please start and open Rename Studio first."
+  },
+  "reason_multiple_workspaces": {
+    "message": "Keep only one Rename Studio tab open, then retry."
+  },
+  "reason_result_timeout": {
+    "message": "No open result received. Please check Rename Studio."
+  },
+  "reason_transport_unavailable": {
+    "message": "The browser connection is unavailable. Refresh both pages and retry."
+  },
+  "reason_unsupported_view": {
+    "message": "This view is not supported. Open a regular folder in My files."
+  },
+  "reason_unsupported_scope": {
+    "message": "This folder is outside the supported personal default drive."
+  },
+  "reason_scope_unverified": {
+    "message": "The folder's drive could not be verified. Check the integration before retrying."
+  },
+  "reason_page_changed": {
+    "message": "The account or folder changed during extraction. Click again."
+  },
+  "reason_context_unavailable": {
+    "message": "OneDrive page context is unavailable. Return to My files and retry."
+  },
+  "reason_invalid_page_data": {
+    "message": "The OneDrive page format is not supported. Return to My files and retry."
+  },
+  "reason_account_format_unsupported": {
+    "message": "The account identifier format could not be verified."
+  },
+  "reason_auth_required": {
+    "message": "Check this account's authorization in OneDrive and Rename Studio."
+  },
+  "reason_permission_denied": {
+    "message": "Access to this folder was denied. Check permissions."
+  },
+  "reason_directory_unavailable": {
+    "message": "The folder is unavailable. Check that it still exists."
+  },
+  "reason_rate_limited": {
+    "message": "OneDrive is limiting requests. Retry later."
+  },
+  "reason_provider_error": {
+    "message": "The storage service returned an error. Retry later."
+  },
+  "reason_network_error": {
+    "message": "Check the network connection, then retry."
+  },
+  "reason_request_timeout": {
+    "message": "Folder extraction timed out. Check the network, then retry."
+  },
+  "reason_invalid_response": {
+    "message": "OneDrive returned an unsupported folder response."
+  },
+  "reason_invalid_request": {
+    "message": "The navigation request is invalid. Check the integration version."
+  },
+  "reason_unsupported_version": {
+    "message": "The integration versions are incompatible. Update both components."
+  },
+  "reason_connection_not_found": {
+    "message": "Add or check the matching OneDrive connection in Rename Studio."
+  },
+  "reason_busy": {
+    "message": "Rename Studio is busy. Finish the current operation, then retry."
+  },
+  "reason_outcome_unresolved": {
+    "message": "Resolve the unconfirmed rename results in Rename Studio first."
+  },
+  "reason_cancelled": {
+    "message": "Navigation was cancelled after the workspace changed. Click again if needed."
+  },
+  "reason_authentication_error": {
+    "message": "Check this account's authorization in Rename Studio."
+  },
+  "reason_not_found": {
+    "message": "The directory or connection is no longer available. Check Rename Studio."
+  },
+  "reason_rate_limit_error": {
+    "message": "The storage service is limiting requests. Retry later."
+  },
+  "reason_storage_busy": {
+    "message": "The storage connection is busy. Finish the operation, then retry."
+  },
+  "reason_storage_connection_changed": {
+    "message": "The connection changed. Check the account and click again."
+  }
 }

@@ -2,16 +2,25 @@
   "manifest_version": 3,
   "name": "__MSG_extensionName__",
   "description": "__MSG_extensionDescription__",
-  "version": "0.1.0",
-  "minimum_chrome_version": "106",
+  "version": "0.2.0",
+  "minimum_chrome_version": "111",
   "default_locale": "en_US",
   "permissions": ["scripting"],
-  "host_permissions": ["https://onedrive.live.com/*"],
-  "background": { "service_worker": "src/service-worker.js", "type": "module" },
-  "action": { "default_title": "__MSG_debugAction__" },
+  "host_permissions": ["https://onedrive.live.com/*", "http://localhost/*"],
+  "background": { "service_worker": "service-worker.js", "type": "module" },
   "content_scripts": [{
     "matches": ["https://onedrive.live.com/*"],
-    "js": ["src/debug-content.js"],
+    "js": ["material.js"],
+    "world": "MAIN",
+    "run_at": "document_start"
+  }, {
+    "matches": ["https://onedrive.live.com/*"],
+    "js": ["onedrive.js"],
+    "world": "ISOLATED",
+    "run_at": "document_idle"
+  }, {
+    "matches": ["http://localhost/*"],
+    "js": ["workspace.js"],
     "run_at": "document_idle"
   }],
   "incognito": "not_allowed"

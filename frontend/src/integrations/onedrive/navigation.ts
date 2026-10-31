@@ -44,6 +44,7 @@ export type OneDriveTarget = ReturnType<typeof matchOneDriveTarget>;
 type Navigator = (request: OpenOneDriveFolderRequest,
   onAccepted?: (reply: NavigationReply) => void) => Promise<NavigationReply>;
 let navigator: Navigator | null = null;
+export const oneDriveNavigatorReady = () => navigator !== null;
 
 // In-process business entry only. No window event, browser message or HTTP endpoint.
 export function registerOneDriveNavigator(handler: Navigator): () => void {

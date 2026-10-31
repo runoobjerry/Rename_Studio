@@ -9,6 +9,9 @@ import { installWorkspaceAppTestHooks, renderWorkspace } from "./test/workspaceA
 import { readWorkspaceSession } from "./workspace/workspaceSession";
 import { useRenameStore } from "./stores/useRenameStore";
 import { cloneRule, DEFAULT_RULES } from "./features/rules/RuleEditor";
+import { browserChannel } from "./test/browserChannel";
+import { installBrowserBridge } from "./integrations/onedrive/browserBridge";
+import { BROWSER_NAMESPACE, BROWSER_ORIGIN } from "./integrations/onedrive/protocol";
 import type { DirectoryListing, StorageInfo } from "./types";
 
 vi.mock("./api/client", async (importOriginal) => {
@@ -45,6 +48,21 @@ async function mount() {
 }
 
 describe("external OneDrive navigation", () => {
+  it("opens through the validated browser message entry and reports accepted before opened", async () => {
+    await mount();
+    const channel = browserChannel();
+    const dispose = installBrowserBridge(vi.fn(), channel.host);
+    try {
+      act(() => channel.dispatch({ namespace: BROWSER_NAMESPACE, direction: "extension-to-app",
+        version: 1, type: "navigate", request_id: target.request_id, request: target }));
+      await screen.findByText("target-file.txt");
+      await waitFor(() => expect(channel.post).toHaveBeenCalledWith(expect.objectContaining({
+        reply: { version: 1, request_id: target.request_id, status: "opened", storage_id: "user-onedrive" },
+      }), BROWSER_ORIGIN));
+      const statuses = channel.post.mock.calls.map(([data]) => (data as { reply: NavigationReply }).reply.status);
+      expect(statuses).toEqual(["accepted", "opened"]);
+    } finally { dispose(); }
+  });
   it("opens the specified account directory, refreshes a cached target and preserves defaults and rules", async () => {
     serverSettings.preferences.cloud_default_locations["user-onedrive"] = {
       account_id: cid, location: { kind: "id", value: "remembered-default" },
