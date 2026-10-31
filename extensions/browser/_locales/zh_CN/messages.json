@@ -1,0 +1,7 @@
+{
+  "extensionName": { "message": "Rename Studio 浏览器扩展（提取预览）" },
+  "extensionDescription": { "message": "阶段一：读取支持的 OneDrive 目录，不向 Rename Studio 发送导航。" },
+  "debugAction": { "message": "提取 OneDrive 目录（临时诊断）" },
+  "debugSuccess": { "message": "目录已提取。脱敏详情见扩展控制台；未发送导航。" },
+  "debugFailure": { "message": "提取失败。请检查诊断码，返回“我的文件”后重新点击。" }
+}

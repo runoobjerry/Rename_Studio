@@ -1,0 +1,7 @@
+{
+  "extensionName": { "message": "Rename Studio Browser (extraction preview)" },
+  "extensionDescription": { "message": "Stage 1: inspect a supported OneDrive folder without navigating Rename Studio." },
+  "debugAction": { "message": "Extract OneDrive folder (temporary diagnostic)" },
+  "debugSuccess": { "message": "Folder extracted. Redacted details are in the extension console; no navigation was sent." },
+  "debugFailure": { "message": "Extraction failed. Check the diagnostic code, return to My files and click again." }
+}

@@ -1,0 +1,18 @@
+{
+  "manifest_version": 3,
+  "name": "__MSG_extensionName__",
+  "description": "__MSG_extensionDescription__",
+  "version": "0.1.0",
+  "minimum_chrome_version": "106",
+  "default_locale": "en_US",
+  "permissions": ["scripting"],
+  "host_permissions": ["https://onedrive.live.com/*"],
+  "background": { "service_worker": "src/service-worker.js", "type": "module" },
+  "action": { "default_title": "__MSG_debugAction__" },
+  "content_scripts": [{
+    "matches": ["https://onedrive.live.com/*"],
+    "js": ["src/debug-content.js"],
+    "run_at": "document_idle"
+  }],
+  "incognito": "not_allowed"
+}
