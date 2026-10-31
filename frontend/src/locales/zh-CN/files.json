@@ -8,7 +8,7 @@
   "invert": "反选",
   "filterItems": "筛选项目",
   "refreshingDirectory": "正在刷新目录",
-  "selectAll": "选择当前显示的全部项目",
+  "selectAll": "选择当前显示且可修改名称的全部项目",
   "columns": {
     "name": "文件名",
     "extension": "扩展名",
@@ -37,17 +37,24 @@
     "summary": "{{pending}} 项待修改 · {{unchanged}} 项无需修改",
     "empty": "刷新预览查看新名称；预览不会修改 {{provider}} 中的内容。",
     "executeFailed": "执行失败：{{message}}",
-    "needsVerification": "待核对"
+    "needsVerification": "待核对",
+    "unknown": "未知",
+    "restored": "未完成修改，已恢复原名称",
+    "restoreFailed": "未能恢复原名称，请核对当前名称",
+    "notAttempted": "因其他项目的修改结果待核对，本项目未修改",
+    "notAttemptedOther": "因其他项目修改异常，本项目未修改"
   },
   "rename": {
     "phases": {
-      "waiting": "等待确认",
+      "waiting": "确认修改",
       "validating": "正在复核",
       "staging": "正在准备临时名称",
       "renaming": "正在修改",
       "rollback": "正在回滚",
       "finished": "处理结束",
-      "failed": "执行失败"
+      "failed": "执行失败",
+      "submitting": "正在提交修改",
+      "unknown": "修改结果待核对"
     },
     "refreshing": "正在刷新…",
     "preview": "刷新预览",
@@ -59,20 +66,19 @@
     "processed": "当前任务已处理 {{processed}} 项，共 {{total}} 项。稍等片刻，请勿刷新页面。",
     "confirm": "将根据当前预览区新文件名修改 {{provider}} 中的 {{count}} 个项目。请注意，",
     "confirm_one": "将根据当前预览区新文件名修改 {{provider}} 中的 {{count}} 个项目。请注意，",
-    "confirm_other": "将根据当前预览区新文件名修改 {{provider}} 中的 {{count}} 个项目。请注意，"
+    "confirm_other": "将根据当前预览区新文件名修改 {{provider}} 中的 {{count}} 个项目。请注意，",
+    "unknownOutcome": "未收到完整的修改结果。请刷新目录并核对实际名称，核对前不要重复执行。"
   },
   "notifications": {
     "renamedElsewhere": "重命名成功，但该项目已移动至其他目录。",
     "invalidPreview": "预览包含无效名称或冲突，请检查结果。",
     "rootSelected": "已选择本地根文件夹。",
-    "sessionUnavailable": "浏览器会话存储不可用，刷新后无法保留工作路径。",
+    "sessionUnavailable": "浏览器无法保存当前目录，刷新页面后需重新打开。",
     "defaultUnavailable": "无法读取默认路径，将打开云盘根目录。",
     "refreshed": "目录已刷新。",
     "previewFailed": "预览失败：{{message}}",
     "completed": "修改全部成功：{{count}} 项已修改。",
-    "partial": "修改部分完成：{{renamed}} 项已修改，{{failed}} 项失败。",
-    "failed": "修改失败：{{renamed}} 项已修改，{{failed}} 项失败。",
-    "unknownOutcome": "执行未返回完整结果：{{message}}；请刷新目录并核对实际文件。",
+    "unknownOutcome": "未收到完整的修改结果。请刷新目录并核对实际名称，核对前不要重复执行。",
     "pickFailed": "选择文件夹失败：{{message}}",
     "defaultSaved": "已将“{{path}}”设为当前账号的默认路径。",
     "defaultRootSaved": "已将“根目录”设为当前账号的默认路径。",
@@ -80,8 +86,14 @@
     "refreshFailed": "刷新失败：{{message}}",
     "completed_one": "修改全部成功：{{count}} 项已修改。",
     "completed_other": "修改全部成功：{{count}} 项已修改。",
-    "verifyBeforeRetry": "执行结果尚未确定，请刷新文件目录或前往文件源进行检查。",
-    "fixedMembers": "任务文件集合已固定，请结束当前任务后再加入其他文件。"
+    "verifyBeforeRetry": "部分项目的重命名结果尚未确认。请刷新目录，或前往文件源进行检查，核对前不要重复执行。",
+    "fixedMembers": "当前任务只能处理已加入的项目。要选择其他项目，请先结束当前任务。",
+    "ended": "本次修改已结束：{{results}}。",
+    "resultSeparator": "，",
+    "renamedCount": "{{count}} 项已修改",
+    "failedCount": "{{count}} 项失败",
+    "unknownCount": "{{count}} 项待核对",
+    "notAttemptedCount": "{{count}} 项未修改"
   },
   "location": {
     "title": "目录位置",
@@ -105,7 +117,7 @@
     "loadFailed": "无法连接后端：{{message}}",
     "directoryFailed": "目录读取失败：{{message}}",
     "connectToBrowse": "连接 {{service}} 后可浏览云端目录。",
-    "definitionMissing": "未找到存储服务 {{provider}} 的定义。"
+    "definitionMissing": "无法加载此连接的服务信息，请刷新页面后重试。"
   },
   "summary": "共 {{total}} 项 · 已选择 {{selected}} 项",
   "showing": " · 显示 {{count}} 项",
@@ -114,7 +126,7 @@
   "selectFile": "选择文件 {{name}}",
   "selectFolder": "选择文件夹 {{name}}",
   "verification": {
-    "required": "当前存在无法获取最新状态的文件，请刷新文件目录或前往文件源进行检查"
+    "required": "部分项目的重命名结果尚未确认。请刷新目录，或前往文件源进行检查，核对前不要重复执行。"
   },
   "taskTitle": "当前任务",
   "quickRename": {

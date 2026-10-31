@@ -1,12 +1,12 @@
 {
   "editor": {
     "title": "Rule editor",
-    "clear": "Clear all",
+    "clear": "Clear rules",
     "add": "Add",
     "loading": "Loading rules",
     "unavailable": "No rules available",
-    "checkRegistry": "Check that the backend rule registry has loaded.",
-    "empty": "Multiple rules can be combined to form a rule chain.",
+    "checkRegistry": "Could not load available rules. Refresh the page; if they are still unavailable, restart the app.",
+    "empty": "Rules are applied from top to bottom. You can add multiple rules.",
     "moveUp": "Move rule up",
     "moveDown": "Move rule down",
     "copy": "Duplicate rule",
@@ -25,7 +25,7 @@
     "search": "Find",
     "removeText": "Remove",
     "replacement": "Replace",
-    "occurrence": "Occurrences",
+    "occurrence": "Match scope",
     "all": "All",
     "first": "First",
     "last": "Last",
@@ -47,7 +47,7 @@
   "types": {
     "padding": {
       "name": "Padding",
-      "description": "Pad numbers with zeros, or pad text on the left or right"
+      "description": "Pad existing numbers in names with zeros, or pad text on the left or right"
     },
     "replace": {
       "name": "Replace",

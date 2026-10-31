@@ -33,7 +33,7 @@
 | 复核失败仅在 Modal 展示 codes 译文，点击刷新预览创建新预览，不重放执行、不进入未知结果保护 | [RenameActions](../frontend/src/features/rename/RenameActions.test.tsx)、[工作流 Hook](../frontend/src/features/rename/useRenameWorkflow.test.ts) |
 | 未知执行结果在预览栏显示可关闭的 Alert，关闭仅隐藏提醒，同次执行保持隐藏，新执行重新提醒；待核对项显示 N/A 并归入错误筛选，无人工解锁入口，刷新目录成功只解锁刷新预览并保留旧预览及待核对展示，刷新失败保留锁定 | 工作台集成、PreviewPanel |
 | 全选和过滤覆盖完整数据集，包括虚拟列表未挂载的行 | FileBrowser、[虚拟列表](../frontend/src/features/files/FileBrowser.virtual.test.tsx) |
-| 恢复出厂设置失败显示错误，保留规则、配置、路径记忆与当前连接，并保持确认框打开 | 工作台集成 |
+| 重置应用请求异常时提示刷新核对，保留规则、配置、路径记忆与当前连接，并保持确认框打开 | [偏好与重置集成](../frontend/src/WorkspaceApp.preferences.test.tsx) |
 | 预览创建传递替换 ID，释放只针对指定预览；错误项不能计入可修改数量 | [API client](../frontend/src/api/client.test.ts)、[PreviewPanel](../frontend/src/features/rename/PreviewPanel.test.tsx) |
 | 单项改名直接提交完整目标名称、原名及连接版本，连接及位置使用真实 ID，不请求预览 | API client |
 | 单项改名保留文件扩展名，无扩展名文件（如 .env）与文件夹按完整名称处理；普通目录不创建任务，成功后保留服务端确认的新 ID 选择；结果缺少完整路径时使用浏览上下文生成显示路径 | [单项改名工作流](../frontend/src/features/rename/useSingleRenameWorkflow.test.ts) |
@@ -59,7 +59,7 @@
 | 显式主题保存与重挂载恢复、保存失败回退、前次保存失败后继续处理队列、迟到读取不覆盖保存 | [主题偏好 Hook](../frontend/src/features/settings/useThemePreference.test.ts) |
 | 自动发现语言、浏览器候选优先级与简繁边界、显式/不可用偏好和英文回退；有效语言日期格式化 | [语言解析](../frontend/src/i18n/languages.test.ts) |
 | 首次读取门控、语言即时切换与持久化恢复、保存失败回退、连续切换、auto 跟随浏览器且不重挂载 | [语言 Provider](../frontend/src/i18n/LanguageProvider.test.tsx) |
-| 设置语言菜单接线、读取失败的本地化警告、保存失败通知、切换时保留选择且不重新请求目录/元数据 | 工作台集成 |
+| 设置语言菜单接线；首次读取失败提示默认设置和刷新步骤；保存响应丢失提示恢复界面后刷新核对；切换时保留选择且不重新请求目录/元数据 | [偏好与重置集成](../frontend/src/WorkspaceApp.preferences.test.tsx) |
 | 已有预览与确认框随语言更新；保持选中项和降序排列，不额外预览、执行或释放快照 | 工作台集成 |
 | 错误类别只按稳定 code 翻译，原始 message/details 保留，未知 code 或普通异常不从英文内容推断类别 | [错误翻译](../frontend/src/i18n/messages.test.ts) |
 | 连接创建/编辑/关闭草稿、本地选择器、授权状态与失败保留输入 | StorageSettingsPanel |

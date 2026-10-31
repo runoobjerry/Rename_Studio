@@ -31,6 +31,7 @@ export interface RenameActionsProps {
   progressError?: string;
   executeError?: string;
   revalidationError?: string;
+  hasUnknownOutcome?: boolean;
   onPreview: () => void;
   onExecute: (previewId: string) => void;
 }
@@ -48,6 +49,7 @@ export function RenameActions({
   progressError,
   executeError,
   revalidationError,
+  hasUnknownOutcome = false,
   onPreview,
   onExecute,
 }: RenameActionsProps) {
@@ -61,8 +63,9 @@ export function RenameActions({
   const percent = total > 0 ? Math.min(100, Math.floor(processed / total * 100)) : 0;
   const started = applied || isExecuting || hasExecuted || Boolean(executeError || revalidationError);
   const executionError = revalidationError ?? executeError ?? (currentProgress?.error ? errorMessage({ message: currentProgress.error }, t) : undefined);
-  const phase = hasExecuted ? "finished" : executionError ? "failed" : currentProgress?.phase ?? "waiting";
-  const isFailed = phase === "failed";
+  const phase = hasExecuted ? "finished" : hasUnknownOutcome && executionError ? "unknown"
+    : executionError ? "failed" : currentProgress?.phase ?? (applied || isExecuting ? "submitting" : "waiting");
+  const isFailed = phase === "failed" || phase === "unknown";
 
   useEffect(() => {
     setConfirming(false);
@@ -109,10 +112,11 @@ export function RenameActions({
               {t("files:rename.confirm", { provider: providerName, count: changedCount })}
               <Typography component="span" variant="inherit" sx={{ color: "error.main" }}>{t("files:rename.irreversible")}</Typography>
             </DialogContentText>
-            {started && (
+            {started && !hasExecuted && (
               <DialogContentText role="status" sx={{ position: "absolute", inset: 0, overflowY: "auto",
                 color: executionError || (isExecuting && progressError) ? "error.main" : "text.secondary" }}>
-                {revalidationError ?? (executionError ? t("files:rename.returnedError", { message: executionError }) : isExecuting && progressError
+                {hasUnknownOutcome && executionError ? t("files:rename.unknownOutcome")
+                  : revalidationError ?? (executionError ? t("files:rename.returnedError", { message: executionError }) : isExecuting && progressError
                   ? t("files:rename.progressUnavailable", { message: progressError })
                   : t("files:rename.processed", { processed, total }))}
               </DialogContentText>

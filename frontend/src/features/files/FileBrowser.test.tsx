@@ -54,7 +54,7 @@ describe("FileBrowser", () => {
     const props = { listing, providerName: "本地文件", selectedIds: ["folder"],
       onNavigate: vi.fn(), onToggle: vi.fn(), onSelectAll, onInvertSelection, onClearSelection };
     const { rerender } = render(<FileBrowser {...props} selectedIds={[]} />);
-    fireEvent.click(screen.getByRole("checkbox", { name: "选择当前显示的全部项目" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "选择当前显示且可修改名称的全部项目" }));
     fireEvent.click(screen.getByRole("button", { name: "反选" }));
     expect(onSelectAll).toHaveBeenCalledWith(["folder", "file.txt"]);
     expect(onInvertSelection).toHaveBeenCalledOnce();
@@ -67,7 +67,7 @@ describe("FileBrowser", () => {
     fireEvent.keyDown(screen.getByRole("menu"), { key: "Escape" });
     await waitFor(() => expect(screen.queryByRole("menu")).not.toBeInTheDocument());
 
-    const header = screen.getByRole("checkbox", { name: "选择当前显示的全部项目" });
+    const header = screen.getByRole("checkbox", { name: "选择当前显示且可修改名称的全部项目" });
     expect(header).not.toBeChecked();
     expect(header).toHaveAttribute("data-indeterminate", "false");
     expect(screen.queryByRole("button", { name: "全选" })).not.toBeInTheDocument();
@@ -122,7 +122,7 @@ describe("FileBrowser", () => {
     expect(screen.getByText("没有符合筛选条件的项目。")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "全选" })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "反选" })).toBeDisabled();
-    expect(screen.getByRole("checkbox", { name: "选择当前显示的全部项目" })).toBeDisabled();
+    expect(screen.getByRole("checkbox", { name: "选择当前显示且可修改名称的全部项目" })).toBeDisabled();
   });
   it("selects a directory name without navigating into it", () => {
     const onNavigate = vi.fn();

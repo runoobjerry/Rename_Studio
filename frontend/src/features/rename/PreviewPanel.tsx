@@ -1,5 +1,5 @@
 import { useTranslation } from "react-i18next";
-import { errorMessage } from "../../i18n/messages";
+import { executionItemMessage } from "./resultMessages";
 import type { TFunction } from "i18next";
 import { memo, useMemo, useState } from "react";
 import Alert from "@mui/material/Alert";
@@ -60,7 +60,7 @@ export const PreviewPanel = memo(function PreviewPanel({
       const status = statusFor(item, executionById.get(item.file_id), unknownIds.has(item.file_id), t);
       if (status.isPendingChange) pendingCount++;
       if (status.isUnchanged) unchangedCount++;
-      return { item, status, newName: unknownIds.has(item.file_id) ? "N/A" : item.new_name };
+      return { item, status, newName: unknownIds.has(item.file_id) ? t("files:preview.needsVerification") : item.new_name };
     });
     return { rows, pendingCount, unchangedCount };
   }, [preview?.items, unknownExecution?.items, unknownIds, executionById, t]);
@@ -130,7 +130,8 @@ export const PreviewPanel = memo(function PreviewPanel({
       )}
 
       {executeError && (
-        <Alert severity="error" sx={{ m: 2 }}>{t("files:preview.executeFailed", { message: executeError })}</Alert>
+        <Alert severity={unknownExecution ? "warning" : "error"} sx={{ m: 2 }}>{unknownExecution
+          ? t("files:rename.unknownOutcome") : t("files:preview.executeFailed", { message: executeError })}</Alert>
       )}
       {unknownExecution && dismissedVerification !== verificationKey && (
         <Alert severity="warning" sx={{ m: 2 }} closeText={t("common:close")}
@@ -156,7 +157,8 @@ function statusFor(item: PreviewResponse["items"][number], result: ExecuteRespon
   // 待核对状态仅消费执行流程已有的判断，不在展示层重新推断结果。
   if (needsVerification) return {
     category: "error" as const,
-    label: t("files:preview.needsVerification"), className: "invalid", renamed: false,
+    label: result?.error?.includes("; rollback failed:") || result?.error?.includes("; rollback skipped because")
+      ? t("files:preview.restoreFailed") : t("files:preview.unknown"), className: "invalid", renamed: false,
     isPendingChange: false, isUnchanged: false,
   };
   // 已修改项保留原预览分类；失败和跳过的执行结果覆盖分类。
@@ -169,7 +171,7 @@ function statusFor(item: PreviewResponse["items"][number], result: ExecuteRespon
     className = "valid";
   } else if (result?.status === "failed") {
     category = "error";
-    label = result.error === null ? t("files:preview.failed") : errorMessage({ code: result.error_code, message: result.error }, t);
+    label = executionItemMessage(result, t);
     className = "invalid";
   } else if (result?.status === "skipped") {
     category = "unchanged";

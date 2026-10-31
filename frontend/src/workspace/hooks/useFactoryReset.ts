@@ -4,6 +4,7 @@ import { useIsMutating, useQueryClient } from "@tanstack/react-query";
 import { useNotification } from "../../components/NotificationProvider";
 import { useTranslation } from "react-i18next";
 import { useAppSettings } from "../../features/settings/useAppSettings";
+import { settingsFailureMessage } from "../../features/settings/settingsMessages";
 import { useRenameStore } from "../../stores/useRenameStore";
 
 interface FactoryResetOptions {
@@ -28,7 +29,7 @@ export function useFactoryReset({
 
   let resetDisabledReason: string | undefined;
   if (hasUnknownOutcome) {
-    resetDisabledReason = t("resetUnknown");
+    resetDisabledReason = t("files:verification.required");
   } else if (isExecuting || isPreviewing || storageBusy) {
     resetDisabledReason = t("resetBusy");
   } else if (activeMutations > 0) {
@@ -41,7 +42,7 @@ export function useFactoryReset({
       try {
         await appSettings.factoryReset();
       } catch (error) {
-        notify({ key: "settings:resetFailed", error: error as Error }, "error");
+        notify(settingsFailureMessage(error as Error, "reset"), "error");
         return false;
       }
       // Clear the workspace only after the backend reset succeeds.

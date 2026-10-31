@@ -48,7 +48,7 @@ describe("directory refresh selection", () => {
       items: [{ file_id: "A", original_name: "A.txt", new_name: "new-A.txt", changed: true, valid: true, conflict: false, error: null }],
     });
     renderWorkspace();
-    fireEvent.click(await screen.findByRole("checkbox", { name: "选择当前显示的全部项目" }));
+    fireEvent.click(await screen.findByRole("checkbox", { name: "选择当前显示且可修改名称的全部项目" }));
     fireEvent.click(screen.getByRole("button", { name: "刷新预览" }));
     await waitFor(() => expect(screen.getByRole("button", { name: "开始修改" })).toBeEnabled());
     expect(useRenameStore.getState().previewActive).toBe(true);
@@ -71,7 +71,7 @@ describe("directory refresh selection", () => {
   it("clears hidden selections and does not restore them after refresh or removing the filter", async () => {
     vi.mocked(api.fetchStorageFiles).mockResolvedValue(listing(["A", "B"]));
     renderWorkspace();
-    fireEvent.click(await screen.findByRole("checkbox", { name: "选择当前显示的全部项目" }));
+    fireEvent.click(await screen.findByRole("checkbox", { name: "选择当前显示且可修改名称的全部项目" }));
     fireEvent.click(screen.getByRole("button", { name: "筛选项目" }));
     fireEvent.click(screen.getByRole("menuitemcheckbox", { name: "文件夹" }));
     fireEvent.keyDown(screen.getByRole("menu"), { key: "Escape" });

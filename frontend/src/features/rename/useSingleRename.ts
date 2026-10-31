@@ -76,7 +76,7 @@ export function useSingleRename({ storageId, location, workspaceSession, revisio
       if (!outcome) {
         recordUnknown(input, result.operation_id);
         if (isCurrentSession(input.target.workspaceSession)) {
-          setSingleError({ key: "files:notifications.verifyBeforeRetry" });
+          setSingleError({ key: "files:verification.required" });
         }
         return;
       }
@@ -126,7 +126,7 @@ export function useSingleRename({ storageId, location, workspaceSession, revisio
         return current && !missingTaskFile ? [current.id] : [];
       }));
       if (unknown) {
-        setSingleError({ key: "files:notifications.verifyBeforeRetry" });
+        setSingleError({ key: "files:verification.required" });
         return;
       }
       if (result.status === "completed" && item.status === "renamed") {

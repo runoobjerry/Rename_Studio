@@ -1,12 +1,12 @@
 {
   "editor": {
     "title": "规则编辑",
-    "clear": "一键清除",
+    "clear": "清空规则",
     "add": "添加规则",
     "loading": "正在加载规则",
     "unavailable": "暂无可用规则",
-    "checkRegistry": "请确认后端规则注册表已经加载。",
-    "empty": "添加多个规则可组合为规则链。",
+    "checkRegistry": "无法加载可用规则。请刷新页面；若仍不可用，请重启应用。",
+    "empty": "规则按从上到下的顺序应用，可添加多个规则。",
     "moveUp": "上移规则",
     "moveDown": "下移规则",
     "copy": "复制规则",
@@ -15,7 +15,7 @@
   },
   "fields": {
     "paddingMode": "填充类型",
-    "numberPadding": "数字序列补零",
+    "numberPadding": "数字补零",
     "textPadding": "文本填充",
     "length": "目标长度",
     "fillCharacter": "填充字符",
@@ -25,7 +25,7 @@
     "search": "查找内容",
     "removeText": "移除内容",
     "replacement": "替换为",
-    "occurrence": "操作序数",
+    "occurrence": "匹配范围",
     "all": "全部",
     "first": "首个",
     "last": "末个",
@@ -47,7 +47,7 @@
   "types": {
     "padding": {
       "name": "填充",
-      "description": "为数字序列补零，或从左侧、右侧填充文本"
+      "description": "为名称中已有的数字补零，或从左侧、右侧填充文本"
     },
     "replace": {
       "name": "替换",

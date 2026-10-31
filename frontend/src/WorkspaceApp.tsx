@@ -30,6 +30,7 @@ import { RuleEditor } from "./features/rules/RuleEditor";
 import { useRenameStore } from "./stores/useRenameStore";
 import { createAppTheme } from "./theme";
 import { useThemePreference } from "./features/settings/useThemePreference";
+import { settingsFailureMessage } from "./features/settings/settingsMessages";
 import { useFactoryReset } from "./workspace/hooks/useFactoryReset";
 import type { ThemePreference } from "./features/settings/useThemePreference";
 import { NotificationProvider, errorMessage, useNotification } from "./components/NotificationProvider";
@@ -61,19 +62,20 @@ export default function WorkspaceApp() {
 
 function ThemedWorkspace() {
   const { locale } = useLanguagePreference();
-  const { mode, preference, setPreference, settingsError } = useThemePreference();
+  const { mode, preference, setPreference, settingsError, hasSettings } = useThemePreference();
   const theme = useMemo(() => createAppTheme(mode, locale), [mode, locale]);
   return (
     <ThemeProvider theme={theme}>
-      <NotificationProvider><Workspace preference={preference} setPreference={setPreference} settingsError={settingsError} /></NotificationProvider>
+      <NotificationProvider><Workspace preference={preference} setPreference={setPreference} settingsError={settingsError} hasSettings={hasSettings} /></NotificationProvider>
     </ThemeProvider>
   );
 }
 
-function Workspace({ preference, setPreference, settingsError }: {
+function Workspace({ preference, setPreference, settingsError, hasSettings }: {
   preference: ThemePreference;
   setPreference: (preference: ThemePreference) => Promise<void>;
   settingsError: Error | null;
+  hasSettings: boolean;
 }) {
   const { t } = useTranslation();
   const notify = useNotification();
@@ -82,10 +84,10 @@ function Workspace({ preference, setPreference, settingsError }: {
     if (failedLanguage) notify({ key: "settings:languageLoadFailed", values: { code: failedLanguage } }, "warning");
   }, [failedLanguage, notify]);
   useEffect(() => {
-    if (settingsError) notify({ key: "settings:readFailed", error: settingsError }, "warning");
-  }, [settingsError, notify]);
+    if (settingsError) notify({ key: hasSettings ? "settings:readFailedCached" : "settings:readFailed" }, "warning");
+  }, [settingsError, hasSettings, notify]);
   const changeTheme = (next: ThemePreference) => {
-    void setPreference(next).catch((error: Error) => notify({ key: "settings:themeSaveFailed", error }, "error"));
+    void setPreference(next).catch((error: Error) => notify(settingsFailureMessage(error, "theme"), "error"));
   };
   const theme = useTheme();
   const compactNavigation = useMediaQuery(theme.breakpoints.down("md"));
@@ -316,6 +318,7 @@ function Workspace({ preference, setPreference, settingsError }: {
                       onChange={onRulesChange}
                     />
                     <RenameActionsWithProgress
+                      hasUnknownOutcome={Boolean(unknownExecution)}
                       preview={previewData}
                       providerName={providerName}
                       selectedCount={selectedCount}

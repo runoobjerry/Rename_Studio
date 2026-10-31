@@ -185,7 +185,7 @@ describe("RuleEditor", () => {
       />,
     );
 
-    fireEvent.mouseDown(screen.getByRole("combobox", { name: "操作序数" }));
+    fireEvent.mouseDown(screen.getByRole("combobox", { name: "匹配范围" }));
     fireEvent.click(screen.getByRole("option", { name: "末个" }));
 
     expect(onChange).toHaveBeenCalledWith([

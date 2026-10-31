@@ -8,7 +8,7 @@
   "invert": "Invert selection",
   "filterItems": "Filter items",
   "refreshingDirectory": "Refreshing directory",
-  "selectAll": "Select all displayed items",
+  "selectAll": "Select all displayed items that can be renamed",
   "columns": {
     "name": "File name",
     "extension": "Extension",
@@ -37,17 +37,24 @@
     "summary": "{{pending}} to rename · {{unchanged}} unchanged",
     "empty": "Click the preview button to see the new names. Previewing does not change anything in {{provider}}.",
     "executeFailed": "Execution failed: {{message}}",
-    "needsVerification": "Needs verification"
+    "needsVerification": "Needs verification",
+    "unknown": "Unknown",
+    "restored": "Rename incomplete; original name restored",
+    "restoreFailed": "Could not restore the original name. Verify the current name.",
+    "notAttempted": "Not attempted because another item’s rename result needs verification.",
+    "notAttemptedOther": "Not attempted because another item could not be renamed."
   },
   "rename": {
     "phases": {
-      "waiting": "Awaiting confirmation",
+      "waiting": "Confirm renaming",
       "validating": "Revalidating",
       "staging": "Preparing temporary names",
       "renaming": "Renaming",
       "rollback": "Rolling back",
       "finished": "Processing finished",
-      "failed": "Execution failed"
+      "failed": "Execution failed",
+      "submitting": "Submitting rename request",
+      "unknown": "Rename results need verification"
     },
     "refreshing": "Refreshing…",
     "preview": "Refresh preview",
@@ -59,20 +66,19 @@
     "processed": "Processed {{processed}} of {{total}} items in this task. Please wait and do not refresh the page.",
     "confirm": "Rename {{count}} items in {{provider}} using the new names in the current preview. Please note: ",
     "confirm_one": "Rename {{count}} item in {{provider}} using the new name in the current preview. Please note: ",
-    "confirm_other": "Rename {{count}} items in {{provider}} using the new names in the current preview. Please note: "
+    "confirm_other": "Rename {{count}} items in {{provider}} using the new names in the current preview. Please note: ",
+    "unknownOutcome": "Complete rename results were not received. Refresh the directory and verify the actual names before running this operation again."
   },
   "notifications": {
     "renamedElsewhere": "Renamed successfully, but the item has moved to another directory.",
     "invalidPreview": "The preview contains invalid names or conflicts. Review the results.",
     "rootSelected": "Local root folder selected.",
-    "sessionUnavailable": "Browser session storage is unavailable. Your working location cannot be restored after a refresh.",
+    "sessionUnavailable": "The browser cannot save the current directory. You will need to reopen it after refreshing the page.",
     "defaultUnavailable": "Could not read the default location. Opening the cloud drive root.",
     "refreshed": "Directory refreshed.",
     "previewFailed": "Preview failed: {{message}}",
     "completed": "Renaming completed successfully: {{count}} items renamed.",
-    "partial": "Renaming partially completed: {{renamed}} renamed, {{failed}} failed.",
-    "failed": "Renaming failed: {{renamed}} renamed, {{failed}} failed.",
-    "unknownOutcome": "Execution did not return complete results: {{message}}. Refresh the directory and verify the actual files.",
+    "unknownOutcome": "Complete rename results were not received. Refresh the directory and verify the actual names before running this operation again.",
     "pickFailed": "Could not select a folder: {{message}}",
     "defaultSaved": "Set “{{path}}” as the default location for the current account.",
     "defaultRootSaved": "Set the root directory as the default location for the current account.",
@@ -80,8 +86,14 @@
     "refreshFailed": "Refresh failed: {{message}}",
     "completed_one": "Renaming completed successfully: {{count}} item renamed.",
     "completed_other": "Renaming completed successfully: {{count}} items renamed.",
-    "verifyBeforeRetry": "Execution results are uncertain. Refresh the file directory or check the files at their source.",
-    "fixedMembers": "The task files are fixed. End the current task before adding other files."
+    "verifyBeforeRetry": "Some rename results are unconfirmed. Refresh the directory, or check the files at their source before running this operation again.",
+    "fixedMembers": "The current task can only process items already added. End the current task before selecting other items.",
+    "ended": "Renaming has finished: {{results}}.",
+    "resultSeparator": ", ",
+    "renamedCount": "{{count}} renamed",
+    "failedCount": "{{count}} failed",
+    "unknownCount": "{{count}} need verification",
+    "notAttemptedCount": "{{count}} not attempted"
   },
   "location": {
     "title": "Directory location",
@@ -105,7 +117,7 @@
     "loadFailed": "Could not connect to the backend: {{message}}",
     "directoryFailed": "Could not load the directory: {{message}}",
     "connectToBrowse": "Connect {{service}} to browse cloud directories.",
-    "definitionMissing": "No definition was found for storage service {{provider}}."
+    "definitionMissing": "Could not load service information for this connection. Refresh the page and try again."
   },
   "summary": "Total: {{total}} · Selected: {{selected}}",
   "showing": " · {{count}} shown",
@@ -114,7 +126,7 @@
   "selectFile": "Select file {{name}}",
   "selectFolder": "Select folder {{name}}",
   "verification": {
-    "required": "The latest status of some files is unavailable. Refresh the file directory or check the files at their source."
+    "required": "Some rename results are unconfirmed. Refresh the directory, or check the files at their source before running this operation again."
   },
   "taskTitle": "Current task",
   "quickRename": {

@@ -46,9 +46,9 @@ describe("PreviewPanel", () => {
     const table = within(screen.getByRole("table", { name: "修改预览" }));
     expect(table.getByText("已修改")).toHaveClass("valid");
     expect(table.getAllByText("待核对")).toHaveLength(3);
-    expect(table.getAllByText("N/A")).toHaveLength(3);
+    expect(table.getAllByText("未知")).toHaveLength(3);
     const alert = screen.getByRole("alert");
-    expect(alert).toHaveTextContent("当前存在无法获取最新状态的文件，请刷新文件目录或前往文件源进行检查");
+    expect(alert).toHaveTextContent("部分项目的重命名结果尚未确认。请刷新目录，或前往文件源进行检查，核对前不要重复执行。");
     expect(screen.getByRole("region", { name: "修改预览" }).lastElementChild).toBe(alert);
     expect(table.queryByText("new-unknown.txt")).not.toBeInTheDocument();
     expect(table.queryByText("new-missing.txt")).not.toBeInTheDocument();
@@ -72,23 +72,23 @@ describe("PreviewPanel", () => {
     fireEvent.click(screen.getByRole("menuitemcheckbox", { name: "错误" }));
     fireEvent.keyDown(screen.getByRole("menu"), { key: "Escape" });
     expect(table.getAllByText("待核对")).toHaveLength(3);
-    expect(table.getAllByText("N/A")).toHaveLength(3);
+    expect(table.getAllByText("未知")).toHaveLength(3);
     expect(table.getByText("修改失败")).toBeInTheDocument();
     expect(table.queryByText("new-renamed.txt")).not.toBeInTheDocument();
     expect(screen.getByText("0 项待修改 · 2 项无需修改 · 显示 4 项")).toBeInTheDocument();
     // 丢失整次响应且没有执行展示时，仍由待核对记录展示文件。
     rerender(<PreviewPanel unknownExecution={unknownExecution} />);
     expect(table.getAllByText("待核对")).toHaveLength(3);
-    expect(table.getAllByText("N/A")).toHaveLength(3);
+    expect(table.getAllByText("未知")).toHaveLength(3);
     expect(screen.getByText("0 项待修改 · 0 项无需修改 · 显示 3 项")).toBeInTheDocument();
     fireEvent.click(within(screen.getByRole("alert")).getByRole("button", { name: "关闭" }));
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
     expect(table.getAllByText("待核对")).toHaveLength(3);
-    expect(table.getAllByText("N/A")).toHaveLength(3);
+    expect(table.getAllByText("未知")).toHaveLength(3);
     rerender(<PreviewPanel unknownExecution={{ ...unknownExecution, previewUnlocked: true }} />);
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
     rerender(<PreviewPanel unknownExecution={{ ...unknownExecution, previewId: "next-execution" }} />);
-    expect(screen.getByRole("alert")).toHaveTextContent("当前存在无法获取最新状态的文件，请刷新文件目录或前往文件源进行检查");
+    expect(screen.getByRole("alert")).toHaveTextContent("部分项目的重命名结果尚未确认。请刷新目录，或前往文件源进行检查，核对前不要重复执行。");
   });
 
   it("keeps validation errors out of pending counts and uses their existing labels", () => {

@@ -56,14 +56,15 @@ describe("RenameActions", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "开始修改" }));
     expect(onExecute).not.toHaveBeenCalled();
-    expect(screen.getByRole("heading", { name: "等待确认" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "确认修改" })).toBeInTheDocument();
     expect(screen.getByText("此操作不可恢复！")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "应用" }));
     expect(onExecute).toHaveBeenCalledWith("preview-1");
+    expect(screen.getByRole("heading", { name: "正在提交修改" })).toBeInTheDocument();
     expect(screen.getByRole("status")).toHaveTextContent("当前任务已处理 0 项，共 1 项");
     expect(screen.getByText("此操作不可恢复！")).not.toBeVisible();
     expect(screen.getByRole("progressbar", { name: "修改进度" })).toHaveAttribute("aria-valuenow", "0");
-    const message = "文件状态已变化，请刷新预览。";
+    const message = "预览已失效，请刷新预览。";
     rerender(<RenameActions preview={validPreview} providerName="本地文件" selectedCount={1}
       isPreviewing={false} isExecuting={false} hasExecuted={false}
       revalidationError={message} executeError="Raw server diagnostic" onPreview={onPreview} onExecute={onExecute} />);
@@ -92,6 +93,7 @@ describe("RenameActions", () => {
     expect(screen.getByRole("button", { name: "取消" })).toBeDisabled();
     rerender(<RenameActions {...props} hasExecuted />);
     expect(screen.getByRole("progressbar", { name: "修改进度" })).toHaveAttribute("aria-valuenow", "100");
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
     act(() => { vi.advanceTimersByTime(600); });
     act(() => { vi.advanceTimersByTime(300); });
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();

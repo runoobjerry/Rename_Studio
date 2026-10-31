@@ -41,7 +41,7 @@ describe("workspace workflow wiring", () => {
     vi.mocked(api.fetchStorageFiles).mockResolvedValue(data);
     vi.mocked(api.fetchRenameProgress).mockResolvedValue({ preview_id: "task-preview", total: count, processed: 0, phase: "renaming", error: null });
     renderWorkspace();
-    fireEvent.click(await screen.findByRole("checkbox", { name: "选择当前显示的全部项目" }));
+    fireEvent.click(await screen.findByRole("checkbox", { name: "选择当前显示且可修改名称的全部项目" }));
     return items;
   };
 
@@ -119,7 +119,7 @@ describe("workspace workflow wiring", () => {
     await waitFor(() => expect(api.executePreview).toHaveBeenCalledTimes(1));
     // Dialog 打开时背景 aria-hidden，用真实 input 验证控件禁用状态。
     const fileSelection = screen.getByLabelText("选择文件 file-0.txt");
-    const allSelection = screen.getByLabelText("选择当前显示的全部项目");
+    const allSelection = screen.getByLabelText("选择当前显示且可修改名称的全部项目");
     const invertSelection = screen.getByLabelText("反选", { selector: "button" });
     expect(fileSelection).toBeDisabled();
     expect(allSelection).toBeDisabled();
@@ -140,27 +140,28 @@ describe("workspace workflow wiring", () => {
     await waitFor(() => expect(screen.getByRole("button", { name: "开始修改" })).toBeEnabled());
     fireEvent.click(screen.getByRole("button", { name: "开始修改" }));
     fireEvent.click(screen.getByRole("button", { name: "应用" }));
-    await screen.findByRole("heading", { name: "执行失败" });
+    await screen.findByRole("heading", { name: "修改结果待核对" });
     fireEvent.click(screen.getByRole("button", { name: "关闭" }));
     await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
     expect(useRenameStore.getState().unknownExecution?.items).toHaveLength(2);
     expect(screen.getByRole("button", { name: "刷新预览" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "开始修改" })).toBeDisabled();
     const panel = within(screen.getByRole("region", { name: "修改预览" }));
-    expect(panel.getByText("当前存在无法获取最新状态的文件，请刷新文件目录或前往文件源进行检查").closest('[role="alert"]')).toBeInTheDocument();
+    expect(panel.getByText("部分项目的重命名结果尚未确认。请刷新目录，或前往文件源进行检查，核对前不要重复执行。").closest('[role="alert"]')).toBeInTheDocument();
     expect(panel.getAllByText("待核对")).toHaveLength(2);
-    expect(panel.getAllByText("N/A")).toHaveLength(2);
+    expect(panel.getAllByText("未知")).toHaveLength(2);
     vi.mocked(api.fetchStorageFiles).mockRejectedValueOnce(new Error("Directory unavailable"));
     fireEvent.click(screen.getByRole("button", { name: "刷新" }));
     await screen.findByText(/目录刷新失败，当前显示上次读取的内容/);
     expect(useRenameStore.getState().unknownExecution?.items).toHaveLength(2);
     expect(screen.getByRole("button", { name: "刷新预览" })).toBeDisabled();
     expect(panel.getAllByText("待核对")).toHaveLength(2);
+    expect(panel.getAllByText("未知")).toHaveLength(2);
     fireEvent.click(screen.getByRole("button", { name: "刷新" }));
     await waitFor(() => expect(useRenameStore.getState().unknownExecution?.previewUnlocked).toBe(true));
     expect(panel.getAllByText("待核对")).toHaveLength(2);
-    expect(panel.getAllByText("N/A")).toHaveLength(2);
-    expect(panel.getByText("当前存在无法获取最新状态的文件，请刷新文件目录或前往文件源进行检查")).toBeInTheDocument();
+    expect(panel.getAllByText("未知")).toHaveLength(2);
+    expect(panel.getByText("部分项目的重命名结果尚未确认。请刷新目录，或前往文件源进行检查，核对前不要重复执行。")).toBeInTheDocument();
     expect(api.releaseStoragePreview).not.toHaveBeenCalled();
     expect(screen.getByRole("button", { name: "开始修改" })).toBeDisabled();
     expect(api.executePreview).toHaveBeenCalledTimes(1);

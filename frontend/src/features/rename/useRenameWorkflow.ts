@@ -176,7 +176,7 @@ export function useRenameWorkflow({
     if (!files.data || files.isFetching || files.error || isExecuting || isSinglePending() || preview.isPending || activeStorage?.busy) return;
     const unknown = useRenameStore.getState().unknownExecution;
     if (unknown && !unknown.previewUnlocked) {
-      notify({ key: "files:notifications.verifyBeforeRetry" }, "warning");
+      notify({ key: "files:verification.required" }, "warning");
       return;
     }
     const state = useRenameStore.getState();

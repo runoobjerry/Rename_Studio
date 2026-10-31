@@ -24,5 +24,5 @@ export function useThemePreference() {
     }
   };
 
-  return { preference, setPreference, mode, settingsError: settings.error };
+  return { preference, setPreference, mode, settingsError: settings.error, hasSettings: settings.data !== undefined };
 }

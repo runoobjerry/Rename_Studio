@@ -28,7 +28,7 @@ it("mounts a bounded window while selecting all filtered items, including unmoun
   expect(screen.getByRole("table")).toHaveAttribute("aria-rowcount", "1001");
   expect(screen.getAllByRole("row").length).toBeLessThan(40);
   expect(screen.queryByRole("checkbox", { name: "选择文件 file-999" })).not.toBeInTheDocument();
-  fireEvent.click(screen.getByRole("checkbox", { name: "选择当前显示的全部项目" }));
+  fireEvent.click(screen.getByRole("checkbox", { name: "选择当前显示且可修改名称的全部项目" }));
   expect(callbacks.onSelectAll).toHaveBeenCalledWith([
     ...items.filter((item) => item.is_directory), ...items.filter((item) => !item.is_directory),
   ].map((item) => item.id));
@@ -76,7 +76,7 @@ it("sorts all rows before virtualization and resets the scroll position", () => 
   expect(container.scrollTop).toBe(0);
   expect(screen.getAllByRole("row").length).toBeLessThan(40);
   expect(screen.getByRole("checkbox", { name: "选择文件 file-999" })).toBeInTheDocument();
-  fireEvent.click(screen.getByRole("checkbox", { name: "选择当前显示的全部项目" }));
+  fireEvent.click(screen.getByRole("checkbox", { name: "选择当前显示且可修改名称的全部项目" }));
   expect(callbacks.onSelectAll).toHaveBeenCalledWith([
     ...items.filter((item) => item.is_directory).reverse(), ...items.filter((item) => !item.is_directory).reverse(),
   ].map((item) => item.id));

@@ -11,6 +11,7 @@ import GitHubIcon from "@mui/icons-material/GitHub";
 import { version } from "../../../package.json";
 import { Box, Button, Card, Divider, Dialog, DialogActions, DialogContent, DialogContentText, DialogTitle, MenuItem, Stack, TextField, Typography } from "@mui/material";
 import { StorageSettingsPanel } from "./StorageSettingsPanel";
+import { settingsFailureMessage } from "./settingsMessages";
 import type { ThemePreference } from "./useThemePreference";
 
 interface SettingsPageProps {
@@ -36,7 +37,7 @@ export function SettingsPage({ preference, onPreferenceChange, onBack, executing
   });
   const changeLanguage = (next: string) => {
     void language.setPreference(next).catch((error: Error) => {
-      notify({ key: "settings:languageSaveFailed", error }, "error");
+      notify(settingsFailureMessage(error, "language"), "error");
     });
   };
   const [confirmOpen, setConfirmOpen] = useState(false);

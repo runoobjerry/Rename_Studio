@@ -1,5 +1,5 @@
 {
-  "resetInProgress": "正在恢复出厂设置，请稍后重试。",
+  "resetInProgress": "正在重置应用，请稍后重试。",
   "validationReasons": {
     "PREVIEW_DUPLICATE_FILE_IDS": "以下项目被重复选择，请重新选择后预览：",
     "PREVIEW_ITEMS_NOT_IN_DIRECTORY": "以下项目不在当前目录中，请刷新目录后重新选择："
@@ -15,7 +15,7 @@
     "REQUEST_VALIDATION_ERROR": "请求参数不符合要求。{{message}}",
     "RULE_CONFIGURATION_ERROR": "规则配置无效，请检查规则。{{message}}",
     "RENAME_CONFLICT": "文件名存在冲突，修改后重试。{{message}}",
-    "PREVIEW_EXPIRED": "文件状态已变化，请刷新预览。",
+    "PREVIEW_EXPIRED": "预览已失效，请刷新预览。",
     "PREVIEW_NOT_FOUND": "预览不存在，请重新预览。{{message}}",
     "STORAGE_BUSY": "存储连接忙碌，请等待当前操作完成。{{message}}",
     "STORAGE_CONNECTION_CHANGED": "存储连接或账号已变化，请重新读取目录并预览。{{message}}",

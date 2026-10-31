@@ -2,6 +2,8 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { ApiError, executePreview } from "../../api/client";
 import { useNotification } from "../../components/NotificationProvider";
 import { useRenameStore } from "../../stores/useRenameStore";
+import { useTranslation } from "react-i18next";
+import { isRenameNotAttempted } from "./resultMessages";
 import type { DirectoryListing, PreviewResponse } from "../../types";
 
 type BatchExecutionInput = {
@@ -15,6 +17,7 @@ type BatchExecutionInput = {
 export function useRenameExecution(isCurrentSession: (session: string) => boolean) {
   const queryClient = useQueryClient();
   const notify = useNotification();
+  const { t } = useTranslation();
   const setSelectedIds = useRenameStore((state) => state.setSelectedIds);
   return useMutation({
     gcTime: 0,
@@ -39,14 +42,20 @@ export function useRenameExecution(isCurrentSession: (session: string) => boolea
         listing && { ...listing, items: listing.items.map((item) => confirmed.get(item.id) ?? item) });
       if (!isCurrentSession(input.workspaceSession)) return;
       if (input.taskId) useRenameStore.getState().applyTaskResults(input.taskId, result);
-      if (result.status === "completed") {
+      if (result.status === "completed" && unknown.length === 0) {
         const renamed = result.items.filter((item) => item.status === "renamed").length;
         notify({ key: "files:notifications.completed", values: { count: renamed } }, "success");
       } else {
         const renamed = result.items.filter((item) => item.status === "renamed").length;
-        const failed = result.items.filter((item) => item.status === "failed").length;
+        const unknownIds = new Set(unknown.map((item) => item.file_id));
+        const notAttempted = result.items.filter(isRenameNotAttempted).length;
+        const failed = result.items.filter((item) => item.status === "failed" && !unknownIds.has(item.file_id) && !isRenameNotAttempted(item)).length;
+        const counts = [["renamed", renamed], ["failed", failed], ["unknown", unknown.length], ["notAttempted", notAttempted]] as const;
+        const results = counts.filter(([, count]) => count > 0)
+          .map(([key, count]) => t(`files:notifications.${key}Count`, { count }))
+          .join(t("files:notifications.resultSeparator"));
         notify(
-          { key: result.status === "partial" ? "files:notifications.partial" : "files:notifications.failed", values: { renamed, failed } },
+          { key: "files:notifications.ended", values: { results } },
           result.status === "partial" ? "warning" : "error",
         );
       }

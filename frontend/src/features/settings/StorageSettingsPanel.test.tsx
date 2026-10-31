@@ -142,7 +142,7 @@ describe("storage settings", () => {
         config_fields: [field("mount_path", { required: true }), field("raw_key")] };
       vi.mocked(api.fetchStorageProviders).mockResolvedValue([extension]);
       await act(async () => { client.setQueryData(["storage-providers"], [extension]); });
-      await screen.findByText("服务定义尚未就绪，暂时无法编辑。");
+      await screen.findByText("无法加载此连接的服务信息，请刷新页面后重试。");
       fireEvent.click(screen.getByRole("button", { name: "添加连接" }));
       expect(screen.getByRole("combobox", { name: "存储类型" })).toHaveTextContent("English extension");
       fireEvent.change(screen.getByRole("textbox", { name: "连接名称" }), { target: { value: "原始连接" } });
@@ -167,7 +167,7 @@ describe("storage settings", () => {
     // 缓存同步更新后，Query 的组件通知仍可能等待调度；等待最终界面再继续操作。
     await waitFor(() => {
       expect(screen.queryByRole("button", { name: "编辑连接 Local" })).not.toBeInTheDocument();
-      expect(screen.getByText("服务定义尚未就绪，暂时无法编辑。")).toBeInTheDocument();
+      expect(screen.getByText("无法加载此连接的服务信息，请刷新页面后重试。")).toBeInTheDocument();
     });
     fireEvent.click(screen.getByRole("button", { name: "添加连接" }));
     fireEvent.change(screen.getByRole("textbox", { name: "连接名称" }), { target: { value: "Draft" } });
@@ -357,7 +357,7 @@ describe("storage settings", () => {
     client.setQueryData(["storages"], [cloud]);
     // Wait for the cloud row, not the old Local row's identical status label.
     await screen.findByRole("button", { name: "编辑连接 OAuth" });
-    const table = within(screen.getByRole("table", { name: "已保存连接" }));
+    const table = within(screen.getByRole("table", { name: "已保存的连接" }));
     await waitFor(() => expect(table.getByText("已连接")).toBeInTheDocument());
     expect(table.queryByText(/测试用户|user@example.com/)).not.toBeInTheDocument();
     expect(screen.queryByRole("switch")).not.toBeInTheDocument();

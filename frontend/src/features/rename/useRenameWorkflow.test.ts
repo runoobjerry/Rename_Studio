@@ -153,7 +153,7 @@ describe("rename workflow", () => {
       "Files changed after the preview was created", "PREVIEW_EXPIRED", { execution_started: false }));
     act(() => hook.result.current.workflow.executeRename("task-preview"));
     await waitFor(() => expect(hook.result.current.workflow.revalidationError)
-      .toBe("文件状态已变化，请刷新预览。"));
+      .toBe("预览已失效，请刷新预览。"));
     expect(useRenameStore.getState().unknownExecution).toBeNull();
     act(() => hook.result.current.workflow.requestPreview());
     await waitFor(() => expect(api.createStoragePreview).toHaveBeenCalledTimes(2));

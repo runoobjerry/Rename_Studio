@@ -26,7 +26,7 @@ describe("language settings", () => {
       items: ids.map((id) => ({ file_id: id, original_name: id, new_name: `新-${id}`, changed: true, valid: true, conflict: false, error: null })),
     }));
     renderWorkspace();
-    fireEvent.click(await screen.findByRole("checkbox", { name: "选择当前显示的全部项目" }));
+    fireEvent.click(await screen.findByRole("checkbox", { name: "选择当前显示且可修改名称的全部项目" }));
     fireEvent.click(screen.getByRole("button", { name: "文件名" }));
     fireEvent.click(screen.getByRole("button", { name: "刷新预览" }));
     await waitFor(() => expect(screen.getByRole("button", { name: "开始修改" })).toBeEnabled());
@@ -39,7 +39,7 @@ describe("language settings", () => {
     await act(async () => {
       client.setQueryData<AppSettings>(["app-settings"], { preferences: { ...serverSettings.preferences, language: "en-US" } });
     });
-    expect(await screen.findByRole("heading", { name: "Awaiting confirmation" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Confirm renaming" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Apply" })).toBeEnabled();
     fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
     await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
@@ -55,7 +55,7 @@ describe("language settings", () => {
     expect(api.fetchStorageFiles).toHaveBeenCalledTimes(filesRequests);
     fireEvent.click(screen.getByRole("button", { name: "Start renaming" }));
     await act(async () => { client.setQueryData(["app-settings"], serverSettings); });
-    expect(await screen.findByRole("heading", { name: "等待确认" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "确认修改" })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "取消" }));
     await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
     expect(fileOrder()).toEqual(originalOrder);
@@ -84,7 +84,7 @@ describe("language settings", () => {
     vi.mocked(api.patchAppSettings).mockRejectedValueOnce(new Error("Offline"));
     fireEvent.mouseDown(screen.getByRole("combobox", { name: "Language" }));
     fireEvent.click(screen.getByRole("option", { name: "简体中文" }));
-    expect(await screen.findByText("Could not save the language. The change was reverted: Offline")).toBeInTheDocument();
+    expect(await screen.findByText("The save result was not received. The interface has temporarily returned to the previous settings. Refresh the page to verify.")).toBeInTheDocument();
     expect(screen.getByRole("combobox", { name: "Language" })).toHaveTextContent("English");
     expect(document.documentElement.lang).toBe("en-US");
     fireEvent.click(screen.getByRole("button", { name: "Back to workspace" }));
@@ -95,17 +95,18 @@ describe("language settings", () => {
     vi.spyOn(navigator, "languages", "get").mockReturnValue(["en-GB"]);
     vi.mocked(api.fetchAppSettings).mockRejectedValue(new Error("Offline"));
     renderWorkspace();
-    expect(await screen.findByText("Could not load app settings. Using default preferences: Offline")).toBeInTheDocument();
+    expect(await screen.findByText("Could not load app settings. Using default settings for now. Check the connection and refresh the page to try again.")).toBeInTheDocument();
     expect(document.documentElement.lang).toBe("en-US");
     expect(api.patchAppSettings).not.toHaveBeenCalled();
   });
+
 });
 
 describe("factory reset", () => {
   const openSettings = async () => {
     renderWorkspace();
     fireEvent.click(await screen.findByRole("button", { name: "设置" }));
-    return screen.findByRole("button", { name: "将应用还原为原始默认状态" });
+    return screen.findByRole("button", { name: "将应用重置为原始默认状态" });
   };
 
   it("keeps current settings and rules when reset fails", async () => {
@@ -118,12 +119,12 @@ describe("factory reset", () => {
     useRenameStore.setState({ rules: [{ type: "insert", enabled: true, config: { text: "keep" } }] });
     vi.mocked(api.factoryResetAppSettings).mockRejectedValueOnce(new Error("Disk unavailable"));
     fireEvent.click(await openSettings());
-    fireEvent.click(within(screen.getByRole("dialog", { name: "确认重置？" }))
-      .getByRole("button", { name: "重置" }));
-    expect(await screen.findByText(/恢复出厂设置失败：Disk unavailable/)).toBeInTheDocument();
+    fireEvent.click(within(screen.getByRole("dialog", { name: "确认重置应用" }))
+      .getByRole("button", { name: "重置应用" }));
+    expect(await screen.findByText("未收到重置结果。请刷新页面，检查连接和设置是否已重置。")).toBeInTheDocument();
     expect(useRenameStore.getState().rules).toHaveLength(1);
     expect(serverSettings.preferences.theme).toBe("dark");
-    expect(screen.getByRole("dialog", { name: "确认重置？" })).toBeInTheDocument();
+    expect(screen.getByRole("dialog", { name: "确认重置应用" })).toBeInTheDocument();
     expect(readWorkspaceSession().session.locations["default-local"].location).toEqual({ kind: "path", value: "保留目录" });
     expect(readWorkspaceSession().session.activeStorageId).toBe("default-local");
   });

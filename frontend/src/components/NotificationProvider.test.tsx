@@ -65,7 +65,7 @@ describe("shared notifications", () => {
   });
 
   it("adds actionable context to expired preview errors", () => {
-    expect(errorMessage(new ApiError(409, "Expired", "PREVIEW_EXPIRED"))).toBe("文件状态已变化，请刷新预览。");
+    expect(errorMessage(new ApiError(409, "Expired", "PREVIEW_EXPIRED"))).toBe("预览已失效，请刷新预览。");
   });
 
   it("keeps other error messages available", () => {

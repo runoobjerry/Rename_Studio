@@ -1,5 +1,5 @@
 {
-  "resetInProgress": "Factory reset is in progress. Try again shortly.",
+  "resetInProgress": "The app is being reset. Try again shortly.",
   "validationReasons": {
     "PREVIEW_DUPLICATE_FILE_IDS": "The following items were selected more than once. Select the items again and preview:",
     "PREVIEW_ITEMS_NOT_IN_DIRECTORY": "The following items are not in the current directory. Reload the directory and select the items again:"
@@ -15,7 +15,7 @@
     "REQUEST_VALIDATION_ERROR": "The request parameters are invalid. {{message}}",
     "RULE_CONFIGURATION_ERROR": "The rule configuration is invalid. Check the rules. {{message}}",
     "RENAME_CONFLICT": "Filename conflict. Please rename and try again. {{message}}",
-    "PREVIEW_EXPIRED": "The file status has changed, please refresh the preview.",
+    "PREVIEW_EXPIRED": "The preview is no longer valid. Refresh the preview.",
     "PREVIEW_NOT_FOUND": "The preview was not found. Preview again. {{message}}",
     "STORAGE_BUSY": "The storage connection is busy. Wait for the current operation to finish. {{message}}",
     "STORAGE_CONNECTION_CHANGED": "The storage connection or account has changed. Reload the directory and preview again. {{message}}",
