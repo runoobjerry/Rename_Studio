@@ -139,6 +139,14 @@ jobs:
     permissions:
       contents: write
     steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Extract changelog for this tag
+        env:
+          RELEASE_TAG: ${{ needs.frontend.outputs.tag }}
+        run: python scripts/release_notes.py "$RELEASE_TAG" --output release-notes.md
       - uses: actions/download-artifact@v7
         with:
           pattern: release-package-*
@@ -162,6 +170,6 @@ jobs:
             echo "Release already exists; drafts and published assets will not be overwritten."
             exit 1
           fi
-          options=(--draft --verify-tag --title "Rename Studio $RELEASE_TAG" --generate-notes)
+          options=(--draft --verify-tag --title "Rename Studio $RELEASE_TAG" --notes-file ../release-notes.md)
           if [[ "$PRERELEASE" == true ]]; then options+=(--prerelease --latest=false); fi
           gh release create "$RELEASE_TAG" ./*.zip SHA256SUMS.txt "${options[@]}"
