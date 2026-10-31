@@ -2,6 +2,7 @@ import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from "react
 import {
   Alert,
   Box,
+  Button,
   CircularProgress,
   CssBaseline,
   Drawer,
@@ -21,6 +22,7 @@ import { SingleRenameDialog } from "./features/rename/SingleRenameDialog";
 import { StorageSidebar } from "./workspace/components/StorageSidebar";
 import { StorageLocationPanel } from "./workspace/components/StorageLocationPanel";
 import { useWorkspaceStorage } from "./workspace/hooks/useWorkspaceStorage";
+import { useOneDriveNavigation } from "./integrations/onedrive/useOneDriveNavigation";
 import { FileBrowser } from "./features/files/FileBrowser";
 import { defaultFileSort, type FileSort } from "./features/files/fileSort";
 import { useRenameWorkflow } from "./features/rename/useRenameWorkflow";
@@ -96,18 +98,18 @@ function Workspace({ preference, setPreference, settingsError, hasSettings }: {
   const [fileSort, setFileSort] = useState<FileSort>(defaultFileSort);
   const previewActive = useRenameStore((state) => state.previewActive);
   const unknownExecution = useRenameStore((state) => state.unknownExecution);
+  const storage = useWorkspaceStorage({
+    pauseFileQueries: previewActive,
+    onLocalRootSelected: () => resetForStorageChange(),
+  });
   const {
     storageId, location, setLocation, setPath, selectStorage, resetWorkspaceSession, locationReady,
     providers, activeStorage, providerId, providerName, cloudStatus,
     providerDefinitions, providerDefinition, providerError, metadataReady, requiresAuth, supportsLocalPicker, supportsLocation,
     cloudAccountId, cloudConnected, cloudSession, cloudReady, restoredCloudSession, appSettingsReady,
     files, workspaceKey, settingsLoading, pickLocalRoot,
-    restoreDefaultCloudPath, setDefaultCloudPath, refreshFiles,
-  } = useWorkspaceStorage({
-    pauseFileQueries: previewActive,
-    // 选择器异步完成时才调用，工作流已经在当前 render 中初始化。
-    onLocalRootSelected: () => resetForStorageChange(),
-  });
+    restoreDefaultCloudPath, setDefaultCloudPath, refreshFiles, externalPending,
+  } = storage;
   const definitions = useQuery({ queryKey: ["rules"], queryFn: fetchRules });
   const {
     selectedIds, rules, browserItems, currentTask, changeSort, selectedCount,
@@ -117,10 +119,10 @@ function Workspace({ preference, setPreference, settingsError, hasSettings }: {
     openSingleRename, closeSingleRename, applySingleRename,
     requestPreview, executeRename, onRulesChange,
     resetOperation, endTask, toggleFile, selectAllFiles, clearFiles, invertFiles,
-    resetForStorageChange, onDirectoryRefreshed,
+    resetForStorageChange, onDirectoryRefreshed, releaseRetainedPreview,
   } = useRenameWorkflow({
     storageId, location, workspaceKey, cloudSession, locationReady,
-    canRename: metadataReady && providerDefinition?.can_rename === true && !pickLocalRoot.isPending,
+    canRename: !externalPending && metadataReady && providerDefinition?.can_rename === true && !pickLocalRoot.isPending,
     sort: fileSort, onSortChange: setFileSort,
     activeStorage: activeStorage && { revision: activeStorage.revision, busy: activeStorage.busy },
     files: {
@@ -129,10 +131,10 @@ function Workspace({ preference, setPreference, settingsError, hasSettings }: {
     },
   });
   useEffect(() => {
-    if (isExecuting || !metadataReady || !requiresAuth || !appSettingsReady || restoredCloudSession === cloudSession) return;
+    if (externalPending || isExecuting || !metadataReady || !requiresAuth || !appSettingsReady || restoredCloudSession === cloudSession) return;
     restoreDefaultCloudPath();
     resetForStorageChange();
-  }, [isExecuting, metadataReady, requiresAuth, cloudSession, restoredCloudSession, appSettingsReady]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [externalPending, isExecuting, metadataReady, requiresAuth, cloudSession, restoredCloudSession, appSettingsReady]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const refreshDirectory = () => {
     const unknown = useRenameStore.getState().unknownExecution;
@@ -149,6 +151,18 @@ function Workspace({ preference, setPreference, settingsError, hasSettings }: {
     resetOperation, resetWorkspaceSession,
   });
 
+  useOneDriveNavigation({
+    storage,
+    busy: isPreviewing || isExecuting || isSingleRenaming || pickLocalRoot.isPending || resetPending,
+    context: String(resetEpoch),
+    beforeSwitch: () => {
+      releaseRetainedPreview();
+      resetForStorageChange();
+      setView("workspace");
+      setMobileNavOpen(false);
+    },
+  });
+
   const navigate = useCallback((nextPath: string) => {
     if (!locationReady || !supportsLocation(nextPath ? { kind: "path", value: nextPath } : { kind: "root" }) ||
       isExecuting || pickLocalRoot.isPending || activeStorage?.busy) return;
@@ -160,7 +174,7 @@ function Workspace({ preference, setPreference, settingsError, hasSettings }: {
     setLocation(next);
   }, [locationReady, supportsLocation, isExecuting, pickLocalRoot.isPending, activeStorage?.busy, setLocation]);
 
-  const renameBlocked = !locationReady || pickLocalRoot.isPending || !activeStorage || activeStorage.busy || files.isFetching || Boolean(files.error);
+  const renameBlocked = externalPending || !locationReady || pickLocalRoot.isPending || !activeStorage || activeStorage.busy || files.isFetching || Boolean(files.error);
   const selectProvider = (nextProviderId: string) => {
     if (isExecuting || pickLocalRoot.isPending) return;
     selectStorage(nextProviderId);
@@ -201,6 +215,7 @@ function Workspace({ preference, setPreference, settingsError, hasSettings }: {
             storageId={storageId}
             onSelectStorage={selectProvider}
             onOpenSettings={() => {
+              storage.cancelExternalNavigation();
               setView("settings");
               setMobileNavOpen(false);
             }}
@@ -224,7 +239,10 @@ function Workspace({ preference, setPreference, settingsError, hasSettings }: {
             {view === "settings" && (
               <Suspense fallback={<SecondaryPageFallback />}>
                 <SettingsPage executingStorageId={isExecuting ? storageId : undefined} preference={preference}
-                  onPreferenceChange={changeTheme} onBack={() => setView("workspace")}
+                  onPreferenceChange={changeTheme} onBack={() => {
+                    storage.cancelExternalNavigation();
+                    setView("workspace");
+                  }}
                   onFactoryReset={factoryReset} resetDisabledReason={resetDisabledReason} resetPending={resetPending}
                   resetEpoch={resetEpoch} />
               </Suspense>
@@ -264,10 +282,10 @@ function Workspace({ preference, setPreference, settingsError, hasSettings }: {
                         onRename={openSingleRename}
                         renameDisabled={!canSingleRename}
                         sort={fileSort}
-                        onSortChange={changeSort}
+                        onSortChange={(next) => { storage.cancelExternalNavigation(); changeSort(next); }}
                         providerName={providerName}
                         selectedIds={selectedIds}
-                        disabled={isExecuting || isPreviewing || files.isFetching || Boolean(activeStorage?.busy)}
+                        disabled={externalPending || isExecuting || isPreviewing || files.isFetching || Boolean(activeStorage?.busy)}
                         isRefreshing={files.isFetching}
                         refreshError={files.error ? errorMessage(files.error, t) : undefined}
                         onNavigate={navigate}
@@ -282,6 +300,7 @@ function Workspace({ preference, setPreference, settingsError, hasSettings }: {
                         {files.error ? (
                           <Alert severity="error" sx={{ m: 2 }}>
                             {t("files:workspace.directoryFailed", { message: errorMessage(files.error, t) })}
+                            <Button onClick={refreshDirectory}>{t("files:externalNavigation.retry")}</Button>
                           </Alert>
                         ) : (
                           settingsLoading || files.isFetching ? (
@@ -315,7 +334,7 @@ function Workspace({ preference, setPreference, settingsError, hasSettings }: {
                       definitions={definitions.data ?? []}
                       isLoading={definitions.isPending}
                       rules={rules}
-                      onChange={onRulesChange}
+                      onChange={(next) => { storage.cancelExternalNavigation(); onRulesChange(next); }}
                     />
                     <RenameActionsWithProgress
                       hasUnknownOutcome={Boolean(unknownExecution)}

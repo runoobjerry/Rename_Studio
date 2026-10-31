@@ -45,6 +45,7 @@ export interface DirectoryListing {
   parent_location?: StorageLocation | null;
   breadcrumbs?: DirectoryBreadcrumb[] | null;
   directory_id?: string | null;
+  drive_id?: string | null;
 }
 
 export interface RuleSpec {

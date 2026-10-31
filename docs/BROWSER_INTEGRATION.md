@@ -4,7 +4,7 @@
 
 ## 当前交付与支持范围
 
-阶段一仅交付可加载的 MV3 扩展、OneDrive 页面提取和临时 action 脱敏诊断。不查找或激活本体标签页、不发送导航、不添加悬浮按钮成品。本体前后端未接线。
+阶段一已交付可加载的 MV3 扩展、OneDrive 页面提取和临时 action 脱敏诊断。阶段二实现本体内部导航业务入口，尚未接浏览器传输，不查找或激活本体标签页、不添加悬浮按钮成品。
 
 目标环境为桌面 Chrome / Edge，普通窗口，同一浏览器配置文件；个人版 OneDrive 当前账号默认云盘的普通 `/my`“我的文件”根目录及子目录。最终流程只导航，不选择文件、不预览、不重命名、不添加连接、不重新授权。
 
@@ -31,9 +31,9 @@ type NavigationReply =
   | { version: 1; request_id: string; status: "rejected"; code: string };
 ```
 
-传输封装命名空间固定为 `rename-studio.browser.v1`。上述请求为逻辑载荷，后续传输接线须在入口校验来源、版本、类型和载荷，不信任页面传入的数据。阶段一没有网页 `postMessage` 桥、外部扩展消息入口或本体消息接收器。
+传输封装命名空间固定为 `rename-studio.browser.v1`。上述请求为逻辑载荷，后续传输接线须在入口校验来源、版本、类型和载荷，不信任页面传入的数据。当前没有网页 `postMessage` 桥、外部扩展消息入口或本体浏览器消息接收器。阶段二 `frontend/src/integrations/onedrive/navigation.ts` 的 `openOneDriveFolder` 只接收已经校验的内部类型；不是不可信消息入口。
 
-`accepted` 仅表示已接收，不表示目录已打开；只有现有目录 API 成功返回规范位置后才能回复 `opened`。最终结果保留相同 request_id；每次点击生成新 ID，只处理当前请求，忽略迟到结果，不承诺幂等、不持久化排队、不自动重放。阶段一只产生提取结果，不伪造 accepted/opened。
+`accepted` 仅表示已接收，不表示目录已打开；只有现有目录 API 成功返回规范位置、当前工作区显示对应目录后才能回复 `opened`。最终结果保留相同 request_id；每次点击生成新 ID，只处理当前请求，忽略迟到结果，不承诺幂等、不持久化排队、不自动重放。阶段二内部入口返回最终结果 Promise，可选回调接收 accepted；同步匹配或保护失败直接 rejected，不先发送 accepted。
 
 入口拒绝额外字段。字符串必须非空且不含 ASCII 控制字符；长度上限按 JS UTF-16 code units：request_id 64（仅 ASCII 字母、数字、`_`、`-`），account_cid 恰好 16 位十六进制，folder_id / drive_id 各 256，邮箱 320，姓名/目录名各 256。所有可选字段存在时也须满足边界。不把 folder_id 当路径处理，不修剪、重编码或改写不透明 ID。当前边界面向个人版适配，真实扩展验证发现不符时须更新本文件和校验器。
 
@@ -79,7 +79,33 @@ storage_id 为独立连接 ID，不硬编码、不由 CID 构造。account_cid�
 | unsupported_version / invalid_request | 协议版本不支持 / 载荷不合法；停止并检查版本 |
 | transport_unavailable | 注入、文档销毁或扩展回传失败；刷新支持页面并重试 |
 
-后续导航接线时才启用实际分支的拒绝码，例如 connection_not_found、auth_required、busy、outcome_unresolved、directory_unavailable、cancelled。这些是预留语义，不是当前已实现行为；底层现有认证、权限、网络错误继续保留类别，不能都压成目录不存在。workspace_not_found、multiple_workspaces、transport_unavailable 属扩展传输结果，绝不新增后端错误码。
+阶段二实际导航拒绝码：connection_not_found（无唯一匹配）、auth_required（授权未连接）、busy（已有外部请求/预览/执行/单项改名/连接忙碌/本地选择器/重置）、outcome_unresolved（未知或待核对写入）、cancelled（手动切换、账号/连接版本/上下文变化）、unsupported_scope / scope_unverified（范围不符/无法核对）。现有 API 错误码原样保留，例如 PERMISSION_DENIED、AUTHENTICATION_ERROR、NOT_FOUND、STORAGE_CONNECTION_CHANGED；未收到可用响应为 network_error。不将底层错误统一压成目录不存在。workspace_not_found（当前业务入口未挂载）、后续的 multiple_workspaces、transport_unavailable 属传输/接入结果，绝不新增后端错误码。
+
+## 阶段二：本体协调与目录响应补充
+
+WorkspaceApp 使用独立 useOneDriveNavigation 显式连接 storage 与 rename Hook，两个 Hook 不互相调用。入口先匹配真实 storage_id、能力与忙碌状态，再刷新连接及授权状态；这些阶段失败不更换工作区。仅内部当前请求有效，不排队；pending 期间重复请求返回 busy。未知记录在任何清理之前检查，提示先核对。
+
+useWorkspaceStorage.openExternalTarget 一次安装目标连接、版本、账号就绪标记和 ID 位置。pending 期间暂停记忆/默认位置恢复；外部位置优先级仅限本次请求，不调用默认位置保存 API。离开时释放旧预览、清选择/任务，保留规则。手动位置/连接切换、打开设置、规则/排序变化或重置取消请求；预览/执行/单项操作等忙碌状态出现也取消尚未完成的请求。连接 revision/账号发生变化时旧请求不能重新夺回工作区或返回 opened。
+
+目录仍经 POST `/storages/{storage_id}/files/list`，无新增导航端点。为核对默认云盘，DirectoryListing 最小新增可选 `drive_id: string | null`（其他 Provider 可为空）；OneDrive 仅从已有默认根目录响应 parentReference.driveId 提供，不构造、不增加请求。请求含 drive_id 时要求响应存在且逐值相同；缺失则 scope_unverified，不同则 unsupported_scope。请求缺 drive_id 仅允许服务端规范位置为 root，以兼容网页根响应尚未证实包含 drive ID 的情况；缺失 drive ID 的子目录拒绝。
+
+每次外部目录读取采用唯一临时查询 key，保证缓存命中也发出真实请求，禁止自动重试。响应须对应 storage_id、revision、directory_id，且规范位置为 id/root；接受真实根 ID 被规范化成 root。成功后以 Provider 的规范位置接回普通目录缓存，显示后才返回 opened，并按已有会话机制保存位置。目录读取失败停留在目标的错误界面，保留真实错误和已有成功位置记忆；可用“重试读取目录”或现有连接切换，重试仍执行相同范围校验，不静默回根目录、不自动回滚。阶段二尚未完成真实扩展到本体联调。
+
+用户建议运行：frontend 中 `npm test -- src/WorkspaceApp.externalNavigation.test.tsx src/workspace/hooks/useWorkspaceStorage.test.ts src/WorkspaceApp.storage.test.tsx`、`npm run check`；后端运行 `pytest tests/test_onedrive_provider.py`。Codex 仅静态检查，不运行这些命令。验收重点包括 Local/账号 A→B、默认/记忆位置竞争、预览释放、未知写入拒绝、并发及迟到取消、根规范化、权限失败后手动重试。
+
+阶段二可在 Vite 开发页面的 Console 中导入内部入口进行人工验收（生产构建不暴露源码模块路径）：
+
+```js
+const { openOneDriveFolder } = await import('/src/integrations/onedrive/navigation.ts');
+await openOneDriveFolder({
+  version: 1, type: 'open-onedrive-folder', request_id: crypto.randomUUID(),
+  account_cid: '替换为已确认的16位十六进制CID',
+  folder_id: '替换为真实DriveItem ID',
+  drive_id: '替换为真实默认云盘ID', // 根响应缺失时可省略；子目录不可省略
+});
+```
+
+此入口假定传入值已符合上文契约；示例占位符必须替换，勿将原始个人数据贴到公开日志。只用本地开发模块调用，不安装 window 调试全局、不新增调试按钮或浏览器传输入口。使用网络节流等待目录请求时手动切换连接、进入设置，或发第二次请求，分别核对 cancelled / busy 且迟到响应不夺回工作区；在真实忙碌操作及未知结果状态下调用时应立即拒绝。
 
 ## 权限与诊断生命周期
 

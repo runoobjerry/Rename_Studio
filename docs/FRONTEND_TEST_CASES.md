@@ -17,6 +17,7 @@
 
 | 场景 | 自动化承接位置 |
 |---|---|
+| 本体外部 OneDrive 导航：按 CID 唯一匹配、授权及忙碌保护，外部目标优先于恢复位置并刷新旧缓存；释放旧预览、保留规则及未知写入记录；手动切换/连接 revision 变化取消迟到结果；根 ID 规范化、真实读取错误及手动重试仍检查云盘范围 | [外部导航集成](../frontend/src/WorkspaceApp.externalNavigation.test.tsx) |
 | 不同账号连接的目录隔离，换号后的旧目录与旧预览不能污染新工作区 | [工作台存储集成](../frontend/src/WorkspaceApp.storage.test.tsx)、[默认云目录](../frontend/src/features/files/defaultCloudLocation.test.ts) |
 | 工作区按 browser_auth 判定授权；元数据 pending/error 不读取授权或文件，恢复后使用原目录；元数据刷新失败保留账号身份与选择 | [存储 Hook](../frontend/src/workspace/hooks/useWorkspaceStorage.test.ts) |
 | 非 Local 且无需浏览器授权的服务恢复 ID 位置，不发授权请求；未知 OAuth 服务等待授权，不支持的位置类型不请求 | 存储 Hook |

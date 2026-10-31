@@ -299,5 +299,6 @@ export function useRenameWorkflow({
     requestPreview, executeRename, onRulesChange,
     resetOperation, endTask: resetOperation, toggleFile, selectAllFiles, clearFiles, invertFiles,
     resetForStorageChange, onDirectoryRefreshed,
+    releaseRetainedPreview,
   };
 }

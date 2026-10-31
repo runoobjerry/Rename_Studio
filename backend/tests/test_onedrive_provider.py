@@ -311,14 +311,22 @@ async def test_id_directory_and_parent_do_not_depend_on_names() -> None:
 
 
 @pytest.mark.asyncio
-async def test_root_listing_exposes_real_identity_without_extra_requests() -> None:
+@pytest.mark.parametrize("drive_id", [None, "opaque-default-drive"])
+async def test_root_listing_exposes_real_identity_without_extra_requests(drive_id: str | None) -> None:
     root = {**folder("root-id", "root"), "root": {}}
+    if drive_id is not None:
+        root["parentReference"]["driveId"] = drive_id
     provider = StubOneDriveProvider([root, {"value": [folder("child", "child")]}])
     listing = await provider.list_directory(RootLocation())
     assert listing.location == RootLocation()
     assert listing.directory_id == "root-id"
+    assert listing.drive_id == drive_id
     assert listing.items[0].parent_location == IdLocation(value=listing.directory_id)
     assert len(provider.calls) == 2
+    provider.responses.extend([folder("nested", "nested"), {"value": []}])
+    nested = await provider.list_directory(IdLocation(value="nested"))
+    assert nested.drive_id == drive_id
+    assert len(provider.calls) == 4  # Reuses the default root identity without another root request.
 
 
 @pytest.mark.asyncio
