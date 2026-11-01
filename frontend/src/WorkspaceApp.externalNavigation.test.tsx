@@ -71,6 +71,10 @@ describe("external OneDrive navigation", () => {
       config: { ...DEFAULT_RULES.insert.config, text: "kept-" } }]);
     await mount();
     const rules = useRenameStore.getState().rules;
+    // A known authorized connection needs no extra status/connection confirmation on navigation.
+    client.setQueryData(["storage-auth", "user-onedrive", 1], status(cid));
+    const connectionReads = vi.mocked(api.fetchStorages).mock.calls.length;
+    const authReads = vi.mocked(api.fetchStorageAuthStatus).mock.calls.length;
     client.setQueryData(["files", "user-onedrive", 1, { kind: "id", value: "target-id" }],
       { ...directory(), path: "Stale", items: [] });
     const operation = start();
@@ -82,6 +86,8 @@ describe("external OneDrive navigation", () => {
     await waitFor(() => expect(readWorkspaceSession().session.locations["user-onedrive"].location)
       .toEqual({ kind: "id", value: "target-id" }));
     expect(api.patchAppSettings).not.toHaveBeenCalled();
+    expect(api.fetchStorages).toHaveBeenCalledTimes(connectionReads);
+    expect(api.fetchStorageAuthStatus).toHaveBeenCalledTimes(authReads);
     expect(useRenameStore.getState().rules).toEqual(rules);
     expect(useRenameStore.getState().selectedIds).toEqual([]);
   });
@@ -93,6 +99,7 @@ describe("external OneDrive navigation", () => {
     }
     if (kind === "unauthorized") vi.mocked(api.fetchStorageAuthStatus).mockResolvedValue(status(cid, false));
     await mount();
+    if (kind === "unauthorized") client.setQueryData(["storage-auth", "user-onedrive", 1], status(cid, false));
     const operation = start(kind === "missing" ? { ...target, account_cid: "FEDCBA9876543210" } : target);
     expect(await operation.reply()).toMatchObject({ status: "rejected",
       code: kind === "unauthorized" ? "auth_required" : "connection_not_found" });
@@ -190,7 +197,7 @@ describe("external OneDrive navigation", () => {
     expect(api.fetchStorageFiles).not.toHaveBeenCalledWith("user-onedrive", expect.anything());
   });
 
-  it.each(["manual", "revision"])("cancels a late directory response after %s changes", async (kind) => {
+  it.each(["manual", "revision", "account"])("cancels a late directory response after %s changes", async (kind) => {
     const response = deferred<DirectoryListing>();
     vi.mocked(api.fetchStorageFiles).mockImplementation(async (id, location) =>
       id === "user-onedrive" ? response.promise : { ...listing(1), location });
@@ -201,6 +208,7 @@ describe("external OneDrive navigation", () => {
     expect(await second.reply()).toMatchObject({ status: "rejected", code: "busy" });
     expect(second.accepted).not.toHaveBeenCalled();
     if (kind === "manual") fireEvent.click(screen.getByRole("button", { name: "本地文件" }));
+    else if (kind === "account") act(() => client.setQueryData(["storage-auth", "user-onedrive", 1], status("FEDCBA9876543210")));
     else act(() => client.setQueryData<StorageInfo[]>(["storages"], (entries) => entries!.map((entry) =>
       entry.storage_id === "user-onedrive" ? { ...entry, revision: 2 } : entry)));
     expect(await operation.reply()).toMatchObject({ status: "rejected", code: "cancelled" });
@@ -218,6 +226,14 @@ describe("external OneDrive navigation", () => {
     expect(await start({ ...target, drive_id: undefined }).reply()).toMatchObject({ status: "opened" });
     await waitFor(() => expect(readWorkspaceSession().session.locations["user-onedrive"].location).toEqual({ kind: "root" }));
   });
+  it("does not display or accept a listing returned for a different folder", async () => {
+    vi.mocked(api.fetchStorageFiles).mockImplementation(async (id, location) => id === "user-onedrive"
+      ? { ...directory(), directory_id: "different-folder" } : { ...listing(1), location });
+    await mount();
+    expect(await start().reply()).toMatchObject({ status: "rejected", code: "cancelled" });
+    expect(screen.queryByText("target-file.txt")).not.toBeInTheDocument();
+    expect(readWorkspaceSession().session.locations["user-onedrive"]).toBeUndefined();
+  });
 
   it("does not bypass drive scope verification on retry", async () => {
     vi.mocked(api.fetchStorageFiles).mockImplementation(async (id, location) => id === "user-onedrive"
@@ -230,15 +246,15 @@ describe("external OneDrive navigation", () => {
     expect(readWorkspaceSession().session.locations["user-onedrive"]).toBeUndefined();
   });
 
-  it("preserves the real read error and lets the user retry without falling back to root", async () => {
+  it.each([[403, "PERMISSION_DENIED"], [401, "AUTHENTICATION_ERROR"]] as const)("preserves the real read error %s and lets the user retry without falling back to root", async (httpStatus, code) => {
     let fail = true;
     vi.mocked(api.fetchStorageFiles).mockImplementation(async (id, location) => {
       if (id !== "user-onedrive") return { ...listing(1), location };
-      if (fail) throw new api.ApiError(403, "Denied", "PERMISSION_DENIED");
+      if (fail) throw new api.ApiError(httpStatus, "Denied", code);
       return directory();
     });
     await mount();
-    expect(await start().reply()).toMatchObject({ status: "rejected", code: "PERMISSION_DENIED" });
+    expect(await start().reply()).toMatchObject({ status: "rejected", code });
     expect(readWorkspaceSession().session.locations["user-onedrive"]).toBeUndefined();
     fail = false;
     fireEvent.click(screen.getByRole("button", { name: "重试读取目录" }));

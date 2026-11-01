@@ -83,7 +83,7 @@ storage_id 为独立连接 ID，不硬编码、不由 CID 构造。account_cid�
 
 ## 阶段二：本体协调与目录响应补充
 
-WorkspaceApp 使用独立 useOneDriveNavigation 显式连接 storage 与 rename Hook，两个 Hook 不互相调用。入口先匹配真实 storage_id、能力与忙碌状态，再刷新连接及授权状态；这些阶段失败不更换工作区。仅内部当前请求有效，不排队；pending 期间重复请求返回 busy。未知记录在任何清理之前检查，提示先核对。
+WorkspaceApp 使用独立 useOneDriveNavigation 显式连接 storage 与 rename Hook，两个 Hook 不互相调用。入口使用前端已有连接列表匹配真实 storage_id，并检查能力、忙碌及已有授权缓存，不再主动调用 fetchStorages 或 fetchStorageAuthStatus 复核；初步检查失败不更换工作区。若目标尚无授权缓存，由原有连接切换的 React Query 查询完成首次初始化；已有缓存在本次 pending 期间复用，不额外刷新。实际授权和访问权限仍由目录 API 判断，其错误码原样返回。仅内部当前请求有效，不排队；pending 期间重复请求返回 busy。未知记录在任何清理之前检查，提示先核对。
 
 useWorkspaceStorage.openExternalTarget 一次安装目标连接、版本、账号就绪标记和 ID 位置。pending 期间暂停记忆/默认位置恢复；外部位置优先级仅限本次请求，不调用默认位置保存 API。离开时释放旧预览、清选择/任务，保留规则。手动位置/连接切换、打开设置、规则/排序变化或重置取消请求；预览/执行/单项操作等忙碌状态出现也取消尚未完成的请求。连接 revision/账号发生变化时旧请求不能重新夺回工作区或返回 opened。
 
@@ -118,7 +118,7 @@ window.postMessage 桥固定准确 targetOrigin，包裹格式如下：
 
 校验按实际信任边界执行：worker 校验 MAIN 提取结果，本体应用校验网页导航意图，本体内容脚本校验网页回复。经过校验的目标和回复在扩展内部转发时不再完整校验载荷；继续保留路由、来源、请求关联和文档 instance 检查。Chrome 提供的 sender ID 类型不另设格式或长度限制。空回执/断连仍属于未确认结果。提取器只将明确的页面/API 失败转换为协议码，程序异常正常暴露，不统一伪装为页面格式错误。
 
-业务并发由 useWorkspaceStorage 的当前操作引用同步占用，重复调用在 accepted 之前直接拒绝；integration Hook 不再维护第二份并发锁。消息桥与扩展的 pending 仅管理各自通信关联和超时，不承担业务锁。跨 await 后的连接/账号复核保留，以处理请求期间真实状态变化。
+业务并发由 useWorkspaceStorage 的当前操作引用同步占用，重复调用在 accepted 之前直接拒绝；integration Hook 不再维护第二份并发锁。消息桥与扩展的 pending 仅管理各自通信关联和超时，不承担业务锁。目录结果只在查询边界验证一次 Folder ID、Drive ID、根范围与连接 ID/版本；回填普通缓存后不重复验证相同响应。一个导航 effect 持续观察当前连接身份、版本、授权会话及忙碌状态变化以取消旧请求，保留手动操作与卸载取消机制。普通连接轮询和查询行为保持原有方式，不增加刷新请求。
 
 本体内容脚本收到 accepted 时向 worker 发送 `{namespace, type:'navigation-accepted', request_id, instance_id}`。worker 只接受当前目标标签页/顶层 frame/精确 origin/extension ID/文档 instance 的关联消息，最多激活一次目标标签页及窗口，并向来源 documentId 发送 `{namespace, type:'accepted', request_id}`。标签页激活为 UI 操作，其失败不改变目录操作的真实结果；本体内容脚本等待此回传处理完成后再结束最终结果通道，避免极快完成时漏掉激活。仅 opened 显示跳转成功，本体和来源分别使用自己的语言显示最终结果；业务错误码不改写为统一目录不存在。
 

@@ -6,7 +6,7 @@ import { NavigationError, samePersonalAccount, type OneDriveTarget } from "../..
 import { useNotification } from "../../components/NotificationProvider";
 import { readDefaultCloudLocation } from "../../features/files/defaultCloudLocation";
 import { useAppSettings } from "../../features/settings/useAppSettings";
-import type { StorageInfo, StorageLocation } from "../../types";
+import type { AuthorizationStatus, StorageLocation } from "../../types";
 import { clearWorkspaceSession, readWorkspaceSession, writeWorkspaceSession } from "../workspaceSession";
 
 interface WorkspaceStorageOptions {
@@ -16,9 +16,8 @@ interface WorkspaceStorageOptions {
 
 interface ExternalNavigation {
   target: OneDriveTarget;
-  source?: StorageInfo;
   guard: () => void;
-  phase: "checking" | "opening" | "displaying";
+  phase: "opening" | "displaying";
   resolve: () => void;
   reject: (error: Error) => void;
 }
@@ -81,6 +80,7 @@ export function useWorkspaceStorage({ pauseFileQueries, onLocalRootSelected }: W
     queryKey: ["storage-auth", storageId, activeStorage?.revision],
     queryFn: () => fetchStorageAuthStatus(storageId),
     enabled: metadataReady && requiresAuth && Boolean(activeStorage),
+    ...(externalPending ? { staleTime: Infinity } : {}),
   });
   // 保留已知账号身份；元数据刷新失败只暂停读取，不把它误判为账号断开。
   const cloudAccountId = requiresAuth ? cloudStatus.data?.account_id : null;
@@ -148,9 +148,8 @@ export function useWorkspaceStorage({ pauseFileQueries, onLocalRootSelected }: W
     // A temporary key forces a real read even when the ordinary directory cache is fresh.
     queryKey: externalFilesKey ? [...directoryKey, externalFilesKey] : directoryKey,
     queryFn: async () => {
-      const operation = external.current;
-      const target = externalFilesKey ? externalTarget.current :
-        operation?.phase !== "checking" ? operation?.target : null;
+      // Only the dedicated external read belongs to this target; ordinary queries may still finish for the old connection.
+      const target = externalFilesKey ? externalTarget.current : null;
       const result = await fetchStorageFiles(storageId, location);
       if (target) {
         const { storage, request } = target;
@@ -188,79 +187,47 @@ export function useWorkspaceStorage({ pauseFileQueries, onLocalRootSelected }: W
     guard: () => void): Promise<void> => {
     // Reserve the operation synchronously, before the caller emits accepted.
     if (external.current) throw new NavigationError("busy");
-    const source = activeStorage;
+    const { storage, request } = target;
+    const auth = queryClient.getQueryData<AuthorizationStatus>(["storage-auth", storage.storage_id, storage.revision]);
+    if (auth && !auth.connected) throw new NavigationError("auth_required");
+    if (auth && !samePersonalAccount(auth.account_id, request.account_cid)) throw new NavigationError("cancelled");
     return new Promise<void>((resolve, reject) => {
-      const operation: ExternalNavigation = { target, source, guard, phase: "checking", resolve, reject };
-      external.current = operation;
+      external.current = { target, guard, phase: "opening", resolve, reject };
+      externalTarget.current = target;
       setExternalPending(true);
-      void (async () => {
-        try {
-          const { storage, request } = target;
-          const fresh = await queryClient.fetchQuery({ queryKey: ["storages"],
-            queryFn: fetchStorages, staleTime: 0 });
-          const current = fresh.find((entry) => entry.storage_id === storage.storage_id);
-          const currentSource = fresh.find((entry) => entry.storage_id === source?.storage_id);
-          if (external.current !== operation) return;
-          if (!current || current.revision !== storage.revision ||
-              !samePersonalAccount(current.account_id, request.account_cid) ||
-              (source && (currentSource?.revision !== source.revision || currentSource.account_id !== source.account_id))) {
-            throw new NavigationError("cancelled");
-          }
-          if (current.busy || currentSource?.busy) throw new NavigationError("busy");
-          const auth = await queryClient.fetchQuery({
-            queryKey: ["storage-auth", storage.storage_id, storage.revision],
-            queryFn: () => fetchStorageAuthStatus(storage.storage_id), staleTime: 0,
-          });
-          if (external.current !== operation) return;
-          if (!auth.connected) throw new NavigationError("auth_required");
-          if (!samePersonalAccount(auth.account_id, request.account_cid)) throw new NavigationError("cancelled");
-          const latestTarget = queryClient.getQueryData<StorageInfo[]>(["storages"])
-            ?.find((entry) => entry.storage_id === storage.storage_id);
-          if (latestTarget?.revision !== storage.revision ||
-              !samePersonalAccount(latestTarget.account_id, request.account_cid)) throw new NavigationError("cancelled");
-          if (latestTarget.busy) throw new NavigationError("busy");
-          const latestSource = queryClient.getQueryData<StorageInfo[]>(["storages"])
-            ?.find((entry) => entry.storage_id === source?.storage_id);
-          if (source && (latestSource?.revision !== source.revision || latestSource.account_id !== source.account_id)) {
-            throw new NavigationError("cancelled");
-          }
-          guard();
-          beforeSwitch();
-          operation.phase = "opening";
-          externalTarget.current = target;
-          // One render installs connection, location and readiness together. Restoration cannot interleave.
-          setStorageId(storage.storage_id);
-          updateLocation({ kind: "id", value: request.folder_id });
-          setRestoredCloudSession(JSON.stringify([storage.storage_id, storage.revision, auth.account_id]));
-          setRestoredDirectSession(null);
-          setExternalFilesKey(crypto.randomUUID());
-        } catch (error) {
-          if (external.current !== operation) return;
-          external.current = null;
-          setExternalPending(false);
-          reject(error as Error);
-        }
-      })();
+      // Ordinary auth query initializes status only when this connection has no cached status.
+      setStorageId(storage.storage_id);
+      updateLocation({ kind: "id", value: request.folder_id });
+      setRestoredCloudSession(JSON.stringify([storage.storage_id, storage.revision, auth?.account_id ?? storage.account_id]));
+      setRestoredDirectSession(null);
+      setExternalFilesKey(crypto.randomUUID());
+      // Resetting the task resumes directory queries via the Store. Install the destination first
+      // so a synchronous Store render cannot resume the old directory under the new navigation.
+      beforeSwitch();
     });
-  }, [activeStorage, queryClient]);
+  }, [queryClient]);
 
   useEffect(() => {
+    // A task reset can flush effects from the source render before the destination state commits.
+    // Those effects must not validate the newly reserved request against the old workspace.
+    if (!externalPending) return;
     const operation = external.current;
     if (!operation) return;
     const { storage, request } = operation.target;
     const current = providers.data?.find((entry) => entry.storage_id === storage.storage_id);
-    if (operation.phase === "checking") {
-      const source = providers.data?.find((entry) => entry.storage_id === operation.source?.storage_id);
-      if (current?.revision !== storage.revision || !samePersonalAccount(current.account_id, request.account_cid) ||
-          (operation.source && (source?.revision !== operation.source.revision || source.account_id !== operation.source.account_id))) {
-        cancelExternalNavigation();
-      }
+    if (!current || current.revision !== storage.revision || current.busy ||
+        !samePersonalAccount(current.account_id, request.account_cid) || storageId !== storage.storage_id) {
+      cancelExternalNavigation();
       return;
     }
-    if (!current || current.revision !== storage.revision || current.busy ||
-        !samePersonalAccount(current.account_id, request.account_cid) || storageId !== storage.storage_id ||
-        !cloudConnected || cloudSession !== restoredCloudSession ||
-        !samePersonalAccount(cloudAccountId ?? null, request.account_cid)) {
+    if (cloudStatus.isPending) return;
+    if (!cloudConnected) {
+      external.current = null;
+      setExternalPending(false);
+      operation.reject(cloudStatus.error ?? new NavigationError("auth_required"));
+      return;
+    }
+    if (cloudSession !== restoredCloudSession) {
       cancelExternalNavigation();
       return;
     }
@@ -287,16 +254,11 @@ export function useWorkspaceStorage({ pauseFileQueries, onLocalRootSelected }: W
       return;
     }
     if (operation.phase === "displaying") {
-      if (files.data.storage_id !== storage.storage_id || files.data.revision !== storage.revision ||
-          files.data.directory_id !== request.folder_id) {
-        cancelExternalNavigation();
-        return;
-      }
       external.current = null;
       setExternalPending(false);
       operation.resolve();
     }
-  }, [providers.data, storageId, cloudConnected, cloudAccountId, cloudSession, restoredCloudSession, files.isError, files.isSuccess,
+  }, [externalPending, providers.data, storageId, cloudConnected, cloudStatus.isPending, cloudStatus.data, cloudStatus.error, cloudSession, restoredCloudSession, files.isError, files.isSuccess,
     files.isFetching, files.data, files.error, locationReady, externalFilesKey, queryClient, cancelExternalNavigation]);
 
   // A successful manual retry after an external read failure rejoins the ordinary cache/session flow.
