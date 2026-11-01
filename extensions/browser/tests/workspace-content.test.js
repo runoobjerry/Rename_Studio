@@ -29,6 +29,9 @@ it("pins a workspace document and waits for accepted relay before returning a fa
   runtimeReceive({ ...navigation, instance_id: "old-document" }, { id: "extension" }, respond);
   expect(host.postMessage).toHaveBeenCalledTimes(1); // Only the probe was forwarded.
   runtimeReceive(navigation, { id: "extension" }, respond);
+  emit("navigation-reply", "r", { reply: { version: 1, request_id: "r", status: "opened",
+    storage_id: "connection", token: "forbidden" } });
+  expect(respond).not.toHaveBeenCalled();
   emit("navigation-reply", "r", { reply: { version: 1, request_id: "r", status: "accepted" } });
   const opened = { version: 1, request_id: "r", status: "opened", storage_id: "connection" };
   emit("navigation-reply", "r", { reply: opened });

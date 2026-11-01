@@ -5,6 +5,7 @@ const root = "/personal/0123456789abcdef/Documents";
 function page(query = "") {
   const events = new EventTarget();
   globalThis.window = Object.assign(events, {
+    navigation: new EventTarget(),
     _spPageContextInfo: { userHexCid: "0123456789ABCDEF",
       webAbsoluteUrl: "https://onedrive.live.com/personal/0123456789abcdef",
       listUrl: root, userEmail: "person@example.test", userDisplayName: "Person" },
@@ -64,10 +65,22 @@ it.each(["url", "account"])("discards a result after %s changes during the reque
   });
   expect(await extractOneDriveFolder("r")).toEqual({ ok: false, code: "page_changed" });
 });
+it("discards a result when SPA navigation starts before the URL snapshot changes", async () => {
+  fetch.mockImplementation(async () => {
+    window.navigation.dispatchEvent(new Event("navigate"));
+    return { ok: true, json: async () => ({ id: "stale", folder: {} }) };
+  });
+  expect(await extractOneDriveFolder("r")).toEqual({ ok: false, code: "page_changed" });
+});
 it("does not guess the radix of userCid", async () => {
   delete window._spPageContextInfo.userHexCid;
   window._spPageContextInfo.userCid = "1234567890123456";
   expect(await extractOneDriveFolder("r")).toEqual({ ok: false, code: "account_format_unsupported" });
+});
+it("reports malformed page-provided site URLs at the parsing boundary", async () => {
+  window._spPageContextInfo.webAbsoluteUrl = "invalid site URL";
+  expect(await extractOneDriveFolder("r")).toEqual({ ok: false, code: "invalid_page_data" });
+  expect(fetch).not.toHaveBeenCalled();
 });
 it.each([[401, "auth_required"], [403, "permission_denied"], [404, "directory_unavailable"],
   [429, "rate_limited"], [503, "provider_error"]])("preserves HTTP failure meaning: %s", async (status, code) => {

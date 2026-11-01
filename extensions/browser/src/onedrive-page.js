@@ -1,6 +1,7 @@
 // This function is serialized by scripting.executeScript: keep all dependencies inside it.
 export async function extractOneDriveFolder(requestId) {
-  const fail = (code) => { throw new Error(code); };
+  class ExtractionError extends Error {}
+  const fail = (code) => { throw new ExtractionError(code); };
   const text = (value, max, required = false) => {
     if (value === undefined || value === null) {
       if (required) fail("context_unavailable");
@@ -27,10 +28,6 @@ export async function extractOneDriveFolder(requestId) {
       name: text(context.userDisplayName, 256),
     };
   };
-  const codes = new Set(["context_unavailable", "invalid_page_data", "account_format_unsupported",
-    "unsupported_view", "unsupported_scope", "scope_unverified", "page_changed",
-    "auth_required", "permission_denied", "rate_limited", "directory_unavailable",
-    "network_error", "request_timeout", "invalid_response", "provider_error"]);
   let timer;
   let timeout;
   const controller = new AbortController();
@@ -49,7 +46,9 @@ export async function extractOneDriveFolder(requestId) {
         !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu.test(url.searchParams.get("viewid"))) fail("unsupported_view");
     if (url.searchParams.has("cid") &&
         url.searchParams.get("cid").toLowerCase() !== start.cid.toLowerCase()) fail("unsupported_scope");
-    const web = new URL(start.web);
+    let web;
+    try { web = new URL(start.web); }
+    catch { fail("invalid_page_data"); }
     if (web.origin !== url.origin || !/^\/personal\/[^/]+\/?$/u.test(web.pathname) ||
         web.search || web.hash) fail("unsupported_scope");
     const list = start.list.replace(/\/$/u, "");
@@ -65,7 +64,10 @@ export async function extractOneDriveFolder(requestId) {
     }
     const monitor = () => {
       try { if (JSON.stringify(snapshot()) !== JSON.stringify(start)) markChanged(); }
-      catch { markChanged(); } // A lost context during navigation invalidates this extraction.
+      catch (error) {
+        if (!(error instanceof ExtractionError)) throw error;
+        markChanged(); // A lost/unsupported page context invalidates this extraction.
+      }
     };
     const unchanged = () => {
       monitor();
@@ -73,7 +75,7 @@ export async function extractOneDriveFolder(requestId) {
     };
     window.addEventListener("popstate", markChanged);
     window.addEventListener("hashchange", markChanged);
-    window.navigation?.addEventListener("navigate", markChanged);
+    window.navigation.addEventListener("navigate", markChanged);
     timer = setInterval(monitor, 50);
     timeout = setTimeout(() => { timedOut = true; controller.abort(); }, 10000);
     const endpoint = `${web.href.replace(/\/$/u, "")}/_api/v2.0/drive/root` +
@@ -104,7 +106,6 @@ export async function extractOneDriveFolder(requestId) {
       return data;
     };
     const data = await read(endpoint);
-    const folderId = text(data.id, 256, true);
     const driveId = text(data.parentReference?.driveId, 256);
     if (segments.length) {
       if (!driveId) fail("scope_unverified");
@@ -115,7 +116,7 @@ export async function extractOneDriveFolder(requestId) {
       if (defaultDriveId !== driveId) fail("unsupported_scope");
     }
     const request = { version: 1, type: "open-onedrive-folder", request_id: requestId,
-      account_cid: start.cid, folder_id: folderId };
+      account_cid: start.cid, folder_id: data.id };
     for (const [key, value] of Object.entries({ drive_id: driveId,
       account_email: start.email, account_display_name: start.name,
       folder_name: text(data.name, 256) })) {
@@ -124,13 +125,13 @@ export async function extractOneDriveFolder(requestId) {
     unchanged();
     return { ok: true, request };
   } catch (error) {
-    return { ok: false, code: changed ? "page_changed" :
-      codes.has(error.message) ? error.message : "invalid_page_data" };
+    if (!(error instanceof ExtractionError)) throw error;
+    return { ok: false, code: changed ? "page_changed" : error.message };
   } finally {
     clearInterval(timer);
     clearTimeout(timeout);
     window.removeEventListener("popstate", markChanged);
     window.removeEventListener("hashchange", markChanged);
-    window.navigation?.removeEventListener("navigate", markChanged);
+    window.navigation.removeEventListener("navigate", markChanged);
   }
 }

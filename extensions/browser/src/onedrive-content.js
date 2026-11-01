@@ -1,5 +1,5 @@
 import { mountFloatingButton } from "./floating-button.js";
-import { NAMESPACE, validCode, validReply } from "./protocol.js";
+import { NAMESPACE } from "./protocol.js";
 import { deadline } from "./transport.js";
 
 if (window.top === window && location.origin === "https://onedrive.live.com") {
@@ -11,11 +11,9 @@ if (window.top === window && location.origin === "https://onedrive.live.com") {
     };
     try {
       chrome.runtime.onMessage.addListener(receive);
-      const reply = await deadline(chrome.runtime.sendMessage({ namespace: NAMESPACE,
+      // Worker responses have already passed the page-facing protocol boundary.
+      return await deadline(chrome.runtime.sendMessage({ namespace: NAMESPACE,
         type: "open-current-folder", request_id: requestId }), 35000, "result_timeout");
-      if (validReply(reply, requestId) && reply.status !== "accepted") return reply;
-      if (["rejected", "unconfirmed"].includes(reply?.transport) && validCode(reply.code)) return reply;
-      return { code: "result_timeout" };
     } catch {
       // Disconnection may occur after delivery. It does not prove that navigation failed.
       return { code: "result_timeout" };

@@ -17,7 +17,6 @@ export function useOneDriveNavigation(options: Options) {
   const notify = useNotification();
   const latest = useRef(options);
   latest.current = options;
-  const pending = useRef(false);
   const unknown = useRenameStore((state) => state.unknownExecution);
   useEffect(() => {
     if (options.busy || useRenameStore.getState().unknownExecution) options.storage.cancelExternalNavigation();
@@ -31,22 +30,18 @@ export function useOneDriveNavigation(options: Options) {
     const guard = () => {
       if (useRenameStore.getState().unknownExecution) throw new NavigationError("outcome_unresolved");
       const { storage, busy } = latest.current;
-      if (busy || storage.activeStorage?.busy || storage.pickLocalRoot.isPending) throw new NavigationError("busy");
+      if (busy || storage.activeStorage?.busy) throw new NavigationError("busy");
     };
     try {
-      if (pending.current) throw new NavigationError("busy");
       guard();
       const { storage } = latest.current;
       if (!storage.providers.isSuccess || !storage.providerDefinitions.isSuccess) throw new NavigationError("busy");
       const target = matchOneDriveTarget(request, storage.providers.data, storage.providerDefinitions.data);
-      pending.current = true;
-      try {
-        const result = storage.openExternalTarget(target, () => latest.current.beforeSwitch(), guard);
-        onAccepted?.({ version: 1, request_id: request.request_id, status: "accepted" });
-        await result;
-        notify({ key: "files:externalNavigation.opened" });
-        return { version: 1, request_id: request.request_id, status: "opened", storage_id: target.storage.storage_id };
-      } finally { pending.current = false; }
+      const result = storage.openExternalTarget(target, () => latest.current.beforeSwitch(), guard);
+      onAccepted?.({ version: 1, request_id: request.request_id, status: "accepted" });
+      await result;
+      notify({ key: "files:externalNavigation.opened" });
+      return { version: 1, request_id: request.request_id, status: "opened", storage_id: target.storage.storage_id };
     } catch (error) {
       let code: string;
       if (error instanceof NavigationError) code = error.code;

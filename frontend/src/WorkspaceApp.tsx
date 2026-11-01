@@ -153,7 +153,7 @@ function Workspace({ preference, setPreference, settingsError, hasSettings }: {
 
   useOneDriveNavigation({
     storage,
-    busy: isPreviewing || isExecuting || isSingleRenaming || pickLocalRoot.isPending || resetPending,
+    busy: isPreviewing || isExecuting || pickLocalRoot.isPending || resetPending,
     context: String(resetEpoch),
     beforeSwitch: () => {
       releaseRetainedPreview();

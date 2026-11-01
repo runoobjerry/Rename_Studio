@@ -93,19 +93,7 @@ useWorkspaceStorage.openExternalTarget 一次安装目标连接、版本、账�
 
 用户建议运行：frontend 中 `npm test -- src/WorkspaceApp.externalNavigation.test.tsx src/workspace/hooks/useWorkspaceStorage.test.ts src/WorkspaceApp.storage.test.tsx`、`npm run check`；后端运行 `pytest tests/test_onedrive_provider.py`。Codex 仅静态检查，不运行这些命令。验收重点包括 Local/账号 A→B、默认/记忆位置竞争、预览释放、未知写入拒绝、并发及迟到取消、根规范化、权限失败后手动重试。
 
-阶段二可在 Vite 开发页面的 Console 中导入内部入口进行人工验收（生产构建不暴露源码模块路径）：
-
-```js
-const { openOneDriveFolder } = await import('/src/integrations/onedrive/navigation.ts');
-await openOneDriveFolder({
-  version: 1, type: 'open-onedrive-folder', request_id: crypto.randomUUID(),
-  account_cid: '替换为已确认的16位十六进制CID',
-  folder_id: '替换为真实DriveItem ID',
-  drive_id: '替换为真实默认云盘ID', // 根响应缺失时可省略；子目录不可省略
-});
-```
-
-此入口假定传入值已符合上文契约；示例占位符必须替换，勿将原始个人数据贴到公开日志。只用本地开发模块调用，不安装 window 调试全局、不新增调试按钮或浏览器传输入口。使用网络节流等待目录请求时手动切换连接、进入设置，或发第二次请求，分别核对 cancelled / busy 且迟到响应不夺回工作区；在真实忙碌操作及未知结果状态下调用时应立即拒绝。
+阶段二的 Console 手动构造目标验收方法已由阶段三悬浮按钮替代；内部业务函数继续供消息桥与回归测试使用，不作为用户调试入口。
 
 ## 阶段三：传输、就绪与生命周期
 
@@ -127,6 +115,10 @@ window.postMessage 桥固定准确 targetOrigin，包裹格式如下：
 ```
 
 两端均核对 event.source 为当前 window、event.origin 为构建 origin、方向、命名空间、版本、类型和 request_id。目标入口拒绝额外字段并沿用 v1 长度限制；回复仅允许有界 accepted/opened/rejected，opened 的 storage_id 上限 256、拒绝码为 1–64 位 ASCII 字母数字/下划线。无回声转发、无 `*` targetOrigin。同源检查与 ready 标记不证明消息一定来自扩展，也不防御控制了相同 origin 的恶意网页；桥只接受受限目录导航意图，账号、连接、授权和范围仍由业务入口与现有 Provider 核对，不提供凭据或通用 API 能力。
+
+校验按实际信任边界执行：worker 校验 MAIN 提取结果，本体应用校验网页导航意图，本体内容脚本校验网页回复。经过校验的目标和回复在扩展内部转发时不再完整校验载荷；继续保留路由、来源、请求关联和文档 instance 检查。Chrome 提供的 sender ID 类型不另设格式或长度限制。空回执/断连仍属于未确认结果。提取器只将明确的页面/API 失败转换为协议码，程序异常正常暴露，不统一伪装为页面格式错误。
+
+业务并发由 useWorkspaceStorage 的当前操作引用同步占用，重复调用在 accepted 之前直接拒绝；integration Hook 不再维护第二份并发锁。消息桥与扩展的 pending 仅管理各自通信关联和超时，不承担业务锁。跨 await 后的连接/账号复核保留，以处理请求期间真实状态变化。
 
 本体内容脚本收到 accepted 时向 worker 发送 `{namespace, type:'navigation-accepted', request_id, instance_id}`。worker 只接受当前目标标签页/顶层 frame/精确 origin/extension ID/文档 instance 的关联消息，最多激活一次目标标签页及窗口，并向来源 documentId 发送 `{namespace, type:'accepted', request_id}`。标签页激活为 UI 操作，其失败不改变目录操作的真实结果；本体内容脚本等待此回传处理完成后再结束最终结果通道，避免极快完成时漏掉激活。仅 opened 显示跳转成功，本体和来源分别使用自己的语言显示最终结果；业务错误码不改写为统一目录不存在。
 

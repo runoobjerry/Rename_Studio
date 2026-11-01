@@ -186,7 +186,8 @@ export function useWorkspaceStorage({ pauseFileQueries, onLocalRootSelected }: W
 
   const openExternalTarget = useCallback((target: OneDriveTarget, beforeSwitch: () => void,
     guard: () => void): Promise<void> => {
-    if (external.current) return Promise.reject(new NavigationError("busy"));
+    // Reserve the operation synchronously, before the caller emits accepted.
+    if (external.current) throw new NavigationError("busy");
     const source = activeStorage;
     return new Promise<void>((resolve, reject) => {
       const operation: ExternalNavigation = { target, source, guard, phase: "checking", resolve, reject };

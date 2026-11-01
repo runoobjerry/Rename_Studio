@@ -45,6 +45,12 @@ it("does not forward extra data supplied by the MAIN page", async () => {
   await expect(routeNavigation(api, origin, source, "r", { active: true })).rejects.toMatchObject({ code: "invalid_request" });
   expect(api.tabs.sendMessage.mock.calls.some(([, message]) => message.type === "navigate")).toBe(false);
 });
+it.each([null, undefined])("keeps an absent final receiver response unconfirmed", async (reply) => {
+  const api = browser();
+  const send = api.tabs.sendMessage.getMockImplementation();
+  api.tabs.sendMessage.mockImplementation((id, message) => message.type === "navigate" ? Promise.resolve(reply) : send(id, message));
+  await expect(routeNavigation(api, origin, source, "r", { active: true })).rejects.toMatchObject({ code: "result_timeout" });
+});
 it("drops a changed OneDrive URL instead of navigating a stale folder", async () => {
   const api = browser();
   api.tabs.get.mockResolvedValueOnce({ url: source.url }).mockResolvedValueOnce({ url: source.url })

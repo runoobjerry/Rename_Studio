@@ -1,5 +1,5 @@
 import { WORKSPACE_ORIGIN } from "./config.js";
-import { NAMESPACE, PROJECT, validReply, validRequestId, validateOpenRequest } from "./protocol.js";
+import { NAMESPACE, PROJECT, validReply, validRequestId } from "./protocol.js";
 
 if (window.top === window && location.origin === WORKSPACE_ORIGIN) {
   const instanceId = crypto.randomUUID();
@@ -32,8 +32,8 @@ if (window.top === window && location.origin === WORKSPACE_ORIGIN) {
   chrome.runtime.onMessage.addListener((message, sender, respond) => {
     if (sender.id !== chrome.runtime.id || message?.namespace !== NAMESPACE || message.version !== 1 ||
         !validRequestId(message.request_id) || !["probe", "navigate"].includes(message.type)) return;
-    if (message.type === "navigate" && (message.instance_id !== instanceId ||
-        validateOpenRequest(message.request) || message.request.request_id !== message.request_id)) return;
+    // Target payload was checked by the worker; this guard only pins the destination document.
+    if (message.type === "navigate" && message.instance_id !== instanceId) return;
     if (pending.has(message.request_id)) return;
     // No request queue, including probes. Each wait is bounded and discarded on timeout.
     const timer = setTimeout(() => entry.finish(null), message.type === "probe" ? 1200 : 19500);

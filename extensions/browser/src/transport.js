@@ -1,4 +1,4 @@
-import { NAMESPACE, PROJECT, validReply, validateOpenRequest } from "./protocol.js";
+import { NAMESPACE, PROJECT, validateOpenRequest } from "./protocol.js";
 import { extractOneDriveFolder } from "./onedrive-page.js";
 
 export class TransportError extends Error {
@@ -11,11 +11,9 @@ export function deadline(promise, milliseconds, code) {
   })]).finally(() => clearTimeout(timer));
 }
 export function isSource(sender, extensionId) {
-  return sender.id === extensionId && sender.frameId === 0 && typeof sender.documentId === "string" &&
-    sender.documentId.length > 0 && sender.documentId.length <= 128 && Number.isInteger(sender.tab?.id) &&
-    sender.tab?.incognito === false && sender.origin === "https://onedrive.live.com" &&
-    typeof sender.url === "string" &&
-    new URL(sender.url).origin === "https://onedrive.live.com";
+  // Chrome owns the ID types and sender origin; only check the required source context.
+  return sender.id === extensionId && sender.frameId === 0 && Boolean(sender.documentId) &&
+    sender.tab?.incognito === false && sender.origin === "https://onedrive.live.com";
 }
 
 export async function findWorkspace(api, origin) {
@@ -65,7 +63,8 @@ export async function routeNavigation(api, origin, source, requestId, context) {
     namespace: NAMESPACE, type: "navigate", version: 1, instance_id: workspace.instanceId,
     request_id: requestId, request: result.request,
   }, { frameId: 0 }), 20000, "result_timeout");
-  if (!validReply(reply, requestId) || reply.status === "accepted") throw new TransportError("result_timeout");
+  // Page replies are validated in the content script. An expired/missing receiver has no result.
+  if (reply == null) throw new TransportError("result_timeout");
   return reply;
 }
 

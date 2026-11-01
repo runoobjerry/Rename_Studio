@@ -197,7 +197,9 @@ describe("external OneDrive navigation", () => {
     await mount();
     const operation = start();
     await waitFor(() => expect(api.fetchStorageFiles).toHaveBeenCalledWith("user-onedrive", { kind: "id", value: "target-id" }));
-    expect(await start({ ...target, request_id: "second" }).reply()).toMatchObject({ status: "rejected", code: "busy" });
+    const second = start({ ...target, request_id: "second" });
+    expect(await second.reply()).toMatchObject({ status: "rejected", code: "busy" });
+    expect(second.accepted).not.toHaveBeenCalled();
     if (kind === "manual") fireEvent.click(screen.getByRole("button", { name: "本地文件" }));
     else act(() => client.setQueryData<StorageInfo[]>(["storages"], (entries) => entries!.map((entry) =>
       entry.storage_id === "user-onedrive" ? { ...entry, revision: 2 } : entry)));
