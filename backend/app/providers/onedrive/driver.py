@@ -56,12 +56,18 @@ class OneDriveProvider(StorageProvider):
         self._cooldown = ConnectionCooldown()
         self._root_id: str | None = None
         self._root_item: FileItem | None = None
+        self._drive_id: str | None = None
 
     async def list_directory(self, location: StorageLocation) -> DirectoryListing:
         if self._root_id is None:
             root = await self._request_json("GET", f"{GRAPH_ROOT}/me/drive/root")
             self._root_item = self._to_item(root)
             self._root_id = self._root_item.id
+            parent_reference = root.get("parentReference")
+            if isinstance(parent_reference, dict):
+                drive_id = parent_reference.get("driveId")
+                if isinstance(drive_id, str) and drive_id:
+                    self._drive_id = drive_id
         directory_id = self._root_id
         if isinstance(location, IdLocation):
             directory_id = location.value
@@ -92,7 +98,8 @@ class OneDriveProvider(StorageProvider):
             item.parent_location = IdLocation(value=directory_id)
         path = "" if isinstance(canonical, RootLocation) else directory.path
         return DirectoryListing(provider=self.id, path=path, parent_path=None if parent is None else directory.parent_path,
-                                location=canonical, directory_id=directory_id, parent_location=parent, items=items)
+                                location=canonical, directory_id=directory_id, drive_id=self._drive_id,
+                                parent_location=parent, items=items)
 
     async def list_files(self, path: str) -> list[FileItem]:
         normalized = path.replace("\\", "/").strip("/")

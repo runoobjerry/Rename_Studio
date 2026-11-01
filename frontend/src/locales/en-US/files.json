@@ -1,4 +1,10 @@
 {
+  "externalNavigation": {
+    "opened": "Folder opened from OneDrive.",
+    "unconfirmed": "No open result received. Please check Rename Studio.",
+    "rejected": "External navigation stopped ({{code}}). Check the connection or finish the current operation, then retry.",
+    "retry": "Retry directory"
+  },
   "types": {
     "file": "File",
     "folder": "Folder"

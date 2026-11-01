@@ -1,4 +1,10 @@
 {
+  "externalNavigation": {
+    "opened": "已打开来自 OneDrive 的目录。",
+    "unconfirmed": "未收到打开结果，请查看 Rename Studio。",
+    "rejected": "外部导航已停止（{{code}}）。请检查连接或完成当前操作后重试。",
+    "retry": "重试读取目录"
+  },
   "types": {
     "file": "文件",
     "folder": "文件夹"

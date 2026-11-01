@@ -2,15 +2,24 @@ import { useTranslation } from "react-i18next";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { fetchStorageFiles, fetchStorageAuthStatus, fetchStorageProviders, fetchStorages, pickStorageFolder } from "../../api/client";
+import { NavigationError, samePersonalAccount, type OneDriveTarget } from "../../integrations/onedrive/navigation";
 import { useNotification } from "../../components/NotificationProvider";
 import { readDefaultCloudLocation } from "../../features/files/defaultCloudLocation";
 import { useAppSettings } from "../../features/settings/useAppSettings";
-import type { StorageLocation } from "../../types";
+import type { AuthorizationStatus, StorageLocation } from "../../types";
 import { clearWorkspaceSession, readWorkspaceSession, writeWorkspaceSession } from "../workspaceSession";
 
 interface WorkspaceStorageOptions {
   pauseFileQueries: boolean;
   onLocalRootSelected: () => void;
+}
+
+interface ExternalNavigation {
+  target: OneDriveTarget;
+  guard: () => void;
+  phase: "opening" | "displaying";
+  resolve: () => void;
+  reject: (error: Error) => void;
 }
 
 export function useWorkspaceStorage({ pauseFileQueries, onLocalRootSelected }: WorkspaceStorageOptions) {
@@ -22,7 +31,23 @@ export function useWorkspaceStorage({ pauseFileQueries, onLocalRootSelected }: W
   const session = useRef(initialSession.session);
   const sessionWarningShown = useRef(false);
   const [storageId, setStorageId] = useState(initialSession.session.activeStorageId);
-  const [location, setLocation] = useState<StorageLocation>({ kind: "root" });
+  const [location, updateLocation] = useState<StorageLocation>({ kind: "root" });
+  const external = useRef<ExternalNavigation | null>(null);
+  const externalTarget = useRef<OneDriveTarget | null>(null);
+  const [externalPending, setExternalPending] = useState(false);
+  const [externalFilesKey, setExternalFilesKey] = useState<string | null>(null);
+  const cancelExternalNavigation = useCallback(() => {
+    const operation = external.current;
+    external.current = null;
+    externalTarget.current = null;
+    setExternalFilesKey(null);
+    setExternalPending(false);
+    if (operation) operation.reject(new NavigationError("cancelled"));
+  }, []);
+  const setLocation = useCallback((next: StorageLocation) => {
+    cancelExternalNavigation();
+    updateLocation(next);
+  }, [cancelExternalNavigation]);
   const setPath = useCallback((value: string) => setLocation(value ? { kind: "path", value } : { kind: "root" }), []);
   const [restoredCloudSession, setRestoredCloudSession] = useState<string | null>(null);
   const [restoredDirectSession, setRestoredDirectSession] = useState<string | null>(null);
@@ -55,6 +80,7 @@ export function useWorkspaceStorage({ pauseFileQueries, onLocalRootSelected }: W
     queryKey: ["storage-auth", storageId, activeStorage?.revision],
     queryFn: () => fetchStorageAuthStatus(storageId),
     enabled: metadataReady && requiresAuth && Boolean(activeStorage),
+    ...(externalPending ? { staleTime: Infinity } : {}),
   });
   // 保留已知账号身份；元数据刷新失败只暂停读取，不把它误判为账号断开。
   const cloudAccountId = requiresAuth ? cloudStatus.data?.account_id : null;
@@ -67,14 +93,16 @@ export function useWorkspaceStorage({ pauseFileQueries, onLocalRootSelected }: W
   const locationReady = metadataReady && supportsLocation(location) && (directReady || cloudReady);
 
   useEffect(() => {
+    if (external.current) return;
     if (!providers.isSuccess || activeStorage) return;
     setStorageId("default-local");
     setPath("");
     setRestoredDirectSession(null);
     setRestoredCloudSession(null);
-  }, [providers.isSuccess, activeStorage, setPath]);
+  }, [providers.isSuccess, activeStorage, setPath, externalPending]);
 
   useEffect(() => {
+    if (external.current) return;
     if (!providers.isSuccess) return;
     let changed = false;
     for (const [id, saved] of Object.entries(session.current.locations)) {
@@ -97,28 +125,50 @@ export function useWorkspaceStorage({ pauseFileQueries, onLocalRootSelected }: W
     }
     if (changed) saveSession();
   }, [providers.isSuccess, providers.data, providerDefinitions.isSuccess, providerDefinitions.data,
-    storageId, cloudStatus.isSuccess, cloudAccountId, cloudConnected, saveSession]);
+    storageId, cloudStatus.isSuccess, cloudAccountId, cloudConnected, saveSession, externalPending]);
 
   useEffect(() => {
+    if (external.current) return;
     if (!metadataReady || !activeStorage || directSession === null || restoredDirectSession === directSession) return;
     const saved = session.current.locations[storageId];
     setLocation(saved?.revision === activeStorage.revision && saved.accountId === null && supportsLocation(saved.location)
       ? saved.location : { kind: "root" });
     setRestoredDirectSession(directSession);
-  }, [metadataReady, activeStorage, storageId, directSession, restoredDirectSession, supportsLocation]);
+  }, [metadataReady, activeStorage, storageId, directSession, restoredDirectSession, supportsLocation, externalPending]);
 
   useEffect(() => {
+    if (external.current) return;
     if (!activeStorage) return;
     session.current.activeStorageId = storageId;
     saveSession();
-  }, [storageId, activeStorage, saveSession]);
+  }, [storageId, activeStorage, saveSession, externalPending]);
 
+  const directoryKey = ["files", storageId, activeStorage?.revision, location];
   const files = useQuery({
-    queryKey: ["files", storageId, activeStorage?.revision, location],
-    queryFn: () => fetchStorageFiles(storageId, location),
+    // A temporary key forces a real read even when the ordinary directory cache is fresh.
+    queryKey: externalFilesKey ? [...directoryKey, externalFilesKey] : directoryKey,
+    queryFn: async () => {
+      // Only the dedicated external read belongs to this target; ordinary queries may still finish for the old connection.
+      const target = externalFilesKey ? externalTarget.current : null;
+      const result = await fetchStorageFiles(storageId, location);
+      if (target) {
+        const { storage, request } = target;
+        if (result.storage_id !== storage.storage_id || result.revision !== storage.revision ||
+            result.directory_id !== request.folder_id || !result.location ||
+            !["root", "id"].includes(result.location.kind)) throw new NavigationError("cancelled");
+        if (request.drive_id) {
+          if (!result.drive_id) throw new NavigationError("scope_unverified");
+          if (result.drive_id !== request.drive_id) throw new NavigationError("unsupported_scope");
+        } else if (result.location.kind !== "root") throw new NavigationError("scope_unverified");
+      }
+      return result;
+    },
+    ...(externalFilesKey ? { retry: false } : {}),
+    ...(externalPending ? { staleTime: Infinity } : {}),
     enabled: !pauseFileQueries && Boolean(activeStorage) && locationReady,
   });
   useEffect(() => {
+    if (external.current || externalFilesKey) return;
     if (!activeStorage || !locationReady || !files.isSuccess || files.isFetching || !files.data.location) return;
     // 仅观察当前查询；成功响应使用 Provider 返回的位置，不使用显示路径。
     session.current.locations[storageId] = {
@@ -127,11 +177,102 @@ export function useWorkspaceStorage({ pauseFileQueries, onLocalRootSelected }: W
       location: files.data.location,
     };
     saveSession();
-  }, [activeStorage, storageId, locationReady, cloudAccountId, files.isSuccess, files.isFetching, files.data, saveSession]);
+  }, [activeStorage, storageId, locationReady, cloudAccountId, files.isSuccess, files.isFetching, files.data, saveSession, externalPending, externalFilesKey]);
   const workspaceKey = useMemo(() => JSON.stringify([storageId, activeStorage?.revision, location]), [storageId, activeStorage?.revision, location]);
   const providerName = activeStorage?.name ?? storageId;
   const settingsLoading = providers.isPending || providerDefinitions.isPending ||
     (metadataReady && requiresAuth && cloudStatus.isPending);
+
+  const openExternalTarget = useCallback((target: OneDriveTarget, beforeSwitch: () => void,
+    guard: () => void): Promise<void> => {
+    // Reserve the operation synchronously, before the caller emits accepted.
+    if (external.current) throw new NavigationError("busy");
+    const { storage, request } = target;
+    const auth = queryClient.getQueryData<AuthorizationStatus>(["storage-auth", storage.storage_id, storage.revision]);
+    if (auth && !auth.connected) throw new NavigationError("auth_required");
+    if (auth && !samePersonalAccount(auth.account_id, request.account_cid)) throw new NavigationError("cancelled");
+    return new Promise<void>((resolve, reject) => {
+      external.current = { target, guard, phase: "opening", resolve, reject };
+      externalTarget.current = target;
+      setExternalPending(true);
+      // Ordinary auth query initializes status only when this connection has no cached status.
+      setStorageId(storage.storage_id);
+      updateLocation({ kind: "id", value: request.folder_id });
+      setRestoredCloudSession(JSON.stringify([storage.storage_id, storage.revision, auth?.account_id ?? storage.account_id]));
+      setRestoredDirectSession(null);
+      setExternalFilesKey(crypto.randomUUID());
+      // Resetting the task resumes directory queries via the Store. Install the destination first
+      // so a synchronous Store render cannot resume the old directory under the new navigation.
+      beforeSwitch();
+    });
+  }, [queryClient]);
+
+  useEffect(() => {
+    // A task reset can flush effects from the source render before the destination state commits.
+    // Those effects must not validate the newly reserved request against the old workspace.
+    if (!externalPending) return;
+    const operation = external.current;
+    if (!operation) return;
+    const { storage, request } = operation.target;
+    const current = providers.data?.find((entry) => entry.storage_id === storage.storage_id);
+    if (!current || current.revision !== storage.revision || current.busy ||
+        !samePersonalAccount(current.account_id, request.account_cid) || storageId !== storage.storage_id) {
+      cancelExternalNavigation();
+      return;
+    }
+    if (cloudStatus.isPending) return;
+    if (!cloudConnected) {
+      external.current = null;
+      setExternalPending(false);
+      operation.reject(cloudStatus.error ?? new NavigationError("auth_required"));
+      return;
+    }
+    if (cloudSession !== restoredCloudSession) {
+      cancelExternalNavigation();
+      return;
+    }
+    if (files.isError && !files.isFetching) {
+      external.current = null;
+      setExternalPending(false);
+      operation.reject(files.error);
+      return;
+    }
+    if (!files.isSuccess || files.isFetching || !locationReady) return;
+    try { operation.guard(); }
+    catch (error) {
+      external.current = null;
+      setExternalPending(false);
+      operation.reject(error as Error);
+      return;
+    }
+    if (externalFilesKey) {
+      const canonical = files.data.location!;
+      queryClient.setQueryData(["files", storageId, current.revision, canonical], files.data);
+      updateLocation(canonical);
+      setExternalFilesKey(null);
+      operation.phase = "displaying";
+      return;
+    }
+    if (operation.phase === "displaying") {
+      external.current = null;
+      setExternalPending(false);
+      operation.resolve();
+    }
+  }, [externalPending, providers.data, storageId, cloudConnected, cloudStatus.isPending, cloudStatus.data, cloudStatus.error, cloudSession, restoredCloudSession, files.isError, files.isSuccess,
+    files.isFetching, files.data, files.error, locationReady, externalFilesKey, queryClient, cancelExternalNavigation]);
+
+  // A successful manual retry after an external read failure rejoins the ordinary cache/session flow.
+  useEffect(() => {
+    if (external.current || !externalFilesKey || !files.isSuccess || files.isFetching || !files.data.location) return;
+    queryClient.setQueryData(["files", storageId, activeStorage?.revision, files.data.location], files.data);
+    updateLocation(files.data.location);
+    setExternalFilesKey(null);
+  }, [externalFilesKey, files.isSuccess, files.isFetching, files.data, storageId, activeStorage?.revision, queryClient]);
+
+  useEffect(() => () => {
+    external.current?.reject(new NavigationError("cancelled"));
+    external.current = null;
+  }, []);
 
   const pickLocalRoot = useMutation({
     mutationFn: () => pickStorageFolder(storageId),
@@ -148,12 +289,13 @@ export function useWorkspaceStorage({ pauseFileQueries, onLocalRootSelected }: W
   });
 
   const selectStorage = useCallback((nextStorageId: string) => {
+    cancelExternalNavigation();
     if (nextStorageId === storageId) return;
     setStorageId(nextStorageId);
     setPath("");
     setRestoredCloudSession(null);
     setRestoredDirectSession(null);
-  }, [storageId, setPath]);
+  }, [storageId, setPath, cancelExternalNavigation]);
 
   const resetWorkspaceSession = useCallback(() => {
     session.current = { version: 1, activeStorageId: "default-local", locations: {} };
@@ -166,6 +308,7 @@ export function useWorkspaceStorage({ pauseFileQueries, onLocalRootSelected }: W
   }, [setPath, warnSessionUnavailable]);
 
   const restoreDefaultCloudPath = useCallback(() => {
+    if (external.current) return;
     if (!metadataReady || !requiresAuth) return;
     const saved = session.current.locations[storageId];
     const rememberedLocation = cloudConnected && activeStorage && saved?.revision === activeStorage.revision &&
@@ -201,6 +344,7 @@ export function useWorkspaceStorage({ pauseFileQueries, onLocalRootSelected }: W
 
   // 执行保护与重命名重置仍由工作区协调，Hook 不依赖任务 Store 或重命名 mutation。
   return {
+    openExternalTarget, externalPending, cancelExternalNavigation,
     storageId, location, setLocation, setPath, selectStorage, resetWorkspaceSession, locationReady,
     providers, activeStorage, providerId, providerName, cloudStatus,
     providerDefinitions, providerDefinition, providerError, metadataReady, requiresAuth, supportsLocalPicker, supportsLocation,
