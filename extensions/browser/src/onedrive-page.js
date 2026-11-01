@@ -107,14 +107,7 @@ export async function extractOneDriveFolder(requestId) {
     };
     const data = await read(endpoint);
     const driveId = text(data.parentReference?.driveId, 256);
-    if (segments.length) {
-      if (!driveId) fail("scope_unverified");
-      // A descendant of a shortcut can look ordinary. Compare with the default root drive.
-      const defaultRoot = await read(`${web.href.replace(/\/$/u, "")}/_api/v2.0/drive/root`);
-      const defaultDriveId = text(defaultRoot.parentReference?.driveId, 256);
-      if (!defaultDriveId) fail("scope_unverified");
-      if (defaultDriveId !== driveId) fail("unsupported_scope");
-    }
+    if (segments.length && !driveId) fail("scope_unverified");
     const request = { version: 1, type: "open-onedrive-folder", request_id: requestId,
       account_cid: start.cid, folder_id: data.id };
     for (const [key, value] of Object.entries({ drive_id: driveId,

@@ -41,15 +41,6 @@ it("rejects a child whose drive scope cannot be confirmed", async () => {
   page(`?id=${encodeURIComponent(`${root}/child`)}`);
   expect(await extractOneDriveFolder("r")).toEqual({ ok: false, code: "scope_unverified" });
 });
-it.each([[undefined, "scope_unverified"], ["other-drive", "unsupported_scope"]])(
-  "requires a matching default root drive: %s", async (rootDrive, code) => {
-    page(`?id=${encodeURIComponent(`${root}/child`)}`);
-    fetch.mockResolvedValueOnce({ ok: true, json: async () => ({ id: "child", folder: {},
-      parentReference: { driveId: "child-drive" } }) });
-    fetch.mockResolvedValueOnce({ ok: true, json: async () => ({ id: "root", folder: {},
-      parentReference: { driveId: rootDrive } }) });
-    expect(await extractOneDriveFolder("r")).toEqual({ ok: false, code });
-  });
 it.each(["https://onedrive.live.com/?id=x", "https://onedrive.live.com/my?view=recent",
   `https://onedrive.live.com/my?id=${encodeURIComponent(`${root}-other/child`)}`])(
   "does not fetch unsupported views or sibling boundaries: %s", async (href) => {

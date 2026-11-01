@@ -55,7 +55,7 @@ storage_id 为独立连接 ID，不硬编码、不由 CID 构造。account_cid�
 
 仅允许精确 `/my` 或 `/my/` 路径、无 hash。查询参数白名单为 id、viewid（GUID）、cid（须匹配上下文 CID）、o、sortField、isAscending，禁止重复键；其他模式保守拒绝，待实测再扩展。无 id 时使用 listUrl；有 id 时 URLSearchParams 仅解码一次，作为服务器相对路径。webAbsoluteUrl 必须为 `https://onedrive.live.com/personal/{site}`，listUrl 必须位于该站点内，目标必须等于 listUrl 或位于 `listUrl + '/'` 边界内；拒绝空段、`.`、`..` 和反斜杠。
 
-根目录 GET `{webAbsoluteUrl}/_api/v2.0/drive/root`；子目录 GET `.../drive/root:/{relativePath}`，每段独立 encodeURIComponent，带 `credentials: include` 和 `Accept: application/json;odata=nometadata`，禁止重定向，整次提取 10 秒超时，不自动重试。检查 HTTP、id、folder，拒绝 remoteItem 快捷方式。子目录另读默认根目录，比较两者 parentReference.driveId；任一缺失则 scope_unverified，不同则 unsupported_scope，防止经快捷方式进入其他云盘后看似普通的后代目录。根目录自身提取允许该字段缺失，绝不由 CID 构造 drive ID；若实际根响应没有该字段，子目录将保守失败，此兼容限制须由真实扩展验证确认。此阶段不宣称已完成 Provider 侧默认云盘身份核对。
+根目录 GET `{webAbsoluteUrl}/_api/v2.0/drive/root`；子目录 GET `.../drive/root:/{relativePath}`，每段独立 encodeURIComponent，带 `credentials: include` 和 `Accept: application/json;odata=nometadata`，禁止重定向，整次提取 10 秒超时，不自动重试。检查 HTTP、id、folder，拒绝 remoteItem 快捷方式。根目录和子目录提取均只读取目标目录一次；子目录不额外请求默认根目录，但必须包含 parentReference.driveId，缺失则 scope_unverified。根目录自身提取允许该字段缺失，绝不由 CID 构造 drive ID。默认云盘一致性由本体收到目录响应后核对，规则见下文阶段二说明。
 
 仅在用户点击后提取；提取期间监听 Navigation API、popstate、hashchange，并每 50ms 重读 URL/账号/上下文，结束即清理；fetch 和 JSON 解析后及返回前再次比较。发现变化即中止并返回 page_changed，要求重新点击。worker 在标签页查找前保存当前 URL，查找后和提取后重新核对，以来源 documentId 绑定 MAIN 注入和 accepted 回传。整页跳转导致文档消失时不向新页面投递旧结果；没有持续浏览记录收集或后台 URL 轮询。
 
