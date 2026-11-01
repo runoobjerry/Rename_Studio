@@ -6,6 +6,8 @@
 
 扩展使用原生 JavaScript、Vite 和 `@material/web`，依赖及构建与前端独立；不引入 React。Material 图标和进度组件打包进扩展，无 CDN 或外部字体。
 
+管理页和工具栏图标使用本体 [brand-mark.svg](../../frontend/src/assets/brand-mark.svg) 导出的 16、32、48、128 像素 PNG，保存在 `icons/`，构建时原样复制；本体品牌图变更后需同步重新导出。悬浮按钮仍使用跳转图标。
+
 Material 组件由独立 `material.js` 在 OneDrive 的 MAIN 环境提前注册；按钮交互及扩展通信仍在 ISOLATED 的 `onedrive.js` 中。Chrome 的隔离环境不提供 customElements，不能在其中直接导入自动注册的 Material 组件入口。修改此配置后须重新构建、重新加载扩展并刷新 OneDrive，旧 dist 文件不会自动更新。
 
 在本目录执行：

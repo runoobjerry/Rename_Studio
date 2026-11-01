@@ -26,3 +26,4 @@ if (mode === "development") manifest.name = "__MSG_developmentName__";
 await writeFile(`${outDir}/manifest.json`, JSON.stringify(manifest, null, 2) + "\n");
 await writeFile(`${outDir}/workspace-origin.json`, JSON.stringify({ origin }) + "\n");
 await cp(`${root}_locales`, `${outDir}/_locales`, { recursive: true });
+await cp(`${root}icons`, `${outDir}/icons`, { recursive: true });
