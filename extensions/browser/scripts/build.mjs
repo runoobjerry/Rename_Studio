@@ -16,7 +16,7 @@ for (const [index, name] of ["material", "onedrive", "workspace", "service-worke
       lib: { entry: `${root}src/${name === "material" ? "material-main" : name === "onedrive" ? "onedrive-content" : name === "workspace" ? "workspace-content" : name}.js`,
         name: "RenameStudioBrowser", formats: [name === "service-worker" ? "es" : "iife"],
         fileName: () => `${name}.js` },
-      rollupOptions: { output: { inlineDynamicImports: true } },
+      rolldownOptions: { output: { codeSplitting: false } },
     },
   });
 }

@@ -1,4 +1,4 @@
-// Keep these boundaries synchronized with docs/BROWSER_INTEGRATION.md.
+// Keep these boundaries synchronized with docs/BROWSER_PROTOCOL.md.
 export const NAMESPACE = "rename-studio.browser.v1";
 export const PROJECT = "rename-studio";
 export const validRequestId = (value) => typeof value === "string" && /^[a-z0-9_-]{1,64}$/iu.test(value);

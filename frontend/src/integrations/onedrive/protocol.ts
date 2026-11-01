@@ -5,7 +5,7 @@ export const BROWSER_ORIGIN = import.meta.env.DEV ? "http://localhost:5173" : "h
 export const validRequestId = (value: unknown): value is string =>
   typeof value === "string" && /^[a-z0-9_-]{1,64}$/iu.test(value);
 
-// Mirrored in extensions/browser/src/protocol.js; docs/BROWSER_INTEGRATION.md owns the contract.
+// Mirrored in extensions/browser/src/protocol.js; docs/BROWSER_PROTOCOL.md owns the contract.
 export function parseBrowserTarget(value: unknown): { request: OpenOneDriveFolderRequest } | { code: string } {
   if (!value || typeof value !== "object" || Array.isArray(value)) return { code: "invalid_request" };
   const data = value as Record<string, unknown>;

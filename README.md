@@ -67,7 +67,7 @@ bash "/项目完整路径/Start.sh"
 | [使用帮助](https://github.com/runoobjerry/Rename_Studio/wiki/Usage-Guide) | 文件选择、规则参数、预览执行、目录记忆、更新与重置 |
 | [配置说明](https://github.com/runoobjerry/Rename_Studio/wiki/Configuration) | 启动参数、环境变量、本地与云服务的配置与授权 |
 | [常见问题](https://github.com/runoobjerry/Rename_Studio/wiki/FAQ) | 安装失败、端口占用、目录权限、授权失败、密钥与执行结果 |
-| [浏览器扩展](extensions/browser/README.md#安装发布包) | 下载独立扩展 ZIP、加载安装、更新及 OneDrive 网页目录跳转 |
+| [浏览器扩展](extensions/browser/README.md#快速开始) | 下载独立扩展 ZIP、加载安装、更新及 OneDrive 网页目录跳转 |
 | [隐私政策](https://github.com/runoobjerry/Rename_Studio/wiki/Privacy-Policy) | 数据处理、本地凭据、浏览器会话、第三方请求、日志与数据清理 |
 
 > [!WARNING] 

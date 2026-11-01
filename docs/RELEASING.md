@@ -113,7 +113,7 @@ Windows 校验单个附件可用 `Get-FileHash -Algorithm SHA256 .\Rename_Studio
    if ($LASTEXITCODE -ne 0) { throw '扩展版本不一致，不能发布。' }
    ```
 
-2. 按[扩展 README](../extensions/browser/README.md#回归命令用户执行)执行本地回归与人工验收，提交、审查并合入 `main`。可先在 **Actions → Release Browser Extension → Run workflow** 选择待验收分支构建；成功后下载 `browser-package-vX.Y.Z` artifact。它包含独立 ZIP 和 `SHA256SUMS.txt`，不是已公开的 Release。该工作流只安装扩展依赖、构建及检查包资源，不运行本体测试或真实浏览器验收。
+2. 按[扩展 README](../extensions/browser/README.md#验证)执行本地回归与人工验收，提交、审查并合入 `main`。可先在 **Actions → Release Browser Extension → Run workflow** 选择待验收分支构建；成功后下载 `browser-package-vX.Y.Z` artifact。它包含独立 ZIP 和 `SHA256SUMS.txt`，不是已公开的 Release。该工作流只安装扩展依赖、构建及检查包资源，不运行本体测试或真实浏览器验收。
 3. 确认发布提交后，在 `main` 上推送独立标签。以下 Git 命令由维护者执行；版本操作不代表批准提交或推送：
 
    ```powershell
@@ -131,7 +131,7 @@ Windows 校验单个附件可用 `Get-FileHash -Algorithm SHA256 .\Rename_Studio
 
 4. 工作流读取标签提交，要求标签等于 `browser-v` 加 manifest 版本，并通过 `set_version.py --target browser --check` 校验 package 和 lockfile。使用 Node 22、`npm ci` 和 `npm run build`，仅打包 `extensions/browser/dist/production`，确认版本、发布版 origin、内容脚本、双语资源和图标存在。本体不用重新构建；Chrome/Edge 共用这一份发布包。
 5. 构建成功后生成 `Rename_Studio-Browser-v0.3.0.zip` 和 `SHA256SUMS.txt`，验证校验和后自动创建 **Rename Studio Browser v0.3.0** 草稿。ZIP 根目录直接包含 `manifest.json`，不含源码、node_modules 或开发版。扩展 Release 固定不设为仓库 Latest，避免覆盖本体默认下载入口；本体和扩展的版本号均保持独立。
-6. 下载草稿附件，核对校验和，按[发布包安装教程](../extensions/browser/README.md#安装发布包)加载并完成真实跳转验收。在草稿中补充本次改动和**实际验收的本体版本**；确认后手动点击 **Publish release**。浏览器消息协议版本仍按 [BROWSER_INTEGRATION.md](BROWSER_INTEGRATION.md) 管理，不随软件版本递增。
+6. 下载草稿附件，核对校验和，按[快速开始](../extensions/browser/README.md#快速开始)加载并完成真实跳转验收。在草稿中补充本次改动和**实际验收的本体版本**；确认后手动点击 **Publish release**。浏览器消息协议版本仍按[浏览器消息协议 v1](BROWSER_PROTOCOL.md) 管理，不随软件版本递增。
 
 ```mermaid
 flowchart TD
