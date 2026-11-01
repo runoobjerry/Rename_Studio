@@ -110,17 +110,39 @@ def prepare_updates(version: str, python_version: str) -> dict[Path, str]:
     return updates
 
 
+def prepare_browser_updates(version: str) -> dict[Path, str]:
+    updates: dict[Path, str] = {}
+    for filename in ("manifest.json", "package.json", "package-lock.json"):
+        path = ROOT / "extensions/browser" / filename
+        source = path.read_bytes().decode("utf-8")
+        updated = update_json(source, version, lockfile=filename == "package-lock.json")
+        if updated != source:
+            updates[path] = updated
+    return updates
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("version", type=parse_version, help="For example: 1.0.0-alpha2 or v1.0.0")
+    parser.add_argument("--target", choices=("app", "browser"), default="app",
+                        help="Version independently: app (default) or browser extension (X.Y.Z only)")
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument("--dry-run", action="store_true", help="List changes without writing files")
     mode.add_argument("--check", action="store_true", help="Do not write; exit 1 if versions differ")
     args = parser.parse_args()
     version, python_version = args.version
-    print(f"Release: v{version}; Python package: {python_version}")
+    if args.target == "browser":
+        if version != python_version:
+            parser.error("Browser extension version must use X.Y.Z without a prerelease suffix.")
+        components = [int(part) for part in version.split(".")]
+        if any(part > 65535 for part in components) or not any(components):
+            parser.error("Browser version components must be 0..65535 and must not all be zero.")
+        print(f"Browser extension: {version}")
+    else:
+        print(f"Release: v{version}; Python package: {python_version}")
     try:
-        updates = prepare_updates(version, python_version)
+        updates = (prepare_browser_updates(version) if args.target == "browser"
+                   else prepare_updates(version, python_version))
         for path, content in updates.items():
             if not (args.dry_run or args.check):
                 path.write_bytes(content.encode("utf-8"))

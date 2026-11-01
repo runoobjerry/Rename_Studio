@@ -1,8 +1,29 @@
 # Rename Studio Browser
 
-扩展版本 0.2.0，独立于本体版本。协议事实来源：[BROWSER_INTEGRATION.md](../../docs/BROWSER_INTEGRATION.md)。唯一产品入口是 OneDrive 页面右侧的可拖拽悬浮按钮；无 popup、action 提取动作或个人数据日志。
+扩展使用独立于本体的版本号，当前版本见 `manifest.json`。协议事实来源：[BROWSER_INTEGRATION.md](../../docs/BROWSER_INTEGRATION.md)。唯一产品入口是 OneDrive 页面右侧的可拖拽悬浮按钮；无 popup、action 提取动作或个人数据日志。
 
-## 安装、构建和加载（用户执行）
+## 独立版本管理
+
+在仓库根目录运行，示例版本 `0.3.0`：
+
+```powershell
+python scripts/set_version.py 0.3.0 --target browser --dry-run
+python scripts/set_version.py 0.3.0 --target browser
+python scripts/set_version.py 0.3.0 --target browser --check
+```
+
+只同步扩展的 `manifest.json`、`package.json` 和 `package-lock.json` 顶层及根包版本，不修改依赖版本或本体版本。扩展使用 `X.Y.Z`，不接受预发布后缀；每段为 0–65535，不能全部为零，遵循 [Chrome manifest 版本约束](https://developer.chrome.com/docs/extensions/reference/manifest/version)。修改后重新构建并加载扩展。省略 `--target` 时仍只管理本体版本。
+
+## 安装发布包
+
+1. 在项目 [Releases](https://github.com/runoobjerry/Rename_Studio/releases) 找到 **Rename Studio Browser** 发布条目，下载 `Rename_Studio-Browser-vX.Y.Z.zip`；本体的 Windows/macOS ZIP 不包含扩展，GitHub 的 Source code ZIP 也不是可加载的扩展构建。
+2. 下载同一条目的 `SHA256SUMS.txt`，用 `Get-FileHash -Algorithm SHA256`（Windows）或 `shasum -a 256`（macOS）核对 ZIP。将 ZIP 解压到准备长期保留的目录，目录根部应直接包含 `manifest.json`。
+3. Chrome / Edge 打开 `chrome://extensions` / `edge://extensions`，开启开发者模式，点击“加载已解压的扩展”，选择上一步目录。不要选择 ZIP，也不要选择源码目录。
+4. 启动本体，打开 `http://localhost:8000` 并确认目标 OneDrive 账号已授权；刷新 OneDrive 和本体网页，点击 OneDrive 悬浮按钮跳转。支持范围及操作检查见下方人工验收。
+
+更新时关闭旧网页，将新包解压后的内容替换到原扩展目录，在扩展管理页点击“重新加载”，再刷新 OneDrive 和本体网页；不要同时加载两份扩展。发布包不自动更新，也不自动安装或启动本体。配套本体验收版本见各扩展 Release 说明。
+
+## 源码构建和加载（用户执行）
 
 扩展使用原生 JavaScript、Vite 和 `@material/web`，依赖及构建与前端独立；不引入 React。Material 图标和进度组件打包进扩展，无 CDN 或外部字体。
 
@@ -13,7 +34,7 @@ Material 组件由独立 `material.js` 在 OneDrive 的 MAIN 环境提前注册�
 在本目录执行：
 
 ```powershell
-npm install
+npm ci
 npm run build
 ```
 
@@ -21,7 +42,15 @@ Chrome / Edge 111+ 打开 `chrome://extensions` / `edge://extensions`，开启�
 
 发布构建仅使用 `http://localhost:8000`。开发时运行 `npm run build:dev`，改为加载 `dist/development`，仅使用 `http://localhost:5173`。只加载一种构建，不同时启用两份扩展。需要 Vite 本体开发页面时，在 frontend 中由用户运行 `npm run dev`。不支持 127.0.0.1、其他端口、HTTPS 或公网本体地址；不自动扫描端口。
 
-安装、重新加载扩展或切换构建后，刷新 OneDrive 和本体页面以加载对应内容脚本。构建产物与 node_modules 被现有 .gitignore 排除。首次安装由 npm 生成扩展自己的 package-lock.json，后续可使用 npm ci；Codex 未安装依赖或生成构建产物。
+安装、重新加载扩展或切换构建后，刷新 OneDrive 和本体页面以加载对应内容脚本。构建产物与 node_modules 被现有 .gitignore 排除，`npm ci` 使用扩展自己的 package-lock.json。
+
+## Actions 构建与发布
+
+本体和扩展在同仓库独立构建、独立发布。扩展使用 [Release Browser Extension](../../.github/workflows/browser-release.yml)，本体继续使用 `Release ZIPs`；完整操作见[浏览器扩展独立发布](../../docs/RELEASING.md#浏览器扩展独立发布)。
+
+- 推送 `browser-vX.Y.Z` 标签：检查标签与三个版本文件一致，构建发布版，生成扩展 ZIP 与校验和，再创建 **Release 草稿**。维护者完成验收后手动公开；扩展 Release 不设为仓库 Latest。
+- 在 Actions 手动运行：按所选分支或标签构建，生成可下载的 `browser-package-vX.Y.Z` artifact，不创建 Release。下载后先解压 artifact 外层，取得真正的扩展 ZIP 和校验和，再按“安装发布包”操作。手动选择标签时也必须与扩展版本对应。
+- 推送本体 `v*` 标签不会构建扩展，推送扩展标签也不会构建本体；普通分支推送不触发这两个发布工作流。标签指向的提交需已包含完整扩展代码和对应版本。
 
 ## 人工验收
 

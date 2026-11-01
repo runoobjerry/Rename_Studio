@@ -3,10 +3,18 @@
 ## 发布约定
 
 - Git 标签和 ZIP 使用 `v1.0.0-alpha2`；前端和 FastAPI 使用 `1.0.0-alpha2`；Python 包使用 PEP 440 规范形式 `1.0.0a2`。统一由 `scripts/set_version.py` 转换与检查，不直接比较两种形式的字符串。
+- 浏览器扩展独立版本使用 `python scripts/set_version.py 0.3.0 --target browser` 管理；支持同样的 `--dry-run` / `--check`，仅同步扩展的 manifest、package 和 lockfile 根包版本。扩展由 `browser-v*` 标签触发独立发布，不进入本体 ZIP，详见[浏览器扩展独立发布](#浏览器扩展独立发布)。
 - 支持正式版、`alphaN`、`betaN` 和 `rcN`。本轮为内测版，后续可递增为 `v1.0.0-alpha3`；正式发行使用 `v1.0.0`。已公开版本不覆盖、不移动标签。
 - 首批检查平台为 Windows x64（`windows-2022`）和 macOS ARM64（`macos-15`），Python 3.12。运行环境不随 ZIP 分发，用户需预装 Python，首次启动联网安装依赖。其他平台、架构、Python 版本及更旧的桌面系统尚需另行验收。
 - 推送 `v*` 标签触发 `Release ZIPs` 工作流。全部检查成功后创建 **Release 草稿**，由维护者最后公开；带预发布后缀的版本自动勾选 **Pre-release**，不设置为 Latest。
-- 从 Actions 手动触发时，以所选分支或标签的项目版本构建、检查并上传工作流产物，**不创建 Release**。普通分支推送不触发发布工作流。
+- 从 Actions 手动触发时，以所选分支或标签的对应产品版本构建、检查并上传工作流产物，**不创建 Release**。普通分支推送不触发发布工作流。
+
+采用 Bitwarden 同仓库按产品分开构建、分开组织 Release 的方式：[浏览器构建](https://github.com/bitwarden/clients/blob/main/.github/workflows/build-browser.yml)、[桌面构建](https://github.com/bitwarden/clients/blob/main/.github/workflows/build-desktop.yml)、[浏览器 Release 示例](https://github.com/bitwarden/clients/releases/tag/browser-v2026.10.1)。本项目保留既有本体标签，并使用扩展专属标签；不会引入其多客户端构建矩阵、签名或商店上传流程。
+
+| 产品 | 工作流 | 标签 | 正式发布附件 |
+| --- | --- | --- | --- |
+| 本体 | `Release ZIPs` | `vX.Y.Z` 或已有预发布格式 | Windows/macOS ZIP、校验和 |
+| 浏览器扩展 | `Release Browser Extension` | `browser-vX.Y.Z` | 独立扩展 ZIP、校验和 |
 
 ## 自动工作流
 
@@ -90,6 +98,55 @@ GitHub 运行器标签与架构见[官方运行器说明](https://docs.github.co
    下载对应平台 ZIP，核对校验和并执行发布包验收。内测版保留 **Pre-release** 标记。确认后手动点击 **Publish release**；用户下载带系统名称的附件，GitHub 自动附带的 Source code ZIP 不含前端构建产物。
 
 Windows 校验单个附件可用 `Get-FileHash -Algorithm SHA256 .\Rename_Studio-v1.0.0-alpha2-windows.zip`；macOS 可用 `shasum -a 256 Rename_Studio-v1.0.0-alpha2-macos.zip`。将结果与 `SHA256SUMS.txt` 中对应行比较，只下载一个平台时只核对该 ZIP。
+
+## 浏览器扩展独立发布
+
+扩展工作流为 [.github/workflows/browser-release.yml](../.github/workflows/browser-release.yml)。首次使用需将该文件合入默认分支，Actions 页面才会显示手动运行入口；仓库需允许 GitHub Actions，草稿 job 使用内置 `GITHUB_TOKEN` 的 `contents: write` 权限。无需商店凭据或额外 PAT。
+
+1. 在开发分支设置扩展版本，以下 `0.3.0` 仅为示例；在仓库根目录执行：
+
+   ```powershell
+   $browserVersion = '0.3.0'
+   python scripts/set_version.py $browserVersion --target browser --dry-run
+   python scripts/set_version.py $browserVersion --target browser
+   python scripts/set_version.py $browserVersion --target browser --check
+   if ($LASTEXITCODE -ne 0) { throw '扩展版本不一致，不能发布。' }
+   ```
+
+2. 按[扩展 README](../extensions/browser/README.md#回归命令用户执行)执行本地回归与人工验收，提交、审查并合入 `main`。可先在 **Actions → Release Browser Extension → Run workflow** 选择待验收分支构建；成功后下载 `browser-package-vX.Y.Z` artifact。它包含独立 ZIP 和 `SHA256SUMS.txt`，不是已公开的 Release。该工作流只安装扩展依赖、构建及检查包资源，不运行本体测试或真实浏览器验收。
+3. 确认发布提交后，在 `main` 上推送独立标签。以下 Git 命令由维护者执行；版本操作不代表批准提交或推送：
+
+   ```powershell
+   git switch main
+   git pull --ff-only origin main
+   if ($LASTEXITCODE -ne 0) { throw '更新 main 失败，请先处理 Git 状态。' }
+   $browserVersion = '0.3.0'
+   $browserTag = "browser-v$browserVersion"
+   python scripts/set_version.py $browserVersion --target browser --check
+   if ($LASTEXITCODE -ne 0) { throw '扩展版本不一致，不能发布。' }
+   git tag -a $browserTag -m "Rename Studio Browser v$browserVersion"
+   if ($LASTEXITCODE -ne 0) { throw '标签创建失败，请检查是否已存在。' }
+   git push origin $browserTag
+   ```
+
+4. 工作流读取标签提交，要求标签等于 `browser-v` 加 manifest 版本，并通过 `set_version.py --target browser --check` 校验 package 和 lockfile。使用 Node 22、`npm ci` 和 `npm run build`，仅打包 `extensions/browser/dist/production`，确认版本、发布版 origin、内容脚本、双语资源和图标存在。本体不用重新构建；Chrome/Edge 共用这一份发布包。
+5. 构建成功后生成 `Rename_Studio-Browser-v0.3.0.zip` 和 `SHA256SUMS.txt`，验证校验和后自动创建 **Rename Studio Browser v0.3.0** 草稿。ZIP 根目录直接包含 `manifest.json`，不含源码、node_modules 或开发版。扩展 Release 固定不设为仓库 Latest，避免覆盖本体默认下载入口；本体和扩展的版本号均保持独立。
+6. 下载草稿附件，核对校验和，按[发布包安装教程](../extensions/browser/README.md#安装发布包)加载并完成真实跳转验收。在草稿中补充本次改动和**实际验收的本体版本**；确认后手动点击 **Publish release**。浏览器消息协议版本仍按 [BROWSER_INTEGRATION.md](BROWSER_INTEGRATION.md) 管理，不随软件版本递增。
+
+```mermaid
+flowchart TD
+    A[推送 browser-vX.Y.Z 标签] --> C[校验扩展独立版本]
+    B[Actions 手动运行] --> C
+    C --> D[扩展发布版构建与资源检查]
+    D --> E[ZIP 与 SHA256SUMS.txt 上传为 artifact]
+    E --> F{标签推送触发?}
+    F -->|否| G[下载验收包，不创建 Release]
+    F -->|是| H[复核校验和，创建扩展 Release 草稿]
+    H --> I[人工安装验收，补充配套本体版本]
+    I --> J[维护者公开 Release，不设为 Latest]
+```
+
+任一步骤失败不继续创建草稿。已有同标签 Release（包括草稿）时拒绝覆盖；草稿上传中断后的处理、网络故障重跑和已公开版本修复遵循下方“失败与重跑”。扩展更新无需重发本体，本体发布也不重复附带扩展 ZIP。
 
 ## 本地组包与启动检查
 
