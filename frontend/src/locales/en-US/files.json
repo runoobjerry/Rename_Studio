@@ -26,6 +26,7 @@
     "parents": "Show parent folders"
   },
   "preview": {
+    "currentNameUnavailable": "Current name not provided",
     "filters": {
       "error": "Error",
       "unchanged": "Unchanged",
@@ -46,7 +47,7 @@
     "needsVerification": "Needs verification",
     "unknown": "Unknown",
     "notAttempted": "Not attempted because another item’s rename result needs verification.",
-    "notAttemptedOther": "Not attempted because another item could not be renamed."
+    "notAttemptedOther": "This item was not attempted."
   },
   "rename": {
     "phases": {

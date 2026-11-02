@@ -887,7 +887,7 @@ async def test_engine_reconciles_lost_google_write_without_replay(provider_facto
         assert len(server.writes) == 1 and result.status != "completed"
         assert all(item.error_code == "RENAME_OUTCOME_UNKNOWN" and item.actual_name is None for item in result.items[:20])
         assert server.files["20"]["name"] == "old-20"
-        assert result.items[20].outcome == "not_attempted"
+        assert result.items[20].status == "not_attempted"
     else:
         assert result.status == "completed" and [len(batch) for batch in server.writes] == [20, 1]
     assert execute.progress(snapshot.preview_id).processed == 21

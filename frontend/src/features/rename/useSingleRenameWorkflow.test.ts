@@ -274,7 +274,7 @@ describe("single rename workflow", () => {
       operation_id: "single-operation", status: kind === "unconfirmed" ? "completed" : "failed",
       items: kind === "missing" ? [] : [{
         file_id: source.id, original_name: source.name, new_name: "new.txt",
-        status: kind === "unconfirmed" ? "renamed" : "failed", error: kind === "unconfirmed" ? null : "Unknown write",
+        status: kind === "unconfirmed" ? "renamed" : "unknown", error: kind === "unconfirmed" ? null : "Unknown write",
         error_code: kind === "unconfirmed" ? null : "RENAME_OUTCOME_UNKNOWN", actual_name: null,
       }],
     });

@@ -1,4 +1,5 @@
 from collections.abc import Iterator
+import errno
 from pathlib import Path
 from uuid import uuid4
 
@@ -15,6 +16,40 @@ from app.services.single_rename_service import SingleRenameService
 from app.services.preview_service import PreviewService
 from app.services.preview_store import PreviewStore
 from app.services.rename_engine import RenameEngine
+
+
+@pytest.mark.parametrize("single", [False, True])
+def test_execution_api_preserves_unknown_status_after_committed_write(
+    tmp_path: Path, api_client: TestClient, monkeypatch: pytest.MonkeyPatch, single: bool,
+) -> None:
+    source = tmp_path / "old.txt"
+    source.write_text("data")
+    read = Path.lstat
+
+    def fail_confirmation(path: Path, *args, **kwargs):
+        if path == tmp_path / "new.txt" and not source.exists():
+            raise PermissionError(errno.EACCES, "Confirmation unavailable")
+        return read(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "lstat", fail_confirmation)
+    if single:
+        response = api_client.post("/storages/local/rename/single/execute", json={
+            "operation_id": str(uuid4()), "revision": 1, "file_id": "old.txt",
+            "original_name": "old.txt", "target_name": "new.txt",
+        })
+    else:
+        preview = api_client.post("/storages/local/rename/preview", json={
+            "file_ids": ["old.txt"], "target_name": "new.txt",
+        }).json()
+        response = api_client.post("/rename/execute", json={"preview_id": preview["preview_id"]})
+    assert response.status_code == 200
+    result = response.json()
+    assert result["status"] == "failed"
+    assert result["items"][0]["status"] == "unknown"
+    assert result["items"][0]["error_code"] == "RENAME_OUTCOME_UNKNOWN"
+    assert result["items"][0]["actual_name"] is None
+    assert (tmp_path / "new.txt").exists()
+    assert not source.exists()
 
 
 @pytest.fixture

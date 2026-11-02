@@ -127,13 +127,13 @@ export interface ErrorContext extends Record<string, unknown> {
   actual_name?: string;
 }
 
-export type RenameItemOutcome = "renamed" | "skipped" | "failed" | "unknown" | "not_attempted";
+export type RenameItemStatus = "renamed" | "skipped" | "failed" | "unknown" | "not_attempted";
 
 export interface ExecuteItem {
   file_id: string;
   original_name: string;
   new_name: string;
-  status: "renamed" | "skipped" | "failed";
+  status: RenameItemStatus;
   error: string | null;
   error_code?: string | null;
   details?: ErrorContext | null;

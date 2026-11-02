@@ -26,6 +26,7 @@
     "parents": "显示父级目录"
   },
   "preview": {
+    "currentNameUnavailable": "未提供当前名称",
     "filters": {
       "error": "错误",
       "unchanged": "无变化",
@@ -45,8 +46,8 @@
     "executeFailed": "执行失败：{{message}}",
     "needsVerification": "待核对",
     "unknown": "未知",
-    "notAttempted": "因其他项目的修改结果待核对，本项目未修改",
-    "notAttemptedOther": "因其他项目修改异常，本项目未修改"
+    "notAttempted": "因其他项目的修改结果待核对，本项目未执行",
+    "notAttemptedOther": "本项目尚未执行"
   },
   "rename": {
     "phases": {
@@ -95,7 +96,7 @@
     "renamedCount": "{{count}} 项已修改",
     "failedCount": "{{count}} 项失败",
     "unknownCount": "{{count}} 项待核对",
-    "notAttemptedCount": "{{count}} 项未修改"
+    "notAttemptedCount": "{{count}} 项未执行"
   },
   "location": {
     "title": "目录位置",

@@ -231,7 +231,7 @@ async def test_unknown_group_pauses_refill_and_drains_other_in_flight_group(unre
         assert result.status == "partial"
         assert all(item.error_code == "RENAME_OUTCOME_UNKNOWN" and item.actual_name is None for item in result.items[:20])
         assert all(item.status == "renamed" for item in result.items[20:40])
-        assert all(item.status == "failed" and item.outcome == "not_attempted" for item in result.items[40:])
+        assert all(item.status == "not_attempted" for item in result.items[40:])
         assert all(item.details == {"reason": "RENAME_NOT_ATTEMPTED", "stop_reason": "RENAME_OUTCOME_UNKNOWN"}
                    for item in result.items[40:])
         assert all(provider.items[str(index)].name == f"old-{index}" for index in range(40, 60))
@@ -263,7 +263,7 @@ async def test_unresolved_unknown_waits_for_other_in_flight_write_before_returni
     assert len(provider.groups) == 2
     assert provider.active == 0
     assert all(item.status == "renamed" for item in result.items[20:40])
-    assert all(item.status == "failed" for item in result.items[40:])
+    assert all(item.status == "not_attempted" for item in result.items[40:])
 
 
 @pytest.mark.asyncio
@@ -408,7 +408,7 @@ async def test_unknown_outcome_stops_later_batches() -> None:
     assert result.status == "failed"
     assert result.items[0].error_code == "RENAME_OUTCOME_UNKNOWN"
     assert result.items[0].actual_name is None
-    assert [item.outcome for item in result.items] == ["unknown", "unknown", "not_attempted"]
+    assert [item.status for item in result.items] == ["unknown", "unknown", "not_attempted"]
     assert result.items[2].error_code == "PROVIDER_ERROR"
     assert result.items[2].actual_name is None
     assert provider.items["3"].name == "C"

@@ -1,6 +1,6 @@
 import asyncio
 from collections.abc import Awaitable, Callable, Iterable
-from typing import TypeVar
+from typing import Literal, TypeVar
 
 from app.core.errors import AppError, ProviderError, RenameOutcomeUnknownError
 from app.providers.base import RenameRequest
@@ -8,6 +8,14 @@ from app.schemas.files import RenameFile
 
 
 T = TypeVar("T")
+
+
+def rename_failure_status(error: AppError) -> Literal["failed", "unknown", "not_attempted"]:
+    if isinstance(error, RenameOutcomeUnknownError):
+        return "unknown"
+    if error.details.get("reason") == "RENAME_NOT_ATTEMPTED":
+        return "not_attempted"
+    return "failed"
 
 
 async def reconcile_unknown_rename[FileT: RenameFile](

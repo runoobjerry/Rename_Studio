@@ -58,7 +58,7 @@ Content-Type: application/json
       "error":null,
       "error_code":null,
       "details":null,
-      "actual_name":null,
+      "actual_name":"旅行.jpg",
       "current_file":{
         "id":"旅行.jpg",
         "name":"旅行.jpg",

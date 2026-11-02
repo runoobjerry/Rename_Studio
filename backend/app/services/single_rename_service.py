@@ -6,7 +6,7 @@ from app.providers.base import RenameRequest, StorageProvider
 from app.providers.registry import ProviderRegistry
 from app.schemas.files import RenameFile
 from app.schemas.rename import SingleExecuteItem, SingleRenameExecuteRequest, SingleRenameExecuteResponse
-from app.services.rename_write import drain_writes, reconcile_unknown_rename
+from app.services.rename_write import drain_writes, reconcile_unknown_rename, rename_failure_status
 
 
 logger = logging.getLogger("rename_studio.rename")
@@ -34,6 +34,7 @@ class SingleRenameService:
                 await drain_writes([task])
                 raise
             if isinstance(outcome, AppError):
+                result.status = rename_failure_status(outcome)
                 result.error = outcome.message
                 result.error_code = outcome.code
                 result.details = outcome.details or None
@@ -41,6 +42,7 @@ class SingleRenameService:
             else:
                 result.status = "renamed"
                 result.current_file = outcome
+                result.actual_name = outcome.name
             logger.info(
                 "single rename provider=%s operation=%s file_id=%s status=%s error_code=%s",
                 storage_id, request.operation_id, request.file_id, result.status, result.error_code,

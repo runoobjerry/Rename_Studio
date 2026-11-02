@@ -55,27 +55,27 @@
 | `file_id` | string | 否 | 原请求 ID，不因重命名后的身份变化而改写。 |
 | `original_name` | string | 否 | 预览原名或单项请求携带的原名。 |
 | `new_name` | string | 否 | 最终目标名。 |
-| `status` | string | 否 | `renamed`、`skipped` 或 `failed`；单项当前只返回 `renamed` 或 `failed`。 |
+| `status` | string | 否 | `renamed`、`skipped`、`failed`、`unknown` 或 `not_attempted`；单项当前返回 `renamed`、`failed` 或 `unknown`。 |
 | `error` | string | 是 | 失败诊断信息。 |
 | `error_code` | string | 是 | [统一错误码](../common/errors.md#errors)。 |
 | `details` | object | 是 | 附加详情，包括[校验原因](../common/errors.md#validation-reasons)。 |
-| `actual_name` | string | 是 | 批量成功为目标名，跳过为原名；失败时为已确认名称或 `null`。单项成功时也可为 `null`，使用 `current_file.name`。 |
+| `actual_name` | string | 是 | 成功为已确认名称，跳过为预览原名；失败时为已核实名称或 `null`，未知和未执行不猜测名称。 |
 | `current_file` | FileItem / RenameFile | 是 | 成功写入后确认的元数据；`null` 本身不能证明是否已写入。 |
 
 <a id="execution-outcomes"></a>
-### 操作结果与兼容映射
+### 操作结果
 
-阶段一保留公开三值 `status`，由下表中的稳定字段解释五种结果。按表顺序分类，后端与前端分别集中在 `RenameItemResult.outcome` 和 `renameItemOutcome`，不读取 `error` 文案。
+逐项 `status` 直接表达以下五种结果。前端只消费状态，不从 `error`、`error_code`、`details.reason` 或元数据是否完整重新推导。阶段一的三值兼容映射已在阶段四移除。
 
-| 统一结果 | 当前 wire 字段 | 含义 |
-| --- | --- | --- |
-| `renamed` | `status: renamed` | 已确认达到目标名。 |
-| `skipped` | `status: skipped` | 无需修改而跳过；不能用于错误或停止提交。 |
-| `unknown` | `status: failed`、`error_code: RENAME_OUTCOME_UNKNOWN` | 按 ID 核实后，最终名称或目标结果仍不能确认；不能直接判定失败。 |
-| `not_attempted` | `status: failed`、`details.reason: RENAME_NOT_ATTEMPTED` | 有尚未发出本项写请求的依据；不是请求发出后丢失响应，也不是已拒绝项的下一次重试未发生。 |
-| `failed` | 其他 `status: failed` | 已确认未达到目标，不保证仍为原名，也不证明请求从未执行；依赖 Provider 对明确错误与未知写入的正确分类。 |
+| `status` | 含义 |
+| --- | --- |
+| `renamed` | 已确认达到目标名。 |
+| `skipped` | 无需修改而跳过，不能用于错误或停止提交。 |
+| `failed` | 已确认未达到目标，不保证仍为原名，也不证明请求从未执行。 |
+| `unknown` | 最终结果无法确认，不能直接判为失败。 |
+| `not_attempted` | 尚未发出本项写请求；不是响应丢失，也不是下一次重试未发生。 |
 
-总体状态按上述统一结果计算，不增加组合枚举。单项流程沿用同一语义；未知项的总体状态仍为 `failed`，客户端必须检查逐项稳定字段。Provider 错误分类的完整整理属于后续阶段，本阶段不通过猜测名称或元数据弥补分类。
+总体状态按逐项状态计算，不增加组合枚举。未知项的总体状态仍可为 `failed`，客户端必须检查逐项状态。`error_code` 继续说明具体原因，`stop_reason` 说明停止原因；缺少当前名称不改变结果状态。
 
 `actual_name` 和 `current_file` 独立表达确认名称与确认元数据。已核实名称为第三个名称且未达到目标时是 `failed`，不会因为缺少完整元数据而变成 `unknown`。`null` 既不能证明未知，也不能证明未执行；缺失整个结果项或整次响应时，客户端仍保持待核对保护。单项声称成功但缺少所需确认元数据时，继续保留客户端的待核对保护，不改写服务端结果状态。
 
@@ -91,16 +91,16 @@
 
 交换、循环或名称占用链在预览时判为冲突，不使用临时名称。执行保留成功项，不自动回滚；失败时返回明确错误或未知结果。
 
-`error_code: RENAME_OUTCOME_UNKNOWN` 表示写入可能发生，但按 ID 核对仍无法确认，此时 `actual_name: null`。核对真实文件后再决定下一步，不自动重放。
+`status: unknown` 配合 `error_code: RENAME_OUTCOME_UNKNOWN` 表示写入可能发生，但按 ID 核对仍无法确认，此时 `actual_name: null`。核对真实文件后再决定下一步，不自动重放。
 
-例如下项保持旧 `status` 和 `PROVIDER_ERROR`，结构化字段明确表示它尚未提交，而不是本项写入未知：
+例如下项 `status` 明确表示尚未提交，错误诊断字段继续保留：
 
 ```json
 {
   "file_id": "file-3",
   "original_name": "C.txt",
   "new_name": "Z.txt",
-  "status": "failed",
+  "status": "not_attempted",
   "error": "Rename was not attempted after an unknown write outcome",
   "error_code": "PROVIDER_ERROR",
   "details": {"reason": "RENAME_NOT_ATTEMPTED", "stop_reason": "RENAME_OUTCOME_UNKNOWN"},

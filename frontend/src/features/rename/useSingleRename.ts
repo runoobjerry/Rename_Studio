@@ -4,7 +4,6 @@ import { useTranslation } from "react-i18next";
 import { errorMessage, translateMessage, type NotificationMessage } from "../../i18n/messages";
 import { ApiError, executeStorageSingleRename, fetchStorageFiles } from "../../api/client";
 import { isInDirectory } from "../files/directoryIdentity";
-import { renameItemOutcome } from "./resultMessages";
 import { useNotification } from "../../components/NotificationProvider";
 import { useRenameStore } from "../../stores/useRenameStore";
 import type { DirectoryListing, FileItem, SingleRenameExecuteResponse, StorageLocation } from "../../types";
@@ -18,7 +17,7 @@ interface SingleRenameTarget {
   taskId?: string;
 }
 
-type SingleRenameError = NotificationMessage | { message: string; code?: string | null; details?: Record<string, unknown> };
+type SingleRenameError = NotificationMessage | { message: string; code?: string | null; details?: Record<string, unknown>; operation?: "read" | "write" };
 
 interface SingleRenameOptions {
   storageId: string;
@@ -94,7 +93,7 @@ export function useSingleRename({ storageId, location, workspaceSession, revisio
       } : undefined;
       const item = { ...outcome, current_file: current ?? metadata };
       const unknown = (item.status === "renamed" && !item.current_file) ||
-        renameItemOutcome(item) === "unknown";
+        item.status === "unknown";
       if (unknown) recordUnknown(input, result.operation_id);
       if (missingTaskFile) {
         removeFromDirectory(input.directoryKey, input.target.file.id);
@@ -134,7 +133,7 @@ export function useSingleRename({ storageId, location, workspaceSession, revisio
         notify(membership === false ? { key: "files:notifications.renamedElsewhere" }
           : { key: "files:notifications.completed", values: { count: 1 } }, "success");
       } else {
-        setSingleError(item.error ? { message: item.error, code: item.error_code, details: item.details ?? undefined } : { key: "files:quickRename.failed" });
+        setSingleError(item.error_code || item.error ? { message: item.error ?? "", code: item.error_code, details: item.details ?? undefined, operation: "write" } : { key: "files:quickRename.failed" });
         if (current) setSingleTarget({ ...input.target, file: current });
       }
     },

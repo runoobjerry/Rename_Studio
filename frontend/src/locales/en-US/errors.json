@@ -5,6 +5,7 @@
     "PREVIEW_ITEMS_NOT_IN_DIRECTORY": "The following items are not in the current directory. Reload the directory and select the items again:"
   },
   "codes": {
+    "STORAGE_ACCOUNT_ALREADY_CONNECTED": "This account is already connected. Use the existing connection in Settings.",
     "APPLICATION_ERROR": "The app cannot complete this operation right now. Try again later; if the problem persists, restart the app.",
     "NOT_FOUND": "This file or folder was not found. Refresh the directory and select it again.",
     "PROVIDER_ERROR": "The storage service is temporarily unavailable. Check the connection and try again.",

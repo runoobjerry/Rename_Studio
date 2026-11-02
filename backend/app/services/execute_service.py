@@ -16,7 +16,7 @@ from app.schemas.rename import (
 )
 from app.services.preview_service import PreviewService
 from app.services.preview_store import PreviewSnapshot, PreviewStore
-from app.services.rename_write import drain_writes, reconcile_unknown_rename
+from app.services.rename_write import drain_writes, reconcile_unknown_rename, rename_failure_status
 
 
 logger = logging.getLogger("rename_studio.rename")
@@ -222,6 +222,7 @@ class ExecuteService:
 
     @staticmethod
     def _record_failure(result: ExecuteItem, outcome: AppError) -> None:
+        result.status = rename_failure_status(outcome)
         result.error = outcome.message
         result.error_code = outcome.code
         result.details = outcome.details or None
@@ -278,8 +279,8 @@ class ExecuteService:
                 item.error_code = None
             elif item.status == "skipped":
                 item.actual_name = item.original_name
-        renamed = sum(item.outcome == "renamed" for item in items)
-        incomplete = any(item.outcome in {"failed", "unknown", "not_attempted"} for item in items)
+        renamed = sum(item.status == "renamed" for item in items)
+        incomplete = any(item.status in {"failed", "unknown", "not_attempted"} for item in items)
         if not incomplete:
             status: Literal["completed", "partial", "failed"] = "completed"
         elif renamed > 0:

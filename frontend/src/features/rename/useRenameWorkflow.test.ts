@@ -210,12 +210,12 @@ describe("rename workflow", () => {
           status: "renamed", error: null, current_file: confirmed },
         ...(outcome === "unknown-result" ? [{
           file_id: files[1].id, original_name: files[1].name, new_name: "renamed-file-1.txt",
-          status: "failed" as const, error: "Write outcome unknown", error_code: "RENAME_OUTCOME_UNKNOWN", actual_name: null,
+          status: "unknown" as const, error: "Write outcome unknown", error_code: "RENAME_OUTCOME_UNKNOWN", actual_name: null,
         }] : []),
         { file_id: files[2].id, original_name: files[2].name, new_name: "renamed-file-2.txt",
           status: "failed", error: "Current name was verified", error_code: "PROVIDER_ERROR", actual_name: "external.txt" },
         { file_id: files[3].id, original_name: files[3].name, new_name: "renamed-file-3.txt",
-          status: "failed", error: "后续组未提交", error_code: "PROVIDER_ERROR",
+          status: "not_attempted", error: "后续组未提交", error_code: "PROVIDER_ERROR",
           details: { reason: "RENAME_NOT_ATTEMPTED", stop_reason: "RENAME_OUTCOME_UNKNOWN" } },
       ],
     };
@@ -227,7 +227,7 @@ describe("rename workflow", () => {
     expect(hook.result.current.storage.files.data!.items).toEqual([confirmed, files[1], files[2], files[3]]);
     expect(useRenameStore.getState().unknownExecution?.items.map((item) => item.file_id)).toEqual([files[1].id]);
     expect(notify).toHaveBeenLastCalledWith({ key: "files:notifications.ended", values: {
-      results: "1 项已修改，1 项失败，1 项待核对，1 项未修改",
+      results: "1 项已修改，1 项失败，1 项待核对，1 项未执行",
     } }, "warning");
     const calls = vi.mocked(api.createStoragePreview).mock.calls.length;
     act(() => hook.result.current.workflow.selectAllFiles([confirmed.id, files[1].id, files[2].id]));

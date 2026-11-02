@@ -3,7 +3,6 @@ import { ApiError, executePreview } from "../../api/client";
 import { useNotification } from "../../components/NotificationProvider";
 import { useRenameStore } from "../../stores/useRenameStore";
 import { useTranslation } from "react-i18next";
-import { isRenameNotAttempted, renameItemOutcome } from "./resultMessages";
 import type { DirectoryListing, PreviewResponse } from "../../types";
 
 type BatchExecutionInput = {
@@ -27,7 +26,7 @@ export function useRenameExecution(isCurrentSession: (session: string) => boolea
       const outcomes = new Map(result.items.map((item) => [item.file_id, item]));
       const unknown = source.items.filter((item) => {
         const outcome = outcomes.get(item.file_id);
-        return !outcome || renameItemOutcome(outcome) === "unknown";
+        return !outcome || outcome.status === "unknown";
       });
       if (unknown.length) useRenameStore.getState().setUnknownExecution({
         storageId: source.storageId, previewId: result.preview_id, items: unknown,
@@ -44,8 +43,8 @@ export function useRenameExecution(isCurrentSession: (session: string) => boolea
         notify({ key: "files:notifications.completed", values: { count: renamed } }, "success");
       } else {
         const renamed = result.items.filter((item) => item.status === "renamed").length;
-        const notAttempted = result.items.filter(isRenameNotAttempted).length;
-        const failed = result.items.filter((item) => renameItemOutcome(item) === "failed").length;
+        const notAttempted = result.items.filter((item) => item.status === "not_attempted").length;
+        const failed = result.items.filter((item) => item.status === "failed").length;
         const counts = [["renamed", renamed], ["failed", failed], ["unknown", unknown.length], ["notAttempted", notAttempted]] as const;
         const results = counts.filter(([, count]) => count > 0)
           .map(([key, count]) => t(`files:notifications.${key}Count`, { count }))
@@ -56,8 +55,7 @@ export function useRenameExecution(isCurrentSession: (session: string) => boolea
         );
       }
       // 保留明确失败和未提交项的选择；成功文件可重新选择并创建新预览。
-      const unknownIds = new Set(unknown.map((item) => item.file_id));
-      const failed = new Set(result.items.filter((item) => item.status === "failed" && !unknownIds.has(item.file_id)).map((item) => item.file_id));
+      const failed = new Set(result.items.filter((item) => (item.status === "failed" || item.status === "not_attempted")).map((item) => item.file_id));
       setSelectedIds(useRenameStore.getState().selectedIds.filter((id) => failed.has(id)).map((id) => confirmed.get(id)?.id ?? id));
     },
     onError: (error, input) => {

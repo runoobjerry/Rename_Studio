@@ -5,6 +5,7 @@
     "PREVIEW_ITEMS_NOT_IN_DIRECTORY": "以下项目不在当前目录中，请刷新目录后重新选择："
   },
   "codes": {
+    "STORAGE_ACCOUNT_ALREADY_CONNECTED": "此账号已连接，请前往设置使用已有连接。",
     "APPLICATION_ERROR": "应用暂时无法完成此操作。请稍后重试；若持续出现，请重启应用。",
     "NOT_FOUND": "未找到此文件或目录，请刷新目录后重新选择。",
     "PROVIDER_ERROR": "暂时无法访问存储服务。请检查连接后重试。",
