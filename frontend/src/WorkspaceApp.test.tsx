@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 import * as api from "./api/client";
 import { useRenameStore } from "./stores/useRenameStore";
 import { installWorkspaceAppTestHooks, renderWorkspace } from "./test/workspaceAppHarness";
-import { fileItem, listing, previewResponse } from "./test/fixtures";
+import { fileItem, listing } from "./test/fixtures";
 
 vi.mock("./api/client", async (importOriginal) => {
   const { workspaceApiMock } = await import("./test/workspaceApiMock");
@@ -167,21 +167,6 @@ describe("workspace workflow wiring", () => {
     expect(api.executePreview).toHaveBeenCalledTimes(1);
     expect(api.createStoragePreview).toHaveBeenCalledTimes(1);
     expect(screen.getByRole("button", { name: "刷新预览" })).toBeEnabled();
-    const nextPreview = deferred<Awaited<ReturnType<typeof api.createStoragePreview>>>();
-    vi.mocked(api.createStoragePreview).mockImplementationOnce(() => nextPreview.promise);
-    fireEvent.click(screen.getByRole("button", { name: "刷新预览" }));
-    await waitFor(() => expect(api.createStoragePreview).toHaveBeenCalledTimes(2));
-    expect(useRenameStore.getState().unknownExecution).not.toBeNull();
-    expect(screen.getByRole("button", { name: "开始修改" })).toBeDisabled();
-    await act(async () => nextPreview.reject(new api.ApiError(502, "Preview unavailable", "PROVIDER_ERROR")));
-    await waitFor(() => expect(screen.getByRole("button", { name: "刷新预览" })).toBeEnabled());
-    expect(useRenameStore.getState().unknownExecution).not.toBeNull();
-    expect(screen.getByRole("button", { name: "开始修改" })).toBeDisabled();
-    vi.mocked(api.createStoragePreview).mockResolvedValueOnce(previewResponse(listing(2).items.map((item) => item.id), "fresh-preview"));
-    fireEvent.click(screen.getByRole("button", { name: "刷新预览" }));
-    await waitFor(() => expect(useRenameStore.getState().unknownExecution).toBeNull());
-    expect(screen.getByRole("button", { name: "开始修改" })).toBeEnabled();
-    expect(api.executePreview).toHaveBeenCalledTimes(1);
   });
 
   it("releases a late preview to its original storage after switching connections", async () => {

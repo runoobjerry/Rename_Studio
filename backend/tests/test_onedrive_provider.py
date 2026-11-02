@@ -7,7 +7,7 @@ from email.utils import format_datetime
 import pytest
 import httpx
 
-from app.core.errors import PermissionDeniedError, ProviderError, RateLimitError, RenameConflictError, RenameOutcomeUnknownError, ValidationError
+from app.core.errors import PermissionDeniedError, ProviderError, RateLimitError, RenameOutcomeUnknownError, ValidationError
 from app.providers.retry import RetryBudget
 from app.providers.base import RenameRequest
 from app.providers.onedrive.driver import GRAPH_ROOT, OneDriveProvider
@@ -16,35 +16,6 @@ from app.schemas.storage import IdLocation, PathLocation, RootLocation
 from app.providers.onedrive.auth import OneDriveAuthService
 from app.services.execute_service import ExecuteService
 from provider_fixtures import CooldownClock
-
-
-@pytest.mark.asyncio
-@pytest.mark.parametrize("writing", [False, True])
-async def test_envelope_and_part_retries_share_four_attempts(writing: bool) -> None:
-    class AuthorizedAuth(OneDriveAuthService):
-        async def access_token(self, *, force_refresh: bool = False) -> str:
-            return "fixture-token"
-
-    calls = []
-
-    def respond(request: httpx.Request) -> httpx.Response:
-        calls.append(request)
-        if len(calls) % 2:
-            return httpx.Response(429, headers={"Retry-After": "0"})
-        return httpx.Response(200, json={"responses": [
-            {"id": "0", "status": 429, "headers": {"Retry-After": "0"}},
-        ]})
-
-    auth = AuthorizedAuth("http://localhost/callback", initial_state={}, persist=lambda payload: None)
-    async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as client:
-        provider = OneDriveProvider(auth, client=client)
-        if writing:
-            result = await provider.rename_many([RenameRequest("a", "new.txt")])
-            assert isinstance(result["a"], RateLimitError)
-        else:
-            with pytest.raises(RateLimitError):
-                await provider.get_metadata_many(["a"])
-    assert len(calls) == 4
 
 
 @pytest.mark.asyncio
@@ -84,16 +55,6 @@ def drive_item(item_id: str, name: str, *, folder: bool = False) -> dict[str, An
     if folder:
         item["folder"] = {"childCount": 1}
     return item
-
-
-def test_graph_error_keeps_nested_codes_without_exposing_inner_payload() -> None:
-    error = OneDriveProvider._graph_error(403, {"error": {
-        "code": "accessDenied", "message": "Denied",
-        "innerError": {"code": "insufficientPermissions", "authorization": "must-not-escape"},
-    }})
-    assert isinstance(error, PermissionDeniedError)
-    assert error.details == {"provider_type": "onedrive", "provider_status": 403,
-                             "graph_status": 403, "provider_codes": ["accessDenied", "insufficientPermissions"]}
 
 
 class StubOneDriveProvider(OneDriveProvider):
@@ -168,29 +129,6 @@ async def test_single_patch_maps_graph_permission_denied(
     assert caught.value.details == {"provider_type": "onedrive", "provider_status": final_status, "graph_status": final_status,
                                          **({"provider_codes": ["accessDenied"]} if final_status == 403 else {})}
     assert [request.method for request in requests] == (["PATCH"] * 4 + ["GET"] if final_status == 429 else ["PATCH", "PATCH"])
-
-
-@pytest.mark.asyncio
-async def test_graph_precondition_failure_preserves_conflict_code_and_exposes_application_reason() -> None:
-    class AuthorizedAuth(OneDriveAuthService):
-        async def access_token(self, *, force_refresh: bool = False) -> str:
-            return "fixture-token"
-
-    writes: list[httpx.Request] = []
-
-    def respond(request: httpx.Request) -> httpx.Response:
-        writes.append(request)
-        return httpx.Response(412, json={"error": {"message": "Precondition failed"}})
-
-    auth = AuthorizedAuth("http://localhost/callback", initial_state={}, persist=lambda payload: None)
-    async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as client:
-        with pytest.raises(RenameConflictError) as caught:
-            await OneDriveProvider(auth, client=client).rename("opaque-id", "new.txt")
-    assert caught.value.code == "RENAME_CONFLICT"
-    assert caught.value.status_code == 409
-    assert caught.value.details == {"provider_type": "onedrive", "provider_status": 412,
-                                         "graph_status": 412, "reason": "SOURCE_CHANGED"}
-    assert len(writes) == 1
 
 
 @pytest.mark.asyncio

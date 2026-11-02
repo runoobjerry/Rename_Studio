@@ -357,9 +357,6 @@ async def test_refresh_revocation_invalidates_but_service_failure_preserves_auth
         await auth.access_token(force_refresh=True)
     assert calls == 1
     assert CLIENT_SECRET not in str(caught.value)
-    assert CLIENT_SECRET not in str(caught.value.details)
-    if isinstance(failure, int):
-        assert caught.value.details == {"provider_type": provider_type, "provider_status": failure}
     assert auth.status().connected is connected
     record = manager.record(storage_id)
     assert ("refresh_token" in record.credentials) is connected

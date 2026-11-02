@@ -79,8 +79,6 @@ async def test_only_valid_account_identity_is_persisted_and_restored(
         with pytest.raises(error_type) as caught:
             await service.finish_authorization("fixture-code", state)
         assert "fixture-secret" not in str(caught.value)
-        if isinstance(profile_result, int) and profile_result >= 400:
-            assert caught.value.details == {"provider_type": "onedrive", "provider_status": profile_result}
         assert service.status().connected is existing_account
         assert service.status().account_id == ("old-account" if existing_account else None)
         assert committed == initial

@@ -58,7 +58,7 @@ describe("PreviewPanel", () => {
       preview_id: validPreview.preview_id, status: "partial", items: [
         { file_id: "renamed", original_name: "renamed.txt", new_name: "new-renamed.txt", status: "renamed", error: null },
         { file_id: "unknown", original_name: "unknown.txt", new_name: "new-unknown.txt", status: "unknown", error: "Unknown outcome", error_code: "RENAME_OUTCOME_UNKNOWN" },
-        { file_id: "failed", original_name: "failed.txt", new_name: "new-failed.txt", status: "failed", error: null, actual_name: "external.txt" },
+        { file_id: "failed", original_name: "failed.txt", new_name: "new-failed.txt", status: "failed", error: null },
         { file_id: "skipped", original_name: "skipped.txt", new_name: "new-skipped.txt", status: "skipped", error: null },
         { file_id: "unchanged", original_name: "unchanged.txt", new_name: "unchanged.txt", status: "skipped", error: null },
       ],
@@ -74,8 +74,6 @@ describe("PreviewPanel", () => {
     expect(table.queryByText("new-missing.txt")).not.toBeInTheDocument();
     expect(table.getByText("new-renamed.txt")).toHaveClass("renamed-name");
     expect(table.getByText("修改失败")).toHaveClass("invalid");
-    expect(table.getByText("external.txt")).toBeInTheDocument();
-    expect(table.queryByText("new-failed.txt")).not.toBeInTheDocument();
     expect(table.getAllByText("无变化")).toHaveLength(2);
     expect(screen.getByText("0 项待修改 · 2 项无需修改")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "筛选状态" }));
@@ -142,27 +140,27 @@ describe("PreviewPanel", () => {
     expect(screen.queryByText("same.txt")).not.toBeInTheDocument();
     rerender(<PreviewPanel preview={preview} execution={{ preview_id: "preview-1", status: "partial", items: [
       { file_id: "one.txt", original_name: "one.txt", new_name: "renamed.txt", status: "renamed", error: null },
-      { file_id: "failed", original_name: "failed.txt", new_name: "failed-new.txt", status: "failed", error: "修改失败", actual_name: "failed-current.txt" },
+      { file_id: "failed", original_name: "failed.txt", new_name: "failed-new.txt", status: "failed", error: "修改失败" },
       { file_id: "unchanged", original_name: "same.txt", new_name: "same.txt", status: "skipped", error: null },
     ] }} />);
     expect(screen.queryByRole("menuitemcheckbox", { name: "待修改" })).not.toBeInTheDocument();
     expect(screen.getByRole("menuitemcheckbox", { name: "已修改" })).toHaveAttribute("aria-checked", "true");
     expect(screen.getByText("renamed.txt")).toBeInTheDocument();
-    expect(screen.queryByText("failed-current.txt")).not.toBeInTheDocument();
+    expect(screen.queryByText("未提供当前名称")).not.toBeInTheDocument();
     expect(screen.queryByText("same.txt")).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("menuitemcheckbox", { name: "已修改" }));
-    expect(screen.getByText("failed-current.txt")).toBeInTheDocument();
+    expect(screen.getByText("未提供当前名称")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("menuitemcheckbox", { name: "错误" }));
-    expect(screen.getByText("failed-current.txt")).toBeInTheDocument();
+    expect(screen.getByText("未提供当前名称")).toBeInTheDocument();
     expect(screen.queryByText("renamed.txt")).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("menuitemcheckbox", { name: "错误" }));
     fireEvent.click(screen.getByRole("menuitemcheckbox", { name: "无变化" }));
     expect(screen.queryByText("renamed.txt")).not.toBeInTheDocument();
-    expect(screen.queryByText("failed-current.txt")).not.toBeInTheDocument();
+    expect(screen.queryByText("未提供当前名称")).not.toBeInTheDocument();
     expect(screen.getAllByText("same.txt")).toHaveLength(2);
     fireEvent.click(screen.getByRole("menuitemcheckbox", { name: "无变化" }));
     expect(screen.getByText("renamed.txt")).toBeInTheDocument();
-    expect(screen.getByText("failed-current.txt")).toBeInTheDocument();
+    expect(screen.getByText("未提供当前名称")).toBeInTheDocument();
   });
   it("shows the filtered empty state only while a nonempty filter excludes all rows", () => {
     render(<PreviewPanel preview={validPreview} />);

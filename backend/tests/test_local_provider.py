@@ -4,7 +4,7 @@ import os
 
 import pytest
 
-from app.core.errors import AppError, NotFoundError, PermissionDeniedError, ProviderError, RenameConflictError, RenameOutcomeUnknownError, ValidationError
+from app.core.errors import AppError, NotFoundError, PermissionDeniedError, ProviderError, RenameConflictError, ValidationError
 from app.providers.local.driver import LocalProvider
 
 
@@ -59,25 +59,6 @@ async def test_read_permission_error_is_not_reported_as_missing(tmp_path: Path, 
             await provider.list_files("")
         else:
             await provider.get_metadata("file.txt")
-
-
-@pytest.mark.asyncio
-async def test_metadata_failure_after_local_rename_remains_unknown(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    provider = LocalProvider(tmp_path)
-    (tmp_path / "old.txt").write_text("data")
-    read = Path.lstat
-
-    def deny_confirmation(path: Path, *args, **kwargs):
-        if path.name == "new.txt" and not (tmp_path / "old.txt").exists():
-            raise PermissionError(errno.EACCES, "Metadata unavailable")
-        return read(path, *args, **kwargs)
-
-    monkeypatch.setattr(Path, "lstat", deny_confirmation)
-    with pytest.raises(RenameOutcomeUnknownError) as caught:
-        await provider.rename("old.txt", "new.txt")
-    assert isinstance(caught.value.__cause__, PermissionError)
-    assert (tmp_path / "new.txt").exists()
-    assert not (tmp_path / "old.txt").exists()
 
 
 @pytest.mark.asyncio

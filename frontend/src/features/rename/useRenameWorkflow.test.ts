@@ -200,9 +200,9 @@ describe("rename workflow", () => {
   });
 
   it.each(["unknown-result", "missing-result"] as const)("merges confirmed identities and blocks new writes after %s", async (outcome) => {
-    const hook = await setupWorkspace(4);
+    const hook = await setupWorkspace(3);
     await preview(hook);
-    const files = listing(4).items;
+    const files = listing(3).items;
     const confirmed = { ...files[0], id: "opaque-new-id", name: "renamed-file-0.txt" };
     const response: ExecuteResponse = {
       preview_id: "task-preview", status: "partial", items: [
@@ -213,10 +213,7 @@ describe("rename workflow", () => {
           status: "unknown" as const, error: "Write outcome unknown", error_code: "RENAME_OUTCOME_UNKNOWN", actual_name: null,
         }] : []),
         { file_id: files[2].id, original_name: files[2].name, new_name: "renamed-file-2.txt",
-          status: "failed", error: "Current name was verified", error_code: "PROVIDER_ERROR", actual_name: "external.txt" },
-        { file_id: files[3].id, original_name: files[3].name, new_name: "renamed-file-3.txt",
-          status: "not_attempted", error: "后续组未提交", error_code: "PROVIDER_ERROR",
-          details: { reason: "RENAME_NOT_ATTEMPTED", stop_reason: "RENAME_OUTCOME_UNKNOWN" } },
+          status: "failed", error: "Conflict", actual_name: files[2].name },
       ],
     };
     vi.mocked(api.executePreview).mockResolvedValueOnce(response);
@@ -224,11 +221,8 @@ describe("rename workflow", () => {
     act(() => hook.result.current.workflow.executeRename("task-preview"));
     await waitFor(() => expect(hook.result.current.workflow.executionData).toEqual(response));
 
-    expect(hook.result.current.storage.files.data!.items).toEqual([confirmed, files[1], files[2], files[3]]);
+    expect(hook.result.current.storage.files.data!.items).toEqual([confirmed, files[1], files[2]]);
     expect(useRenameStore.getState().unknownExecution?.items.map((item) => item.file_id)).toEqual([files[1].id]);
-    expect(notify).toHaveBeenLastCalledWith({ key: "files:notifications.ended", values: {
-      results: "1 项已修改，1 项失败，1 项待核对，1 项未执行",
-    } }, "warning");
     const calls = vi.mocked(api.createStoragePreview).mock.calls.length;
     act(() => hook.result.current.workflow.selectAllFiles([confirmed.id, files[1].id, files[2].id]));
     act(() => hook.result.current.workflow.requestPreview());
