@@ -89,10 +89,10 @@ it("filters errors across unmounted preview rows without losing full preview sta
   render(<PreviewPanel preview={preview} />);
   expect(screen.getAllByRole("row").length).toBeLessThan(40);
   expect(screen.getByText("999 项待修改 · 0 项无需修改")).toBeInTheDocument();
-  expect(screen.queryByText("新名称存在重复或已被占用，请调整规则后刷新预览。")).not.toBeInTheDocument();
+  expect(screen.queryByText("新名称存在重复或已被占用")).not.toBeInTheDocument();
   fireEvent.click(screen.getByRole("button", { name: "筛选状态" }));
   fireEvent.click(screen.getByRole("menuitemcheckbox", { name: "错误" }));
-  expect(screen.getByText("新名称存在重复或已被占用，请调整规则后刷新预览。")).toBeInTheDocument();
+  expect(screen.getByText("新名称存在重复或已被占用")).toBeInTheDocument();
   // 菜单打开时 MUI 隐藏背景的可访问角色，关闭后再检查表格。
   fireEvent.keyDown(screen.getByRole("menu"), { key: "Escape" });
   const table = await screen.findByRole("table", { name: "修改预览" });

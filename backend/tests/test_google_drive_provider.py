@@ -793,34 +793,6 @@ async def test_preview_preserves_existing_duplicates_but_blocks_new_conflicts(pr
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("outcome", ["swap", "rollback", "rollback_failed"])
-async def test_dependency_execution_reports_final_or_rollback_names(provider_factory: Callable, outcome: str) -> None:
-    server = WritableDriveServer([drive_file("a", "A"), drive_file("b", "B")])
-    provider = provider_factory(server)
-    preview, execute = rename_services(provider)
-    names = {"A": "B", "B": "A" if outcome == "swap" else "C"}
-    snapshot = await preview.preview(rename_request(provider, ["a", "b"], names))
-    assert snapshot.valid and not server.writes
-    if outcome != "swap":
-        server.fail_targets = {"C", "A"} if outcome == "rollback_failed" else {"C"}
-    result = await execute.execute(snapshot.preview_id)
-    assert any(target not in {"A", "B", "C"} for batch in server.writes for _, target in batch)
-    assert all(item.actual_name == server.files[item.file_id]["name"] for item in result.items if item.actual_name is not None)
-    if outcome == "swap":
-        assert result.status == "completed"
-        assert [server.files[key]["name"] for key in ("a", "b")] == ["B", "A"]
-        assert [item.actual_name for item in result.items] == ["B", "A"]
-    else:
-        assert result.status == "failed" and server.files["b"]["name"] == "B"
-        restored = next(item for item in result.items if item.file_id == "a")
-        if outcome == "rollback":
-            assert restored.actual_name == "A"
-        else:
-            assert "rollback failed" in restored.error
-            assert restored.actual_name not in {"A", "B", "C"}
-
-
-@pytest.mark.asyncio
 @pytest.mark.parametrize("change", ["permission", "occupied"])
 async def test_execute_revalidates_google_snapshot_before_any_write(provider_factory: Callable, change: str) -> None:
     server = WritableDriveServer([drive_file("a", "A")])

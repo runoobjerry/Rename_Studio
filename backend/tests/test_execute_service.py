@@ -159,30 +159,6 @@ async def test_single_target_snapshot_ignores_later_request_and_response_changes
 
 
 @pytest.mark.asyncio
-async def test_executes_swap_with_temporary_names(tmp_path: Path) -> None:
-    (tmp_path / "a.txt").write_text("A", encoding="utf-8")
-    (tmp_path / "b.txt").write_text("B", encoding="utf-8")
-    provider = TrackingLocalProvider(tmp_path)
-    preview_service, execute_service = build_services(tmp_path, provider)
-    preview = await preview_service.preview(
-        request_for({"a.txt": "b.txt", "b.txt": "a.txt"})
-    )
-
-    result = await execute_service.execute(preview.preview_id)
-
-    assert result.status == "completed"
-    assert (tmp_path / "a.txt").read_text(encoding="utf-8") == "B"
-    assert (tmp_path / "b.txt").read_text(encoding="utf-8") == "A"
-    temporary_count = sum(
-        name.startswith("Rename_Studio-") for name in provider.rename_targets
-    )
-    assert temporary_count == 2
-    progress = execute_service.progress(preview.preview_id)
-    assert progress.total == progress.processed == 2
-    assert not list(tmp_path.glob("Rename_Studio-*"))
-
-
-@pytest.mark.asyncio
 async def test_rejects_preview_after_source_changes(tmp_path: Path) -> None:
     (tmp_path / "one.txt").write_text("one", encoding="utf-8")
     preview_service, execute_service = build_services(tmp_path)

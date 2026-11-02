@@ -132,13 +132,10 @@ class PreviewService:
                 name for name, count in Counter(normalized_targets).items() if count > 1
             }
 
-            selected_ids = {item.id for item in files}
-            # 选中项的名称依赖由重复目标检查和执行规划器处理；未选中项仍占用名称。
-            occupied_names = {
-                provider.normalize_name(sibling.name)
-                for sibling in siblings
-                if sibling.id not in selected_ids
-            }
+            # 目标名被其他文件占用即冲突，包括本批次中将要改名的文件。
+            name_owners: dict[str, set[str]] = {}
+            for sibling in siblings:
+                name_owners.setdefault(provider.normalize_name(sibling.name), set()).add(sibling.id)
             results: list[PreviewItem] = []
             for item, new_name, normalized_target in zip(
                 files, candidates, normalized_targets, strict=True
@@ -155,7 +152,7 @@ class PreviewService:
                 # Pre-existing duplicate names may remain unchanged; only new targets create conflicts.
                 conflict = item.name != new_name and (
                     normalized_target in duplicate_targets
-                    or normalized_target in occupied_names
+                    or bool(name_owners.get(normalized_target, set()) - {item.id})
                 )
                 if conflict and error is None:
                     error = "目标名称出现重复"

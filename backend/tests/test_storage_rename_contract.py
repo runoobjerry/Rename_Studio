@@ -349,32 +349,6 @@ async def test_interrupted_execution_holds_connection_until_in_flight_writes_fin
     assert provider.items["20"].name == "new-20"
 
 
-@pytest.mark.asyncio
-@pytest.mark.parametrize("fail", [False, True])
-async def test_name_dependency_disables_new_concurrent_scheduler_including_rollback(fail: bool) -> None:
-    provider = ControlledBatchProvider(42)
-    names = {f"old-{index}": f"new-{index}" for index in range(42)}
-    names.update({"old-0": "old-1", "old-1": "old-0"})
-    if fail:
-        provider.fail_targets.add("new-2")
-    preview, execute = services(provider)
-    snapshot = await preview.preview(request(list(provider.items), names))
-    task = asyncio.create_task(execute.execute(snapshot.preview_id))
-    try:
-        assert await next_group(provider) == 0
-        provider.gates[0].set()  # Complete temporary names before the direct phase starts.
-        assert await next_group(provider) == 1
-        assert provider.active == 1
-        assert len(provider.groups) == 2
-    finally:
-        provider.release_everything()
-        result = await asyncio.wait_for(task, timeout=5)
-    assert provider.max_active == 1
-    assert result.status == ("failed" if fail else "completed")
-    assert provider.items["0"].name == ("old-0" if fail else "old-1")
-    assert provider.items["1"].name == ("old-1" if fail else "old-0")
-
-
 def services(provider: StableIdProvider):
     registry = registry_for([provider])
     rules = RuleRegistry()
@@ -410,16 +384,6 @@ async def test_all_existing_same_name_owners_are_checked() -> None:
 
 
 @pytest.mark.asyncio
-async def test_stable_ids_chain_and_provider_batch_size() -> None:
-    provider = StableIdProvider({"1": "A", "2": "B", "3": "C"})
-    preview, execute = services(provider)
-    result = await execute.execute((await preview.preview(request(["1", "2", "3"], {"A": "B", "B": "C", "C": "D"}))).preview_id)
-    assert result.status == "completed"
-    assert {key: item.name for key, item in provider.items.items()} == {"1": "B", "2": "C", "3": "D"}
-    assert all(len(batch) <= 2 for batch in provider.writes)
-
-
-@pytest.mark.asyncio
 async def test_lost_write_response_is_reconciled_without_replay() -> None:
     provider = StableIdProvider({"1": "A", "2": "B"})
     preview, execute = services(provider)
@@ -444,31 +408,6 @@ async def test_unknown_outcome_stops_later_batches() -> None:
     assert result.items[0].actual_name is None
     assert provider.items["3"].name == "C"
     assert len(provider.writes) == 1
-
-
-@pytest.mark.asyncio
-async def test_direct_failure_restores_staging() -> None:
-    provider = StableIdProvider({"1": "A", "2": "B"})
-    preview, execute = services(provider)
-    snapshot = await preview.preview(request(["1", "2"], {"A": "B", "B": "C"}))
-    provider.fail_targets = {"C"}
-    result = await execute.execute(snapshot.preview_id)
-    assert result.status == "failed"
-    assert {item.name for item in provider.items.values()} == {"A", "B"}
-    assert result.items[0].actual_name == "A"
-
-
-@pytest.mark.asyncio
-async def test_final_and_rollback_failure_reports_remaining_name() -> None:
-    provider = StableIdProvider({"1": "A", "2": "B"})
-    preview, execute = services(provider)
-    snapshot = await preview.preview(request(["1", "2"], {"A": "B", "B": "A"}))
-    provider.fail_targets = {"A", "B"}
-    result = await execute.execute(snapshot.preview_id)
-    assert result.status == "failed"
-    assert all("rollback failed" in (item.error or "") for item in result.items)
-    assert all(item.error_code == "PROVIDER_ERROR" for item in result.items)
-    assert all(item.actual_name == provider.items[item.file_id].name for item in result.items)
 
 
 @pytest.mark.asyncio

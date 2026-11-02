@@ -36,7 +36,7 @@
 | `new_name` | string | 否 | 规则或指定目标产生的完整名称。 |
 | `changed` | boolean | 否 | 原名与目标名是否不同。 |
 | `valid` | boolean | 否 | 名称及该项操作是否有效。 |
-| `conflict` | boolean | 否 | 是否与其他目标或未选中兄弟项名称冲突。 |
+| `conflict` | boolean | 否 | 是否与其他目标或目录中其他文件的当前名称冲突，包括选中项之间的交换、循环和名称占用链。 |
 | `error` | string | 是 | 无效原因的诊断信息，正常为 `null`。 |
 | `details` | object | 是 | [校验原因与参数](../common/errors.md#validation-reasons)，无结构化原因时为 `null`。 |
 

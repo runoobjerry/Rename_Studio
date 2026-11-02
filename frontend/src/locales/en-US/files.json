@@ -45,8 +45,6 @@
     "executeFailed": "Execution failed: {{message}}",
     "needsVerification": "Needs verification",
     "unknown": "Unknown",
-    "restored": "Rename incomplete; original name restored",
-    "restoreFailed": "Could not restore the original name. Verify the current name.",
     "notAttempted": "Not attempted because another item’s rename result needs verification.",
     "notAttemptedOther": "Not attempted because another item could not be renamed."
   },
@@ -54,9 +52,7 @@
     "phases": {
       "waiting": "Confirm renaming",
       "validating": "Revalidating",
-      "staging": "Preparing temporary names",
       "renaming": "Renaming",
-      "rollback": "Rolling back",
       "finished": "Processing finished",
       "failed": "Execution failed",
       "submitting": "Submitting rename request",

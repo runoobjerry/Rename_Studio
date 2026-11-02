@@ -45,7 +45,7 @@
     "fileChanged": "The file has changed. Refresh the directory and try again.",
     "renameUnsupported": "This file source does not support renaming.",
     "itemRenameUnavailable": "This item cannot be renamed due to possible access permission or application restrictions.",
-    "duplicateNames": "New names are duplicated or already in use. Adjust the rules and refresh the preview.",
+    "duplicateNames": "New names are duplicated or already in use",
     "rootRename": "The storage root cannot be renamed. Select an item inside it.",
     "outsideRoot": "This location is outside the allowed directory. Select a folder within the connection directory.",
     "defaultConnection": "The default local connection cannot be deleted. Select another connection.",

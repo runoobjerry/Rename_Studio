@@ -45,7 +45,7 @@
     "fileChanged": "文件状态已变化，请刷新目录后重试。",
     "renameUnsupported": "此文件源不支持修改名称。",
     "itemRenameUnavailable": "此项目无法重命名，可能受访问权限或应用限制。",
-    "duplicateNames": "新名称存在重复或已被占用，请调整规则后刷新预览。",
+    "duplicateNames": "新名称存在重复或已被占用",
     "rootRename": "不能修改存储根目录的名称，请选择其中的项目。",
     "outsideRoot": "此位置不在允许访问的目录内，请选择连接目录中的文件夹。",
     "defaultConnection": "不能删除默认的本地连接，请选择其他连接。",

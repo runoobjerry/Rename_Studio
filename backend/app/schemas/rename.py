@@ -81,5 +81,5 @@ class RenameProgress(BaseModel):
     preview_id: str
     total: int = Field(ge=0)
     processed: int = Field(default=0, ge=0)
-    phase: Literal["waiting", "validating", "staging", "renaming", "rollback", "finished", "failed"] = "waiting"
+    phase: Literal["waiting", "validating", "renaming", "finished", "failed"] = "waiting"
     error: str | None = None

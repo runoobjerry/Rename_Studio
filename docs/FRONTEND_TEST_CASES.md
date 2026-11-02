@@ -33,7 +33,7 @@
 | 部分成功伴随未知/缺失结果时，只合并确认身份，阻止新的预览和写入；成功项可重新选择 | 工作流 Hook |
 | 执行前确认，无变化时禁止执行，进度失败不虚构结果，执行中锁定控件 | [RenameActions](../frontend/src/features/rename/RenameActions.test.tsx)、工作台集成 |
 | 复核失败仅在 Modal 展示 codes 译文，点击刷新预览创建新预览，不重放执行、不进入未知结果保护 | [RenameActions](../frontend/src/features/rename/RenameActions.test.tsx)、[工作流 Hook](../frontend/src/features/rename/useRenameWorkflow.test.ts) |
-| 未知执行结果在预览栏显示可关闭的 Alert，关闭仅隐藏提醒，同次执行保持隐藏，新执行重新提醒；待核对项显示 N/A 并归入错误筛选，无人工解锁入口，刷新目录成功只解锁刷新预览并保留旧预览及待核对展示，刷新失败保留锁定 | 工作台集成、PreviewPanel |
+| 未知执行结果在预览栏显示可关闭的 Alert，关闭仅隐藏提醒，同次执行保持隐藏，新执行重新提醒；待核对项显示 N/A 并归入错误筛选；已移除自动回滚结果场景，无人工解锁入口，刷新目录成功只解锁刷新预览并保留旧预览及待核对展示，刷新失败保留锁定 | 工作台集成、PreviewPanel |
 | 全选和过滤覆盖完整数据集，包括虚拟列表未挂载的行 | FileBrowser、[虚拟列表](../frontend/src/features/files/FileBrowser.virtual.test.tsx) |
 | 重置应用请求异常时提示刷新核对，保留规则、配置、路径记忆与当前连接，并保持确认框打开 | [偏好与重置集成](../frontend/src/WorkspaceApp.preferences.test.tsx) |
 | 预览创建传递替换 ID，释放只针对指定预览；错误项不能计入可修改数量 | [API client](../frontend/src/api/client.test.ts)、[PreviewPanel](../frontend/src/features/rename/PreviewPanel.test.tsx) |

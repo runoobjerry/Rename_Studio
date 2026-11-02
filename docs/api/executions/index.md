@@ -60,11 +60,11 @@
 | `error_code` | string | 是 | [统一错误码](../common/errors.md#errors)。 |
 | `details` | object | 是 | 附加详情，包括[校验原因](../common/errors.md#validation-reasons)。 |
 | `actual_name` | string | 是 | 批量成功为目标名，跳过为原名；失败时为已确认名称或 `null`。单项成功时也可为 `null`，使用 `current_file.name`。 |
-| `current_file` | FileItem / RenameFile | 是 | 成功写入或成功回滚后确认的元数据；`null` 本身不能证明是否已写入。 |
+| `current_file` | FileItem / RenameFile | 是 | 成功写入后确认的元数据；`null` 本身不能证明是否已写入。 |
 
-`renamed` 表示目标已确认；`skipped` 表示批量预览名称未变化；`failed` 包括明确拒绝、回滚后失败、未尝试或结果未知，不保证文件仍为原名。
+`renamed` 表示目标已确认；`skipped` 表示批量预览名称未变化；`failed` 包括明确拒绝、未尝试或结果未知，不保证文件仍为原名。
 
-交换、循环或名称占用链可能使用临时名称。阶段失败后尽力回滚；确认的回滚元数据和遗留名称通过 `current_file`、`actual_name` 返回。
+交换、循环或名称占用链在预览时判为冲突，不使用临时名称。执行保留成功项，不自动回滚；失败时返回明确错误或未知结果。
 
 `error_code: RENAME_OUTCOME_UNKNOWN` 表示写入可能发生，但按 ID 核对仍无法确认，此时 `actual_name: null`。核对真实文件后再决定下一步，不自动重放。
 
@@ -86,9 +86,7 @@
 | --- | --- |
 | `waiting` | 预览存在，尚未开始执行。 |
 | `validating` | 执行前复核。 |
-| `staging` | 写入临时名称，此阶段不累计已定案数。 |
 | `renaming` | 写入目标名称。 |
-| `rollback` | 尝试恢复名称。 |
 | `finished` | 执行响应已就绪，可能为 `completed`、`partial` 或 `failed`。 |
 | `failed` | 执行请求复核失败、异常或中断，不代表已有完整执行响应。 |
 

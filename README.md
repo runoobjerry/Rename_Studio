@@ -181,6 +181,6 @@ Rule/Provider 的界面文案维护在 `frontend/src/locales`：规则使用 `ru
 > [!WARNING] 
 > 本项目为 Vibe Coding 实验性项目，大部分源代码由 AI 生成，仅供个人学习使用，每次提交均有人工测试验收，但无法保证完全无错误运行。
 
-项目按 [GNU AGPL v3](LICENSE) 提供，责任限制以许可证为准。批量重命名会修改真实文件，预览与回滚不能替代备份；目前没有历史撤销功能，请仅操作自己拥有或获授权的数据。
+项目按 [GNU AGPL v3](LICENSE) 提供，责任限制以许可证为准。批量重命名会修改真实文件，预览不能替代备份；执行失败不自动回滚；目前没有历史撤销功能，请仅操作自己拥有或获授权的数据。
 
 项目与 Microsoft 等第三方服务商无官方关联。第三方服务的可用性与条款由其提供方决定；请妥善保护本地凭据与账号授权。完整说明见[隐私政策](https://github.com/runoobjerry/Rename_Studio/wiki/Privacy-Policy)。

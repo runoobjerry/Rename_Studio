@@ -45,8 +45,6 @@
     "executeFailed": "执行失败：{{message}}",
     "needsVerification": "待核对",
     "unknown": "未知",
-    "restored": "未完成修改，已恢复原名称",
-    "restoreFailed": "未能恢复原名称，请核对当前名称",
     "notAttempted": "因其他项目的修改结果待核对，本项目未修改",
     "notAttemptedOther": "因其他项目修改异常，本项目未修改"
   },
@@ -54,9 +52,7 @@
     "phases": {
       "waiting": "确认修改",
       "validating": "正在复核",
-      "staging": "正在准备临时名称",
       "renaming": "正在修改",
-      "rollback": "正在回滚",
       "finished": "处理结束",
       "failed": "执行失败",
       "submitting": "正在提交修改",

@@ -270,7 +270,7 @@ async def test_service_two_group_window_does_not_multiply_graph_concurrency() ->
 
     provider = GatedGraphProvider()
     requests = [RenameRequest(f"file-{index}", f"new-{index}.txt") for index in range(41)]
-    task = asyncio.create_task(ExecuteService._rename_in_batches(provider, requests, allow_concurrent=True))
+    task = asyncio.create_task(ExecuteService._rename_in_batches(provider, requests))
     try:
         assert [await asyncio.wait_for(provider.started.get(), 5),
                 await asyncio.wait_for(provider.started.get(), 5)] == [0, 1]

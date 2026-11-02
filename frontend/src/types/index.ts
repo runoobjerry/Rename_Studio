@@ -86,7 +86,7 @@ export interface RenameProgress {
   preview_id: string;
   total: number;
   processed: number;
-  phase: "waiting" | "validating" | "staging" | "renaming" | "rollback" | "finished" | "failed";
+  phase: "waiting" | "validating" | "renaming" | "finished" | "failed";
   error: string | null;
 }
 

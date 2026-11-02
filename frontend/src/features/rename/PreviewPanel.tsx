@@ -158,8 +158,7 @@ function statusFor(item: PreviewResponse["items"][number], result: ExecuteRespon
   // 待核对状态仅消费执行流程已有的判断，不在展示层重新推断结果。
   if (needsVerification) return {
     category: "error" as const,
-    label: result?.error?.includes("; rollback failed:") || result?.error?.includes("; rollback skipped because")
-      ? t("files:preview.restoreFailed") : t("files:preview.unknown"), className: "invalid", renamed: false,
+    label: t("files:preview.unknown"), className: "invalid", renamed: false,
     isPendingChange: false, isUnchanged: false,
   };
   // 已修改项保留原预览分类；失败和跳过的执行结果覆盖分类。
