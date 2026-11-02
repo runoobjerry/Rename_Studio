@@ -453,7 +453,10 @@ class GoogleDriveProvider(StorageProvider):
             results.update(outcomes)
             if any(isinstance(outcome, RenameOutcomeUnknownError) for outcome in outcomes.values()):
                 for request in requests[offset + len(batch):]:
-                    results[request.file_id] = ProviderError("Rename was not attempted after an unknown write outcome")
+                    results[request.file_id] = ProviderError(
+                        "Rename was not attempted after an unknown write outcome",
+                        details={"reason": "RENAME_NOT_ATTEMPTED", "stop_reason": "RENAME_OUTCOME_UNKNOWN"},
+                    )
                 break
         return results
 

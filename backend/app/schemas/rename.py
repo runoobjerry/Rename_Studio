@@ -9,6 +9,9 @@ from app.schemas.rename_input import RenamePreviewInput
 from app.schemas.storage import RootLocation, StorageLocation
 
 
+RenameItemOutcome = Literal["renamed", "skipped", "failed", "unknown", "not_attempted"]
+
+
 class RenamePreviewRequest(RenamePreviewInput):
     storage_id: str
     location: StorageLocation | None = None
@@ -45,6 +48,17 @@ class RenameItemResult(BaseModel):
     error_code: str | None = None
     details: dict[str, Any] | None = None
     actual_name: str | None = None
+
+    @property
+    def outcome(self) -> RenameItemOutcome:
+        """Interpret the legacy wire status without adding a second result field."""
+        if self.status != "failed":
+            return self.status
+        if self.error_code == "RENAME_OUTCOME_UNKNOWN":
+            return "unknown"
+        if self.details is not None and self.details.get("reason") == "RENAME_NOT_ATTEMPTED":
+            return "not_attempted"
+        return "failed"
 
 
 class ExecuteItem(RenameItemResult):

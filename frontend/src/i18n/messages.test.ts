@@ -4,6 +4,14 @@ import { i18n } from "./index";
 import { errorMessage, translateMessage } from "./messages";
 
 describe("translated diagnostics", () => {
+  it("uses an application reason for a changed source without interpreting provider diagnostics", () => {
+    const t = i18n.getFixedT("zh-CN");
+    expect(errorMessage({ code: "RENAME_CONFLICT", message: "Precondition failed",
+      details: { reason: "SOURCE_CHANGED" } }, t)).toBe("文件状态已变化，请刷新目录后重试。");
+    expect(errorMessage({ code: "RENAME_CONFLICT", message: "Precondition failed",
+      details: { graph_status: 412 } }, t)).toBe("此目录中已存在同名项目，请修改新名称后重试。");
+  });
+
   it("uses a stable code and keeps the original diagnostic fields", () => {
     const error = new ApiError(401, "Expired grant", "AUTHENTICATION_ERROR", {
       request_id: "request-1", reason: "AUTHORIZATION_EXPIRED", params: {},

@@ -23,6 +23,25 @@ const validPreview = {
 };
 
 describe("PreviewPanel", () => {
+  it("shows unsubmitted items by stable context even when their diagnostic is translated or absent", () => {
+    const items = ["stopped", "not-started", "legacy"].map((file_id) => ({ ...validPreview.items[0], file_id }));
+    render(<PreviewPanel preview={{ ...validPreview, items }} execution={{
+      preview_id: validPreview.preview_id, status: "failed", items: [
+        { file_id: "stopped", original_name: "one.txt", new_name: "renamed.txt", status: "failed",
+          error: "后续组未提交", error_code: "PROVIDER_ERROR",
+          details: { reason: "RENAME_NOT_ATTEMPTED", stop_reason: "RENAME_OUTCOME_UNKNOWN" } },
+        { file_id: "not-started", original_name: "one.txt", new_name: "renamed.txt", status: "failed",
+          error: null, error_code: "PROVIDER_ERROR", details: { reason: "RENAME_NOT_ATTEMPTED" } },
+        { file_id: "legacy", original_name: "one.txt", new_name: "renamed.txt", status: "failed",
+          error: "Rename was not attempted", error_code: "PROVIDER_ERROR" },
+      ],
+    }} />);
+    expect(screen.getByText("因其他项目的修改结果待核对，本项目未修改")).toBeInTheDocument();
+    expect(screen.getByText("因其他项目修改异常，本项目未修改")).toBeInTheDocument();
+    expect(screen.getByText("暂时无法访问存储服务。请检查连接后重试。")).toBeInTheDocument();
+    expect(screen.queryByText("后续组未提交")).not.toBeInTheDocument();
+  });
+
   it("shows confirmed and unverified results with independent counts and error filtering", () => {
     const item = validPreview.items[0];
     const items = ["renamed", "failed", "skipped", "unchanged", "unknown", "missing"].map((id) => ({

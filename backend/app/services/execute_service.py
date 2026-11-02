@@ -175,7 +175,10 @@ class ExecuteService:
                     progress.processed += len(batch)
                 if any(isinstance(outcome, RenameOutcomeUnknownError) for outcome in batch_outcomes.values()):
                     for request in requests[offset + len(batch):]:
-                        outcomes[request.file_id] = ProviderError("Rename was not attempted after an unknown write outcome")
+                        outcomes[request.file_id] = ProviderError(
+                            "Rename was not attempted after an unknown write outcome",
+                            details={"reason": "RENAME_NOT_ATTEMPTED", "stop_reason": "RENAME_OUTCOME_UNKNOWN"},
+                        )
                     break
             return outcomes
 
@@ -211,7 +214,10 @@ class ExecuteService:
             if pending:
                 await drain_writes(pending)
         for request in requests[offset:]:
-            outcomes[request.file_id] = ProviderError("Rename was not attempted after an unknown write outcome")
+            outcomes[request.file_id] = ProviderError(
+                "Rename was not attempted after an unknown write outcome",
+                details={"reason": "RENAME_NOT_ATTEMPTED", "stop_reason": "RENAME_OUTCOME_UNKNOWN"},
+            )
         return outcomes
 
     @staticmethod
@@ -240,7 +246,6 @@ class ExecuteService:
                 original_name=item.original_name,
                 new_name=item.new_name,
                 status="skipped" if not item.changed else "failed",
-                error=None if not item.changed else "Rename was not attempted",
             )
             for item in snapshot.response.items
         }
@@ -273,9 +278,9 @@ class ExecuteService:
                 item.error_code = None
             elif item.status == "skipped":
                 item.actual_name = item.original_name
-        renamed = sum(item.status == "renamed" for item in items)
-        failed = sum(item.status == "failed" for item in items)
-        if failed == 0:
+        renamed = sum(item.outcome == "renamed" for item in items)
+        incomplete = any(item.outcome in {"failed", "unknown", "not_attempted"} for item in items)
+        if not incomplete:
             status: Literal["completed", "partial", "failed"] = "completed"
         elif renamed > 0:
             status = "partial"

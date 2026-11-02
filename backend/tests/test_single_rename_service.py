@@ -64,9 +64,11 @@ async def test_single_unknown_write_is_reconciled_once_without_replay(current_na
     item = result.items[0]
     if current_name == "new.txt":
         assert result.status == "completed"
+        assert item.outcome == "renamed"
         assert item.current_file == provider.item("new.txt")
     else:
         assert result.status == "failed"
+        assert item.outcome == ("unknown" if current_name is None else "failed")
         assert item.error_code == ("RENAME_OUTCOME_UNKNOWN" if current_name is None else "PROVIDER_ERROR")
         assert item.actual_name == current_name
 

@@ -17,6 +17,7 @@ const translatedCodes = [
 ];
 
 const operationReasons: Record<string, { code: string; key: string }> = {
+  SOURCE_CHANGED: { code: "RENAME_CONFLICT", key: "fileChanged" },
   RENAME_UNSUPPORTED: { code: "VALIDATION_ERROR", key: "renameUnsupported" },
   ITEM_RENAME_UNAVAILABLE: { code: "VALIDATION_ERROR", key: "itemRenameUnavailable" },
   CONNECTION_NOT_FOUND: { code: "NOT_FOUND", key: "connectionMissing" },
@@ -69,9 +70,6 @@ export function errorMessage(error: { message: string; code?: string | null; det
   }
   if (error.code === "VALIDATION_ERROR" && typeof reason === "string" && translatedValidationReasons.includes(reason)) {
     return t(`errors:validationReasons.${reason}`);
-  }
-  if (error.code === "RENAME_CONFLICT" && error.details?.graph_status === 412) {
-    return t("errors:reasons.fileChanged");
   }
   if (error.code === "REQUEST_VALIDATION_ERROR" && Array.isArray(error.details?.errors)) {
     for (const entry of error.details.errors) {

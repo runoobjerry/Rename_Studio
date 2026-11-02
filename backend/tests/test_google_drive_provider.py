@@ -662,11 +662,19 @@ async def test_write_part_retry_is_bounded(provider_factory: Callable, status: i
 
 @pytest.mark.asyncio
 async def test_unknown_part_prevents_retry_of_other_refused_parts(provider_factory: Callable) -> None:
-    server = WritableDriveServer([drive_file("a", "A"), drive_file("b", "B")])
+    files = [drive_file("a", "A"), drive_file("b", "B"),
+             *[drive_file(str(index), f"old-{index}") for index in range(19)]]
+    server = WritableDriveServer(files)
     server.reject_once = {"a": 503, "b": 429}
-    result = await provider_factory(server).rename_many([RenameRequest("a", "AA"), RenameRequest("b", "BB")])
+    result = await provider_factory(server).rename_many([
+        RenameRequest("a", "AA"), RenameRequest("b", "BB"),
+        *[RenameRequest(str(index), f"new-{index}") for index in range(19)],
+    ])
     assert isinstance(result["a"], RenameOutcomeUnknownError)
     assert isinstance(result["b"], ProviderError)
+    # The refused item was submitted; only the next group was never attempted.
+    assert result["b"].details.get("reason") != "RENAME_NOT_ATTEMPTED"
+    assert result["18"].details == {"reason": "RENAME_NOT_ATTEMPTED", "stop_reason": "RENAME_OUTCOME_UNKNOWN"}
     assert len(server.writes) == 1
 
 
@@ -832,6 +840,7 @@ async def test_engine_reconciles_lost_google_write_without_replay(provider_facto
         assert len(server.writes) == 1 and result.status != "completed"
         assert all(item.error_code == "RENAME_OUTCOME_UNKNOWN" and item.actual_name is None for item in result.items[:20])
         assert server.files["20"]["name"] == "old-20"
+        assert result.items[20].outcome == "not_attempted"
     else:
         assert result.status == "completed" and [len(batch) for batch in server.writes] == [20, 1]
     assert execute.progress(snapshot.preview_id).processed == 21

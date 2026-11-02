@@ -563,7 +563,8 @@ class OneDriveProvider(StorageProvider):
             return NotFoundError(message or "OneDrive item was not found", details=details)
         if status in {409, 412}:
             return RenameConflictError(
-                message or "OneDrive rename conflict", details=details
+                message or "OneDrive rename conflict",
+                details={**details, "reason": "SOURCE_CHANGED"} if status == 412 else details,
             )
         if status == 429:
             return RateLimitError(

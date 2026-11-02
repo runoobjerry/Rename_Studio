@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import { errorMessage, translateMessage, type NotificationMessage } from "../../i18n/messages";
 import { ApiError, executeStorageSingleRename, fetchStorageFiles } from "../../api/client";
 import { isInDirectory } from "../files/directoryIdentity";
+import { renameItemOutcome } from "./resultMessages";
 import { useNotification } from "../../components/NotificationProvider";
 import { useRenameStore } from "../../stores/useRenameStore";
 import type { DirectoryListing, FileItem, SingleRenameExecuteResponse, StorageLocation } from "../../types";
@@ -93,8 +94,7 @@ export function useSingleRename({ storageId, location, workspaceSession, revisio
       } : undefined;
       const item = { ...outcome, current_file: current ?? metadata };
       const unknown = (item.status === "renamed" && !item.current_file) ||
-        (item.status === "failed" && (item.error_code === "RENAME_OUTCOME_UNKNOWN" ||
-          (item.actual_name != null && item.actual_name !== item.original_name && !item.current_file)));
+        renameItemOutcome(item) === "unknown";
       if (unknown) recordUnknown(input, result.operation_id);
       if (missingTaskFile) {
         removeFromDirectory(input.directoryKey, input.target.file.id);

@@ -128,6 +128,9 @@ def test_execution_progress_api(tmp_path: Path, api_client: TestClient) -> None:
     assert progress.json()["processed"] == progress.json()["total"] == 0
     result = api_client.post("/rename/execute", json={"preview_id": preview_id})
     assert result.status_code == 200
+    assert result.json()["status"] == "completed"
+    assert result.json()["items"][0]["status"] == "skipped"
+    assert "outcome" not in result.json()["items"][0]
     assert api_client.delete(f"/storages/local/rename/previews/{preview_id}").status_code == 204
     assert api_client.get(f"/rename/progress/{preview_id}").json()["phase"] == "finished"
     assert api_client.get("/rename/progress/unknown").status_code == 404

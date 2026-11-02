@@ -308,13 +308,14 @@ describe("single rename workflow", () => {
     { code: "PERMISSION_DENIED", message: "Permission changed", text: "没有修改此项目的权限，请检查访问权限，或使用有权限的账号。" },
     { code: "RENAME_CONFLICT", message: "Name occupied", text: "此目录中已存在同名项目，请修改新名称后重试。" },
     { code: "RATE_LIMIT_ERROR", message: "Throttled", text: "请求过于频繁，请稍后重试。" },
-  ])("keeps a $code failure retryable and translates its code", async ({ code, message, text }) => {
+    { code: "PROVIDER_ERROR", message: "Current name verified", text: "暂时无法访问存储服务。请检查连接后重试。", actualName: "external.txt" },
+  ])("keeps a $code failure retryable and translates its code", async ({ code, message, text, actualName }) => {
     const hook = await setupWorkspace(1);
     const source = listing(1).items[0];
 
     vi.mocked(api.executeStorageSingleRename).mockResolvedValueOnce({ operation_id: "single-operation", status: "failed", items: [{
       file_id: source.id, original_name: source.name, new_name: "new.txt", status: "failed",
-      error: message, error_code: code, actual_name: source.name,
+      error: message, error_code: code, actual_name: actualName ?? source.name,
     }] });
     act(() => hook.result.current.workflow.openSingleRename(source.id));
     act(() => hook.result.current.workflow.applySingleRename("new", ".txt"));

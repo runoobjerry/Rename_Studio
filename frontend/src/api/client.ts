@@ -12,19 +12,20 @@ import type {
   AuthorizationStatus,
   StorageInfo, StorageLocation, StorageCreate, StorageUpdate, StorageProviderDefinition,
   AppSettings, AppSettingsPatch,
+  ErrorContext,
 } from "../types";
 
 export class ApiError extends Error {
   readonly status: number;
   readonly code: string | null;
-  readonly details: Record<string, unknown>;
+  readonly details: ErrorContext;
   operation?: "read" | "write";
 
   constructor(
     status: number,
     message: string,
     code: string | null = null,
-    details: Record<string, unknown> = {},
+    details: ErrorContext = {},
   ) {
     super(message);
     this.name = "ApiError";

@@ -7,7 +7,7 @@ from email.utils import format_datetime
 import pytest
 import httpx
 
-from app.core.errors import PermissionDeniedError, ProviderError, RateLimitError, RenameOutcomeUnknownError, ValidationError
+from app.core.errors import PermissionDeniedError, ProviderError, RateLimitError, RenameConflictError, RenameOutcomeUnknownError, ValidationError
 from app.providers.base import RenameRequest
 from app.providers.onedrive.driver import GRAPH_ROOT, OneDriveProvider
 from app.schemas.files import FileItem
@@ -98,6 +98,28 @@ async def test_single_patch_maps_graph_permission_denied(
     assert caught.value.code == ("RATE_LIMIT_ERROR" if final_status == 429 else "PERMISSION_DENIED")
     assert caught.value.details == {"graph_status": final_status}
     assert [request.method for request in requests] == (["PATCH"] * 4 + ["GET"] if final_status == 429 else ["PATCH", "PATCH"])
+
+
+@pytest.mark.asyncio
+async def test_graph_precondition_failure_preserves_conflict_code_and_exposes_application_reason() -> None:
+    class AuthorizedAuth(OneDriveAuthService):
+        async def access_token(self, *, force_refresh: bool = False) -> str:
+            return "fixture-token"
+
+    writes: list[httpx.Request] = []
+
+    def respond(request: httpx.Request) -> httpx.Response:
+        writes.append(request)
+        return httpx.Response(412, json={"error": {"message": "Precondition failed"}})
+
+    auth = AuthorizedAuth("http://localhost/callback", initial_state={}, persist=lambda payload: None)
+    async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as client:
+        with pytest.raises(RenameConflictError) as caught:
+            await OneDriveProvider(auth, client=client).rename("opaque-id", "new.txt")
+    assert caught.value.code == "RENAME_CONFLICT"
+    assert caught.value.status_code == 409
+    assert caught.value.details == {"graph_status": 412, "reason": "SOURCE_CHANGED"}
+    assert len(writes) == 1
 
 
 @pytest.mark.asyncio
