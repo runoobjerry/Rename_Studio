@@ -19,11 +19,11 @@
 
 #### Attributes
 
-| 字段 | 类型 | 可空 | 说明 |
-| --- | --- | --- | --- |
-| `preview_id` | string | 否 | 执行的预览标识。 |
-| `status` | string | 否 | `completed`、`partial` 或 `failed`，含义见下表。 |
-| `items` | array of ExecuteItem | 否 | 按预览顺序返回；实际完成顺序可能不同。 |
+| 字段 | 类型 | 必含 | 可空 | 说明 |
+| --- | --- | --- | --- | --- |
+| `preview_id` | string | 是 | 否 | 执行的预览标识。 |
+| `status` | string | 是 | 否 | `completed`、`partial` 或 `failed`，含义见下表。 |
+| `items` | array of ExecuteItem | 是 | 否 | 按预览顺序返回；实际完成顺序可能不同。 |
 
 | `status` | 含义 |
 | --- | --- |
@@ -37,11 +37,11 @@
 
 #### Attributes
 
-| 字段 | 类型 | 可空 | 说明 |
-| --- | --- | --- | --- |
-| `operation_id` | string | 否 | 请求 UUID 的标准字符串形式。 |
-| `status` | string | 否 | Schema 枚举为 `completed`、`partial`、`failed`；当前单项流程仅返回 `completed` 或 `failed`。 |
-| `items` | array of SingleExecuteItem | 否 | 当前固定为 1 个结果项。 |
+| 字段 | 类型 | 必含 | 可空 | 说明 |
+| --- | --- | --- | --- | --- |
+| `operation_id` | string | 是 | 否 | 请求 UUID 的标准字符串形式。 |
+| `status` | string | 是 | 否 | 枚举为 `completed`、`partial`、`failed`；单项成功为 `completed`，失败或未知为 `failed`。 |
+| `items` | array of SingleExecuteItem | 是 | 否 | 当前固定为 1 个结果项。 |
 
 <a id="execution-items"></a>
 ### 对象：ExecuteItem 与 SingleExecuteItem
@@ -50,22 +50,22 @@
 
 #### Attributes
 
-| 字段 | 类型 | 可空 | 说明 |
-| --- | --- | --- | --- |
-| `file_id` | string | 否 | 原请求 ID，不因重命名后的身份变化而改写。 |
-| `original_name` | string | 否 | 预览原名或单项请求携带的原名。 |
-| `new_name` | string | 否 | 最终目标名。 |
-| `status` | string | 否 | `renamed`、`skipped`、`failed`、`unknown` 或 `not_attempted`；单项当前返回 `renamed`、`failed` 或 `unknown`。 |
-| `error` | string | 是 | 失败诊断信息。 |
-| `error_code` | string | 是 | [统一错误码](../common/errors.md#errors)。 |
-| `details` | object | 是 | 附加详情，包括[校验原因](../common/errors.md#validation-reasons)。 |
-| `actual_name` | string | 是 | 成功为已确认名称，跳过为预览原名；失败时为已核实名称或 `null`，未知和未执行不猜测名称。 |
-| `current_file` | FileItem / RenameFile | 是 | 成功写入后确认的元数据；`null` 本身不能证明是否已写入。 |
+| 字段 | 类型 | 必含 | 可空 | 说明 |
+| --- | --- | --- | --- | --- |
+| `file_id` | string | 是 | 否 | 原请求 ID，不因重命名后的身份变化而改写。 |
+| `original_name` | string | 是 | 否 | 预览原名或单项请求携带的原名。 |
+| `new_name` | string | 是 | 否 | 最终目标名。 |
+| `status` | string | 是 | 否 | `renamed`、`skipped`、`failed`、`unknown` 或 `not_attempted`；单项当前返回 `renamed`、`failed` 或 `unknown`。 |
+| `error` | string | 是 | 是 | 诊断信息，默认 `null`。 |
+| `error_code` | string | 是 | 是 | [统一错误码](../common/errors.md#errors)，默认 `null`。 |
+| `details` | object | 是 | 是 | 附加详情，包括[校验原因](../common/errors.md#validation-reasons)，默认 `null`。 |
+| `actual_name` | string | 是 | 是 | 成功为已确认名称，跳过为预览原名；失败时为已核实名称或 `null`，未知和未执行不猜测名称；默认 `null`。 |
+| `current_file` | FileItem / RenameFile | 是 | 是 | 成功写入后确认的元数据；默认 `null`；为空不能证明是否已写入。 |
 
 <a id="execution-outcomes"></a>
 ### 操作结果
 
-逐项 `status` 直接表达以下五种结果。前端只消费状态，不从 `error`、`error_code`、`details.reason` 或元数据是否完整重新推导。阶段一的三值兼容映射已在阶段四移除。
+逐项 `status` 表示执行结果；`error_code` 和 `details` 补充原因，不能代替状态。
 
 | `status` | 含义 |
 | --- | --- |
@@ -77,21 +77,11 @@
 
 总体状态按逐项状态计算，不增加组合枚举。未知项的总体状态仍可为 `failed`，客户端必须检查逐项状态。`error_code` 继续说明具体原因，`stop_reason` 说明停止原因；缺少当前名称不改变结果状态。
 
-`actual_name` 和 `current_file` 独立表达确认名称与确认元数据。已核实名称为第三个名称且未达到目标时是 `failed`，不会因为缺少完整元数据而变成 `unknown`。`null` 既不能证明未知，也不能证明未执行；缺失整个结果项或整次响应时，客户端仍保持待核对保护。单项声称成功但缺少所需确认元数据时，继续保留客户端的待核对保护，不改写服务端结果状态。
+`actual_name` 是已确认的当前名称，`new_name` 始终是请求目标。`current_file` 提供确认元数据；使用其返回 ID 更新文件身份。名称或元数据为空不改变 `status`，也不能证明文件仍为原名。
 
-写入确定性是判断下一步能否再次提交的事实，不新增一套公开状态字段：
+同组出现未知写入时，先按 ID 核实。确认目标已达到则返回 `renamed`，确认其他名称则返回 `failed`；核实不了则保留 `unknown` 并停止提交后续组。未提交项返回 `not_attempted`，已确认成功项保留，不自动回滚。
 
-| 确定性 | 证据及边界 |
-| --- | --- |
-| 已确认 | 远端返回或按 ID 核实了目标是否达到；可以是成功，也可以是失败。不能由是否有完整显示路径判断。 |
-| 结果未知 | 已发出请求但无可靠确认，核实仍失败。先核对，不盲目重放。 |
-| 未执行 | 尚未发出本项写请求；当前由调度器未提交的剩余组证明。复核失败的 `execution_started: false` 则是整个执行请求的未写入证据。 |
-
-已确认失败和未执行不同：例如写请求已返回明确拒绝，虽可按具体条件处理，不能因此把操作历史标成“从未尝试”。未知经核实可变成成功或失败；无法核实就保持未知，不定义恢复状态。
-
-交换、循环或名称占用链在预览时判为冲突，不使用临时名称。执行保留成功项，不自动回滚；失败时返回明确错误或未知结果。
-
-`status: unknown` 配合 `error_code: RENAME_OUTCOME_UNKNOWN` 表示写入可能发生，但按 ID 核对仍无法确认，此时 `actual_name: null`。核对真实文件后再决定下一步，不自动重放。
+客户端收到 `unknown`、缺失结果项或丢失整个执行响应时，不自动重发。目录刷新成功只允许重新预览，旧预览仍不可执行；新预览成功后清除待核对状态。结束任务只清理界面状态，不撤销真实改名。
 
 例如下项 `status` 明确表示尚未提交，错误诊断字段继续保留：
 
@@ -115,13 +105,13 @@
 
 #### Attributes
 
-| 字段 | 类型 | 可空 | 说明 |
-| --- | --- | --- | --- |
-| `preview_id` | string | 否 | 预览标识。 |
-| `total` | integer | 否 | 名称变化的预览项目数，≥ 0。 |
-| `processed` | integer | 否 | 已定案项目数，≥ 0，包括失败和最终未尝试项，不是成功数。初始为 `0`。 |
-| `phase` | string | 否 | 阶段，见下表；初始为 `waiting`。 |
-| `error` | string | 是 | 请求异常终止时的诊断信息，不是逐项失败列表。 |
+| 字段 | 类型 | 必含 | 可空 | 说明 |
+| --- | --- | --- | --- | --- |
+| `preview_id` | string | 是 | 否 | 预览标识。 |
+| `total` | integer | 是 | 否 | 名称变化的预览项目数，≥ 0。 |
+| `processed` | integer | 是 | 否 | 已定案项目数，≥ 0，包括失败和最终未尝试项，不是成功数。初始为 `0`。 |
+| `phase` | string | 是 | 否 | 阶段，见下表；初始为 `waiting`。 |
+| `error` | string | 是 | 是 | 请求异常终止时的诊断信息，不是逐项失败列表。 |
 
 | `phase` | 含义 |
 | --- | --- |
@@ -131,7 +121,7 @@
 | `finished` | 执行响应已就绪，可能为 `completed`、`partial` 或 `failed`。 |
 | `failed` | 执行请求复核失败、异常或中断，不代表已有完整执行响应。 |
 
-`phase` 仅描述执行阶段，不能代替逐项结果或写入确定性。`renaming` 时同批项目可能同时处于未提交、在途和已确认状态；`finished` 不保证全部成功，`failed` 不保证从未写入。先读取最终逐项结果；没有完整响应时保留待核对保护，不根据进度或诊断猜测结果。
+`phase` 和 `processed` 仅表示进度，不替代最终逐项结果。`finished` 不保证全部成功，`failed` 不证明从未写入。
 
 <a id="endpoint-get-rename-progress-preview-id"></a>
 ### 获取执行进度

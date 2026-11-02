@@ -23,7 +23,7 @@
 
 #### Returns
 
-HTTP 200，返回 `RenameExecuteResponse`。必须检查整体 `status` 和逐项 `status`、`error_code`；HTTP 200 不保证全部成功。
+HTTP 200，返回 [RenameExecuteResponse](index.md#对象renameexecuteresponse)。HTTP 200 不保证全部成功，整体 `failed` 也不代表所有项目均已确认失败；按[逐项状态](index.md#execution-outcomes)区分失败、未知和未执行。
 
 #### Request / Response 示例
 
