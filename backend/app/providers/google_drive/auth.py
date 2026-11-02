@@ -10,7 +10,8 @@ from urllib.parse import urlencode
 import httpx
 from pydantic import BaseModel, Field, SecretStr, ValidationError as ModelValidationError
 
-from app.core.errors import AuthenticationError, ProviderError, RateLimitError, StorageConnectionChangedError, ValidationError
+from app.providers.errors import auth_response_error
+from app.core.errors import AuthenticationError, ProviderError, StorageConnectionChangedError, ValidationError
 from app.schemas.storage import AuthorizationStart, AuthorizationStatus
 
 
@@ -199,16 +200,9 @@ class GoogleDriveAuthService:
             async with httpx.AsyncClient(timeout=self.timeout) as client:
                 response = await client.post(TOKEN_URL, data=form)
         except httpx.HTTPError as exc:
-            raise ProviderError("Google authorization service is unavailable") from exc
-        if response.status_code == 429:
-            raise RateLimitError("Google authorization service is rate limited; try again later")
-        if response.status_code >= 500:
-            raise ProviderError("Google authorization service is unavailable")
-        if response.status_code in (400, 401, 403):
-            # Do not reflect Google's response body: it can contain credential-related input.
-            raise AuthenticationError("Google authorization was rejected; check the client credentials and reconnect")
+            raise ProviderError("Google authorization service is unavailable", details={"provider_type": "google_drive"}) from exc
         if response.is_error:
-            raise ProviderError("Google authorization service request failed")
+            raise auth_response_error("google_drive", response.status_code, service="google_drive authorization service", token=True)
         try:
             return _TokenResponse.model_validate_json(response.content)
         except ModelValidationError:
@@ -222,13 +216,9 @@ class GoogleDriveAuthService:
                     headers={"Authorization": f"Bearer {access_token}"},
                 )
         except httpx.HTTPError as exc:
-            raise ProviderError("Google Drive account service is unavailable") from exc
-        if response.status_code == 429:
-            raise RateLimitError("Google Drive account service is rate limited; try again later")
-        if response.status_code in (401, 403):
-            raise AuthenticationError("Could not verify Google Drive account access")
+            raise ProviderError("Google Drive account service is unavailable", details={"provider_type": "google_drive"}) from exc
         if response.is_error:
-            raise ProviderError("Could not read the Google Drive account")
+            raise auth_response_error("google_drive", response.status_code, service="google_drive account service", token=False)
         try:
             return _AboutResponse.model_validate_json(response.content).user
         except ModelValidationError:

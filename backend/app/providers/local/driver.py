@@ -1,7 +1,12 @@
+import errno
+import stat
 from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
 
 from app.core.errors import (
+    AppError,
+    PermissionDeniedError,
+    RenameOutcomeUnknownError,
     NotFoundError,
     ProviderError,
     RenameConflictError,
@@ -17,8 +22,11 @@ class LocalProvider(StorageProvider):
     id = "local"
 
     def __init__(self, root: Path) -> None:
-        self.root = root.expanduser().resolve()
-        self.root.mkdir(parents=True, exist_ok=True)
+        try:
+            self.root = root.expanduser().resolve()
+            self.root.mkdir(parents=True, exist_ok=True)
+        except OSError as exc:
+            raise self._os_error(exc) from exc
 
     def _resolve(self, relative_path: str) -> Path:
         normalized = relative_path.replace("\\", "/").strip("/")
@@ -65,45 +73,79 @@ class LocalProvider(StorageProvider):
         )
 
     async def list_files(self, path: str) -> list[FileItem]:
-        directory = self._resolve(path)
-        if not directory.exists() or not directory.is_dir():
-            raise NotFoundError("Directory not found", details={"path": path})
-        # 链接保留在冲突集合中，但不读取目标元数据，也不允许进入链接目录。
-        return sorted(
-            (self._to_item(child) for child in directory.iterdir()),
-            key=lambda item: (not item.is_directory, item.name.casefold()),
-        )
+        try:
+            directory = self._resolve(path)
+            if not stat.S_ISDIR(directory.stat().st_mode):
+                raise NotFoundError("Directory not found", details={"path": path})
+            # 链接保留在冲突集合中，但不读取目标元数据，也不允许进入链接目录。
+            return sorted(
+                (self._to_item(child) for child in directory.iterdir()),
+                key=lambda item: (not item.is_directory, item.name.casefold()),
+            )
+        except OSError as exc:
+            error = self._os_error(exc)
+            error.details.update({"path": path})
+            raise error from exc
 
     async def get_metadata(self, file_id: str) -> FileItem:
-        path = self._resolve(file_id)
-        if not path.exists():
-            raise NotFoundError("File not found", details={"file_id": file_id})
-        return self._to_item(path)
+        try:
+            path = self._resolve(file_id)
+            return self._to_item(path)
+        except OSError as exc:
+            error = self._os_error(exc)
+            error.details.update({"file_id": file_id})
+            raise error from exc
 
     async def rename(self, file_id: str, new_name: str) -> FileItem:
-        source = self._resolve(file_id)
-        if source == self.root:
-            raise ValidationError("Configured storage root cannot be renamed", details={"reason": "ROOT_RENAME_UNSUPPORTED", "params": {}})
-        if not source.exists():
-            raise NotFoundError("File or directory not found", details={"file_id": file_id})
-        validation_error = self.validate_name(new_name)
-        if validation_error is not None:
-            raise ValidationError(validation_error.message, details={"new_name": new_name, **validation_error.details})
-
-        target = source.with_name(new_name)
-        if (target.exists() or self._is_link(target)) and target != source:
-            raise RenameConflictError(
-                "Target filename already exists",
-                details={"file_id": file_id, "new_name": new_name},
-            )
         try:
+            source = self._resolve(file_id)
+            if source == self.root:
+                raise ValidationError("Configured storage root cannot be renamed", details={"reason": "ROOT_RENAME_UNSUPPORTED", "params": {}})
+            source.stat()
+            validation_error = self.validate_name(new_name)
+            if validation_error is not None:
+                raise ValidationError(validation_error.message, details={"new_name": new_name, **validation_error.details})
+
+            target = source.with_name(new_name)
+            if (target.exists() or self._is_link(target)) and target != source:
+                raise RenameConflictError(
+                    "Target filename already exists",
+                    details={"file_id": file_id, "new_name": new_name},
+                )
             renamed = source.rename(target)
+            try:
+                return self._to_item(renamed)
+            except OSError as exc:
+                # The rename returned successfully; metadata failure cannot undo that fact.
+                raise RenameOutcomeUnknownError(
+                    "Local rename completed but confirmation metadata could not be read",
+                    details=self._os_error(exc).details,
+                ) from exc
         except OSError as exc:
-            raise ProviderError(
-                "Local file rename failed",
-                details={"file_id": file_id, "new_name": new_name},
-            ) from exc
-        return self._to_item(renamed)
+            error = self._os_error(exc)
+            error.details.update({"file_id": file_id, "new_name": new_name})
+            raise error from exc
+
+    @staticmethod
+    def _os_error(exc: OSError) -> AppError:
+        details = {"provider_type": "local", "errno": exc.errno}
+        # winerror is exposed only by Windows OS exceptions, not all OSError instances.
+        if hasattr(exc, "winerror"):
+            details["winerror"] = exc.winerror
+            if exc.winerror in {32, 33}:
+                return ProviderError("Local file is in use", details=details)
+        error_type = {
+            errno.ENOENT: NotFoundError,
+            errno.ENOTDIR: NotFoundError,
+            errno.EACCES: PermissionDeniedError,
+            errno.EPERM: PermissionDeniedError,
+            errno.EROFS: PermissionDeniedError,
+            errno.EEXIST: RenameConflictError,
+            errno.ENOTEMPTY: RenameConflictError,
+            errno.EINVAL: ValidationError,
+            errno.ENAMETOOLONG: ValidationError,
+        }.get(exc.errno, ProviderError)
+        return error_type("Local filesystem operation failed", details=details)
 
     def validate_name(self, name: str) -> NameValidationIssue | None:
         return validate_portable_name(name)

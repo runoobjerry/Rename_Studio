@@ -57,6 +57,10 @@
 | `file_id`、`path`、`new_name` | string | 请求涉及的资源或目标名上下文；不作为写入结果证据。 |
 | `provider` | string | 配置校验涉及的 Provider 类型；不是 `storage_id`。 |
 | `graph_status`、`google_status` | integer | 保留的底层 HTTP 状态诊断字段；前端不据此分类或决定重试。 |
+| `provider_type` | string | 产生底层错误的 Provider 类型，不是连接 ID。阶段二用于 HTTP 分类及本地 OS 异常。 |
+| `provider_status` | integer | 底层 HTTP 状态；与旧 `graph_status` / `google_status` 从同一状态赋值，迁移期间兼容保留旧字段。不是对外 HTTP 状态。 |
+| `provider_codes` | array of string | Graph 外层至内层的错误码或 Google `errors[].reason`，仅供诊断和 Provider 内部识别；缺失时不补假定值。 |
+| `errno`、`winerror` | integer / null | 本地 OS 错误编号；`winerror` 仅在原异常提供时出现。不回显原异常中的绝对文件路径。 |
 
 创建、更新连接和更新偏好的请求校验错误会移除条目的 `input`、`ctx`，避免回显敏感请求值。
 
@@ -100,6 +104,18 @@
 3. 新前端遇到旧后端缺少原因的失败项，只按其已有稳定字段显示通用错误，不尝试从英文恢复未提交状态。结果缺失、明确未知错误码和既有待核对门控继续保留；诊断字段仍完整保留。需要精确区分未提交项时应同时升级前后端并刷新页面，不在执行期间热切换版本。
 4. 若后续阶段将五种值直接用于公开 `status`，应先让全部客户端消费扩展枚举、更新 Schema/类型/测试/示例并明确部署顺序或 API 版本，再切换服务端输出；届时删除本次兼容映射，不长期维护两份结果真值。当前没有提前扩展公开枚举。
 5. 后续阶段再完善 Provider 错误分类、读取/写入策略和端点显式操作标记。本阶段不重写网络请求、批量算法、本地系统错误分类或 API 客户端按方法/URL判断操作的现有机制。
+
+### 阶段二 Provider 落点
+
+- OneDrive 的 HTTP 分类继续集中在 `_graph_error`：401 授权、403 权限、404 缺失、409/412 冲突、429 限流、400 校验，其他为 Provider 错误。Graph 错误码链用于诊断，不覆盖 HTTP 已确定的类别；412 继续提供 `SOURCE_CHANGED`。外层及子项 5xx 写入仍为未知，只增加已筛选诊断。
+- Google 的 `_response_error` 统一提取各 HTTP 状态携带的原因；403 中仅原有 `rateLimitExceeded`、`userRateLimitExceeded` 进入限流分类。其他 403、日配额与存储额度原因不自动增加重试；非法 403 错误体仍为 Provider 错误。Google 同名语义不变，不新增重命名冲突映射。
+- `providers/errors.py` 仅共享诊断构造与已有 OAuth HTTP 分类：令牌交换的 400/401/403 为授权错误，账号核实只有 401/403 为授权错误；429 为限流，其他拒绝为 Provider 错误。OAuth 响应正文不解析或回显，避免泄露凭据。认证刷新、连接版本失效与调度不变。
+- Local 初始化、目录读取、元数据读取和重命名统一转换 `OSError` 并保留异常链：ENOENT/ENOTDIR → `NOT_FOUND`，EACCES/EPERM/EROFS → `PERMISSION_DENIED`，EEXIST/ENOTEMPTY → `RENAME_CONFLICT`，EINVAL/ENAMETOOLONG → `VALIDATION_ERROR`，其他（含 ENOSPC/EIO）→ `PROVIDER_ERROR`。Windows 32/33 的共享/锁定错误保持 `PROVIDER_ERROR`，不误报访问权限。读取使用实际 stat/lstat，避免 exists() 将权限错误掩盖为缺失。
+- 本地 rename 已返回成功后读取确认元数据失败，返回 `RENAME_OUTCOME_UNKNOWN`，沿用既有 ID 核实流程；本地路径 ID 可能已改变，旧 ID 核实不了就保留未知。此处理不重试写入、不回滚。POSIX 的预检与 rename 之间存在的覆盖竞态、本地网络文件系统的写入确定性策略均未在本阶段重设计。
+
+标准字段按可获得证据提供，并非所有应用校验异常都必须包含 Provider 诊断。原始 HTTP 响应、异常对象、OAuth 正文均不作为公共上下文透传；OS/网络异常链留在进程内。阶段二没有新增重试条件、修改并发或批大小，也未消除 Provider 特有分类。
+
+依据：[Microsoft Graph 错误规范](https://learn.microsoft.com/en-us/graph/errors)、[Google Drive 错误规范](https://developers.google.com/workspace/drive/api/guides/handle-errors)。人工核实步骤见[阶段二验收清单](../../PROVIDER_ERROR_ACCEPTANCE.md)。
 
 <a id="validation-reasons"></a>
 ### 校验原因

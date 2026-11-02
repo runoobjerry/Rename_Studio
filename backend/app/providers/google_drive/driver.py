@@ -15,6 +15,7 @@ from pydantic import BaseModel, Field, ValidationError as ModelValidationError
 
 from app.core.errors import AppError, AuthenticationError, NotFoundError, PermissionDeniedError, ProviderError, RateLimitError, RenameOutcomeUnknownError, ValidationError
 from app.core.log_context import request_id_context
+from app.providers.errors import http_error_details
 from app.providers.base import RenameRequest, StorageProvider
 from app.providers.cooldown import ConnectionCooldown, retry_after_delay
 from app.providers.name_validation import NameValidationIssue
@@ -341,17 +342,17 @@ class GoogleDriveProvider(StorageProvider):
             except httpx.HTTPError as exc:
                 logger.info("drive_request provider=google_drive request_id=%s method=%s writing=%s status=transport_error duration_ms=%.2f", request_id_context.get(), method, writing, (perf_counter() - started) * 1000)
                 if writing:
-                    raise RenameOutcomeUnknownError("Google Drive write outcome is unknown; verify metadata before continuing") from exc
+                    raise RenameOutcomeUnknownError("Google Drive write outcome is unknown; verify metadata before continuing", details={"provider_type": "google_drive"}) from exc
                 if attempt < MAX_RETRIES:
                     await asyncio.sleep(min(2**attempt + random.random(), 8))
                     attempt += 1
                     continue
-                raise ProviderError("Google Drive is unavailable") from exc
+                raise ProviderError("Google Drive is unavailable", details={"provider_type": "google_drive"}) from exc
             logger.info("drive_request provider=google_drive request_id=%s method=%s writing=%s status=%s duration_ms=%.2f", request_id_context.get(), method, writing, response.status_code, (perf_counter() - started) * 1000)
             if response.is_success:
                 return response
             if writing and response.status_code >= 500:
-                raise RenameOutcomeUnknownError("Google Drive write outcome is unknown; verify metadata before continuing")
+                raise RenameOutcomeUnknownError("Google Drive write outcome is unknown; verify metadata before continuing", details=self._response_error(response).details)
             error = self._classify_error(response, attempt)
             if response.status_code == 401 and not refreshed and attempt < MAX_RETRIES:
                 await self.auth.access_token(force_refresh=True)
@@ -368,7 +369,13 @@ class GoogleDriveProvider(StorageProvider):
 
     @staticmethod
     def _response_error(response: httpx.Response) -> AppError:
-        details = {"google_status": response.status_code}
+        try:
+            payload = _ErrorResponse.model_validate_json(response.content)
+        except ModelValidationError:
+            payload = None
+        codes = [error.reason for error in payload.error.errors] if payload is not None else []
+        details = {**http_error_details("google_drive", response.status_code, codes),
+                   "google_status": response.status_code}
         if response.status_code == 401:
             return AuthenticationError("Google Drive authorization was rejected; reconnect the account", details=details)
         if response.status_code == 404:
@@ -376,11 +383,9 @@ class GoogleDriveProvider(StorageProvider):
         if response.status_code == 429:
             return RateLimitError("Google Drive rate limit reached", details=details)
         if response.status_code == 403:
-            try:
-                payload = _ErrorResponse.model_validate_json(response.content)
-            except ModelValidationError:
+            if payload is None:
                 return ProviderError("Google Drive returned an invalid error response", details=details)
-            if any(error.reason in RATE_REASONS for error in payload.error.errors):
+            if any(code in RATE_REASONS for code in codes):
                 return RateLimitError("Google Drive rate limit reached", details=details)
             return PermissionDeniedError("Google Drive permission denied", details=details)
         if response.status_code == 400:
@@ -531,7 +536,7 @@ class GoogleDriveProvider(StorageProvider):
                         results[request.file_id] = self._to_item(self._chain(current, root, cache))
                     continue
                 if outcome.status_code >= 500:
-                    results[request.file_id] = RenameOutcomeUnknownError("Google Drive write outcome is unknown")
+                    results[request.file_id] = RenameOutcomeUnknownError("Google Drive write outcome is unknown", details=errors[index].details)
                     continue
                 error = errors[index]
                 if outcome.status_code == 401 and not refreshed and attempt < MAX_RETRIES:

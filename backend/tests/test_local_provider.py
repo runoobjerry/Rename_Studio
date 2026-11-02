@@ -1,10 +1,83 @@
 from pathlib import Path
+import errno
 import os
 
 import pytest
 
-from app.core.errors import NotFoundError, RenameConflictError, ValidationError
+from app.core.errors import AppError, NotFoundError, PermissionDeniedError, ProviderError, RenameConflictError, RenameOutcomeUnknownError, ValidationError
 from app.providers.local.driver import LocalProvider
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(("number", "winerror", "error_type"), [
+    (errno.ENOENT, None, NotFoundError), (errno.EACCES, None, PermissionDeniedError),
+    (errno.EROFS, None, PermissionDeniedError), (errno.EEXIST, None, RenameConflictError),
+    (errno.ENAMETOOLONG, None, ValidationError), (errno.ENOSPC, None, ProviderError),
+    (errno.EACCES, 32, ProviderError),
+])
+async def test_rename_os_failure_is_classified_without_retry(tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+                                                         number: int, winerror: int | None, error_type: type[AppError]) -> None:
+    (tmp_path / "old.txt").write_text("data")
+    provider = LocalProvider(tmp_path)
+    original = OSError(number, "OS diagnostic")
+    if winerror is not None:
+        original.winerror = winerror
+    calls = []
+
+    def reject(source: Path, target: Path):
+        calls.append(source)
+        raise original
+
+    monkeypatch.setattr(Path, "rename", reject)
+    with pytest.raises(error_type) as caught:
+        await provider.rename("old.txt", "new.txt")
+    assert caught.value.__cause__ is original
+    assert caught.value.details["errno"] == number
+    assert caught.value.details["provider_type"] == "local"
+    assert len(calls) == 1
+    assert (tmp_path / "old.txt").exists()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("operation", ["list", "metadata"])
+async def test_read_permission_error_is_not_reported_as_missing(tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+                                                            operation: str) -> None:
+    provider = LocalProvider(tmp_path)
+
+    method = "stat" if operation == "list" else "lstat"
+    read = getattr(Path, method)
+    denied = tmp_path if operation == "list" else tmp_path / "file.txt"
+
+    def deny(path: Path, *args, **kwargs):
+        if path == denied:
+            raise PermissionError(errno.EACCES, "Access denied")
+        return read(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, method, deny)
+    with pytest.raises(PermissionDeniedError):
+        if operation == "list":
+            await provider.list_files("")
+        else:
+            await provider.get_metadata("file.txt")
+
+
+@pytest.mark.asyncio
+async def test_metadata_failure_after_local_rename_remains_unknown(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    provider = LocalProvider(tmp_path)
+    (tmp_path / "old.txt").write_text("data")
+    read = Path.lstat
+
+    def deny_confirmation(path: Path, *args, **kwargs):
+        if path.name == "new.txt" and not (tmp_path / "old.txt").exists():
+            raise PermissionError(errno.EACCES, "Metadata unavailable")
+        return read(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "lstat", deny_confirmation)
+    with pytest.raises(RenameOutcomeUnknownError) as caught:
+        await provider.rename("old.txt", "new.txt")
+    assert isinstance(caught.value.__cause__, PermissionError)
+    assert (tmp_path / "new.txt").exists()
+    assert not (tmp_path / "old.txt").exists()
 
 
 @pytest.mark.asyncio

@@ -19,6 +19,7 @@ from app.core.errors import (
     ValidationError,
     RenameOutcomeUnknownError,
 )
+from app.providers.errors import http_error_details
 from app.providers.base import RenameRequest, StorageProvider
 from app.providers.cooldown import ConnectionCooldown, retry_after_delay
 from app.providers.name_validation import NameValidationIssue, validate_onedrive_name
@@ -345,7 +346,7 @@ class OneDriveProvider(StorageProvider):
                 except ProviderError:
                     results[request.file_id] = RenameOutcomeUnknownError("Microsoft Graph returned incomplete write metadata")
             elif status >= 500:
-                results[request.file_id] = RenameOutcomeUnknownError("Remote write outcome is unknown")
+                results[request.file_id] = RenameOutcomeUnknownError("Remote write outcome is unknown", details=self._graph_error(status, response_body if isinstance(response_body, dict) else {}).details)
             elif status == 429 and attempt < MAX_RETRIES:
                 retry.append(request)
             elif status == 401 and attempt < MAX_RETRIES:
@@ -419,11 +420,11 @@ class OneDriveProvider(StorageProvider):
                     request_id_context.get(), method, attempt + 1, (perf_counter() - attempt_started) * 1000,
                 )
                 if writing:
-                    raise RenameOutcomeUnknownError("Remote write outcome is unknown; metadata must be checked") from exc
+                    raise RenameOutcomeUnknownError("Remote write outcome is unknown; metadata must be checked", details={"provider_type": "onedrive"}) from exc
                 if attempt < MAX_RETRIES:
                     await asyncio.sleep(min(2**attempt, 8))
                     continue
-                raise ProviderError("Microsoft Graph request failed") from exc
+                raise ProviderError("Microsoft Graph request failed", details={"provider_type": "onedrive"}) from exc
 
             logger.info(
                 "graph_request provider=onedrive request_id=%s method=%s attempt=%s status=%s duration_ms=%.2f",
@@ -433,12 +434,12 @@ class OneDriveProvider(StorageProvider):
                 self._cooldown.defer(self._retry_delay(response.headers.get("Retry-After"), attempt))
                 if attempt < MAX_RETRIES:
                     continue
-                raise self._graph_error(429, {})
+                raise self._graph_error(429, self._error_payload(response))
             if response.status_code == 401 and attempt < MAX_RETRIES:
                 force_refresh = True
                 continue
             if response.status_code >= 500 and writing:
-                raise RenameOutcomeUnknownError("Remote write outcome is unknown; metadata must be checked")
+                raise RenameOutcomeUnknownError("Remote write outcome is unknown; metadata must be checked", details=self._graph_error(response.status_code, self._error_payload(response)).details)
             if self._is_retryable(response.status_code) and attempt < MAX_RETRIES:
                 await asyncio.sleep(
                     self._retry_delay(response.headers.get("Retry-After"), attempt)
@@ -449,7 +450,7 @@ class OneDriveProvider(StorageProvider):
             except ValueError as exc:
                 if writing:
                     raise RenameOutcomeUnknownError("Microsoft Graph returned an unreadable write response") from exc
-                raise ProviderError("Microsoft Graph returned invalid data") from exc
+                raise ProviderError("Microsoft Graph returned invalid data", details={"provider_type": "onedrive"}) from exc
             if not isinstance(payload, dict):
                 if writing:
                     raise RenameOutcomeUnknownError("Microsoft Graph returned an unreadable write response")
@@ -545,12 +546,28 @@ class OneDriveProvider(StorageProvider):
         return retry_after_delay(value, min(2**attempt, 8))
 
     @staticmethod
+    def _error_payload(response: httpx.Response) -> dict[str, object]:
+        # Diagnostic parsing must not change classification of an HTTP refusal.
+        try:
+            payload = response.json()
+        except ValueError:
+            return {}
+        return payload if isinstance(payload, dict) else {}
+
+    @staticmethod
     def _graph_error(status: int, payload: dict[str, object]) -> AppError:
         error = payload.get("error")
         message = None
         if isinstance(error, dict) and isinstance(error.get("message"), str):
             message = error["message"]
-        details = {"graph_status": status}
+        codes: list[str] = []
+        inner = error
+        while isinstance(inner, dict):
+            code = inner.get("code")
+            if isinstance(code, str):
+                codes.append(code)
+            inner = inner.get("innerError") or inner.get("innererror")
+        details = {**http_error_details("onedrive", status, codes), "graph_status": status}
         if status == 401:
             return AuthenticationError(
                 message or "OneDrive authorization failed", details=details

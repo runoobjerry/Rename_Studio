@@ -30,6 +30,16 @@ def drive_item(item_id: str, name: str, *, folder: bool = False) -> dict[str, An
     return item
 
 
+def test_graph_error_keeps_nested_codes_without_exposing_inner_payload() -> None:
+    error = OneDriveProvider._graph_error(403, {"error": {
+        "code": "accessDenied", "message": "Denied",
+        "innerError": {"code": "insufficientPermissions", "authorization": "must-not-escape"},
+    }})
+    assert isinstance(error, PermissionDeniedError)
+    assert error.details == {"provider_type": "onedrive", "provider_status": 403,
+                             "graph_status": 403, "provider_codes": ["accessDenied", "insufficientPermissions"]}
+
+
 class StubOneDriveProvider(OneDriveProvider):
     def __init__(self, responses: list[dict[str, object]]) -> None:
         super().__init__(OneDriveAuthService("http://localhost/callback", initial_state={}, persist=lambda payload: None))
@@ -96,7 +106,8 @@ async def test_single_patch_maps_graph_permission_denied(
                 task.cancel()
             await asyncio.gather(task, return_exceptions=True)
     assert caught.value.code == ("RATE_LIMIT_ERROR" if final_status == 429 else "PERMISSION_DENIED")
-    assert caught.value.details == {"graph_status": final_status}
+    assert caught.value.details == {"provider_type": "onedrive", "provider_status": final_status, "graph_status": final_status,
+                                         **({"provider_codes": ["accessDenied"]} if final_status == 403 else {})}
     assert [request.method for request in requests] == (["PATCH"] * 4 + ["GET"] if final_status == 429 else ["PATCH", "PATCH"])
 
 
@@ -118,7 +129,8 @@ async def test_graph_precondition_failure_preserves_conflict_code_and_exposes_ap
             await OneDriveProvider(auth, client=client).rename("opaque-id", "new.txt")
     assert caught.value.code == "RENAME_CONFLICT"
     assert caught.value.status_code == 409
-    assert caught.value.details == {"graph_status": 412, "reason": "SOURCE_CHANGED"}
+    assert caught.value.details == {"provider_type": "onedrive", "provider_status": 412,
+                                         "graph_status": 412, "reason": "SOURCE_CHANGED"}
     assert len(writes) == 1
 
 
