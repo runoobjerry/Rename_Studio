@@ -22,10 +22,13 @@ async def reconcile_unknown_rename[FileT: RenameFile](
         return outcome
     if current.name == request.new_name:
         return current
-    return ProviderError(
+    # This confirms the current target was not reached, not that the write never ran.
+    error = ProviderError(
         "Rename target was not reached; current name was verified",
-        details={"actual_name": current.name},
+        details={**outcome.details, "actual_name": current.name},
     )
+    error.__cause__ = outcome
+    return error
 
 
 async def drain_writes(tasks: Iterable[asyncio.Task[T]]) -> None:

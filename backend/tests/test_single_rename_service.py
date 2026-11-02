@@ -55,7 +55,7 @@ def request() -> SingleRenameExecuteRequest:
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("current_name", ["new.txt", "external.txt", None])
+@pytest.mark.parametrize("current_name", ["new.txt", "external.txt", "displayed-before-external-change.txt", None])
 async def test_single_unknown_write_is_reconciled_once_without_replay(current_name: str | None) -> None:
     provider = DirectProvider(RenameOutcomeUnknownError("Lost response"), confirmed_name=current_name)
     result = await SingleRenameService(registry_for([provider])).execute(provider.id, request())

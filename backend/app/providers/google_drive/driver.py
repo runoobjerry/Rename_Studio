@@ -16,6 +16,7 @@ from pydantic import BaseModel, Field, ValidationError as ModelValidationError
 from app.core.errors import AppError, AuthenticationError, NotFoundError, PermissionDeniedError, ProviderError, RateLimitError, RenameOutcomeUnknownError, ValidationError
 from app.core.log_context import request_id_context
 from app.providers.errors import http_error_details
+from app.providers.retry import RetryBudget
 from app.providers.base import RenameRequest, StorageProvider
 from app.providers.cooldown import ConnectionCooldown, retry_after_delay
 from app.providers.name_validation import NameValidationIssue
@@ -30,7 +31,6 @@ FOLDER_MIME = "application/vnd.google-apps.folder"
 SHORTCUT_MIME = "application/vnd.google-apps.shortcut"
 FILE_FIELDS = "id,name,mimeType,parents,trashed,driveId,size,modifiedTime,capabilities(canRename,canListChildren)"
 READ_BATCH_SIZE = 100
-MAX_RETRIES = 3
 RATE_REASONS = {"rateLimitExceeded", "userRateLimitExceeded"}
 logger = logging.getLogger("rename_studio.google_drive")
 
@@ -250,10 +250,10 @@ class GoogleDriveProvider(StorageProvider):
         return item
 
     async def _metadata_batch(self, file_ids: list[str]) -> dict[str, _DriveFile]:
+        budget = RetryBudget()
         pending = file_ids
         results: dict[str, _DriveFile] = {}
         refreshed = False
-        attempt = 0
         while True:
             boundary = f"rename-studio-{uuid4().hex}"
             parts: list[str] = []
@@ -264,8 +264,9 @@ class GoogleDriveProvider(StorageProvider):
                     f"GET /drive/v3/files/{quote(file_id, safe='')}?{query} HTTP/1.1\r\n\r\n"
                 )
             content = ("".join(parts) + f"--{boundary}--\r\n").encode("utf-8")
-            response = await self._request("POST", BATCH_URL, content=content, headers={"Content-Type": f"multipart/mixed; boundary={boundary}"})
+            response = await self._request("POST", BATCH_URL, content=content, headers={"Content-Type": f"multipart/mixed; boundary={boundary}"}, budget=budget)
             responses = self._batch_responses(response, len(pending))
+            attempt = budget.used - 1
             # Classify all failures before processing can stop on another item.
             errors = {
                 index: self._classify_error(outcome, attempt)
@@ -279,9 +280,9 @@ class GoogleDriveProvider(StorageProvider):
                     results[file_id] = self._parse_file(outcome, file_id)
                     continue
                 error = errors[index]
-                if outcome.status_code == 401 and not refreshed and attempt < MAX_RETRIES:
+                if outcome.status_code == 401 and not refreshed and budget.available:
                     refresh = True
-                elif self._retryable(outcome, error) and attempt < MAX_RETRIES:
+                elif self._retryable(outcome, error) and budget.available:
                     if not isinstance(error, RateLimitError):
                         retry_delay = max(retry_delay, self._retry_delay(outcome, attempt))
                 else:
@@ -295,7 +296,6 @@ class GoogleDriveProvider(StorageProvider):
             if retry_delay:
                 await asyncio.sleep(retry_delay)
             pending = retry
-            attempt += 1
 
     @staticmethod
     def _batch_responses(response: httpx.Response, count: int) -> list[httpx.Response]:
@@ -328,42 +328,41 @@ class GoogleDriveProvider(StorageProvider):
             raise ProviderError("Google Drive omitted a metadata batch response")
         return [outcomes[f"response-{index}"] for index in range(count)]
 
-    async def _request(self, method: str, url: str, *, params: dict[str, str] | None = None, content: bytes | None = None, headers: dict[str, str] | None = None, writing: bool = False) -> httpx.Response:
+    async def _request(self, method: str, url: str, *, params: dict[str, str] | None = None, content: bytes | None = None, headers: dict[str, str] | None = None, writing: bool = False, budget: RetryBudget | None = None) -> httpx.Response:
+        budget = budget if budget is not None else RetryBudget()
         refreshed = False
-        attempt = 0
         while True:
+            attempt = budget.used
             await self._cooldown.wait()
             token = await self.auth.access_token()
             # Token refresh can yield while another response extends the cooldown.
             await self._cooldown.wait()
             started = perf_counter()
+            budget.used += 1
             try:
                 response = await self._http_client().request(method, url, params=params, content=content, headers={**(headers or {}), "Authorization": f"Bearer {token}"})
             except httpx.HTTPError as exc:
                 logger.info("drive_request provider=google_drive request_id=%s method=%s writing=%s status=transport_error duration_ms=%.2f", request_id_context.get(), method, writing, (perf_counter() - started) * 1000)
                 if writing:
                     raise RenameOutcomeUnknownError("Google Drive write outcome is unknown; verify metadata before continuing", details={"provider_type": "google_drive"}) from exc
-                if attempt < MAX_RETRIES:
+                if budget.available:
                     await asyncio.sleep(min(2**attempt + random.random(), 8))
-                    attempt += 1
                     continue
                 raise ProviderError("Google Drive is unavailable", details={"provider_type": "google_drive"}) from exc
             logger.info("drive_request provider=google_drive request_id=%s method=%s writing=%s status=%s duration_ms=%.2f", request_id_context.get(), method, writing, response.status_code, (perf_counter() - started) * 1000)
             if response.is_success:
                 return response
-            if writing and response.status_code >= 500:
+            if writing and (response.status_code == 408 or response.status_code >= 500):
                 raise RenameOutcomeUnknownError("Google Drive write outcome is unknown; verify metadata before continuing", details=self._response_error(response).details)
             error = self._classify_error(response, attempt)
-            if response.status_code == 401 and not refreshed and attempt < MAX_RETRIES:
+            if response.status_code == 401 and not refreshed and budget.available:
                 await self.auth.access_token(force_refresh=True)
                 refreshed = True
-                attempt += 1
                 continue
             # Read batches can be replayed; write batches only retry explicit auth/throttle refusals.
-            if self._retryable(response, error) and attempt < MAX_RETRIES:
+            if self._retryable(response, error) and budget.available:
                 if not isinstance(error, RateLimitError):
                     await asyncio.sleep(self._retry_delay(response, attempt))
-                attempt += 1
                 continue
             raise error
 
@@ -486,8 +485,8 @@ class GoogleDriveProvider(StorageProvider):
             else:
                 pending.append(request)
 
+        budget = RetryBudget()
         refreshed = False
-        attempt = 0
         while pending:
             boundary = f"rename-studio-{uuid4().hex}"
             query = urlencode({"fields": FILE_FIELDS, "supportsAllDrives": "false"})
@@ -501,7 +500,7 @@ class GoogleDriveProvider(StorageProvider):
                 )
             content = ("".join(parts) + f"--{boundary}--\r\n").encode("utf-8")
             try:
-                response = await self._request("POST", BATCH_URL, content=content, headers={"Content-Type": f"multipart/mixed; boundary={boundary}"}, writing=True)
+                response = await self._request("POST", BATCH_URL, content=content, headers={"Content-Type": f"multipart/mixed; boundary={boundary}"}, writing=True, budget=budget)
             except AppError as exc:
                 results.update({request.file_id: exc for request in pending})
                 break
@@ -512,6 +511,7 @@ class GoogleDriveProvider(StorageProvider):
                 results.update({request.file_id: RenameOutcomeUnknownError("Google Drive returned an incomplete write batch response") for request in pending})
                 break
 
+            attempt = budget.used - 1
             # Classify all failures before processing can stop on another item.
             errors = {
                 index: self._classify_error(outcome, attempt)
@@ -535,19 +535,19 @@ class GoogleDriveProvider(StorageProvider):
                         cache[current.id] = current
                         results[request.file_id] = self._to_item(self._chain(current, root, cache))
                     continue
-                if outcome.status_code >= 500:
+                if outcome.status_code == 408 or outcome.status_code >= 500:
                     results[request.file_id] = RenameOutcomeUnknownError("Google Drive write outcome is unknown", details=errors[index].details)
                     continue
                 error = errors[index]
-                if outcome.status_code == 401 and not refreshed and attempt < MAX_RETRIES:
+                if outcome.status_code == 401 and not refreshed and budget.available:
                     refresh = True
-                elif not (isinstance(error, RateLimitError) and attempt < MAX_RETRIES):
+                elif not (isinstance(error, RateLimitError) and budget.available):
                     results[request.file_id] = error
                     continue
+                results[request.file_id] = error
                 retry.append(request)
             if any(isinstance(outcome, RenameOutcomeUnknownError) for outcome in results.values()):
-                for request in retry:
-                    results[request.file_id] = ProviderError("Rename retry was not attempted after an unknown write outcome")
+                # Refused requests were attempted; preserve their real error, not not_attempted.
                 break
             if refresh:
                 try:
@@ -557,7 +557,6 @@ class GoogleDriveProvider(StorageProvider):
                     break
                 refreshed = True
             pending = retry
-            attempt += 1
         return results
 
     def validate_name(self, name: str) -> NameValidationIssue | None:

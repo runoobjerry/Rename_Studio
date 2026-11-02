@@ -692,11 +692,37 @@ async def test_unknown_part_prevents_retry_of_other_refused_parts(provider_facto
         *[RenameRequest(str(index), f"new-{index}") for index in range(19)],
     ])
     assert isinstance(result["a"], RenameOutcomeUnknownError)
-    assert isinstance(result["b"], ProviderError)
+    assert isinstance(result["b"], RateLimitError)
     # The refused item was submitted; only the next group was never attempted.
     assert result["b"].details.get("reason") != "RENAME_NOT_ATTEMPTED"
     assert result["18"].details == {"reason": "RENAME_NOT_ATTEMPTED", "stop_reason": "RENAME_OUTCOME_UNKNOWN"}
     assert len(server.writes) == 1
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("writing", [False, True])
+async def test_envelope_and_part_retries_share_four_attempts(provider_factory: Callable, writing: bool) -> None:
+    server = WritableDriveServer([drive_file("a", "A"), drive_file("b", "B")])
+    calls = []
+    verb = b"PATCH" if writing else b"GET"
+
+    def respond(request: httpx.Request) -> httpx.Response:
+        if request.method != "POST" or b"\r\n" + verb + b" " not in request.content:
+            return server(request)
+        calls.append(request)
+        if len(calls) % 2:
+            return httpx.Response(429, headers={"Retry-After": "0"})
+        return batch_response([(index, 429, {"error": {"errors": [{"reason": "rateLimitExceeded"}]}})
+                               for index in range(request.content.count(b"Content-ID:"))])
+
+    provider = provider_factory(respond)
+    if writing:
+        result = await provider.rename_many([RenameRequest("a", "AA")])
+        assert isinstance(result["a"], RateLimitError)
+    else:
+        with pytest.raises(RateLimitError):
+            await provider.get_metadata_many(["a", "b"])
+    assert len(calls) == 4
 
 
 @pytest.mark.asyncio
@@ -733,7 +759,7 @@ async def test_batch_write_preflight_enforces_scope_and_permissions(provider_fac
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("fault", ["outer_503", "part_503", "malformed", "missing_part", "wrong_id", "moved"])
+@pytest.mark.parametrize("fault", ["outer_503", "part_503", "outer_408", "part_408", "malformed", "missing_part", "wrong_id", "moved"])
 async def test_ambiguous_write_response_is_never_replayed(provider_factory: Callable, fault: str) -> None:
     server = WritableDriveServer([drive_file("a", "A"), drive_file("b", "B")])
 
@@ -741,12 +767,12 @@ async def test_ambiguous_write_response_is_never_replayed(provider_factory: Call
         response = server(request)
         if request.method != "POST" or b"\r\nPATCH " not in request.content:
             return response
-        if fault == "outer_503":
-            return httpx.Response(503)
+        if fault in {"outer_503", "outer_408"}:
+            return httpx.Response(408 if fault == "outer_408" else 503)
         if fault == "malformed":
             return httpx.Response(200, text="Response lost")
-        if fault == "part_503":
-            return batch_response([(0, 503, {}), (1, 200, server.files["b"])])
+        if fault in {"part_503", "part_408"}:
+            return batch_response([(0, 408 if fault == "part_408" else 503, {}), (1, 200, server.files["b"])])
         if fault == "missing_part":
             return batch_response([(1, 200, server.files["b"])])
         data = {**server.files["a"], **({"id": "other"} if fault == "wrong_id" else {"parents": ["elsewhere"]})}
