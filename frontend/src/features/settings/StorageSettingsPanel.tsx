@@ -534,7 +534,8 @@ export function StorageSettingsPanel({ executingStorageId }: { executingStorageI
       <DialogContent dividers>
         <Stack spacing={2}>
           <TextField variant="standard" select label={t("settings:connection.type")} size="small" value={selectedProvider}
-            disabled={addingBusy} onChange={(event) => changeProvider(event.target.value)}>
+            disabled={addingBusy} onChange={(event) => changeProvider(event.target.value)}
+            sx={{ width: { xs: 156, sm: 180 }, flexShrink: 0 }}>
             {(providers.data ?? []).map((definition) => (
               <MenuItem key={definition.provider_type} value={definition.provider_type}
                 sx={{ fontSize: "body2.fontSize" }}>

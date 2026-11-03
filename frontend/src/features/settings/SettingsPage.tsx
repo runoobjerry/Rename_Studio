@@ -60,7 +60,7 @@ export function SettingsPage({ preference, onPreferenceChange, onBack, executing
               <TextField select size="small" value={preference}
                 onChange={(event) => onPreferenceChange(event.target.value as ThemePreference)}
                 slotProps={{ select: { labelId: "theme-appearance-title", sx: { typography: "body2" } } }}
-                sx={{ width: { xs: 132, sm: 160 }, flexShrink: 0 }}>
+                sx={{ width: { xs: 156, sm: 180 }, flexShrink: 0 }}>
                 <MenuItem value="light" sx={{ typography: "body2" }}>{t("light")}</MenuItem>
                 <MenuItem value="dark" sx={{ typography: "body2" }}>{t("dark")}</MenuItem>
                 <MenuItem value="system" sx={{ typography: "body2" }}>{t("system")}</MenuItem>
