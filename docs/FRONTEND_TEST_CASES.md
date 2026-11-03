@@ -66,7 +66,7 @@
 | 已有预览与确认框随语言更新；保持选中项和降序排列，不额外预览、执行或释放快照 | 工作台集成 |
 | 错误码显示完整本地化提示，原始 message/details 保留用于诊断；未知 code 或普通异常显示通用读取恢复提示，不直接展示原文 | [错误翻译](../frontend/src/i18n/messages.test.ts) |
 | 源状态变化按 RENAME_CONFLICT / SOURCE_CHANGED 展示，供应商 graph_status 仅保留诊断 | [错误翻译](../frontend/src/i18n/messages.test.ts) |
-| 连接创建/编辑/关闭草稿、本地选择器、授权状态与失败保留输入 | StorageSettingsPanel |
+| 连接创建/编辑/关闭草稿、本地选择器、授权状态与失败保留输入；已连接 chip 显示邮箱，编辑面板显示账号详情，退出成功通知 | StorageSettingsPanel |
 | 未硬编码的 Provider 根据字段元数据渲染、校验必填、按字段 key 回填目录、提交多个配置及 nullable 空值；无 browser_auth 不请求授权，定义缺失禁止编辑和创建 | StorageSettingsPanel |
 | 编辑密钥留空不提交；失败保留新密钥、重试成功后清空，密码不回显 | StorageSettingsPanel |
 | 任意 Provider 通过元数据定义配置字段及密码式顶层密钥，缺词显示原始 Provider/字段 ID；创建/切换/重开清空，配置不完整禁用登录，授权弹窗校验来源和连接 | StorageSettingsPanel |

@@ -10,6 +10,7 @@ import {
   Alert, Box, Button, Card, Dialog, DialogActions, DialogContent, DialogTitle,
   Divider, MenuItem, Stack, Chip, TextField, Typography, Table, TableBody,
   TableCell, TableContainer, TableHead, TableRow, Tooltip, Skeleton,
+  type ChipProps,
 } from "@mui/material";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -263,14 +264,28 @@ function ConnectionRow({ storage, executing, definition }: {
   };
 
   let statusLabel: string;
+  let statusColor: ChipProps["color"];
+  let statusIcon: ChipProps["icon"];
   if (!requiresAuth) {
-    statusLabel = t("settings:connection.connected");
+    statusLabel = t(`providers:${definition.provider_type}.name`, { defaultValue: definition.provider_type });
+    statusColor = "success";
+    statusIcon = <Verified />;
   } else if (status.isPending) {
     statusLabel = t("settings:connection.reading");
+    statusColor = "default";
+    statusIcon = undefined;
   } else if (status.error) {
     statusLabel = t("settings:connection.readFailed");
+    statusColor = "error";
+    statusIcon = <ErrorIcon />;
+  } else if (status.data?.connected) {
+    statusLabel = status.data.account_email ?? t("settings:connection.noEmail");
+    statusColor = "success";
+    statusIcon = <Verified />;
   } else {
-    statusLabel = status.data?.connected ? t("settings:connection.connected") : t("settings:connection.disconnected");
+    statusLabel = t("settings:connection.disconnected");
+    statusColor = "warning";
+    statusIcon = <ErrorIcon />;
   }
 
   let authTitle: string;
@@ -295,8 +310,7 @@ function ConnectionRow({ storage, executing, definition }: {
       <TableCell sx={{ maxWidth: 240, overflowWrap: "anywhere", color: "text.primary" }}>{storage.name}</TableCell>
       <TableCell>{t(`providers:${definition.provider_type}.name`, { defaultValue: definition.provider_type })}</TableCell>
       <TableCell>
-        <Chip size="small" variant="outlined" color={!requiresAuth || status.data?.connected ? "success" : "default"}
-          label={statusLabel} />
+        <Chip size="small" variant="outlined" color={statusColor} icon={statusIcon} label={statusLabel} />
         {renaming && (
           <Typography variant="caption" component="div" color="text.secondary" sx={{ mt: 0.5 }}>
             {t("settings:connection.executing")}
@@ -459,12 +473,6 @@ export function StorageSettingsPanel({ executingStorageId }: { executingStorageI
         </Button>
       </Stack>
       <Divider />
-      {storages.error && (
-        <Alert severity="error" sx={{ m: 2 }}>{errorMessage(storages.error, t)}</Alert>
-      )}
-      {providers.error && (
-        <Alert severity="error" sx={{ m: 2 }}>{errorMessage(providers.error, t)}</Alert>
-      )}
       {storages.isPending ? (
         <Stack sx={{ p: 2 }} spacing={1}>
           <Skeleton height={36} />

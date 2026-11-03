@@ -341,7 +341,7 @@ describe("storage settings", () => {
     expect(api.updateStorage).not.toHaveBeenCalled();
     client.clear();
   });
-  it("shows account details only in the editor and reports successful logout", async () => {
+  it("shows the account email in the status chip, account details in the editor and reports successful logout", async () => {
     const { client } = setup();
     vi.mocked(api.fetchStorageAuthStatus).mockResolvedValue({
       configured: true, connected: true, account_id: "account-a",
@@ -355,11 +355,11 @@ describe("storage settings", () => {
     await screen.findByRole("button", { name: "编辑连接 Local" });
     vi.mocked(api.fetchStorages).mockResolvedValue([cloud]);
     client.setQueryData(["storages"], [cloud]);
-    // Wait for the cloud row, not the old Local row's identical status label.
+    // Wait for the cloud row before checking its account status.
     await screen.findByRole("button", { name: "编辑连接 OAuth" });
     const table = within(screen.getByRole("table", { name: "已保存的连接" }));
-    await waitFor(() => expect(table.getByText("已连接")).toBeInTheDocument());
-    expect(table.queryByText(/测试用户|user@example.com/)).not.toBeInTheDocument();
+    await waitFor(() => expect(table.getByText("user@example.com")).toBeInTheDocument());
+    expect(table.queryByText("测试用户")).not.toBeInTheDocument();
     expect(screen.queryByRole("switch")).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "编辑连接 OAuth" }));
     expect(screen.getByRole("button", { name: "删除" })).toBeEnabled();
