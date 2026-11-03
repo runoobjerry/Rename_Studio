@@ -40,6 +40,7 @@
     "authClosed": "The authorization window has closed. Check the connection status; authorize again if the account is still disconnected.",
     "nameTooLong": "Connection names can contain at most 20 characters.",
     "updated": "Storage connection settings updated.",
+    "deleted": "{{name}} has been deleted.",
     "popupBlocked": "The browser blocked the sign-in window. Allow pop-ups to continue.",
     "signedOut": "Signed out of the account.",
     "connected": "Connected",

@@ -140,11 +140,11 @@ function ConnectionRow({ storage, executing, definition }: {
   };
   const operation = useMutation({
     gcTime: 0,
-    mutationFn: (action: { run: () => Promise<unknown>; message: LocalizedMessage }) => action.run(),
+    mutationFn: (action: { run: () => Promise<unknown>; message: LocalizedMessage; severity?: "success" | "warning" }) => action.run(),
     onSuccess: (_result, action) => {
       setClientSecret("");
       refresh();
-      notify(action.message);
+      notify(action.message, action.severity);
     },
     onError: (error) => notify(error, "error"),
   });
@@ -259,7 +259,8 @@ function ConnectionRow({ storage, executing, definition }: {
   const deleteConnection = () => {
     operation.mutate({
       run: () => deleteStorage(storage.storage_id),
-      message: { key: "settings:connection.updated" },
+      message: { key: "settings:connection.deleted", values: { name: storage.name } },
+      severity: "warning",
     }, { onSuccess: () => setEditing(false) });
   };
 

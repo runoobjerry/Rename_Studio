@@ -84,10 +84,10 @@ export const PreviewPanel = memo(function PreviewPanel({
       <div className="panel-heading">
         <div className="panel-title-line">
           <h2 id="preview-title">{t("files:preview.title")}</h2>
-          <p className="panel-summary">
+          {(preview || unknownExecution) && <p className="panel-summary">
             {t("files:preview.summary", { pending: pendingCount, unchanged: unchangedCount })}
-            {(preview || unknownExecution) && filters.length > 0 && t("files:showing", { count: visibleItems.length })}
-          </p>
+            {filters.length > 0 && t("files:showing", { count: visibleItems.length })}
+          </p>}
         </div>
         <CheckboxFilterMenu label={t("files:preview.filter")} options={filterOptions} selected={filters} onChange={setFilters} />
       </div>
