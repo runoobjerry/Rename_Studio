@@ -254,7 +254,6 @@ function Workspace({ preference, setPreference, settingsError, hasSettings }: {
                   compactNavigation={compactNavigation}
                   listing={locationReady ? files.data : undefined}
                   rootLabel={providerName}
-                  serviceName={t(`providers:${providerId}.name`, { defaultValue: providerId })}
                   requiresAuth={metadataReady && requiresAuth}
                   supportsLocalPicker={supportsLocalPicker}
                   navigationDisabled={!locationReady || !activeStorage || isExecuting || pickLocalRoot.isPending || activeStorage.busy}
@@ -263,7 +262,6 @@ function Workspace({ preference, setPreference, settingsError, hasSettings }: {
                   isPickingFolder={pickLocalRoot.isPending}
                   storageMissing={!activeStorage && !providers.isPending}
                   pickerError={pickLocalRoot.error}
-                  cloudDisconnected={metadataReady && requiresAuth && cloudStatus.isSuccess && !cloudStatus.data.connected}
                   onOpenNavigation={() => setMobileNavOpen(true)}
                   onNavigate={navigateLocation}
                   onSetDefaultPath={setDefaultCloudPath}

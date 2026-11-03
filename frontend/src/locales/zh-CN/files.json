@@ -113,7 +113,7 @@
     "unavailable": "目录暂不可用，请检查存储设置。",
     "loadFailed": "无法加载主页信息，请重启应用。",
     "directoryFailed": "目录读取失败：{{message}}",
-    "connectToBrowse": "连接 {{service}} 后可浏览云端目录。",
+    "connectToBrowse": "在设置页面授权{{service}}后可浏览云端文件。",
     "definitionMissing": "无法加载此连接的服务信息，请刷新页面后重试。"
   },
   "summary": "共 {{total}} 项 · 已选择 {{selected}} 项",

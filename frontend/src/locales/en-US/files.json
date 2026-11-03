@@ -113,7 +113,7 @@
     "unavailable": "The directory is temporarily unavailable. Check your storage settings.",
     "loadFailed": "Could not load the home page information. Restart the app.",
     "directoryFailed": "Could not load the directory: {{message}}",
-    "connectToBrowse": "Connect {{service}} to browse cloud directories.",
+    "connectToBrowse": "Authorize {{service}} in Settings to browse cloud files.",
     "definitionMissing": "Could not load service information for this connection. Refresh the page and try again."
   },
   "summary": "Total: {{total}} · Selected: {{selected}}",
