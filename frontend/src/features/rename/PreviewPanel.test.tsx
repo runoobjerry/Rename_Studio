@@ -26,7 +26,9 @@ describe("PreviewPanel", () => {
   it("shows unsubmitted items by status even when their diagnostic is translated or absent", () => {
     const items = ["stopped", "not-started", "legacy"].map((file_id) => ({ ...validPreview.items[0], file_id }));
     render(<PreviewPanel preview={{ ...validPreview, items }} execution={{
-      preview_id: validPreview.preview_id, status: "failed", items: [
+      preview_id: validPreview.preview_id, status: "incomplete",
+      counts: { renamed: 0, skipped: 0, failed: 1, unknown: 0, not_attempted: 2 },
+      items: [
         { file_id: "stopped", original_name: "one.txt", new_name: "renamed.txt", status: "not_attempted",
           error: "后续组未提交", error_code: "PROVIDER_ERROR",
           details: { reason: "RENAME_NOT_ATTEMPTED", stop_reason: "RENAME_OUTCOME_UNKNOWN" } },
@@ -54,8 +56,10 @@ describe("PreviewPanel", () => {
       storageId: "default-local", previewId: validPreview.preview_id,
       items: items.filter((item) => ["unknown", "missing"].includes(item.file_id)),
     };
-    const { rerender } = render(<PreviewPanel preview={{ ...validPreview, items }} unknownExecution={unknownExecution} execution={{
-      preview_id: validPreview.preview_id, status: "partial", items: [
+    const { rerender } = render(<PreviewPanel preview={{ ...validPreview, items }} unknownExecution={unknownExecution} executeError="Execution response lost" execution={{
+      preview_id: validPreview.preview_id, status: "incomplete",
+      counts: { renamed: 1, skipped: 2, failed: 1, unknown: 1, not_attempted: 0 },
+      items: [
         { file_id: "renamed", original_name: "renamed.txt", new_name: "new-renamed.txt", status: "renamed", error: null },
         { file_id: "unknown", original_name: "unknown.txt", new_name: "new-unknown.txt", status: "unknown", error: "Unknown outcome", error_code: "RENAME_OUTCOME_UNKNOWN" },
         { file_id: "failed", original_name: "failed.txt", new_name: "new-failed.txt", status: "failed", error: null },
@@ -68,7 +72,7 @@ describe("PreviewPanel", () => {
     expect(table.getAllByText("待核对")).toHaveLength(2);
     expect(table.getAllByText("未知")).toHaveLength(2);
     const alert = screen.getByRole("alert");
-    expect(alert).toHaveTextContent("部分项目的重命名结果尚未确认。请刷新目录，或前往文件源进行检查，核对前不要重复执行。");
+    expect(alert).toHaveTextContent("本次修改存在未知结果的项目，请刷新文件目录或前往文件源检查。");
     expect(screen.getByRole("region", { name: "修改预览" }).lastElementChild).toBe(alert);
     expect(table.queryByText("new-unknown.txt")).not.toBeInTheDocument();
     expect(table.queryByText("new-missing.txt")).not.toBeInTheDocument();
@@ -107,7 +111,7 @@ describe("PreviewPanel", () => {
     rerender(<PreviewPanel unknownExecution={{ ...unknownExecution, previewUnlocked: true }} />);
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
     rerender(<PreviewPanel unknownExecution={{ ...unknownExecution, previewId: "next-execution" }} />);
-    expect(screen.getByRole("alert")).toHaveTextContent("部分项目的重命名结果尚未确认。请刷新目录，或前往文件源进行检查，核对前不要重复执行。");
+    expect(screen.getByRole("alert")).toHaveTextContent("本次修改存在未知结果的项目，请刷新文件目录或前往文件源检查。");
   });
 
   it("keeps validation errors out of pending counts and uses their existing labels", () => {
@@ -138,7 +142,9 @@ describe("PreviewPanel", () => {
     expect(screen.getByText("renamed.txt")).toBeInTheDocument();
     expect(screen.getByText("failed-new.txt")).toBeInTheDocument();
     expect(screen.queryByText("same.txt")).not.toBeInTheDocument();
-    rerender(<PreviewPanel preview={preview} execution={{ preview_id: "preview-1", status: "partial", items: [
+    rerender(<PreviewPanel preview={preview} execution={{ preview_id: "preview-1", status: "incomplete",
+    counts: { renamed: 1, skipped: 1, failed: 1, unknown: 0, not_attempted: 0 },
+    items: [
       { file_id: "one.txt", original_name: "one.txt", new_name: "renamed.txt", status: "renamed", error: null },
       { file_id: "failed", original_name: "failed.txt", new_name: "failed-new.txt", status: "failed", error: "修改失败" },
       { file_id: "unchanged", original_name: "same.txt", new_name: "same.txt", status: "skipped", error: null },

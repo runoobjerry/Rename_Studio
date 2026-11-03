@@ -137,14 +137,13 @@ export const PreviewPanel = memo(function PreviewPanel({
         </TableContainer>
       )}
 
-      {executeError && (
-        <Alert severity={unknownExecution ? "warning" : "error"} sx={{ m: 2 }}>{unknownExecution
-          ? t("files:rename.unknownOutcome") : t("files:preview.executeFailed", { message: executeError })}</Alert>
+      {executeError && !unknownExecution && (
+        <Alert severity="error" sx={{ m: 2 }}>{t("files:preview.executeFailed", { message: executeError })}</Alert>
       )}
       {unknownExecution && dismissedVerification !== verificationKey && (
         <Alert severity="warning" sx={{ m: 2 }} closeText={t("common:close")}
           onClose={() => setDismissedVerification(verificationKey)}>
-          {t("files:verification.required")}
+          {t("files:preview.unknownOutcome")}
         </Alert>
       )}
     </section>

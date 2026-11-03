@@ -44,7 +44,8 @@ def test_execution_api_preserves_unknown_status_after_committed_write(
         response = api_client.post("/rename/execute", json={"preview_id": preview["preview_id"]})
     assert response.status_code == 200
     result = response.json()
-    assert result["status"] == "failed"
+    assert result["status"] == "incomplete"
+    assert result["counts"] == {"renamed": 0, "skipped": 0, "failed": 0, "unknown": 1, "not_attempted": 0}
     assert result["items"][0]["status"] == "unknown"
     assert result["items"][0]["error_code"] == "RENAME_OUTCOME_UNKNOWN"
     assert result["items"][0]["actual_name"] is None
@@ -234,7 +235,7 @@ def test_single_target_provider_rejects_invalid_name_without_writing(
         "original_name": "one.txt", "target_name": target,
     })
     assert result.status_code == 200
-    assert result.json()["status"] == "failed"
+    assert result.json()["status"] == "incomplete"
     assert result.json()["items"][0]["error"]
     assert result.json()["items"][0]["error_code"] == ("RENAME_CONFLICT" if target == "occupied.txt" else "VALIDATION_ERROR")
     assert (tmp_path / "one.txt").read_text(encoding="utf-8") == "source"

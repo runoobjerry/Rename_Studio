@@ -337,9 +337,8 @@ function Workspace({ preference, setPreference, settingsError, hasSettings }: {
                       onChange={(next) => { storage.cancelExternalNavigation(); onRulesChange(next); }}
                     />
                     <RenameActionsWithProgress
-                      hasUnknownOutcome={Boolean(unknownExecution)}
                       preview={previewData}
-                      providerName={providerName}
+                      connectionName={activeStorage?.name ?? ""}
                       selectedCount={selectedCount}
                       isPreviewing={isPreviewing}
                       isExecuting={isExecuting}

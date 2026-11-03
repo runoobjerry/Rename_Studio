@@ -18,7 +18,9 @@ describe("API client", () => {
 
   it("submits a single rename directly without requesting a preview", async () => {
     const operationId = "00000000-0000-4000-8000-000000000001";
-    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ operation_id: operationId, status: "completed", items: [] })));
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ operation_id: operationId, status: "completed",
+      counts: { renamed: 0, skipped: 0, failed: 0, unknown: 0, not_attempted: 0 },
+      items: [] })));
     vi.stubGlobal("fetch", fetchMock);
     const result = await executeStorageSingleRename("connection/id", {
       operation_id: operationId, location: { kind: "id", value: "directory-id" }, file_id: "opaque-id",
@@ -31,7 +33,9 @@ describe("API client", () => {
         original_name: "old.tar.gz", target_name: "资料.tar.gz", revision: 1,
       }),
     });
-    expect(result).toEqual({ operation_id: operationId, status: "completed", items: [] });
+    expect(result).toEqual({ operation_id: operationId, status: "completed",
+      counts: { renamed: 0, skipped: 0, failed: 0, unknown: 0, not_attempted: 0 },
+      items: [] });
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
   it("reads app settings and submits only changed preference fields", async () => {

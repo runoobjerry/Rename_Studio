@@ -1,7 +1,6 @@
 import asyncio
 import logging
 from collections.abc import Callable
-from typing import Literal
 from time import monotonic
 
 from app.core.errors import AppError, NotFoundError, PreviewExpiredError, ValidationError, RenameOutcomeUnknownError, ProviderError
@@ -279,16 +278,9 @@ class ExecuteService:
                 item.error_code = None
             elif item.status == "skipped":
                 item.actual_name = item.original_name
-        renamed = sum(item.status == "renamed" for item in items)
         incomplete = any(item.status in {"failed", "unknown", "not_attempted"} for item in items)
-        if not incomplete:
-            status: Literal["completed", "partial", "failed"] = "completed"
-        elif renamed > 0:
-            status = "partial"
-        else:
-            status = "failed"
         return RenameExecuteResponse(
             preview_id=preview_id,
-            status=status,
+            status="incomplete" if incomplete else "completed",
             items=items,
         )

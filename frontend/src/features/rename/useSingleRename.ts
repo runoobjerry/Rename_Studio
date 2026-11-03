@@ -128,7 +128,7 @@ export function useSingleRename({ storageId, location, workspaceSession, revisio
         setSingleError({ key: "files:verification.required" });
         return;
       }
-      if (result.status === "completed" && item.status === "renamed") {
+      if (item.status === "renamed") {
         closeDialog();
         notify(membership === false ? { key: "files:notifications.renamedElsewhere" }
           : { key: "files:notifications.completed", values: { count: 1 } }, "success");

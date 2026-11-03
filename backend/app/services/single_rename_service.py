@@ -49,7 +49,7 @@ class SingleRenameService:
             )
             return SingleRenameExecuteResponse(
                 operation_id=str(request.operation_id),
-                status="completed" if result.status == "renamed" else "failed", items=[result],
+                status="completed" if result.status == "renamed" else "incomplete", items=[result],
             )
 
     @staticmethod

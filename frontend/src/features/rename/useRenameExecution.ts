@@ -38,20 +38,17 @@ export function useRenameExecution(isCurrentSession: (session: string) => boolea
         listing && { ...listing, items: listing.items.map((item) => confirmed.get(item.id) ?? item) });
       if (!isCurrentSession(input.workspaceSession)) return;
       if (input.taskId) useRenameStore.getState().applyTaskResults(input.taskId, result);
+      const { renamed, skipped, failed: failedCount, not_attempted: notAttempted } = result.counts;
       if (result.status === "completed" && unknown.length === 0) {
-        const renamed = result.items.filter((item) => item.status === "renamed").length;
         notify({ key: "files:notifications.completed", values: { count: renamed } }, "success");
       } else {
-        const renamed = result.items.filter((item) => item.status === "renamed").length;
-        const notAttempted = result.items.filter((item) => item.status === "not_attempted").length;
-        const failed = result.items.filter((item) => item.status === "failed").length;
-        const counts = [["renamed", renamed], ["failed", failed], ["unknown", unknown.length], ["notAttempted", notAttempted]] as const;
+        const counts = [["renamed", renamed], ["skipped", skipped], ["failed", failedCount], ["unknown", unknown.length], ["notAttempted", notAttempted]] as const;
         const results = counts.filter(([, count]) => count > 0)
           .map(([key, count]) => t(`files:notifications.${key}Count`, { count }))
           .join(t("files:notifications.resultSeparator"));
         notify(
           { key: "files:notifications.ended", values: { results } },
-          result.status === "partial" ? "warning" : "error",
+          "warning",
         );
       }
       // 保留明确失败和未提交项的选择；成功文件可重新选择并创建新预览。
@@ -69,7 +66,9 @@ export function useRenameExecution(isCurrentSession: (session: string) => boolea
         storageId: input.source.storageId, previewId: input.source.preview_id, items: input.source.items,
       });
       if (isCurrentSession(input.workspaceSession)) {
-        notify({ key: "files:notifications.unknownOutcome", error }, "error");
+        notify({ key: "files:notifications.ended", values: {
+          results: t("files:notifications.unknownCount", { count: input.source.items.length }),
+        } }, "warning");
       }
     },
   });

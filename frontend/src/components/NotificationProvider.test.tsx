@@ -24,7 +24,7 @@ describe("shared notifications", () => {
   it("keeps notification counts and literal paths intact across language changes", async () => {
     render(<NotificationProvider><Actions /></NotificationProvider>);
     fireEvent.click(screen.getByRole("button", { name: "数量通知" }));
-    expect(screen.getByRole("alert")).toHaveTextContent("修改全部成功：2 项已修改。");
+    expect(screen.getByRole("alert")).toHaveTextContent("本次修改已全部完成：2 项已修改。");
     await act(async () => { await i18n.changeLanguage("en-US"); });
     expect(screen.getByRole("alert")).toHaveTextContent("Renaming completed successfully: 2 items renamed.");
     fireEvent.click(screen.getByRole("button", { name: "路径通知" }));
@@ -65,7 +65,7 @@ describe("shared notifications", () => {
   });
 
   it("adds actionable context to expired preview errors", () => {
-    expect(errorMessage(new ApiError(409, "Expired", "PREVIEW_EXPIRED"))).toBe("预览已失效，请刷新预览。");
+    expect(errorMessage(new ApiError(409, "Expired", "PREVIEW_EXPIRED"))).toBe("当前预览过期或文件状态发生变化。");
   });
 
   it("shows a localized recovery hint for an unclassified error", () => {

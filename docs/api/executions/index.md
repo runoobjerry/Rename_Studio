@@ -22,14 +22,14 @@
 | 字段 | 类型 | 必含 | 可空 | 说明 |
 | --- | --- | --- | --- | --- |
 | `preview_id` | string | 是 | 否 | 执行的预览标识。 |
-| `status` | string | 是 | 否 | `completed`、`partial` 或 `failed`，含义见下表。 |
+| `status` | string | 是 | 否 | `completed` 或 `incomplete`，含义见下表。 |
+| `counts` | RenameResultCounts | 是 | 否 | 五种逐项状态的数量，按本次响应的 `items` 计算。 |
 | `items` | array of ExecuteItem | 是 | 否 | 按预览顺序返回；实际完成顺序可能不同。 |
 
 | `status` | 含义 |
 | --- | --- |
 | `completed` | 每项均为已确认重命名或无需修改，包括全部跳过的情况。 |
-| `partial` | 至少一项已确认重命名，且存在失败、未知或未尝试项。 |
-| `failed` | 存在失败、未知或未尝试项且无已确认重命名项，可能同时包含跳过项；不能据此认为所有项目均为已确认失败。 |
+| `incomplete` | 未全部完成：至少一项为 `failed`、`unknown` 或 `not_attempted`；已确认成功项仍保留。 |
 
 ### 对象：SingleRenameExecuteResponse
 
@@ -40,8 +40,23 @@
 | 字段 | 类型 | 必含 | 可空 | 说明 |
 | --- | --- | --- | --- | --- |
 | `operation_id` | string | 是 | 否 | 请求 UUID 的标准字符串形式。 |
-| `status` | string | 是 | 否 | 枚举为 `completed`、`partial`、`failed`；单项成功为 `completed`，失败或未知为 `failed`。 |
+| `status` | string | 是 | 否 | `completed` 或 `incomplete`；单项成功为 `completed`，失败或未知为 `incomplete`。 |
+| `counts` | RenameResultCounts | 是 | 否 | 五种逐项状态的数量，按本次响应的 `items` 计算。 |
 | `items` | array of SingleExecuteItem | 是 | 否 | 当前固定为 1 个结果项。 |
+
+### 对象：RenameResultCounts
+
+表示本次响应中五种逐项状态的数量；字段均必定返回、不可空，无默认值，合计等于 `items` 长度。
+
+#### Attributes
+
+| 字段 | 类型 | 必含 | 可空 | 说明 |
+| --- | --- | --- | --- | --- |
+| `renamed` | integer | 是 | 否 | 已确认重命名项数，≥ 0。 |
+| `skipped` | integer | 是 | 否 | 无需修改项数，≥ 0。 |
+| `failed` | integer | 是 | 否 | 已确认未达到目标的项数，≥ 0。 |
+| `unknown` | integer | 是 | 否 | 最终结果无法确认的项数，≥ 0。 |
+| `not_attempted` | integer | 是 | 否 | 尚未发出写请求的项数，≥ 0。 |
 
 <a id="execution-items"></a>
 ### 对象：ExecuteItem 与 SingleExecuteItem
@@ -75,7 +90,9 @@
 | `unknown` | 最终结果无法确认，不能直接判为失败。 |
 | `not_attempted` | 尚未发出本项写请求；不是响应丢失，也不是下一次重试未发生。 |
 
-总体状态按逐项状态计算，不增加组合枚举。未知项的总体状态仍可为 `failed`，客户端必须检查逐项状态。`error_code` 继续说明具体原因，`stop_reason` 说明停止原因；缺少当前名称不改变结果状态。
+总体状态只表示是否全部完成。`incomplete` 不代表全部失败；客户端使用 `counts` 和逐项状态区分部分完成、确认失败、未知及未执行。存在未知或缺失结果时，优先提示待核对。`error_code` 说明具体原因，`stop_reason` 说明停止原因；缺少当前名称不改变结果状态。
+
+原总体状态 `partial` 和 `failed` 统一替换为 `incomplete`；逐项 `failed` 及进度 `phase` 保持原义。前后端须同步升级，不再返回旧总体枚举。
 
 `actual_name` 是已确认的当前名称，`new_name` 始终是请求目标。`current_file` 提供确认元数据；使用其返回 ID 更新文件身份。名称或元数据为空不改变 `status`，也不能证明文件仍为原名。
 
@@ -118,7 +135,7 @@
 | `waiting` | 预览存在，尚未开始执行。 |
 | `validating` | 执行前复核。 |
 | `renaming` | 写入目标名称。 |
-| `finished` | 执行响应已就绪，可能为 `completed`、`partial` 或 `failed`。 |
+| `finished` | 执行响应已就绪，可能为 `completed` 或 `incomplete`。 |
 | `failed` | 执行请求复核失败、异常或中断，不代表已有完整执行响应。 |
 
 `phase` 和 `processed` 仅表示进度，不替代最终逐项结果。`finished` 不保证全部成功，`failed` 不证明从未写入。

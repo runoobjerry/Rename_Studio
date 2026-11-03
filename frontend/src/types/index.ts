@@ -128,6 +128,8 @@ export interface ErrorContext extends Record<string, unknown> {
 }
 
 export type RenameItemStatus = "renamed" | "skipped" | "failed" | "unknown" | "not_attempted";
+export type RenameExecutionStatus = "completed" | "incomplete";
+export type RenameResultCounts = Record<RenameItemStatus, number>;
 
 export interface ExecuteItem {
   file_id: string;
@@ -143,13 +145,15 @@ export interface ExecuteItem {
 
 export interface ExecuteResponse {
   preview_id: string;
-  status: "completed" | "partial" | "failed";
+  status: RenameExecutionStatus;
+  counts: RenameResultCounts;
   items: ExecuteItem[];
 }
 
 export interface SingleRenameExecuteResponse {
   operation_id: string;
-  status: "completed" | "partial" | "failed";
+  status: RenameExecutionStatus;
+  counts: RenameResultCounts;
   items: SingleExecuteItem[];
 }
 

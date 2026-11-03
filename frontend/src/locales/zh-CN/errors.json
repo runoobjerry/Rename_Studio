@@ -16,7 +16,7 @@
     "REQUEST_VALIDATION_ERROR": "填写的信息不完整或不符合要求，请检查后重试。",
     "RULE_CONFIGURATION_ERROR": "规则设置无效，请检查规则中的填写内容。",
     "RENAME_CONFLICT": "此目录中已存在同名项目，请修改新名称后重试。",
-    "PREVIEW_EXPIRED": "预览已失效，请刷新预览。",
+    "PREVIEW_EXPIRED": "当前预览过期或文件状态发生变化。",
     "PREVIEW_NOT_FOUND": "预览不存在，请刷新预览。",
     "STORAGE_BUSY": "此连接正在处理其他操作，请等待完成后重试。",
     "STORAGE_CONNECTION_CHANGED": "连接或账号已变化，请刷新目录后重新预览。",

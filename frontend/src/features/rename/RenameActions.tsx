@@ -6,7 +6,6 @@ import {
   Button,
   CircularProgress,
   Dialog,
-  Typography,
   DialogActions,
   DialogContent,
   DialogContentText,
@@ -18,9 +17,17 @@ import {
 import type { PreviewResponse, RenameProgress } from "../../types";
 import { errorMessage } from "../../i18n/messages";
 
+const phaseLabels = {
+  waiting: "files:rename.phases.waiting",
+  validating: "files:rename.phases.validating",
+  renaming: "files:rename.phases.renaming",
+  failed: "files:rename.phases.failed",
+  submitting: "files:rename.phases.submitting",
+} as const;
+
 export interface RenameActionsProps {
   preview?: PreviewResponse;
-  providerName: string;
+  connectionName: string;
   selectedCount: number;
   isPreviewing: boolean;
   isExecuting: boolean;
@@ -31,14 +38,13 @@ export interface RenameActionsProps {
   progressError?: string;
   executeError?: string;
   revalidationError?: string;
-  hasUnknownOutcome?: boolean;
   onPreview: () => void;
   onExecute: (previewId: string) => void;
 }
 
 export function RenameActions({
   preview,
-  providerName,
+  connectionName,
   selectedCount,
   isPreviewing,
   isExecuting,
@@ -49,7 +55,6 @@ export function RenameActions({
   progressError,
   executeError,
   revalidationError,
-  hasUnknownOutcome = false,
   onPreview,
   onExecute,
 }: RenameActionsProps) {
@@ -59,24 +64,23 @@ export function RenameActions({
   const changedCount = preview?.items.filter((item) => item.changed).length ?? 0;
   const currentProgress = progress?.preview_id === preview?.preview_id ? progress : undefined;
   const total = currentProgress?.total ?? changedCount;
-  const processed = hasExecuted ? total : currentProgress?.processed ?? 0;
+  const processed = currentProgress?.processed ?? 0;
   const percent = total > 0 ? Math.min(100, Math.floor(processed / total * 100)) : 0;
   const started = applied || isExecuting || hasExecuted || Boolean(executeError || revalidationError);
   const executionError = revalidationError ?? executeError ?? (currentProgress?.error ? errorMessage({ message: currentProgress.error }, t) : undefined);
-  const phase = hasExecuted ? "finished" : hasUnknownOutcome && executionError ? "unknown"
-    : executionError ? "failed" : currentProgress?.phase ?? (applied || isExecuting ? "submitting" : "waiting");
-  const isFailed = phase === "failed" || phase === "unknown";
+  const executionEnded = hasExecuted || Boolean(executeError && !revalidationError && !isExecuting);
+  // 进度轮询结束不代表最终响应已返回，继续等待执行请求。
+  const phase = executionError ? "failed" : currentProgress?.phase === "finished" ? "renaming"
+    : currentProgress?.phase ?? (applied || isExecuting ? "submitting" : "waiting");
+  const isFailed = phase === "failed";
 
   useEffect(() => {
     setConfirming(false);
     setApplied(false);
   }, [preview?.preview_id]);
   useEffect(() => {
-    if (!hasExecuted) return;
-    // 收到真实执行结果后短暂展示 100%，再关闭确认卡片。
-    const timer = window.setTimeout(() => setConfirming(false), 600);
-    return () => window.clearTimeout(timer);
-  }, [hasExecuted]);
+    if (executionEnded) setConfirming(false);
+  }, [executionEnded]);
 
   return (
     <>
@@ -101,22 +105,20 @@ export function RenameActions({
         </Button>
       </Stack>
 
-      <Dialog open={confirming} onClose={() => {
+      <Dialog open={confirming && !executionEnded} onClose={() => {
         if (!isExecuting && !revalidationError) setConfirming(false);
       }}>
-        <DialogTitle>{t(`files:rename.phases.${phase}`)}</DialogTitle>
+        <DialogTitle>{t(phaseLabels[phase])}</DialogTitle>
         <DialogContent>
           <div style={{ position: "relative" }}>
             {/* 保留确认文案占位，状态切换时弹窗尺寸保持不变。 */}
             <DialogContentText sx={{ visibility: started ? "hidden" : "visible" }}>
-              {t("files:rename.confirm", { provider: providerName, count: changedCount })}
-              <Typography component="span" variant="inherit" sx={{ color: "error.main" }}>{t("files:rename.irreversible")}</Typography>
+              {t("files:rename.confirm", { connectionName, count: changedCount })}
             </DialogContentText>
             {started && !hasExecuted && (
               <DialogContentText role="status" sx={{ position: "absolute", inset: 0, overflowY: "auto",
                 color: executionError || (isExecuting && progressError) ? "error.main" : "text.secondary" }}>
-                {hasUnknownOutcome && executionError ? t("files:rename.unknownOutcome")
-                  : revalidationError ?? (executionError ? t("files:rename.returnedError", { message: executionError }) : isExecuting && progressError
+                {revalidationError ?? (executionError ? t("files:rename.returnedError", { message: executionError }) : isExecuting && progressError
                   ? t("files:rename.progressUnavailable", { message: progressError })
                   : t("files:rename.processed", { processed, total }))}
               </DialogContentText>

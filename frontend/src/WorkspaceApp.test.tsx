@@ -72,7 +72,9 @@ describe("workspace workflow wiring", () => {
     expect(within(dialog).getByRole("button", { name: "应用" })).toBeDisabled();
     const current = fileItem("provider-new-id", { name: "资料.txt", path: "资料.txt" });
     vi.mocked(api.fetchStorageFiles).mockResolvedValue({ ...listing(1), items: [current] });
-    await act(async () => execution.resolve({ operation_id: "single-ui", status: "completed", items: [{
+    await act(async () => execution.resolve({ operation_id: "single-ui", status: "completed",
+      counts: { renamed: 1, skipped: 0, failed: 0, unknown: 0, not_attempted: 0 },
+      items: [{
       file_id: "file-0.txt", original_name: "file-0.txt", new_name: "资料.txt",
       status: "renamed", error: null, current_file: current,
     }] }));
@@ -128,7 +130,9 @@ describe("workspace workflow wiring", () => {
     fireEvent.click(allSelection);
     fireEvent.click(invertSelection);
     expect(useRenameStore.getState().selectedIds).toEqual(items.map((item) => item.id));
-    await act(async () => resolveExecution.resolve({ preview_id: "task-preview", status: "completed", items: items.map((file) => ({
+    await act(async () => resolveExecution.resolve({ preview_id: "task-preview", status: "completed",
+      counts: { renamed: items.length, skipped: 0, failed: 0, unknown: 0, not_attempted: 0 },
+      items: items.map((file) => ({
       file_id: file.id, original_name: file.name, new_name: `renamed-${file.name}`, status: "renamed", error: null,
     })) }));
   });
@@ -140,14 +144,12 @@ describe("workspace workflow wiring", () => {
     await waitFor(() => expect(screen.getByRole("button", { name: "开始修改" })).toBeEnabled());
     fireEvent.click(screen.getByRole("button", { name: "开始修改" }));
     fireEvent.click(screen.getByRole("button", { name: "应用" }));
-    await screen.findByRole("heading", { name: "修改结果待核对" });
-    fireEvent.click(screen.getByRole("button", { name: "关闭" }));
     await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
     expect(useRenameStore.getState().unknownExecution?.items).toHaveLength(2);
     expect(screen.getByRole("button", { name: "刷新预览" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "开始修改" })).toBeDisabled();
     const panel = within(screen.getByRole("region", { name: "修改预览" }));
-    expect(panel.getByText("部分项目的重命名结果尚未确认。请刷新目录，或前往文件源进行检查，核对前不要重复执行。").closest('[role="alert"]')).toBeInTheDocument();
+    expect(panel.getByText("本次修改存在未知结果的项目，请刷新文件目录或前往文件源检查。").closest('[role="alert"]')).toBeInTheDocument();
     expect(panel.getAllByText("待核对")).toHaveLength(2);
     expect(panel.getAllByText("未知")).toHaveLength(2);
     vi.mocked(api.fetchStorageFiles).mockRejectedValueOnce(new Error("Directory unavailable"));
@@ -161,7 +163,7 @@ describe("workspace workflow wiring", () => {
     await waitFor(() => expect(useRenameStore.getState().unknownExecution?.previewUnlocked).toBe(true));
     expect(panel.getAllByText("待核对")).toHaveLength(2);
     expect(panel.getAllByText("未知")).toHaveLength(2);
-    expect(panel.getByText("部分项目的重命名结果尚未确认。请刷新目录，或前往文件源进行检查，核对前不要重复执行。")).toBeInTheDocument();
+    expect(panel.getByText("本次修改存在未知结果的项目，请刷新文件目录或前往文件源检查。")).toBeInTheDocument();
     expect(api.releaseStoragePreview).not.toHaveBeenCalled();
     expect(screen.getByRole("button", { name: "开始修改" })).toBeDisabled();
     expect(api.executePreview).toHaveBeenCalledTimes(1);

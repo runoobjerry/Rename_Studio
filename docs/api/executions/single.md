@@ -32,7 +32,7 @@
 
 #### Returns
 
-HTTP 200，返回 [SingleRenameExecuteResponse](index.md#对象singlerenameexecuteresponse)。整体成功为 `completed`，失败或未知为 `failed`；唯一结果项的 `status` 分别为 `renamed`、`failed` 或 `unknown`，定义见[逐项状态](index.md#execution-outcomes)。
+HTTP 200，返回 [SingleRenameExecuteResponse](index.md#对象singlerenameexecuteresponse)。整体成功为 `completed`，失败或未知为 `incomplete`；唯一结果项的 `status` 分别为 `renamed`、`failed` 或 `unknown`，定义见[逐项状态](index.md#execution-outcomes)。`counts` 返回各状态的数量。
 
 成功后用 `current_file` 更新 ID 和名称。写入未知时先按 ID 核对，无法确认则返回 `RENAME_OUTCOME_UNKNOWN`，不自动重放。客户端网络失败也不得自动重发。
 
@@ -49,6 +49,7 @@ Content-Type: application/json
 {
   "operation_id":"72ec54b8-8818-42ec-9ca1-7ae217976c53",
   "status":"completed",
+  "counts":{"renamed":1,"skipped":0,"failed":0,"unknown":0,"not_attempted":0},
   "items":[
     {
       "file_id":"IMG_1.jpg",
@@ -82,7 +83,8 @@ Content-Type: application/json
 ```json
 {
   "operation_id":"72ec54b8-8818-42ec-9ca1-7ae217976c53",
-  "status":"failed",
+  "status":"incomplete",
+  "counts":{"renamed":0,"skipped":0,"failed":1,"unknown":0,"not_attempted":0},
   "items":[
     {
       "file_id":"IMG_1.jpg",
@@ -99,12 +101,13 @@ Content-Type: application/json
 }
 ```
 
-无法确认最终结果时，整体为 `failed`，结果项为 `unknown`：
+无法确认最终结果时，整体为 `incomplete`，结果项为 `unknown`：
 
 ```json
 {
   "operation_id":"72ec54b8-8818-42ec-9ca1-7ae217976c53",
-  "status":"failed",
+  "status":"incomplete",
+  "counts":{"renamed":0,"skipped":0,"failed":0,"unknown":1,"not_attempted":0},
   "items":[
     {
       "file_id":"IMG_1.jpg",

@@ -764,7 +764,7 @@ async def test_unexpected_returned_name_is_reported_as_actual_name(provider_fact
     result = await SingleRenameService(registry_for([provider])).execute(provider.id, SingleRenameExecuteRequest(
         operation_id=uuid4(), revision=1, file_id="a", original_name="A", target_name="AA",
     ))
-    assert result.status == "failed"
+    assert result.items[0].status == "failed"
     assert result.items[0].error_code == "PROVIDER_ERROR"
     assert result.items[0].actual_name == "External"
     assert len(server.writes) == 1
