@@ -26,7 +26,7 @@ describe("shared notifications", () => {
     fireEvent.click(screen.getByRole("button", { name: "数量通知" }));
     expect(screen.getByRole("alert")).toHaveTextContent("本次修改已全部完成：2 项已修改。");
     await act(async () => { await i18n.changeLanguage("en-US"); });
-    expect(screen.getByRole("alert")).toHaveTextContent("Renaming completed successfully: 2 items renamed.");
+    expect(screen.getByRole("alert")).toHaveTextContent("Renaming completed. Items renamed: 2.");
     fireEvent.click(screen.getByRole("button", { name: "路径通知" }));
     expect(screen.getByRole("alert")).toHaveTextContent("Set “<b>工作目录</b>” as the default location for the current account.");
     expect(screen.getByRole("alert").querySelector("b")).toBeNull();
