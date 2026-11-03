@@ -21,7 +21,7 @@ interface StorageSidebarProps {
 
 const providerIcons = { computer: ComputerRoundedIcon, cloud: CloudQueueRoundedIcon };
 
-function StorageName({ name }: { name: string }) {
+function StorageName({ name, service, email }: { name: string; service: string; email: string | null }) {
   const nameRef = useRef<HTMLSpanElement>(null);
   const [isOverflowing, setIsOverflowing] = useState(false);
 
@@ -35,7 +35,12 @@ function StorageName({ name }: { name: string }) {
   }, [name]);
 
   return (
-    <Tooltip title={isOverflowing ? name : ""}>
+    <Tooltip placement="right" title={
+      <Box sx={{ overflowWrap: "anywhere" }}>
+        {isOverflowing && <Typography component="div" variant="caption">{name}</Typography>}
+        <Typography component="div" variant="caption">{email ? `${service} · ${email}` : service}</Typography>
+      </Box>
+    }>
       <ListItemText
         sx={{ minWidth: 0 }}
         primary={<Typography ref={nameRef} component="span" noWrap sx={{ display: "block" }}>{name}</Typography>}
@@ -91,7 +96,11 @@ export function StorageSidebar({ storages, providerDefinitions, isLoading, disab
               <ListItemIcon>
                 <Icon />
               </ListItemIcon>
-              <StorageName name={storage.name} />
+              <StorageName
+                name={storage.name}
+                service={t(`providers:${storage.provider_type}.name`)}
+                email={storage.account_email}
+              />
             </ListItemButton>
           );
         })}
