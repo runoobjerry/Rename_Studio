@@ -160,14 +160,6 @@ export function scanSource(text, filename) {
         else errors.push(`${filename}: translatedCodes requires literal strings`);
       }
     }
-    if (ts.isInterfaceDeclaration(node) && node.name.text === "RenameProgress") {
-      const phase = node.members.find((member) => member.name?.getText(source) === "phase");
-      if (!phase?.type || !ts.isUnionTypeNode(phase.type)) errors.push(`${filename}: RenameProgress.phase requires scanner support`);
-      else for (const type of phase.type.types) {
-        if (ts.isLiteralTypeNode(type) && ts.isStringLiteral(type.literal)) required.add(`files:rename.phases.${type.literal.text}`);
-        else errors.push(`${filename}: RenameProgress.phase must use literal strings`);
-      }
-    }
     if (ts.isCallExpression(node) && /^(?:t|i18n\.t)$/.test(node.expression.getText(source))) keys(node.arguments[0], node.expression.getText(source) === "i18n.t" ? "common" : namespaceAt(node));
     // Also includes notification descriptors and labelKey maps outside calls to t().
     if (ts.isStringLiteralLike(node) && namespaces.some((ns) => node.text.startsWith(`${ns}:`)) && /^[a-z]+:[\w.]+$/.test(node.text)) required.add(node.text);

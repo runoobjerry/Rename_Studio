@@ -8,6 +8,7 @@ import pytest
 import httpx
 
 from app.core.errors import PermissionDeniedError, ProviderError, RateLimitError, RenameOutcomeUnknownError, ValidationError
+from app.providers.retry import RetryBudget
 from app.providers.base import RenameRequest
 from app.providers.onedrive.driver import GRAPH_ROOT, OneDriveProvider
 from app.schemas.files import FileItem
@@ -15,6 +16,32 @@ from app.schemas.storage import IdLocation, PathLocation, RootLocation
 from app.providers.onedrive.auth import OneDriveAuthService
 from app.services.execute_service import ExecuteService
 from provider_fixtures import CooldownClock
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("status", [408, 503])
+async def test_uncertain_part_preserves_success_and_refusal_without_resubmission(status: int) -> None:
+    provider = StubOneDriveProvider([{"responses": [
+        {"id": "0", "status": 200, "body": drive_item("a", "AA")},
+        {"id": "1", "status": status},
+        {"id": "2", "status": 429, "headers": {"Retry-After": "0"}},
+    ]}])
+    result = await provider.rename_many([RenameRequest("a", "AA"), RenameRequest("b", "BB"), RenameRequest("c", "CC")])
+    assert result["a"].name == "AA"
+    assert isinstance(result["b"], RenameOutcomeUnknownError)
+    assert isinstance(result["c"], RateLimitError)
+    assert len(provider.calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_verified_different_batch_name_is_failed_without_replay() -> None:
+    provider = StubOneDriveProvider([{"responses": [
+        {"id": "0", "status": 200, "body": drive_item("a", "external.txt")},
+    ]}])
+    result = await provider.rename_many([RenameRequest("a", "new.txt")])
+    assert isinstance(result["a"], ProviderError)
+    assert result["a"].details["actual_name"] == "external.txt"
+    assert len(provider.calls) == 1
 
 
 def drive_item(item_id: str, name: str, *, folder: bool = False) -> dict[str, Any]:
@@ -42,7 +69,10 @@ class StubOneDriveProvider(OneDriveProvider):
         url: str,
         *,
         json: dict[str, object] | None = None,
+        budget: RetryBudget | None = None,
     ) -> dict[str, object]:
+        if budget is not None:
+            budget.used += 1
         self.calls.append((method, url, json))
         return self.responses.pop(0)
 
@@ -96,7 +126,8 @@ async def test_single_patch_maps_graph_permission_denied(
                 task.cancel()
             await asyncio.gather(task, return_exceptions=True)
     assert caught.value.code == ("RATE_LIMIT_ERROR" if final_status == 429 else "PERMISSION_DENIED")
-    assert caught.value.details == {"graph_status": final_status}
+    assert caught.value.details == {"provider_type": "onedrive", "provider_status": final_status, "graph_status": final_status,
+                                         **({"provider_codes": ["accessDenied"]} if final_status == 403 else {})}
     assert [request.method for request in requests] == (["PATCH"] * 4 + ["GET"] if final_status == 429 else ["PATCH", "PATCH"])
 
 
@@ -246,7 +277,10 @@ async def test_service_two_group_window_does_not_multiply_graph_concurrency() ->
 
         async def _request_json(
             self, method: str, url: str, *, json: dict[str, Any] | None = None,
+            budget: RetryBudget | None = None,
         ) -> dict[str, object]:
+            if budget is not None:
+                budget.used += 1
             assert method == "POST" and url == f"{GRAPH_ROOT}/$batch"
             assert json is not None
             index = len(self.calls)

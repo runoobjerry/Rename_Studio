@@ -222,7 +222,8 @@ async def test_reports_partial_provider_failure(tmp_path: Path) -> None:
 
     result = await execute_service.execute(preview.preview_id)
 
-    assert result.status == "partial"
+    assert result.status == "incomplete"
+    assert result.counts.model_dump() == {"renamed": 1, "skipped": 0, "failed": 1, "unknown": 0, "not_attempted": 0}
     progress = execute_service.progress(preview.preview_id)
     assert progress.processed == progress.total == 2
     assert [item.status for item in result.items] == ["renamed", "failed"]

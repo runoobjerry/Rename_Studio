@@ -9,7 +9,8 @@ from urllib.parse import urlencode
 
 import httpx
 
-from app.core.errors import AuthenticationError, ProviderError, RateLimitError, StorageConnectionChangedError, ValidationError
+from app.providers.errors import auth_response_error
+from app.core.errors import AuthenticationError, ProviderError, StorageConnectionChangedError, ValidationError
 from app.schemas.storage import AuthorizationStart, AuthorizationStatus
 
 
@@ -244,17 +245,13 @@ class OneDriveAuthService:
                     headers={"Authorization": f"Bearer {self._tokens.access_token}"},
                 )
         except httpx.HTTPError as exc:
-            raise ProviderError("Microsoft Graph is unavailable") from exc
-        if response.status_code == 429:
-            raise RateLimitError("Microsoft Graph account service is rate limited; try again later")
-        if response.status_code in (401, 403):
-            raise AuthenticationError("Could not verify the connected Microsoft account")
+            raise ProviderError("Microsoft Graph is unavailable", details={"provider_type": "onedrive"}) from exc
         if response.is_error:
-            raise ProviderError("Could not read the Microsoft account")
+            raise auth_response_error("onedrive", response.status_code, service="onedrive account service", token=False)
         try:
             payload = response.json()
         except ValueError as exc:
-            raise ProviderError("Microsoft Graph returned invalid account data") from exc
+            raise ProviderError("Microsoft Graph returned invalid account data", details={"provider_type": "onedrive"}) from exc
         if not isinstance(payload, dict):
             raise ProviderError("Microsoft Graph returned invalid account data")
         if generation != self._generation:
@@ -283,20 +280,14 @@ class OneDriveAuthService:
             async with httpx.AsyncClient(timeout=self.timeout) as client:
                 response = await client.post(TOKEN_URL, data=form)
         except httpx.HTTPError as exc:
-            raise ProviderError("Microsoft identity service is unavailable") from exc
+            raise ProviderError("Microsoft identity service is unavailable", details={"provider_type": "onedrive"}) from exc
         # Classify refusals before parsing: throttling and outages may return non-JSON bodies.
-        if response.status_code == 429:
-            raise RateLimitError("Microsoft identity service is rate limited; try again later")
-        if response.status_code >= 500:
-            raise ProviderError("Microsoft identity service is unavailable")
-        if response.status_code in (400, 401, 403):
-            raise AuthenticationError("OneDrive authorization was rejected; check the App ID and reconnect")
         if response.is_error:
-            raise ProviderError("Microsoft identity service request failed")
+            raise auth_response_error("onedrive", response.status_code, service="onedrive authorization service", token=True)
         try:
             payload = response.json()
         except ValueError as exc:
-            raise ProviderError("Microsoft identity service returned invalid data") from exc
+            raise ProviderError("Microsoft identity service returned invalid data", details={"provider_type": "onedrive"}) from exc
         if not isinstance(payload, dict):
             raise ProviderError("Microsoft identity service returned invalid data")
         return payload

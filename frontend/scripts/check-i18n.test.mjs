@@ -100,14 +100,14 @@ def register_builtin_providers(registry, settings):
       t("title"); t(flag ? "common:save" : "common:cancel"); t(["files:title", "common:close"]);
       const notice = { key: "files:notifications.refreshed" }; const url = "about:blank";
       const translatedCodes = ["DEMO_ERROR"];
-      interface RenameProgress { phase: "waiting" | "finished" }
+      const phaseLabels = { renaming: "files:rename.phases.renaming" };
       function Other() { const { t } = useTranslation(); t("loadingPage"); }
       t(variable); t(\`providers:\${type}.name\`);
     `, "Probe.tsx");
     expect(scan.errors).toEqual([]);
     expect([...scan.required]).toEqual(expect.arrayContaining([
       "settings:title", "common:save", "common:cancel", "common:close", "common:loadingPage", "files:title",
-      "files:notifications.refreshed", "errors:codes.DEMO_ERROR", "files:rename.phases.finished",
+      "files:notifications.refreshed", "errors:codes.DEMO_ERROR", "files:rename.phases.renaming",
     ]));
     expect(scan.required.has("about:blank")).toBe(false);
     expect(scan.dynamic.size).toBe(2);

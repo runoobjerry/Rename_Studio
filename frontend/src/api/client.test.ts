@@ -1,13 +1,26 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { ApiError, createStoragePreview, executeStorageSingleRename, releaseStoragePreview, disconnectStorage, fetchStorages, fetchRenameProgress, fetchAppSettings, patchAppSettings, factoryResetAppSettings } from "./client";
+import { ApiError, createStoragePreview, executeStorageSingleRename, executePreview, fetchStorageFiles, releaseStoragePreview, disconnectStorage, fetchStorages, fetchRenameProgress, fetchAppSettings, patchAppSettings, factoryResetAppSettings } from "./client";
 
 afterEach(() => vi.unstubAllGlobals());
 
 describe("API client", () => {
+  it("marks POST reads and rename writes explicitly while preserving a lost response", async () => {
+    const failure = new TypeError("Response lost");
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(failure));
+    await expect(fetchStorageFiles("local", { kind: "root" })).rejects.toBe(failure);
+    expect(failure).toMatchObject({ status: 0, operation: "read" });
+    await expect(createStoragePreview("local", { kind: "root" }, ["a"], [])).rejects.toBe(failure);
+    expect(failure).toMatchObject({ operation: "read" });
+    await expect(executePreview("preview-id")).rejects.toBe(failure);
+    expect(failure).toMatchObject({ status: 0, operation: "write" });
+  });
+
   it("submits a single rename directly without requesting a preview", async () => {
     const operationId = "00000000-0000-4000-8000-000000000001";
-    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ operation_id: operationId, status: "completed", items: [] })));
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ operation_id: operationId, status: "completed",
+      counts: { renamed: 0, skipped: 0, failed: 0, unknown: 0, not_attempted: 0 },
+      items: [] })));
     vi.stubGlobal("fetch", fetchMock);
     const result = await executeStorageSingleRename("connection/id", {
       operation_id: operationId, location: { kind: "id", value: "directory-id" }, file_id: "opaque-id",
@@ -20,7 +33,9 @@ describe("API client", () => {
         original_name: "old.tar.gz", target_name: "资料.tar.gz", revision: 1,
       }),
     });
-    expect(result).toEqual({ operation_id: operationId, status: "completed", items: [] });
+    expect(result).toEqual({ operation_id: operationId, status: "completed",
+      counts: { renamed: 0, skipped: 0, failed: 0, unknown: 0, not_attempted: 0 },
+      items: [] });
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
   it("reads app settings and submits only changed preference fields", async () => {

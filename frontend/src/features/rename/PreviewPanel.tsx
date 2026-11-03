@@ -58,10 +58,17 @@ export const PreviewPanel = memo(function PreviewPanel({
     let unchangedCount = 0;
     // 预览展示被清理后，待核对记录仍保留原始项目供检查。
     const rows = (preview?.items ?? unknownExecution?.items ?? []).map((item) => {
-      const status = statusFor(item, executionById.get(item.file_id), unknownIds.has(item.file_id), t);
+      const result = executionById.get(item.file_id);
+      const needsVerification = unknownIds.has(item.file_id) || result?.status === "unknown";
+      const status = statusFor(item, result, needsVerification, t);
       if (status.isPendingChange) pendingCount++;
       if (status.isUnchanged) unchangedCount++;
-      return { item, status, newName: unknownIds.has(item.file_id) ? t("files:preview.needsVerification") : item.new_name };
+      const currentName = result?.actual_name ?? result?.current_file?.name;
+      const newName = needsVerification ? t("files:preview.needsVerification")
+        : !result ? item.new_name
+        : currentName ?? (result.status === "renamed" ? result.new_name
+          : result.status === "skipped" ? result.original_name : t("files:preview.currentNameUnavailable"));
+      return { item, status, newName };
     });
     return { rows, pendingCount, unchangedCount };
   }, [preview?.items, unknownExecution?.items, unknownIds, executionById, t]);
@@ -130,14 +137,13 @@ export const PreviewPanel = memo(function PreviewPanel({
         </TableContainer>
       )}
 
-      {executeError && (
-        <Alert severity={unknownExecution ? "warning" : "error"} sx={{ m: 2 }}>{unknownExecution
-          ? t("files:rename.unknownOutcome") : t("files:preview.executeFailed", { message: executeError })}</Alert>
+      {executeError && !unknownExecution && (
+        <Alert severity="error" sx={{ m: 2 }}>{t("files:preview.executeFailed", { message: executeError })}</Alert>
       )}
       {unknownExecution && dismissedVerification !== verificationKey && (
         <Alert severity="warning" sx={{ m: 2 }} closeText={t("common:close")}
           onClose={() => setDismissedVerification(verificationKey)}>
-          {t("files:verification.required")}
+          {t("files:preview.unknownOutcome")}
         </Alert>
       )}
     </section>
@@ -169,7 +175,7 @@ function statusFor(item: PreviewResponse["items"][number], result: ExecuteRespon
   if (result?.status === "renamed") {
     label = t("files:preview.filters.renamed");
     className = "valid";
-  } else if (result?.status === "failed") {
+  } else if (result?.status === "failed" || result?.status === "not_attempted") {
     category = "error";
     label = executionItemMessage(result, t);
     className = "invalid";

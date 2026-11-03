@@ -117,27 +117,43 @@ export interface SingleRenameExecuteRequest {
   revision: number;
 }
 
+// Optional context is evidence, never a retry instruction. Provider fields are diagnostic only.
+export interface ErrorContext extends Record<string, unknown> {
+  reason?: string;
+  params?: Record<string, unknown>;
+  stop_reason?: string;
+  execution_started?: boolean;
+  request_id?: string;
+  actual_name?: string;
+}
+
+export type RenameItemStatus = "renamed" | "skipped" | "failed" | "unknown" | "not_attempted";
+export type RenameExecutionStatus = "completed" | "incomplete";
+export type RenameResultCounts = Record<RenameItemStatus, number>;
+
 export interface ExecuteItem {
   file_id: string;
   original_name: string;
   new_name: string;
-  status: "renamed" | "skipped" | "failed";
+  status: RenameItemStatus;
   error: string | null;
   error_code?: string | null;
-  details?: Record<string, unknown> | null;
+  details?: ErrorContext | null;
   actual_name?: string | null;
   current_file?: FileItem | null;
 }
 
 export interface ExecuteResponse {
   preview_id: string;
-  status: "completed" | "partial" | "failed";
+  status: RenameExecutionStatus;
+  counts: RenameResultCounts;
   items: ExecuteItem[];
 }
 
 export interface SingleRenameExecuteResponse {
   operation_id: string;
-  status: "completed" | "partial" | "failed";
+  status: RenameExecutionStatus;
+  counts: RenameResultCounts;
   items: SingleExecuteItem[];
 }
 

@@ -23,7 +23,7 @@
 
 #### Returns
 
-HTTP 200，返回 `RenameExecuteResponse`。必须检查整体 `status` 和逐项 `status`、`error_code`；HTTP 200 不保证全部成功。
+HTTP 200，返回 [RenameExecuteResponse](index.md#对象renameexecuteresponse)。`completed` 表示全部完成，`incomplete` 表示未全部完成；HTTP 200 不保证全部成功。通过 `counts` 和[逐项状态](index.md#execution-outcomes)区分部分完成、失败、未知和未执行。
 
 #### Request / Response 示例
 
@@ -38,6 +38,7 @@ Content-Type: application/json
 {
   "preview_id":"4db956a6-c583-47af-bcde-9ea71312fc36",
   "status":"completed",
+  "counts":{"renamed":1,"skipped":0,"failed":0,"unknown":0,"not_attempted":0},
   "items":[
     {
       "file_id":"IMG_1.jpg",

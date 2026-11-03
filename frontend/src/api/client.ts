@@ -12,19 +12,20 @@ import type {
   AuthorizationStatus,
   StorageInfo, StorageLocation, StorageCreate, StorageUpdate, StorageProviderDefinition,
   AppSettings, AppSettingsPatch,
+  ErrorContext,
 } from "../types";
 
 export class ApiError extends Error {
   readonly status: number;
   readonly code: string | null;
-  readonly details: Record<string, unknown>;
+  readonly details: ErrorContext;
   operation?: "read" | "write";
 
   constructor(
     status: number,
     message: string,
     code: string | null = null,
-    details: Record<string, unknown> = {},
+    details: ErrorContext = {},
   ) {
     super(message);
     this.name = "ApiError";
@@ -49,7 +50,7 @@ function responseError(status: number, body: unknown): ApiError {
   return new ApiError(status, message, code, details);
 }
 
-async function request<T>(url: string, init?: RequestInit): Promise<T> {
+async function request<T>(url: string, operation: "read" | "write", init?: RequestInit): Promise<T> {
   try {
     const response = await fetch(`/api${url}`, init);
     if (!response.ok) {
@@ -60,9 +61,6 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
     return (await response.json()) as T;
   } catch (error) {
     const failure = error instanceof Error ? error : new Error("Invalid response");
-    // POST 也用于只读目录查询，按实际端点区分读取和写入。
-    const operation = !init?.method || init.method === "GET" || url.endsWith("/files/list") || url.endsWith("/rename/preview")
-      ? "read" : "write";
     Object.assign(failure, { operation });
     // 保留浏览器异常的身份、类型和堆栈，同时标记未收到可用响应。
     if (!(failure instanceof ApiError)) Object.assign(failure, { status: 0 });
@@ -71,17 +69,17 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
 }
 
 export function fetchRules(): Promise<RuleDefinition[]> {
-  return request("/rules");
+  return request("/rules", "read");
 }
 
-export const fetchAppSettings = (): Promise<AppSettings> => request("/app-settings");
+export const fetchAppSettings = (): Promise<AppSettings> => request("/app-settings", "read");
 export const patchAppSettings = (body: AppSettingsPatch): Promise<AppSettings> =>
-  request("/app-settings", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  request("/app-settings", "write", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
 export const factoryResetAppSettings = (): Promise<AppSettings> =>
-  request("/app-settings/factory-reset", { method: "POST" });
+  request("/app-settings/factory-reset", "write", { method: "POST" });
 
 export function executePreview(previewId: string): Promise<ExecuteResponse> {
-  return request("/rename/execute", {
+  return request("/rename/execute", "write", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ preview_id: previewId }),
@@ -89,26 +87,26 @@ export function executePreview(previewId: string): Promise<ExecuteResponse> {
 }
 
 export function fetchRenameProgress(previewId: string): Promise<RenameProgress> {
-  return request(`/rename/progress/${encodeURIComponent(previewId)}`);
+  return request(`/rename/progress/${encodeURIComponent(previewId)}`, "read");
 }
 
 const storageUrl = (id: string) => `/storages/${encodeURIComponent(id)}`;
 const jsonPost = (body: unknown): RequestInit => ({ method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
 
-export const fetchStorageProviders = (): Promise<StorageProviderDefinition[]> => request("/storage-providers");
-export const fetchStorages = (): Promise<StorageInfo[]> => request("/storages");
-export const fetchStorage = (id: string): Promise<StorageInfo> => request(storageUrl(id));
-export const createStorage = (body: StorageCreate): Promise<StorageInfo> => request("/storages", jsonPost(body));
-export const updateStorage = (id: string, body: StorageUpdate): Promise<StorageInfo> => request(storageUrl(id), { ...jsonPost(body), method: "PUT" });
-export const deleteStorage = (id: string): Promise<void> => request(storageUrl(id), { method: "DELETE" });
-export const fetchStorageFiles = (id: string, location: StorageLocation): Promise<DirectoryListing> => request(`${storageUrl(id)}/files/list`, jsonPost({ location }));
-export const createStoragePreview = (id: string, location: StorageLocation, fileIds: string[], rules: RuleSpec[], previousPreviewId?: string): Promise<PreviewResponse> => request(`${storageUrl(id)}/rename/preview`, jsonPost({ location, file_ids: fileIds, rules, previous_preview_id: previousPreviewId }));
+export const fetchStorageProviders = (): Promise<StorageProviderDefinition[]> => request("/storage-providers", "read");
+export const fetchStorages = (): Promise<StorageInfo[]> => request("/storages", "read");
+export const fetchStorage = (id: string): Promise<StorageInfo> => request(storageUrl(id), "read");
+export const createStorage = (body: StorageCreate): Promise<StorageInfo> => request("/storages", "write", jsonPost(body));
+export const updateStorage = (id: string, body: StorageUpdate): Promise<StorageInfo> => request(storageUrl(id), "write", { ...jsonPost(body), method: "PUT" });
+export const deleteStorage = (id: string): Promise<void> => request(storageUrl(id), "write", { method: "DELETE" });
+export const fetchStorageFiles = (id: string, location: StorageLocation): Promise<DirectoryListing> => request(`${storageUrl(id)}/files/list`, "read", jsonPost({ location }));
+export const createStoragePreview = (id: string, location: StorageLocation, fileIds: string[], rules: RuleSpec[], previousPreviewId?: string): Promise<PreviewResponse> => request(`${storageUrl(id)}/rename/preview`, "read", jsonPost({ location, file_ids: fileIds, rules, previous_preview_id: previousPreviewId }));
 export function executeStorageSingleRename(id: string, input: SingleRenameExecuteRequest): Promise<SingleRenameExecuteResponse> {
-  return request(`${storageUrl(id)}/rename/single/execute`, jsonPost(input));
+  return request(`${storageUrl(id)}/rename/single/execute`, "write", jsonPost(input));
 }
-export const releaseStoragePreview = (id: string, previewId: string): Promise<void> => request(`${storageUrl(id)}/rename/previews/${encodeURIComponent(previewId)}`, { method: "DELETE" });
-export const fetchStorageAuthStatus = (id: string): Promise<AuthorizationStatus> => request(`${storageUrl(id)}/auth/status`);
-export const startStorageAuth = (id: string): Promise<AuthorizationStart & { redirect_uri: string }> => request(`${storageUrl(id)}/auth/start`, { method: "POST" });
-export const disconnectStorage = (id: string): Promise<void> => request(`${storageUrl(id)}/auth/session`, { method: "DELETE" });
-export const pickStorageFolder = (id: string): Promise<LocalFolderPick> => request(`${storageUrl(id)}/local/pick`, { method: "POST" });
-export const pickLocalFolderDraft = (): Promise<LocalFolderPick> => request("/local/folder-picker", { method: "POST" });
+export const releaseStoragePreview = (id: string, previewId: string): Promise<void> => request(`${storageUrl(id)}/rename/previews/${encodeURIComponent(previewId)}`, "write", { method: "DELETE" });
+export const fetchStorageAuthStatus = (id: string): Promise<AuthorizationStatus> => request(`${storageUrl(id)}/auth/status`, "read");
+export const startStorageAuth = (id: string): Promise<AuthorizationStart & { redirect_uri: string }> => request(`${storageUrl(id)}/auth/start`, "write", { method: "POST" });
+export const disconnectStorage = (id: string): Promise<void> => request(`${storageUrl(id)}/auth/session`, "write", { method: "DELETE" });
+export const pickStorageFolder = (id: string): Promise<LocalFolderPick> => request(`${storageUrl(id)}/local/pick`, "write", { method: "POST" });
+export const pickLocalFolderDraft = (): Promise<LocalFolderPick> => request("/local/folder-picker", "read", { method: "POST" });

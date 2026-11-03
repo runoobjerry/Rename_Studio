@@ -19,17 +19,17 @@
 
 #### Attributes
 
-| 字段 | 类型 | 可空 | 说明 |
-| --- | --- | --- | --- |
-| `preview_id` | string | 否 | 执行的预览标识。 |
-| `status` | string | 否 | `completed`、`partial` 或 `failed`，含义见下表。 |
-| `items` | array of ExecuteItem | 否 | 按预览顺序返回；实际完成顺序可能不同。 |
+| 字段 | 类型 | 必含 | 可空 | 说明 |
+| --- | --- | --- | --- | --- |
+| `preview_id` | string | 是 | 否 | 执行的预览标识。 |
+| `status` | string | 是 | 否 | `completed` 或 `incomplete`，含义见下表。 |
+| `counts` | RenameResultCounts | 是 | 否 | 五种逐项状态的数量，按本次响应的 `items` 计算。 |
+| `items` | array of ExecuteItem | 是 | 否 | 按预览顺序返回；实际完成顺序可能不同。 |
 
 | `status` | 含义 |
 | --- | --- |
-| `completed` | 没有失败项，包括全部跳过的情况。 |
-| `partial` | 存在成功重命名和失败项。 |
-| `failed` | 有失败项且无成功重命名项，可能同时包含跳过项。 |
+| `completed` | 每项均为已确认重命名或无需修改，包括全部跳过的情况。 |
+| `incomplete` | 未全部完成：至少一项为 `failed`、`unknown` 或 `not_attempted`；已确认成功项仍保留。 |
 
 ### 对象：SingleRenameExecuteResponse
 
@@ -37,11 +37,26 @@
 
 #### Attributes
 
-| 字段 | 类型 | 可空 | 说明 |
-| --- | --- | --- | --- |
-| `operation_id` | string | 否 | 请求 UUID 的标准字符串形式。 |
-| `status` | string | 否 | Schema 枚举为 `completed`、`partial`、`failed`；当前单项流程仅返回 `completed` 或 `failed`。 |
-| `items` | array of SingleExecuteItem | 否 | 当前固定为 1 个结果项。 |
+| 字段 | 类型 | 必含 | 可空 | 说明 |
+| --- | --- | --- | --- | --- |
+| `operation_id` | string | 是 | 否 | 请求 UUID 的标准字符串形式。 |
+| `status` | string | 是 | 否 | `completed` 或 `incomplete`；单项成功为 `completed`，失败或未知为 `incomplete`。 |
+| `counts` | RenameResultCounts | 是 | 否 | 五种逐项状态的数量，按本次响应的 `items` 计算。 |
+| `items` | array of SingleExecuteItem | 是 | 否 | 当前固定为 1 个结果项。 |
+
+### 对象：RenameResultCounts
+
+表示本次响应中五种逐项状态的数量；字段均必定返回、不可空，无默认值，合计等于 `items` 长度。
+
+#### Attributes
+
+| 字段 | 类型 | 必含 | 可空 | 说明 |
+| --- | --- | --- | --- | --- |
+| `renamed` | integer | 是 | 否 | 已确认重命名项数，≥ 0。 |
+| `skipped` | integer | 是 | 否 | 无需修改项数，≥ 0。 |
+| `failed` | integer | 是 | 否 | 已确认未达到目标的项数，≥ 0。 |
+| `unknown` | integer | 是 | 否 | 最终结果无法确认的项数，≥ 0。 |
+| `not_attempted` | integer | 是 | 否 | 尚未发出写请求的项数，≥ 0。 |
 
 <a id="execution-items"></a>
 ### 对象：ExecuteItem 与 SingleExecuteItem
@@ -50,23 +65,54 @@
 
 #### Attributes
 
-| 字段 | 类型 | 可空 | 说明 |
-| --- | --- | --- | --- |
-| `file_id` | string | 否 | 原请求 ID，不因重命名后的身份变化而改写。 |
-| `original_name` | string | 否 | 预览原名或单项请求携带的原名。 |
-| `new_name` | string | 否 | 最终目标名。 |
-| `status` | string | 否 | `renamed`、`skipped` 或 `failed`；单项当前只返回 `renamed` 或 `failed`。 |
-| `error` | string | 是 | 失败诊断信息。 |
-| `error_code` | string | 是 | [统一错误码](../common/errors.md#errors)。 |
-| `details` | object | 是 | 附加详情，包括[校验原因](../common/errors.md#validation-reasons)。 |
-| `actual_name` | string | 是 | 批量成功为目标名，跳过为原名；失败时为已确认名称或 `null`。单项成功时也可为 `null`，使用 `current_file.name`。 |
-| `current_file` | FileItem / RenameFile | 是 | 成功写入后确认的元数据；`null` 本身不能证明是否已写入。 |
+| 字段 | 类型 | 必含 | 可空 | 说明 |
+| --- | --- | --- | --- | --- |
+| `file_id` | string | 是 | 否 | 原请求 ID，不因重命名后的身份变化而改写。 |
+| `original_name` | string | 是 | 否 | 预览原名或单项请求携带的原名。 |
+| `new_name` | string | 是 | 否 | 最终目标名。 |
+| `status` | string | 是 | 否 | `renamed`、`skipped`、`failed`、`unknown` 或 `not_attempted`；单项当前返回 `renamed`、`failed` 或 `unknown`。 |
+| `error` | string | 是 | 是 | 诊断信息，默认 `null`。 |
+| `error_code` | string | 是 | 是 | [统一错误码](../common/errors.md#errors)，默认 `null`。 |
+| `details` | object | 是 | 是 | 附加详情，包括[校验原因](../common/errors.md#validation-reasons)，默认 `null`。 |
+| `actual_name` | string | 是 | 是 | 成功为已确认名称，跳过为预览原名；失败时为已核实名称或 `null`，未知和未执行不猜测名称；默认 `null`。 |
+| `current_file` | FileItem / RenameFile | 是 | 是 | 成功写入后确认的元数据；默认 `null`；为空不能证明是否已写入。 |
 
-`renamed` 表示目标已确认；`skipped` 表示批量预览名称未变化；`failed` 包括明确拒绝、未尝试或结果未知，不保证文件仍为原名。
+<a id="execution-outcomes"></a>
+### 操作结果
 
-交换、循环或名称占用链在预览时判为冲突，不使用临时名称。执行保留成功项，不自动回滚；失败时返回明确错误或未知结果。
+逐项 `status` 表示执行结果；`error_code` 和 `details` 补充原因，不能代替状态。
 
-`error_code: RENAME_OUTCOME_UNKNOWN` 表示写入可能发生，但按 ID 核对仍无法确认，此时 `actual_name: null`。核对真实文件后再决定下一步，不自动重放。
+| `status` | 含义 |
+| --- | --- |
+| `renamed` | 已确认达到目标名。 |
+| `skipped` | 无需修改而跳过，不能用于错误或停止提交。 |
+| `failed` | 已确认未达到目标，不保证仍为原名，也不证明请求从未执行。 |
+| `unknown` | 最终结果无法确认，不能直接判为失败。 |
+| `not_attempted` | 尚未发出本项写请求；不是响应丢失，也不是下一次重试未发生。 |
+
+总体状态只表示是否全部成功修改，`incomplete` 不代表全部失败；客户端使用 `counts` 和逐项状态区分部分完成、确认失败、未知及未执行。存在未知或缺失结果时，优先提示待核对。`error_code` 说明具体原因，`stop_reason` 说明停止原因；缺少当前名称不改变结果状态。
+
+`actual_name` 是已确认的当前名称，`new_name` 始终是请求目标。`current_file` 提供确认元数据；使用其返回 ID 更新文件身份。名称或元数据为空不改变 `status`，也不能证明文件仍为原名。
+
+同组出现未知写入时，先按 ID 核实。确认目标已达到则返回 `renamed`，确认其他名称则返回 `failed`；核实不了则保留 `unknown` 并停止提交后续组。未提交项返回 `not_attempted`，已确认成功项保留，不自动回滚。
+
+客户端收到 `unknown`、缺失结果项或丢失整个执行响应时，不自动重发。目录刷新成功只允许重新预览，旧预览仍不可执行；新预览成功后清除待核对状态。结束任务只清理界面状态，不撤销真实改名。
+
+例如下项 `status` 明确表示尚未提交，错误诊断字段继续保留：
+
+```json
+{
+  "file_id": "file-3",
+  "original_name": "C.txt",
+  "new_name": "Z.txt",
+  "status": "not_attempted",
+  "error": "Rename was not attempted after an unknown write outcome",
+  "error_code": "PROVIDER_ERROR",
+  "details": {"reason": "RENAME_NOT_ATTEMPTED", "stop_reason": "RENAME_OUTCOME_UNKNOWN"},
+  "actual_name": null,
+  "current_file": null
+}
+```
 
 ### 对象：RenameProgress
 
@@ -74,21 +120,23 @@
 
 #### Attributes
 
-| 字段 | 类型 | 可空 | 说明 |
-| --- | --- | --- | --- |
-| `preview_id` | string | 否 | 预览标识。 |
-| `total` | integer | 否 | 名称变化的预览项目数，≥ 0。 |
-| `processed` | integer | 否 | 已定案项目数，≥ 0，包括失败和最终未尝试项，不是成功数。初始为 `0`。 |
-| `phase` | string | 否 | 阶段，见下表；初始为 `waiting`。 |
-| `error` | string | 是 | 请求异常终止时的诊断信息，不是逐项失败列表。 |
+| 字段 | 类型 | 必含 | 可空 | 说明 |
+| --- | --- | --- | --- | --- |
+| `preview_id` | string | 是 | 否 | 预览标识。 |
+| `total` | integer | 是 | 否 | 名称变化的预览项目数，≥ 0。 |
+| `processed` | integer | 是 | 否 | 已定案项目数，≥ 0，包括失败和最终未尝试项，不是成功数。初始为 `0`。 |
+| `phase` | string | 是 | 否 | 阶段，见下表；初始为 `waiting`。 |
+| `error` | string | 是 | 是 | 请求异常终止时的诊断信息，不是逐项失败列表。 |
 
 | `phase` | 含义 |
 | --- | --- |
 | `waiting` | 预览存在，尚未开始执行。 |
 | `validating` | 执行前复核。 |
 | `renaming` | 写入目标名称。 |
-| `finished` | 执行响应已就绪，可能为 `completed`、`partial` 或 `failed`。 |
+| `finished` | 执行响应已就绪，可能为 `completed` 或 `incomplete`。 |
 | `failed` | 执行请求复核失败、异常或中断，不代表已有完整执行响应。 |
+
+`phase` 和 `processed` 仅表示进度，不替代最终逐项结果。`finished` 不保证全部成功，`failed` 不证明从未写入。
 
 <a id="endpoint-get-rename-progress-preview-id"></a>
 ### 获取执行进度

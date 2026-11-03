@@ -2,6 +2,13 @@ from typing import Any
 
 
 class AppError(Exception):
+    """Stable application category and HTTP status, with diagnostic-only message.
+
+    ``details`` contains JSON-safe, non-secret context defined in the API error
+    contract. It is not a retry policy: callers also need the operation and the
+    evidence about its outcome. Preserve external exception chains with ``from``.
+    """
+
     code = "APPLICATION_ERROR"
     status_code = 400
 

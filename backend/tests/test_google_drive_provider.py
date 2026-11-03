@@ -16,6 +16,8 @@ from pydantic import BaseModel
 from app.core.errors import AuthenticationError, NotFoundError, PermissionDeniedError, PreviewExpiredError, ProviderError, RateLimitError, RenameOutcomeUnknownError, ValidationError
 from app.providers.base import RenameRequest
 from app.providers.google_drive.driver import BATCH_URL, FOLDER_MIME, READ_BATCH_SIZE, SHORTCUT_MIME, GoogleDriveProvider
+
+
 from app.rules.base import RenameRule, RuleContext
 from app.rules.registry import RuleRegistry
 from app.schemas.rename import RenamePreviewRequest, SingleRenameExecuteRequest
@@ -27,6 +29,25 @@ from app.services.preview_service import PreviewService
 from app.services.preview_store import PreviewStore
 from app.services.rename_engine import RenameEngine
 from provider_fixtures import CooldownClock, registry_for
+
+
+@pytest.mark.parametrize(("status", "reason", "error_type"), [
+    (401, "authError", AuthenticationError),
+    (403, "rateLimitExceeded", RateLimitError),
+    (403, "userRateLimitExceeded", RateLimitError),
+    (403, "insufficientFilePermissions", PermissionDeniedError),
+    (403, "dailyLimitExceeded", PermissionDeniedError),
+    (404, "notFound", NotFoundError),
+    (400, "badRequest", ValidationError),
+    (503, "backendError", ProviderError),
+])
+def test_http_classification_keeps_vendor_reasons_as_diagnostics(status: int, reason: str, error_type: type[Exception]) -> None:
+    error = GoogleDriveProvider._response_error(httpx.Response(status, json={
+        "error": {"errors": [{"reason": reason}], "message": "diagnostic", "secret": "must-not-escape"},
+    }))
+    assert isinstance(error, error_type)
+    assert error.details == {"provider_type": "google_drive", "provider_status": status,
+                             "provider_codes": [reason], "google_status": status}
 
 
 class FakeAuth:
@@ -666,7 +687,7 @@ async def test_unknown_part_prevents_retry_of_other_refused_parts(provider_facto
     server.reject_once = {"a": 503, "b": 429}
     result = await provider_factory(server).rename_many([RenameRequest("a", "AA"), RenameRequest("b", "BB")])
     assert isinstance(result["a"], RenameOutcomeUnknownError)
-    assert isinstance(result["b"], ProviderError)
+    assert isinstance(result["b"], RateLimitError)
     assert len(server.writes) == 1
 
 
@@ -743,7 +764,7 @@ async def test_unexpected_returned_name_is_reported_as_actual_name(provider_fact
     result = await SingleRenameService(registry_for([provider])).execute(provider.id, SingleRenameExecuteRequest(
         operation_id=uuid4(), revision=1, file_id="a", original_name="A", target_name="AA",
     ))
-    assert result.status == "failed"
+    assert result.items[0].status == "failed"
     assert result.items[0].error_code == "PROVIDER_ERROR"
     assert result.items[0].actual_name == "External"
     assert len(server.writes) == 1

@@ -228,10 +228,9 @@ async def test_unknown_group_pauses_refill_and_drains_other_in_flight_group(unre
     assert len(submitted) == len(set(submitted))
     if unreadable:
         assert len(provider.groups) == 2
-        assert result.status == "partial"
-        assert all(item.error_code == "RENAME_OUTCOME_UNKNOWN" and item.actual_name is None for item in result.items[:20])
+        assert all(item.status == "unknown" and item.error_code == "RENAME_OUTCOME_UNKNOWN" and item.actual_name is None for item in result.items[:20])
         assert all(item.status == "renamed" for item in result.items[20:40])
-        assert all(item.status == "failed" and "not attempted" in item.error for item in result.items[40:])
+        assert all(item.status == "not_attempted" for item in result.items[40:])
         assert all(provider.items[str(index)].name == f"old-{index}" for index in range(40, 60))
     else:
         assert len(provider.groups) == 3
@@ -257,11 +256,10 @@ async def test_unresolved_unknown_waits_for_other_in_flight_write_before_returni
     finally:
         provider.release_everything()
         result = await asyncio.wait_for(task, timeout=5)
-    assert result.status == "partial"
     assert len(provider.groups) == 2
     assert provider.active == 0
     assert all(item.status == "renamed" for item in result.items[20:40])
-    assert all(item.status == "failed" for item in result.items[40:])
+    assert all(item.status == "not_attempted" for item in result.items[40:])
 
 
 @pytest.mark.asyncio
@@ -277,7 +275,7 @@ async def test_confirmed_failure_keeps_successes_and_continues_independent_group
     finally:
         provider.release_everything()
         result = await asyncio.wait_for(task, timeout=5)
-    assert result.status == "partial"
+    assert result.items[0].status == "failed"
     assert result.items[0].error_code == "PROVIDER_ERROR"
     assert all(item.status == "renamed" for item in result.items[1:])
     assert provider.items["0"].name == "old-0"
@@ -403,7 +401,7 @@ async def test_unknown_outcome_stops_later_batches() -> None:
     provider.lose_response = True
     provider.unreadable_after_write = True
     result = await execute.execute(snapshot.preview_id)
-    assert result.status == "failed"
+    assert [item.status for item in result.items] == ["unknown", "unknown", "not_attempted"]
     assert result.items[0].error_code == "RENAME_OUTCOME_UNKNOWN"
     assert result.items[0].actual_name is None
     assert provider.items["3"].name == "C"
@@ -473,9 +471,9 @@ async def test_single_target_lost_response_never_replays_write(readable: bool) -
     assert len(provider.writes) == 1
     assert provider.items["opaque-id"].name == "new.txt"
     if readable:
-        assert result.status == "completed"
+        assert result.items[0].status == "renamed"
         assert result.items[0].current_file.name == "new.txt"
     else:
-        assert result.status == "failed"
+        assert result.items[0].status == "unknown"
         assert result.items[0].error_code == "RENAME_OUTCOME_UNKNOWN"
         assert result.items[0].actual_name is None

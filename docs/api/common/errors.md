@@ -7,17 +7,18 @@
 
 ### Attributes
 
-| 字段 | 类型 | 可空 | 说明 |
-| --- | --- | --- | --- |
-| `error` | object | 否 | 错误内容。 |
-| ↳ `code` | string | 否 | 稳定错误码，用于选择处理方式。 |
-| ↳ `message` | string | 否 | 诊断信息；不作为业务标识或固定语言文案。 |
-| ↳ `details` | object | 否 | 附加数据；没有附加数据时为 `{}`。 |
+| 字段 | 类型 | 必含 | 可空 | 说明 |
+| --- | --- | --- | --- | --- |
+| `error` | object | 是 | 否 | 错误内容。 |
+| ↳ `code` | string | 是 | 否 | 稳定错误类别；与操作性质、结果确定性共同决定处理方式。 |
+| ↳ `message` | string | 是 | 否 | 诊断信息；不作为业务标识或固定语言文案。 |
+| ↳ `details` | object | 是 | 否 | 附加数据；没有附加数据时为 `{}`。 |
 
 ### HTTP 状态与错误码
 
 | HTTP | `error.code` | 含义与客户端处理 |
 | --- | --- | --- |
+| 400 | `APPLICATION_ERROR` | 通用应用错误。根据当前操作检查输入或应用状态。 |
 | 401 | `AUTHENTICATION_ERROR` | 未连接账号或授权被拒绝。读取授权状态，按需重新授权。 |
 | 403 | `PERMISSION_DENIED` | Provider 拒绝访问。提示检查权限。 |
 | 404 | `NOT_FOUND` | 连接、目录或项目不存在。刷新对应资源。 |
@@ -39,21 +40,47 @@
 
 ### 错误详情
 
-以下字段按错误场景出现，不保证全部存在。
+以下字段按错误场景出现，不保证全部存在。预览项及执行项的 `details` 复用适用字段；无详情时可为 `null`。
 
-| `details` 字段 | 类型 | 说明 |
-| --- | --- | --- |
-| `reason` | string | 稳定原因标识，用于本地化。 |
-| `params` | object | 原因对应的展示参数。 |
-| `file_ids` | array of string | 预览选择错误涉及的 ID。 |
-| `errors` | array of object | 校验错误；每项通常含 `type`、`loc`、`msg`，可能有其他校验数据。 |
-| `rule_type` | string | 配置错误涉及的规则类型。 |
-| `storage_id`、`storage_name` | string | 账号已连接时指向已有连接。 |
-| `execution_started` | boolean | 批量复核失败时为 `false`，表示尚未开始写入；缺失时不能推断写入状态。 |
-| `request_id` | string | 未预期错误的请求标识。 |
-| `actual_name` | string | 写入核对后确认的名称。 |
+| `details` 字段 | 类型 | 必含 | 可空 | 说明 |
+| --- | --- | --- | --- | --- |
+| `reason` | string | 否 | 否 | 应用定义的稳定细分原因，用于分类和本地化；不能直接填供应商错误码。 |
+| `params` | object | 否 | 否 | `reason` 对应的展示参数，不能用作业务标识或重试指令。 |
+| `stop_reason` | string | 否 | 否 | 停止继续提交的应用错误码；当前为 `RENAME_OUTCOME_UNKNOWN`，不表示本项写入未知。 |
+| `file_ids` | array of string | 否 | 否 | 预览选择错误涉及的 ID。 |
+| `errors` | array of object | 否 | 否 | 校验错误；每项通常含 `type`、`loc`、`msg`，可能有其他校验数据。 |
+| `rule_type` | string | 否 | 否 | 配置错误涉及的规则类型。 |
+| `storage_id` | string | 否 | 否 | 已绑定该账号的连接 ID。 |
+| `storage_name` | string | 否 | 否 | 已绑定该账号的连接名称。 |
+| `execution_started` | boolean | 否 | 否 | 批量复核失败时为 `false`，表示尚未开始写入；缺失时不能推断写入状态。 |
+| `request_id` | string | 否 | 否 | 未预期错误的请求标识。 |
+| `actual_name` | string | 否 | 否 | 写入核对后确认的名称。 |
+| `file_id` | string | 否 | 否 | 请求涉及的项目 ID，不作为写入结果证据。 |
+| `path` | string | 否 | 否 | 请求涉及的相对目录路径。 |
+| `new_name` | string | 否 | 否 | 请求目标名，不表示该名称已生效。 |
+| `provider` | string | 否 | 否 | 配置校验涉及的 Provider 类型；不是 `storage_id`。 |
+| `graph_status` | integer | 否 | 否 | 保留的底层 HTTP 状态诊断字段；前端不据此分类或决定重试。 |
+| `google_status` | integer | 否 | 否 | 保留的底层 HTTP 状态诊断字段；前端不据此分类或决定重试。 |
+| `provider_type` | string | 否 | 否 | 错误来源的 Provider 类型，不是连接 ID。用于 HTTP 或本地 OS 错误诊断。 |
+| `provider_status` | integer | 否 | 否 | 底层 HTTP 状态，与 `graph_status` / `google_status` 对应；不是本 API 的 HTTP 状态。 |
+| `provider_codes` | array of string | 否 | 否 | Graph 外层至内层的错误码或 Google `errors[].reason`，仅供诊断和 Provider 内部识别；缺失时不补假定值。 |
+| `errno` | integer | 否 | 是 | 本地操作系统错误编号，未提供编号时为 `null`。 |
+| `winerror` | integer | 否 | 是 | Windows 错误编号，仅在系统提供时出现。 |
 
 创建、更新连接和更新偏好的请求校验错误会移除条目的 `input`、`ctx`，避免回显敏感请求值。
+
+`details` 只提供经过筛选的 JSON 数据，不包含令牌、密钥、Authorization header 或第三方完整响应。供应商状态和错误码仅用于诊断，不替代应用错误码。
+
+缺少字段表示未提供对应信息，不能据此推断写入发生或未发生。执行结果中的名称与状态定义见[执行结果项](../executions/index.md#execution-items)。
+
+### 执行原因
+
+| `error_code` | `details.reason` | 语义 |
+| --- | --- | --- |
+| `PROVIDER_ERROR` | `RENAME_NOT_ATTEMPTED` | 配合 `status: not_attempted` 表示本项尚未发出写请求。`stop_reason: RENAME_OUTCOME_UNKNOWN` 表示另一项未知导致停止。 |
+| `RENAME_CONFLICT` | `SOURCE_CHANGED` | Provider 报告源状态或前置条件已变化，刷新目录后重新预览或重新输入。Graph `412` 产生此原因。 |
+
+已提交但被明确拒绝的项目属于 `failed`，即使后续重试未发生，也不属于 `not_attempted`。
 
 <a id="validation-reasons"></a>
 ### 校验原因
@@ -99,4 +126,4 @@
 }
 ```
 
-前端将非成功 HTTP 响应转为 `ApiError`，保留 `status`、`code`、`message`、`details`。非标准响应使用 `code: null`、`details: {}`；网络或响应解析失败保留浏览器异常并标记 `status: 0`。`status: 0` 不表示服务端未执行写入。
+未收到响应，或响应不符合共享错误结构时，客户端不能据此推断写入失败或未执行。按[执行结果](../executions/index.md#execution-outcomes)核对真实状态，不自动重发。

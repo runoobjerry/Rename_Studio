@@ -26,6 +26,7 @@
     "parents": "Show parent folders"
   },
   "preview": {
+    "currentNameUnavailable": "Current name not provided",
     "filters": {
       "error": "Error",
       "unchanged": "Unchanged",
@@ -43,32 +44,28 @@
     "summary": "{{pending}} to rename · {{unchanged}} unchanged",
     "empty": "Click the preview button to see the new names. Previewing does not change anything in {{provider}}.",
     "executeFailed": "Execution failed: {{message}}",
+    "unknownOutcome": "Some items have unknown rename results. Refresh the file directory or check the files at their source.",
     "needsVerification": "Needs verification",
     "unknown": "Unknown",
     "notAttempted": "Not attempted because another item’s rename result needs verification.",
-    "notAttemptedOther": "Not attempted because another item could not be renamed."
+    "notAttemptedOther": "This item was not attempted."
   },
   "rename": {
     "phases": {
       "waiting": "Confirm renaming",
       "validating": "Revalidating",
       "renaming": "Renaming",
-      "finished": "Processing finished",
       "failed": "Execution failed",
-      "submitting": "Submitting rename request",
-      "unknown": "Rename results need verification"
+      "submitting": "Submitting rename request"
     },
     "refreshing": "Refreshing…",
     "preview": "Refresh preview",
     "start": "Start renaming",
-    "irreversible": "This action cannot be undone!",
     "progress": "Rename progress",
     "returnedError": "An error was returned: {{message}}. Try refreshing the file directory.",
     "progressUnavailable": "Progress is temporarily unavailable: {{message}}. The execution request is still in progress; do not submit it again.",
-    "processed": "Processed {{processed}} of {{total}} items in this task. Please wait and do not refresh the page.",
-    "confirm": "Rename {{count}} items in {{provider}} using the new names in the current preview. Please note: ",
-    "confirm_one": "Rename {{count}} item in {{provider}} using the new name in the current preview. Please note: ",
-    "confirm_other": "Rename {{count}} items in {{provider}} using the new names in the current preview. Please note: ",
+    "processed": "Processed {{processed}} of {{total}} items in this task.",
+    "confirm": "Rename items in “{{connectionName}}” according to the current preview. Number of items: {{count}}.",
     "unknownOutcome": "Complete rename results were not received. Refresh the directory and verify the actual names before running this operation again."
   },
   "notifications": {
@@ -79,20 +76,18 @@
     "defaultUnavailable": "Could not read the default location. Opening the cloud drive root.",
     "refreshed": "Directory refreshed.",
     "previewFailed": "Preview failed: {{message}}",
-    "completed": "Renaming completed successfully: {{count}} items renamed.",
+    "completed": "Renaming completed. Items renamed: {{count}}.",
     "unknownOutcome": "Complete rename results were not received. Refresh the directory and verify the actual names before running this operation again.",
     "pickFailed": "Could not select a folder: {{message}}",
     "defaultSaved": "Set “{{path}}” as the default location for the current account.",
     "defaultRootSaved": "Set the root directory as the default location for the current account.",
     "defaultSaveFailed": "Could not save the default location: {{message}}",
     "refreshFailed": "Refresh failed: {{message}}",
-    "completed_one": "Renaming completed successfully: {{count}} item renamed.",
-    "completed_other": "Renaming completed successfully: {{count}} items renamed.",
-    "verifyBeforeRetry": "Some rename results are unconfirmed. Refresh the directory, or check the files at their source before running this operation again.",
     "fixedMembers": "The current task can only process items already added. End the current task before selecting other items.",
-    "ended": "Renaming has finished: {{results}}.",
+    "ended": "Renaming finished: {{results}}.",
     "resultSeparator": ", ",
     "renamedCount": "{{count}} renamed",
+    "skippedCount": "Unchanged: {{count}}",
     "failedCount": "{{count}} failed",
     "unknownCount": "{{count}} need verification",
     "notAttemptedCount": "{{count}} not attempted"

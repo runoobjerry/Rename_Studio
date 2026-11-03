@@ -32,7 +32,7 @@
 
 #### Returns
 
-HTTP 200，返回 `SingleRenameExecuteResponse`。确认目标时为 `completed`，唯一结果项为 `renamed`；Provider 明确拒绝或无法确认时为 `failed`，结果项含错误码。
+HTTP 200，返回 [SingleRenameExecuteResponse](index.md#对象singlerenameexecuteresponse)。整体成功为 `completed`，失败或未知为 `incomplete`；唯一结果项的 `status` 分别为 `renamed`、`failed` 或 `unknown`，定义见[逐项状态](index.md#execution-outcomes)。`counts` 返回各状态的数量。
 
 成功后用 `current_file` 更新 ID 和名称。写入未知时先按 ID 核对，无法确认则返回 `RENAME_OUTCOME_UNKNOWN`，不自动重放。客户端网络失败也不得自动重发。
 
@@ -49,6 +49,7 @@ Content-Type: application/json
 {
   "operation_id":"72ec54b8-8818-42ec-9ca1-7ae217976c53",
   "status":"completed",
+  "counts":{"renamed":1,"skipped":0,"failed":0,"unknown":0,"not_attempted":0},
   "items":[
     {
       "file_id":"IMG_1.jpg",
@@ -58,7 +59,7 @@ Content-Type: application/json
       "error":null,
       "error_code":null,
       "details":null,
-      "actual_name":null,
+      "actual_name":"旅行.jpg",
       "current_file":{
         "id":"旅行.jpg",
         "name":"旅行.jpg",
@@ -82,7 +83,8 @@ Content-Type: application/json
 ```json
 {
   "operation_id":"72ec54b8-8818-42ec-9ca1-7ae217976c53",
-  "status":"failed",
+  "status":"incomplete",
+  "counts":{"renamed":0,"skipped":0,"failed":1,"unknown":0,"not_attempted":0},
   "items":[
     {
       "file_id":"IMG_1.jpg",
@@ -92,6 +94,29 @@ Content-Type: application/json
       "error":"Filename cannot be empty",
       "error_code":"VALIDATION_ERROR",
       "details":{"new_name":"","reason":"NAME_EMPTY","params":{}},
+      "actual_name":null,
+      "current_file":null
+    }
+  ]
+}
+```
+
+无法确认最终结果时，整体为 `incomplete`，结果项为 `unknown`：
+
+```json
+{
+  "operation_id":"72ec54b8-8818-42ec-9ca1-7ae217976c53",
+  "status":"incomplete",
+  "counts":{"renamed":0,"skipped":0,"failed":0,"unknown":1,"not_attempted":0},
+  "items":[
+    {
+      "file_id":"IMG_1.jpg",
+      "original_name":"IMG_1.jpg",
+      "new_name":"旅行.jpg",
+      "status":"unknown",
+      "error":"Local rename completed but confirmation metadata could not be read",
+      "error_code":"RENAME_OUTCOME_UNKNOWN",
+      "details":{"provider_type":"local","errno":13},
       "actual_name":null,
       "current_file":null
     }

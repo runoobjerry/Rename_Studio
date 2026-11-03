@@ -1,7 +1,6 @@
 import asyncio
 import logging
 from collections.abc import Callable
-from typing import Literal
 from time import monotonic
 
 from app.core.errors import AppError, NotFoundError, PreviewExpiredError, ValidationError, RenameOutcomeUnknownError, ProviderError
@@ -16,7 +15,7 @@ from app.schemas.rename import (
 )
 from app.services.preview_service import PreviewService
 from app.services.preview_store import PreviewSnapshot, PreviewStore
-from app.services.rename_write import drain_writes, reconcile_unknown_rename
+from app.services.rename_write import drain_writes, reconcile_unknown_rename, rename_failure_status
 
 
 logger = logging.getLogger("rename_studio.rename")
@@ -175,7 +174,10 @@ class ExecuteService:
                     progress.processed += len(batch)
                 if any(isinstance(outcome, RenameOutcomeUnknownError) for outcome in batch_outcomes.values()):
                     for request in requests[offset + len(batch):]:
-                        outcomes[request.file_id] = ProviderError("Rename was not attempted after an unknown write outcome")
+                        outcomes[request.file_id] = ProviderError(
+                            "Rename was not attempted after an unknown write outcome",
+                            details={"reason": "RENAME_NOT_ATTEMPTED", "stop_reason": "RENAME_OUTCOME_UNKNOWN"},
+                        )
                     break
             return outcomes
 
@@ -211,11 +213,15 @@ class ExecuteService:
             if pending:
                 await drain_writes(pending)
         for request in requests[offset:]:
-            outcomes[request.file_id] = ProviderError("Rename was not attempted after an unknown write outcome")
+            outcomes[request.file_id] = ProviderError(
+                "Rename was not attempted after an unknown write outcome",
+                details={"reason": "RENAME_NOT_ATTEMPTED", "stop_reason": "RENAME_OUTCOME_UNKNOWN"},
+            )
         return outcomes
 
     @staticmethod
     def _record_failure(result: ExecuteItem, outcome: AppError) -> None:
+        result.status = rename_failure_status(outcome)
         result.error = outcome.message
         result.error_code = outcome.code
         result.details = outcome.details or None
@@ -240,7 +246,6 @@ class ExecuteService:
                 original_name=item.original_name,
                 new_name=item.new_name,
                 status="skipped" if not item.changed else "failed",
-                error=None if not item.changed else "Rename was not attempted",
             )
             for item in snapshot.response.items
         }
@@ -273,16 +278,9 @@ class ExecuteService:
                 item.error_code = None
             elif item.status == "skipped":
                 item.actual_name = item.original_name
-        renamed = sum(item.status == "renamed" for item in items)
-        failed = sum(item.status == "failed" for item in items)
-        if failed == 0:
-            status: Literal["completed", "partial", "failed"] = "completed"
-        elif renamed > 0:
-            status = "partial"
-        else:
-            status = "failed"
+        incomplete = any(item.status in {"failed", "unknown", "not_attempted"} for item in items)
         return RenameExecuteResponse(
             preview_id=preview_id,
-            status=status,
+            status="incomplete" if incomplete else "completed",
             items=items,
         )
