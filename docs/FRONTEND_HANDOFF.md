@@ -105,3 +105,7 @@ TanStack Query 管理服务端状态，Zustand 管理选择、规则、任务成
 - 长期模块职责与约定在本文件维护，未来任务仅写 [UI_TODO](UI_TODO.md)，当前落点与未完成验收仅写 [UI_STATE](UI_STATE.md)。同一事实只维护一处，其他文件引用。
 - 修改影响长期约定时更新本文件；不追加工作日志，不复制版本、尺寸、文案或测试数量。已删除组件不保留历史入口，历史由 Git 保存。
 - 测试范围查 [覆盖清单](FRONTEND_TEST_CASES.md)，视觉检查查 [人工验收清单](UI_MANUAL_ACCEPTANCE.md)，测试/Git 授权流程遵循 `frontend/AGENTS.md` 与 [FRONTEND_TESTING](FRONTEND_TESTING.md)。静态核对、测试源码存在和历史通过记录均不能证明当前版本运行通过。
+
+### 外部浏览器导航
+
+共用入口位于 `src/integrations/browser/`：消息桥安装一次，`useBrowserNavigation` 接入工作区，注册适配器负责解析与账号/目录语义。Provider 通过 `browser_navigation` 声明适配器 ID，缺失、为空或未知时拒绝外部导航，禁止根据类型名猜测；OneDrive 声明 `onedrive_personal`，Google 声明 `google_drive_my_drive`。`useWorkspaceStorage` 使用中立目标管理读取、恢复、取消、缓存和失败重试，不再依赖 CID 或 drive_id 字段。v1 OneDrive 请求保持兼容。协议见[浏览器消息协议](BROWSER_PROTOCOL.md)。

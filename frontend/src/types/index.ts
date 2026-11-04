@@ -197,6 +197,7 @@ export interface StorageProviderDefinition {
   locations: Array<StorageLocation["kind"]>;
   can_rename: boolean;
   browser_auth: boolean;
+  browser_navigation: string | null;
   local_picker: boolean;
 }
 

@@ -72,9 +72,12 @@ def test_provider_metadata_exposes_form_fields_without_connection_secrets(tmp_pa
         response = client.get("/storage-providers")
     assert response.status_code == 200
     provider = next(item for item in response.json() if item["provider_type"] == "fixture_service")
-    assert set(provider) == {"provider_type", "config_schema", "config_fields", "icon", "locations", "can_rename", "browser_auth", "local_picker"}
+    local = next(item for item in response.json() if item["provider_type"] == "local")
+    assert local["browser_navigation"] is None
+    assert set(provider) == {"provider_type", "config_schema", "config_fields", "icon", "locations", "can_rename", "browser_auth", "browser_navigation", "local_picker"}
     assert provider["icon"] == "computer"
     assert provider["browser_auth"] is True
+    assert provider["browser_navigation"] == "onedrive_personal"
     assert provider["config_schema"] == OneDriveConfig.model_json_schema()
     fields = provider["config_fields"]
     assert all(set(field) == {"key", "input_type", "target", "required", "nullable"} for field in fields)

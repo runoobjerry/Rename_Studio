@@ -3,8 +3,9 @@ import { ApiError } from "../../api/client";
 import { useNotification } from "../../components/NotificationProvider";
 import { useRenameStore } from "../../stores/useRenameStore";
 import type { useWorkspaceStorage } from "../../workspace/hooks/useWorkspaceStorage";
-import { matchOneDriveTarget, NavigationError, registerOneDriveNavigator } from "./navigation";
+import { matchBrowserTarget, NavigationError, registerBrowserNavigator } from "./navigation";
 import { installBrowserBridge } from "./browserBridge";
+import { navigationAdapters } from "./adapters";
 
 interface Options {
   storage: ReturnType<typeof useWorkspaceStorage>;
@@ -13,7 +14,7 @@ interface Options {
   beforeSwitch: () => void;
 }
 
-export function useOneDriveNavigation(options: Options) {
+export function useBrowserNavigation(options: Options) {
   const notify = useNotification();
   const latest = useRef(options);
   latest.current = options;
@@ -24,7 +25,7 @@ export function useOneDriveNavigation(options: Options) {
   useEffect(() => {
     return () => latest.current.storage.cancelExternalNavigation();
   }, [options.context]);
-  useEffect(() => registerOneDriveNavigator(async (request, onAccepted) => {
+  useEffect(() => registerBrowserNavigator(async (request, onAccepted) => {
     const rejected = (code: string) => ({ version: 1 as const, request_id: request.request_id,
       status: "rejected" as const, code });
     const guard = () => {
@@ -36,11 +37,12 @@ export function useOneDriveNavigation(options: Options) {
       guard();
       const { storage } = latest.current;
       if (!storage.providers.isSuccess || !storage.providerDefinitions.isSuccess) throw new NavigationError("busy");
-      const target = matchOneDriveTarget(request, storage.providers.data, storage.providerDefinitions.data);
+      const target = matchBrowserTarget(request, storage.providers.data, storage.providerDefinitions.data);
       const result = storage.openExternalTarget(target, () => latest.current.beforeSwitch(), guard);
       onAccepted?.({ version: 1, request_id: request.request_id, status: "accepted" });
       await result;
-      notify({ key: "files:externalNavigation.opened" });
+      notify({ key: "files:externalNavigation.opened",
+        values: { host: navigationAdapters[request.type].sourceHost } });
       return { version: 1, request_id: request.request_id, status: "opened", storage_id: target.storage.storage_id };
     } catch (error) {
       let code: string;

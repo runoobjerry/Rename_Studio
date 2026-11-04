@@ -1,4 +1,4 @@
-import { oneDriveNavigatorReady, openOneDriveFolder, type NavigationReply } from "./navigation";
+import { browserNavigatorReady, openBrowserFolder, type NavigationReply } from "./navigation";
 import { BROWSER_NAMESPACE, BROWSER_ORIGIN, parseBrowserTarget, validRequestId } from "./protocol";
 
 // Same-origin checks constrain this to navigation intent; they do not authenticate an extension.
@@ -20,7 +20,7 @@ export function installBrowserBridge(onTransportProblem: (code: string) => void,
     if (data.namespace !== BROWSER_NAMESPACE || data.direction !== "extension-to-app" || !validRequestId(data.request_id)) return;
     const requestId = data.request_id;
     if (data.type === "probe") {
-      if (data.version === 1 && Object.keys(data).length === 5 && oneDriveNavigatorReady()) {
+      if (data.version === 1 && Object.keys(data).length === 5 && browserNavigatorReady()) {
         post("ready", requestId, { project: "rename-studio" });
       }
       return;
@@ -42,7 +42,7 @@ export function installBrowserBridge(onTransportProblem: (code: string) => void,
     const sendReply = (reply: NavigationReply) => {
       if (active === entry) post("navigation-reply", entry.id, { reply });
     };
-    void openOneDriveFolder(parsed.request, sendReply).then(sendReply, () => {
+    void openBrowserFolder(parsed.request, sendReply).then(sendReply, () => {
       // Unexpected application failure has no reliable open result. Never assert it did not navigate.
       if (active === entry) onTransportProblem("result_timeout");
     }).finally(() => {

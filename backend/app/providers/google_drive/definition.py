@@ -28,6 +28,7 @@ def get_definition(settings: Settings) -> ProviderDefinition:
     return ProviderDefinition(
         "google_drive", GoogleDriveConfig, ("root", "id"),
         lambda record, auth: GoogleDriveProvider(cast(ConnectionAuth, auth)),
+        browser_navigation="google_drive_my_drive",
         config_fields=(
             StorageConfigField(
                 key="client_id", nullable=True,

@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { browserChannel } from "../../test/browserChannel";
 import { deferred } from "../../test/deferred";
 import { installBrowserBridge } from "./browserBridge";
-import { registerOneDriveNavigator, type NavigationReply } from "./navigation";
+import { registerBrowserNavigator, type NavigationReply } from "./navigation";
 import { BROWSER_NAMESPACE, BROWSER_ORIGIN } from "./protocol";
 
 const target = { version: 1, type: "open-onedrive-folder", request_id: "r",
@@ -19,7 +19,7 @@ describe("browser navigation bridge", () => {
     cleanup = installBrowserBridge(vi.fn(), channel.host);
     channel.dispatch(envelope("probe"));
     expect(channel.post).not.toHaveBeenCalled();
-    unregister = registerOneDriveNavigator(vi.fn());
+    unregister = registerBrowserNavigator(vi.fn());
     channel.dispatch(envelope("probe"));
     expect(channel.post).toHaveBeenCalledWith(expect.objectContaining({ type: "ready", version: 1,
       project: "rename-studio", direction: "app-to-extension", request_id: "r" }), BROWSER_ORIGIN);
@@ -28,7 +28,7 @@ describe("browser navigation bridge", () => {
   it("ignores foreign origin/source and echo messages, and rejects invalid navigation before delegation", () => {
     const channel = browserChannel();
     const navigate = vi.fn();
-    unregister = registerOneDriveNavigator(navigate);
+    unregister = registerBrowserNavigator(navigate);
     cleanup = installBrowserBridge(vi.fn(), channel.host);
     channel.dispatch(envelope("navigate", { request: target }), { origin: "http://localhost:9000" });
     channel.dispatch(envelope("navigate", { request: target }), { source: {} });
@@ -46,7 +46,7 @@ describe("browser navigation bridge", () => {
   it("forwards accepted and the final result with the same ID and refuses concurrent requests", async () => {
     const channel = browserChannel();
     const finish = deferred<NavigationReply>();
-    unregister = registerOneDriveNavigator((_request, accepted) => {
+    unregister = registerBrowserNavigator((_request, accepted) => {
       accepted?.({ version: 1, request_id: "r", status: "accepted" });
       return finish.promise;
     });
@@ -68,7 +68,7 @@ describe("browser navigation bridge", () => {
     const old = deferred<NavigationReply>();
     const next = deferred<NavigationReply>();
     const navigate = vi.fn().mockReturnValueOnce(old.promise).mockReturnValueOnce(next.promise);
-    unregister = registerOneDriveNavigator(navigate);
+    unregister = registerBrowserNavigator(navigate);
     const problem = vi.fn();
     cleanup = installBrowserBridge(problem, channel.host);
     channel.dispatch(envelope("navigate", { request: target }));

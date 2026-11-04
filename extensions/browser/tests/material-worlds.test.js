@@ -7,7 +7,7 @@ it("starts the isolated UI with a null registry and registers Material component
   vi.stubGlobal("customElements", null);
   vi.stubGlobal("location", { origin: "https://onedrive.live.com" });
   vi.stubGlobal("chrome", { i18n: { getMessage: (key) => key } });
-  await import("../src/onedrive-content.js");
+  await import("../src/website-content.js");
   expect(document.getElementById("rename-studio-folder-button")).not.toBeNull();
 
   vi.unstubAllGlobals();

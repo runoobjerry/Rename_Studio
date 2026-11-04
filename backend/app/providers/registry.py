@@ -25,6 +25,7 @@ class ProviderDefinition:
     can_rename: bool = True
     config_fields: tuple[StorageConfigField, ...] = ()
     icon: Literal["computer", "cloud"] = "cloud"
+    browser_navigation: str | None = None
 
 
 class ProviderRegistry:

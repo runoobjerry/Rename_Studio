@@ -17,8 +17,8 @@
 
 | 场景 | 自动化承接位置 |
 |---|---|
-| 浏览器消息桥：只接受精确 origin/source/方向/命名空间和有界 v1 目标，业务入口就绪后答 ready，accepted/最终回复关联，重复并发拒绝，超时不重放且迟到回复不影响后续请求；真实业务入口完成目录显示后回执 opened | [消息桥](../frontend/src/integrations/onedrive/browserBridge.test.ts)、[工作区消息接线](../frontend/src/WorkspaceApp.externalNavigation.test.tsx)；扩展侧使用同仓库 extensions/browser/tests 的浏览器边界模拟回归 |
-| 本体外部 OneDrive 导航：按 CID 唯一匹配，复用已有连接/授权状态且不主动二次刷新，授权及忙碌保护，外部目标优先于恢复位置并强制读取目录；释放旧预览、保留规则及未知写入记录；手动切换/连接 revision 变化取消迟到结果，重复业务请求在 accepted 前拒绝；目录不匹配、根 ID 规范化、权限或授权失效及手动重试仍检查云盘范围 | [外部导航集成](../frontend/src/WorkspaceApp.externalNavigation.test.tsx) |
+| 浏览器消息桥：只接受精确 origin/source/方向/命名空间和有界 v1 目标，业务入口就绪后答 ready，accepted/最终回复关联，重复并发拒绝，超时不重放且迟到回复不影响后续请求；真实业务入口完成目录显示后回执 opened | [消息桥](../frontend/src/integrations/browser/browserBridge.test.ts)、[工作区消息接线](../frontend/src/WorkspaceApp.externalNavigation.test.tsx)；扩展侧使用同仓库 extensions/browser/tests 的浏览器边界模拟回归 |
+| 本体外部导航：按 Provider 声明的适配器接入，非内置类型同样可导航，缺失/禁用/未知适配器或不满足授权/位置能力时拒绝；Google 按邮箱唯一匹配并沿用稳定账号 ID，OneDrive 按 CID 唯一匹配，复用已有连接/授权状态且不主动二次刷新，授权及忙碌保护，外部目标优先于恢复位置并强制读取目录；释放旧预览、保留规则及未知写入记录；手动切换/连接 revision 变化取消迟到结果，重复业务请求在 accepted 前拒绝；目录不匹配、根 ID 规范化、权限或授权失效及手动重试仍检查云盘范围 | [能力匹配](../frontend/src/integrations/browser/navigation.test.ts)、[外部导航集成](../frontend/src/WorkspaceApp.externalNavigation.test.tsx) |
 | 不同账号连接的目录隔离，换号后的旧目录与旧预览不能污染新工作区 | [工作台存储集成](../frontend/src/WorkspaceApp.storage.test.tsx)、[默认云目录](../frontend/src/features/files/defaultCloudLocation.test.ts) |
 | 工作区按 browser_auth 判定授权；元数据 pending/error 不读取授权或文件，恢复后使用原目录；元数据刷新失败保留账号身份与选择 | [存储 Hook](../frontend/src/workspace/hooks/useWorkspaceStorage.test.ts) |
 | 非 Local 且无需浏览器授权的服务恢复 ID 位置，不发授权请求；未知 OAuth 服务等待授权，不支持的位置类型不请求 | 存储 Hook |

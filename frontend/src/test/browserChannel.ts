@@ -1,5 +1,5 @@
 import { vi } from "vitest";
-import { BROWSER_ORIGIN } from "../integrations/onedrive/protocol";
+import { BROWSER_ORIGIN } from "../integrations/browser/protocol";
 
 // A browser boundary double, with real bridge and navigation code running above it.
 export function browserChannel() {

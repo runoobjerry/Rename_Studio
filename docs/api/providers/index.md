@@ -26,6 +26,7 @@
 | `locations` | array of string | 否 | 接受的位置类型，当前取值为 `root`、`id`、`path`。 |
 | `can_rename` | boolean | 否 | 是否支持重命名。 |
 | `browser_auth` | boolean | 否 | 是否使用浏览器授权。 |
+| `browser_navigation` | string | 是 | 外部浏览器导航适配器的稳定标识。OneDrive 为 `onedrive_personal`，Google Drive 为 `google_drive_my_drive`，Local 为 `null`。 |
 | `local_picker` | boolean | 否 | 是否支持连接级本地目录选择器。 |
 
 #### 嵌套对象：StorageConfigField
@@ -37,6 +38,8 @@
 | `target` | string | 否 | `config` 写入请求的 `config[key]`；`client_secret` 写入请求顶层密钥。 |
 | `required` | boolean | 否 | 配置字段是否必填。 |
 | `nullable` | boolean | 否 | 配置字段是否可空。 |
+
+客户端只在识别 `browser_navigation` 且具备所需授权和位置能力时启用外部浏览器导航。
 
 定义不返回展示名称或字段文案。前端使用稳定 `provider_type`、`key` 查找翻译。
 
@@ -93,6 +96,7 @@ GET /storage-providers
     "locations": ["root","path","id"],
     "can_rename": true,
     "browser_auth": false,
+    "browser_navigation": null,
     "local_picker": true
   },
   {
@@ -108,6 +112,7 @@ GET /storage-providers
     "locations": ["root","id","path"],
     "can_rename": true,
     "browser_auth": true,
+    "browser_navigation": "onedrive_personal",
     "local_picker": false
   },
   {
@@ -126,6 +131,7 @@ GET /storage-providers
     "locations": ["root","id"],
     "can_rename": true,
     "browser_auth": true,
+    "browser_navigation": "google_drive_my_drive",
     "local_picker": false
   }
 ]

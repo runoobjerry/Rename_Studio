@@ -1,6 +1,6 @@
 # Rename Studio Browser
 
-从 OneDrive 网页打开当前目录，自动切换到 Rename Studio 中对应账号的连接和目录，省去手动查找。
+从 OneDrive 或 Google Drive 网页打开当前目录，自动切换到 Rename Studio 中对应账号的连接和目录，省去手动查找。
 
 ## 快速开始
 
@@ -10,7 +10,7 @@
 2. 核对 ZIP 的 SHA256，将其解压到长期保留的目录。解压后的目录根部应包含 `manifest.json`。
 3. 打开 `chrome://extensions` 或 `edge://extensions`，开启“开发者模式”，点击“加载已解压的扩展”，选择该目录。
 
-当前仅提供 ZIP 下载和开发者模式安装。更新时将新包内容替换到原目录，在扩展管理页点击“重新加载”，再刷新 OneDrive 和本体网页。
+当前仅提供 ZIP 下载和开发者模式安装。更新时将新包内容替换到原目录，在扩展管理页点击“重新加载”，再刷新云盘和本体网页。
 
 ### 打开 OneDrive 目录
 
@@ -24,13 +24,17 @@
 
 找不到本体时，先启动并打开；多个本体标签页可用时，仅保留一个再重试。提取期间切换 OneDrive 目录或账号会中止请求；本体导航期间手动切换连接或目录也会取消。提示“未收到打开结果，请查看 Rename Studio”时，先查看本体当前目录，不要据此认定跳转失败。
 
+### 打开 Google Drive 目录
+
+使用已配置且授权的同邮箱 Google Drive 连接和一个已打开的本体标签页。在 Google Drive 网页进入“我的云端硬盘”或其中的普通子目录，再点击悬浮按钮。支持 `/drive/u/{数字}/my-drive` 和 `/drive/u/{数字}/folders/{ID}`。本体按邮箱匹配唯一的已有授权连接，并检查目录是否属于该账号的 My Drive。若未能读取邮箱，请确认已登录 Google Drive。更新扩展后请刷新云盘与本体页面。
+
 ## 浏览器兼容性
 
 | 项目 | 支持范围 |
 | --- | --- |
 | 浏览器 | 桌面 Chrome 117+、Edge 121+，同时满足本体要求；扩展自身的 manifest 最低版本为 111 |
 | 系统与窗口 | Windows、macOS；同一浏览器配置文件内的普通窗口 |
-| 目标网站 | `https://onedrive.live.com`，个人版默认云盘的普通 `/my`“我的文件”根目录和子目录 |
+| 目标网站 | `https://onedrive.live.com` 的个人版“我的文件”，以及 `https://drive.google.com` 的 My Drive 根目录和普通子目录 |
 | 本体地址 | 发布版固定为 `http://localhost:8000` |
 | 语言 | 简体中文、英语 |
 
@@ -38,7 +42,8 @@
 
 - 不支持 Firefox、Safari、无痕窗口、跨浏览器配置文件，以及通过 127.0.0.1、其他端口或公网地址访问本体。浏览器版本要求不代表逐版本实机验收，配套本体验收版本见扩展 Release 说明。
 - 不支持 OneDrive 企业版、SharePoint、共享链接、共享目录快捷方式、跨云盘目录、搜索、最近使用、照片聚合和回收站。
-- 目录提取依赖 OneDrive 网页的内部页面上下文和同源接口，网站更新后可能需要适配。扩展不会启动本体或自动新建本体标签页，也不会在多个本体实例之间自动选路。
+- Google Drive 不支持共享云端硬盘、共享给我的目录视图、搜索和带 `resourcekey` 的链接。Google Drive 跳转需要支持该功能的本体版本。
+- 目录提取依赖 OneDrive 网页的内部页面上下文和同源接口，Google Drive 依赖官网 URL 和账号入口标签。网站更新后可能需要适配。扩展不会启动本体或自动新建本体标签页，也不会在多个本体实例之间自动选路。
 
 ## 开发
 
@@ -59,7 +64,7 @@ npm run build
 
 打开浏览器扩展管理页，启用开发者模式，通过“加载已解压的扩展”选择 `dist/production` 或 `dist/development`。本体页面的运行模式应与扩展构建匹配，不同时启用两种构建。
 
-修改源码后重新构建，在扩展管理页点击“重新加载”，再刷新 OneDrive 和本体页面。浏览器不会自动加载源码修改。
+修改源码后重新构建，在扩展管理页点击“重新加载”，再刷新云盘和本体页面。浏览器不会自动加载源码修改。
 
 ### 技术栈
 
@@ -80,8 +85,8 @@ extensions/browser/
 ├── src/
 │   ├── floating-button.js     悬浮按钮和状态提示
 │   ├── material-main.js       Material 组件注册
-│   ├── onedrive-content.js    OneDrive 页面入口
-│   ├── onedrive-page.js       账号和目录提取
+│   ├── website-content.js     共用网站页面入口
+│   ├── adapters/              网站注册、账号与目录提取和载荷校验
 │   ├── service-worker.js      消息路由和标签页激活
 │   ├── transport.js           就绪握手和导航投递
 │   ├── workspace-content.js   本体页面消息桥
@@ -97,10 +102,10 @@ extensions/browser/
 
 ```powershell
 node ./node_modules/vitest/vitest.mjs run --config ../extensions/browser/vitest.config.mjs
-npm test -- src/integrations/onedrive/browserBridge.test.ts src/WorkspaceApp.externalNavigation.test.tsx
+npm test -- src/integrations/browser/browserBridge.test.ts src/integrations/browser/navigation.test.ts src/WorkspaceApp.externalNavigation.test.tsx
 ```
 
-在真实浏览器中检查根目录、子目录、账号匹配、任务占用保护、手动取消和错误提示；同时检查按钮拖拽、键盘操作以及重新加载扩展后的行为。模拟测试和构建成功不能替代真实跳转验收。
+在真实浏览器中分别检查 OneDrive 和 Google Drive 的根目录、子目录、任务占用保护、手动取消与错误提示。Google Drive 多账号场景下，切换账号后分别打开根目录和子目录，确认本体选中了对应连接。另检查按钮拖拽、键盘操作与重新加载后的行为。模拟测试和构建成功不能替代真实跳转验收。
 
 ### 版本与发布
 

@@ -7,13 +7,13 @@ if (!["production", "development"].includes(mode)) throw new Error("Specify prod
 const root = fileURLToPath(new URL("../", import.meta.url));
 const outDir = fileURLToPath(new URL(`../dist/${mode}/`, import.meta.url));
 const origin = mode === "production" ? "http://localhost:8000" : "http://localhost:5173";
-for (const [index, name] of ["material", "onedrive", "workspace", "service-worker"].entries()) {
+for (const [index, name] of ["material", "website", "workspace", "service-worker"].entries()) {
   await build({
     configFile: false, root,
     define: { __WORKSPACE_ORIGIN__: JSON.stringify(origin) },
     build: {
       target: "chrome106", outDir, emptyOutDir: index === 0, minify: false,
-      lib: { entry: `${root}src/${name === "material" ? "material-main" : name === "onedrive" ? "onedrive-content" : name === "workspace" ? "workspace-content" : name}.js`,
+      lib: { entry: `${root}src/${name === "material" ? "material-main" : name === "website" ? "website-content" : name === "workspace" ? "workspace-content" : name}.js`,
         name: "RenameStudioBrowser", formats: [name === "service-worker" ? "es" : "iife"],
         fileName: () => `${name}.js` },
       rolldownOptions: { output: { codeSplitting: false } },

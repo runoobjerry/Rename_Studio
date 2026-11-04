@@ -1,5 +1,5 @@
 import { NAMESPACE, PROJECT, validateOpenRequest } from "./protocol.js";
-import { extractOneDriveFolder } from "./onedrive-page.js";
+import { findSiteAdapter } from "./adapters/index.js";
 
 export class TransportError extends Error {
   constructor(code) { super(code); this.code = code; }
@@ -13,7 +13,7 @@ export function deadline(promise, milliseconds, code) {
 export function isSource(sender, extensionId) {
   // Chrome owns the ID types and sender origin; only check the required source context.
   return sender.id === extensionId && sender.frameId === 0 && Boolean(sender.documentId) &&
-    sender.tab?.incognito === false && sender.origin === "https://onedrive.live.com";
+    sender.tab?.incognito === false && Boolean(findSiteAdapter(sender.origin));
 }
 
 export async function findWorkspace(api, origin) {
@@ -39,7 +39,8 @@ export async function findWorkspace(api, origin) {
 export async function routeNavigation(api, origin, source, requestId, context) {
   const initial = await api.tabs.get(source.tab.id);
   const sourceUrl = initial.url;
-  if (!sourceUrl || new URL(sourceUrl).origin !== "https://onedrive.live.com") throw new TransportError("page_changed");
+  const adapter = findSiteAdapter(source.origin);
+  if (!adapter || !sourceUrl || new URL(sourceUrl).origin !== adapter.origin) throw new TransportError("page_changed");
   // Discover first, then extract current context. Never collect browsing state in the background.
   const workspace = await findWorkspace(api, origin);
   if (!context.active) throw new TransportError("cancelled");
@@ -47,14 +48,14 @@ export async function routeNavigation(api, origin, source, requestId, context) {
   if (current.url !== sourceUrl) throw new TransportError("page_changed");
   const [injection] = await deadline(api.scripting.executeScript({
     target: { tabId: source.tab.id, documentIds: [source.documentId] }, world: "MAIN",
-    func: extractOneDriveFolder, args: [requestId],
+    func: adapter.extract, args: [requestId],
   }), 12000, "request_timeout");
   if (!context.active) throw new TransportError("cancelled");
   const result = injection?.result;
   if (!result || typeof result.ok !== "boolean") throw new TransportError("invalid_response");
   if (!result.ok) throw new TransportError(EXTRACTION_CODES.has(result.code) ? result.code : "invalid_response");
   const invalid = validateOpenRequest(result.request);
-  if (invalid || result.request.request_id !== requestId) throw new TransportError(invalid ?? "invalid_request");
+  if (invalid || result.request.type !== adapter.requestType || result.request.request_id !== requestId) throw new TransportError(invalid ?? "invalid_request");
   const latestSource = await api.tabs.get(source.tab.id);
   if (latestSource.url !== sourceUrl || injection.documentId !== source.documentId) throw new TransportError("page_changed");
   context.workspace = workspace;
@@ -68,7 +69,7 @@ export async function routeNavigation(api, origin, source, requestId, context) {
   return reply;
 }
 
-const EXTRACTION_CODES = new Set(["context_unavailable", "invalid_page_data", "account_format_unsupported",
+const EXTRACTION_CODES = new Set(["account_email_unverified", "context_unavailable", "invalid_page_data", "account_format_unsupported",
   "unsupported_view", "unsupported_scope", "scope_unverified", "page_changed", "auth_required",
   "permission_denied", "rate_limited", "directory_unavailable", "network_error", "request_timeout",
   "invalid_response", "provider_error"]);

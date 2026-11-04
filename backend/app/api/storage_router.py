@@ -33,7 +33,8 @@ async def storage_providers(manager: Manager) -> list[StorageProviderInfo]:
              config_schema=definition.config_model.model_json_schema(),
              config_fields=definition.config_fields, icon=definition.icon,
              locations=definition.locations, can_rename=definition.can_rename,
-             browser_auth=definition.auth_factory is not None, local_picker=definition.local_picker)
+             browser_auth=definition.auth_factory is not None, browser_navigation=definition.browser_navigation,
+             local_picker=definition.local_picker)
             for definition in manager.registry.definitions.values()]
 
 

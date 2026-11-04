@@ -22,7 +22,7 @@ import { SingleRenameDialog } from "./features/rename/SingleRenameDialog";
 import { StorageSidebar } from "./workspace/components/StorageSidebar";
 import { StorageLocationPanel } from "./workspace/components/StorageLocationPanel";
 import { useWorkspaceStorage } from "./workspace/hooks/useWorkspaceStorage";
-import { useOneDriveNavigation } from "./integrations/onedrive/useOneDriveNavigation";
+import { useBrowserNavigation } from "./integrations/browser/useBrowserNavigation";
 import { FileBrowser } from "./features/files/FileBrowser";
 import { defaultFileSort, type FileSort } from "./features/files/fileSort";
 import { useRenameWorkflow } from "./features/rename/useRenameWorkflow";
@@ -151,7 +151,7 @@ function Workspace({ preference, setPreference, settingsError, hasSettings }: {
     resetOperation, resetWorkspaceSession,
   });
 
-  useOneDriveNavigation({
+  useBrowserNavigation({
     storage,
     busy: isPreviewing || isExecuting || pickLocalRoot.isPending || resetPending,
     context: String(resetEpoch),

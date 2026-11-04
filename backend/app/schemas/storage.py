@@ -188,6 +188,7 @@ class StorageProviderInfo(BaseModel):
     locations: tuple[str, ...]
     can_rename: bool
     browser_auth: bool
+    browser_navigation: str | None = None
     local_picker: bool
 
 

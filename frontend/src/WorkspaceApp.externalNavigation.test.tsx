@@ -1,17 +1,17 @@
 import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import * as api from "./api/client";
-import { openOneDriveFolder, type NavigationReply, type OpenOneDriveFolderRequest } from "./integrations/onedrive/navigation";
+import { openBrowserFolder, type NavigationReply, type BrowserNavigationRequest } from "./integrations/browser/navigation";
 import { deferred } from "./test/deferred";
-import { status, storages, listing } from "./test/fixtures";
+import { status, storages, listing, providerDefinitions } from "./test/fixtures";
 import { client, serverSettings } from "./test/workspaceHarness";
 import { installWorkspaceAppTestHooks, renderWorkspace } from "./test/workspaceAppHarness";
 import { readWorkspaceSession } from "./workspace/workspaceSession";
 import { useRenameStore } from "./stores/useRenameStore";
 import { cloneRule, DEFAULT_RULES } from "./features/rules/RuleEditor";
 import { browserChannel } from "./test/browserChannel";
-import { installBrowserBridge } from "./integrations/onedrive/browserBridge";
-import { BROWSER_NAMESPACE, BROWSER_ORIGIN } from "./integrations/onedrive/protocol";
+import { installBrowserBridge } from "./integrations/browser/browserBridge";
+import { BROWSER_NAMESPACE, BROWSER_ORIGIN } from "./integrations/browser/protocol";
 import type { DirectoryListing, StorageInfo } from "./types";
 
 vi.mock("./api/client", async (importOriginal) => {
@@ -20,7 +20,7 @@ vi.mock("./api/client", async (importOriginal) => {
 });
 installWorkspaceAppTestHooks();
 const cid = "0123456789ABCDEF";
-const target: OpenOneDriveFolderRequest = { version: 1, type: "open-onedrive-folder",
+const target: BrowserNavigationRequest = { version: 1, type: "open-onedrive-folder",
   request_id: "external-1", account_cid: cid, folder_id: "target-id", drive_id: "default-drive" };
 const directory = (): DirectoryListing => ({ provider: "onedrive", storage_id: "user-onedrive",
   revision: 1, directory_id: "target-id", drive_id: "default-drive", location: { kind: "id", value: "target-id" },
@@ -32,10 +32,10 @@ beforeEach(() => {
   vi.mocked(api.fetchStorageFiles).mockImplementation(async (id, location) =>
     id === "user-onedrive" ? directory() : { ...listing(1), location });
 });
-function start(request = target) {
+function start(request: BrowserNavigationRequest = target) {
   let reply: NavigationReply | undefined;
   const accepted = vi.fn();
-  act(() => { void openOneDriveFolder(request, accepted).then((result) => { reply = result; }); });
+  act(() => { void openBrowserFolder(request, accepted).then((result) => { reply = result; }); });
   return { accepted, reply: async () => {
     await waitFor(() => expect(reply).toBeDefined());
     return reply!;
@@ -47,7 +47,46 @@ async function mount() {
   await waitFor(() => expect(client.getQueryState(["storages"])?.status).toBe("success"));
 }
 
+describe("external Google Drive navigation", () => {
+  const storageId = "user-google";
+  const accountId = "google-permission-id";
+  const request: BrowserNavigationRequest = { version: 1, type: "open-google-drive-folder",
+    request_id: "google-1", account_email: "ME@example.test", location: { kind: "id", value: "target-id" } };
+
+  beforeEach(() => {
+    const definitions = providerDefinitions();
+    vi.mocked(api.fetchStorageProviders).mockResolvedValue([...definitions, { ...definitions[1],
+      provider_type: "google_drive", browser_navigation: "google_drive_my_drive", locations: ["root", "id"] }]);
+    const connections = storages();
+    vi.mocked(api.fetchStorages).mockResolvedValue([...connections, { ...connections[1], storage_id: storageId,
+      provider_type: "google_drive", account_id: accountId, account_email: "me@example.test", name: "Google Drive" }]);
+    vi.mocked(api.fetchStorageAuthStatus).mockResolvedValue(status(accountId));
+    vi.mocked(api.fetchStorageFiles).mockImplementation(async (id, location) => id === storageId
+      ? { ...directory(), provider: "google_drive", storage_id: storageId, location, drive_id: null }
+      : { ...listing(1), location });
+  });
+
+  it("opens the email-matched folder using the connection's stable account identity", async () => {
+    await mount();
+    expect(await start(request).reply()).toMatchObject({ status: "opened", storage_id: storageId });
+    expect(api.fetchStorageFiles).toHaveBeenCalledWith(storageId, request.location);
+    await waitFor(() => expect(readWorkspaceSession().session.locations[storageId]?.accountId).toBe(accountId));
+  });
+});
+
 describe("external OneDrive navigation", () => {
+  it("opens a non-builtin provider through its declared navigation adapter", async () => {
+    vi.mocked(api.fetchStorageProviders).mockResolvedValue(providerDefinitions().map((entry) =>
+      entry.browser_navigation === "onedrive_personal" ? { ...entry, provider_type: "fixture_service" } : entry));
+    vi.mocked(api.fetchStorages).mockResolvedValue(storages().map((entry) => entry.storage_id === "user-onedrive"
+      ? { ...entry, provider_type: "fixture_service", account_id: cid } : entry));
+    vi.mocked(api.fetchStorageFiles).mockImplementation(async (id, location) => id === "user-onedrive"
+      ? { ...directory(), provider: "fixture_service" } : { ...listing(1), location });
+    await mount();
+    expect(await start().reply()).toMatchObject({ status: "opened", storage_id: "user-onedrive" });
+    await screen.findByText("target-file.txt");
+  });
+
   it("opens through the validated browser message entry and reports accepted before opened", async () => {
     await mount();
     const channel = browserChannel();

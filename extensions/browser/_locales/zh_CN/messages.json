@@ -6,7 +6,7 @@
     "message": "Rename Studio 浏览器扩展（开发版）"
   },
   "extensionDescription": {
-    "message": "将 OneDrive 当前“我的文件”目录打开到已有的 Rename Studio 标签页。"
+    "message": "在 Rename Studio 中打开当前云盘文件目录"
   },
   "openInStudio": {
     "message": "在 Rename Studio 中打开"
@@ -39,7 +39,7 @@
     "message": "浏览器通信暂不可用，请刷新两边页面后重试。"
   },
   "reason_unsupported_view": {
-    "message": "暂不支持此视图，请进入“我的文件”中的普通目录。"
+    "message": "不支持此文件目录和URL"
   },
   "reason_unsupported_scope": {
     "message": "此目录不属于支持的个人版默认云盘范围。"
@@ -60,7 +60,7 @@
     "message": "无法确认账号标识的格式。"
   },
   "reason_auth_required": {
-    "message": "请检查 OneDrive 和 Rename Studio 中此账号的授权状态。"
+    "message": "请检查云盘网页及 Rename Studio 中此账号的授权。"
   },
   "reason_permission_denied": {
     "message": "无权访问此目录，请检查权限。"
@@ -90,7 +90,7 @@
     "message": "集成协议版本不兼容，请更新扩展和本体。"
   },
   "reason_connection_not_found": {
-    "message": "请在 Rename Studio 中添加或检查对应的 OneDrive 连接。"
+    "message": "请在 Rename Studio 中添加或检查对应的云盘连接。"
   },
   "reason_busy": {
     "message": "Rename Studio 正忙，请完成当前操作后重试。"
@@ -115,5 +115,8 @@
   },
   "reason_storage_connection_changed": {
     "message": "连接已变化，请核对账号后重新点击。"
+  },
+  "reason_account_email_unverified": {
+    "message": "未能读取当前 Google Drive 账号的邮箱。请确认已登录后重试。"
   }
 }

@@ -1,8 +1,9 @@
 import { mountFloatingButton } from "./floating-button.js";
 import { NAMESPACE } from "./protocol.js";
+import { findSiteAdapter } from "./adapters/index.js";
 import { deadline } from "./transport.js";
 
-if (window.top === window && location.origin === "https://onedrive.live.com") {
+if (window.top === window && findSiteAdapter(location.origin)) {
   mountFloatingButton(async (accepted) => {
     const requestId = crypto.randomUUID();
     const receive = (message, sender) => {

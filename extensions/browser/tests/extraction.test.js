@@ -1,4 +1,4 @@
-import { extractOneDriveFolder } from "../src/onedrive-page.js";
+import { extractOneDriveFolder } from "../src/adapters/onedrive-page.js";
 import { validateOpenRequest } from "../src/protocol.js";
 
 const root = "/personal/0123456789abcdef/Documents";

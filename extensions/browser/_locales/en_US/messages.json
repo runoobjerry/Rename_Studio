@@ -6,7 +6,7 @@
     "message": "Rename Studio Browser (development)"
   },
   "extensionDescription": {
-    "message": "Open your current OneDrive My files folder in an existing Rename Studio tab."
+    "message": "Open the current cloud storage folder in Rename Studio"
   },
   "openInStudio": {
     "message": "Open in Rename Studio"
@@ -39,7 +39,7 @@
     "message": "The browser connection is unavailable. Refresh both pages and retry."
   },
   "reason_unsupported_view": {
-    "message": "This view is not supported. Open a regular folder in My files."
+    "message": "This folder and URL are not supported"
   },
   "reason_unsupported_scope": {
     "message": "This folder is outside the supported personal default drive."
@@ -60,7 +60,7 @@
     "message": "The account identifier format could not be verified."
   },
   "reason_auth_required": {
-    "message": "Check this account's authorization in OneDrive and Rename Studio."
+    "message": "Check this account's authorization on the cloud website and in Rename Studio."
   },
   "reason_permission_denied": {
     "message": "Access to this folder was denied. Check permissions."
@@ -90,7 +90,7 @@
     "message": "The integration versions are incompatible. Update both components."
   },
   "reason_connection_not_found": {
-    "message": "Add or check the matching OneDrive connection in Rename Studio."
+    "message": "Add or check the matching cloud connection in Rename Studio."
   },
   "reason_busy": {
     "message": "Rename Studio is busy. Finish the current operation, then retry."
@@ -115,5 +115,8 @@
   },
   "reason_storage_connection_changed": {
     "message": "The connection changed. Check the account and click again."
+  },
+  "reason_account_email_unverified": {
+    "message": "Rename Studio could not find the current Google Drive account email. Check that you are signed in and try again."
   }
 }

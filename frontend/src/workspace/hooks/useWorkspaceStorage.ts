@@ -2,7 +2,7 @@ import { useTranslation } from "react-i18next";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { fetchStorageFiles, fetchStorageAuthStatus, fetchStorageProviders, fetchStorages, pickStorageFolder } from "../../api/client";
-import { NavigationError, samePersonalAccount, type OneDriveTarget } from "../../integrations/onedrive/navigation";
+import { NavigationError, type ExternalNavigationTarget } from "../../integrations/browser/navigation";
 import { useNotification } from "../../components/NotificationProvider";
 import { readDefaultCloudLocation } from "../../features/files/defaultCloudLocation";
 import { useAppSettings } from "../../features/settings/useAppSettings";
@@ -15,7 +15,7 @@ interface WorkspaceStorageOptions {
 }
 
 interface ExternalNavigation {
-  target: OneDriveTarget;
+  target: ExternalNavigationTarget;
   guard: () => void;
   phase: "opening" | "displaying";
   resolve: () => void;
@@ -33,7 +33,7 @@ export function useWorkspaceStorage({ pauseFileQueries, onLocalRootSelected }: W
   const [storageId, setStorageId] = useState(initialSession.session.activeStorageId);
   const [location, updateLocation] = useState<StorageLocation>({ kind: "root" });
   const external = useRef<ExternalNavigation | null>(null);
-  const externalTarget = useRef<OneDriveTarget | null>(null);
+  const externalTarget = useRef<ExternalNavigationTarget | null>(null);
   const [externalPending, setExternalPending] = useState(false);
   const [externalFilesKey, setExternalFilesKey] = useState<string | null>(null);
   const cancelExternalNavigation = useCallback(() => {
@@ -152,14 +152,10 @@ export function useWorkspaceStorage({ pauseFileQueries, onLocalRootSelected }: W
       const target = externalFilesKey ? externalTarget.current : null;
       const result = await fetchStorageFiles(storageId, location);
       if (target) {
-        const { storage, request } = target;
+        const { storage } = target;
         if (result.storage_id !== storage.storage_id || result.revision !== storage.revision ||
-            result.directory_id !== request.folder_id || !result.location ||
-            !["root", "id"].includes(result.location.kind)) throw new NavigationError("cancelled");
-        if (request.drive_id) {
-          if (!result.drive_id) throw new NavigationError("scope_unverified");
-          if (result.drive_id !== request.drive_id) throw new NavigationError("unsupported_scope");
-        } else if (result.location.kind !== "root") throw new NavigationError("scope_unverified");
+            !result.location || !["root", "id"].includes(result.location.kind)) throw new NavigationError("cancelled");
+        target.validateListing(result);
       }
       return result;
     },
@@ -183,21 +179,21 @@ export function useWorkspaceStorage({ pauseFileQueries, onLocalRootSelected }: W
   const settingsLoading = providers.isPending || providerDefinitions.isPending ||
     (metadataReady && requiresAuth && cloudStatus.isPending);
 
-  const openExternalTarget = useCallback((target: OneDriveTarget, beforeSwitch: () => void,
+  const openExternalTarget = useCallback((target: ExternalNavigationTarget, beforeSwitch: () => void,
     guard: () => void): Promise<void> => {
     // Reserve the operation synchronously, before the caller emits accepted.
     if (external.current) throw new NavigationError("busy");
-    const { storage, request } = target;
+    const { storage } = target;
     const auth = queryClient.getQueryData<AuthorizationStatus>(["storage-auth", storage.storage_id, storage.revision]);
     if (auth && !auth.connected) throw new NavigationError("auth_required");
-    if (auth && !samePersonalAccount(auth.account_id, request.account_cid)) throw new NavigationError("cancelled");
+    if (auth && !target.matchesAccount(auth.account_id)) throw new NavigationError("cancelled");
     return new Promise<void>((resolve, reject) => {
       external.current = { target, guard, phase: "opening", resolve, reject };
       externalTarget.current = target;
       setExternalPending(true);
       // Ordinary auth query initializes status only when this connection has no cached status.
       setStorageId(storage.storage_id);
-      updateLocation({ kind: "id", value: request.folder_id });
+      updateLocation(target.location);
       setRestoredCloudSession(JSON.stringify([storage.storage_id, storage.revision, auth?.account_id ?? storage.account_id]));
       setRestoredDirectSession(null);
       setExternalFilesKey(crypto.randomUUID());
@@ -213,10 +209,10 @@ export function useWorkspaceStorage({ pauseFileQueries, onLocalRootSelected }: W
     if (!externalPending) return;
     const operation = external.current;
     if (!operation) return;
-    const { storage, request } = operation.target;
+    const { storage } = operation.target;
     const current = providers.data?.find((entry) => entry.storage_id === storage.storage_id);
     if (!current || current.revision !== storage.revision || current.busy ||
-        !samePersonalAccount(current.account_id, request.account_cid) || storageId !== storage.storage_id) {
+        !operation.target.matchesAccount(current.account_id) || storageId !== storage.storage_id) {
       cancelExternalNavigation();
       return;
     }
