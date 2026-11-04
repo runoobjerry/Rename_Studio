@@ -15,7 +15,7 @@ from pydantic import BaseModel, Field, ValidationError as ModelValidationError
 
 from app.core.errors import AppError, AuthenticationError, NotFoundError, PermissionDeniedError, ProviderError, RateLimitError, RenameOutcomeUnknownError, ValidationError
 from app.core.log_context import request_id_context
-from app.providers.errors import http_error_details
+from app.providers.errors import http_error_details, read_error_payload
 from app.providers.retry import RetryBudget
 from app.providers.base import RenameRequest, StorageProvider
 from app.providers.cooldown import ConnectionCooldown, retry_after_delay
@@ -59,16 +59,32 @@ class _FilePage(BaseModel):
     incompleteSearch: bool = False
 
 
-class _ErrorReason(BaseModel):
-    reason: str
+def _extract_google_reasons(payload: object) -> list[str]:
+    error = payload.get("error") if isinstance(payload, dict) else None
+    entries = error.get("errors") if isinstance(error, dict) else None
+    if not isinstance(entries, list):
+        return []
+    reasons: list[str] = []
+    for entry in entries:
+        reason = entry.get("reason") if isinstance(entry, dict) else None
+        if isinstance(reason, str):
+            reasons.append(reason)
+    return reasons
 
 
-class _GoogleError(BaseModel):
-    errors: list[_ErrorReason] = Field(default_factory=list)
-
-
-class _ErrorResponse(BaseModel):
-    error: _GoogleError
+def _map_google_error(status: int, reasons: list[str]) -> AppError:
+    details = {**http_error_details("google_drive", status, reasons), "google_status": status}
+    if status == 401:
+        return AuthenticationError("Google Drive authorization was rejected; reconnect the account", details=details)
+    if status == 404:
+        return NotFoundError("Google Drive item is missing or inaccessible", details=details)
+    if status == 429 or (status == 403 and any(reason in RATE_REASONS for reason in reasons)):
+        return RateLimitError("Google Drive rate limit reached", details=details)
+    if status == 403:
+        return PermissionDeniedError("Google Drive permission denied", details=details)
+    if status == 400:
+        return ValidationError("Google Drive rejected the request; refresh before continuing", details=details)
+    return ProviderError("Google Drive request failed", details=details)
 
 
 class GoogleDriveProvider(StorageProvider):
@@ -368,28 +384,7 @@ class GoogleDriveProvider(StorageProvider):
 
     @staticmethod
     def _response_error(response: httpx.Response) -> AppError:
-        try:
-            payload = _ErrorResponse.model_validate_json(response.content)
-        except ModelValidationError:
-            payload = None
-        codes = [error.reason for error in payload.error.errors] if payload is not None else []
-        details = {**http_error_details("google_drive", response.status_code, codes),
-                   "google_status": response.status_code}
-        if response.status_code == 401:
-            return AuthenticationError("Google Drive authorization was rejected; reconnect the account", details=details)
-        if response.status_code == 404:
-            return NotFoundError("Google Drive item is missing or inaccessible", details=details)
-        if response.status_code == 429:
-            return RateLimitError("Google Drive rate limit reached", details=details)
-        if response.status_code == 403:
-            if payload is None:
-                return ProviderError("Google Drive returned an invalid error response", details=details)
-            if any(code in RATE_REASONS for code in codes):
-                return RateLimitError("Google Drive rate limit reached", details=details)
-            return PermissionDeniedError("Google Drive permission denied", details=details)
-        if response.status_code == 400:
-            return ValidationError("Google Drive rejected the request; refresh before continuing", details=details)
-        return ProviderError("Google Drive request failed", details=details)
+        return _map_google_error(response.status_code, _extract_google_reasons(read_error_payload(response)))
 
     @staticmethod
     def _retryable(response: httpx.Response, error: AppError) -> bool:

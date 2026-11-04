@@ -2,7 +2,16 @@
 
 from typing import Any
 
+import httpx
+
 from app.core.errors import AppError, AuthenticationError, ProviderError, RateLimitError
+
+
+def read_error_payload(response: httpx.Response) -> object:
+    try:
+        return response.json()
+    except ValueError:
+        return None
 
 
 def http_error_details(provider_type: str, status: int, codes: list[str] | None = None) -> dict[str, Any]:

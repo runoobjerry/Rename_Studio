@@ -43,11 +43,26 @@ from provider_fixtures import CooldownClock, registry_for
 ])
 def test_http_classification_keeps_vendor_reasons_as_diagnostics(status: int, reason: str, error_type: type[Exception]) -> None:
     error = GoogleDriveProvider._response_error(httpx.Response(status, json={
-        "error": {"errors": [{"reason": reason}], "message": "diagnostic", "secret": "must-not-escape"},
+        "error": {
+            "errors": [{"reason": 123}, None, {"reason": reason}],
+            "message": "must-not-escape",
+        },
     }))
     assert isinstance(error, error_type)
     assert error.details == {"provider_type": "google_drive", "provider_status": status,
                              "provider_codes": [reason], "google_status": status}
+    assert "must-not-escape" not in error.message
+
+
+@pytest.mark.parametrize("response", [
+    httpx.Response(403, text="Forbidden"),
+    httpx.Response(403, json={"error": {"errors": {"reason": "rateLimitExceeded"}}}),
+])
+def test_unreadable_google_error_reasons_fall_back_to_http_status(response: httpx.Response) -> None:
+    error = GoogleDriveProvider._response_error(response)
+
+    assert isinstance(error, PermissionDeniedError)
+    assert error.details == {"provider_type": "google_drive", "provider_status": 403, "google_status": 403}
 
 
 class FakeAuth:

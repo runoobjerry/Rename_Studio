@@ -19,7 +19,7 @@ from app.core.errors import (
     ValidationError,
     RenameOutcomeUnknownError,
 )
-from app.providers.errors import http_error_details
+from app.providers.errors import http_error_details, read_error_payload
 from app.providers.retry import RetryBudget
 from app.providers.base import RenameRequest, StorageProvider
 from app.providers.cooldown import ConnectionCooldown, retry_after_delay
@@ -37,6 +37,41 @@ MAX_BATCH_SIZE = 20
 READ_BATCH_CONCURRENCY = 3
 WRITE_BATCH_CONCURRENCY = 2
 DRIVE_ITEM_SELECT = "id,name,parentReference,folder,root,size,lastModifiedDateTime"
+
+
+def _extract_graph_codes(payload: object) -> list[str]:
+    codes: list[str] = []
+    error = payload.get("error") if isinstance(payload, dict) else None
+    while isinstance(error, dict):
+        code = error.get("code")
+        if isinstance(code, str):
+            codes.append(code)
+        error = error.get("innerError") or error.get("innererror")
+    return codes
+
+
+def _map_graph_error(status: int, codes: list[str]) -> AppError:
+    details = {**http_error_details("onedrive", status, codes), "graph_status": status}
+    if status == 401:
+        return AuthenticationError("OneDrive authorization failed", details=details)
+    if status == 403:
+        return PermissionDeniedError("OneDrive permission denied", details=details)
+    if status == 404:
+        return NotFoundError("OneDrive item was not found", details=details)
+    if status == 412 or (status in {400, 409} and "resourceModified" in codes):
+        return RenameConflictError(
+            "OneDrive item changed before the request could be applied",
+            details={**details, "reason": "SOURCE_CHANGED"},
+        )
+    if status in {400, 409} and "nameAlreadyExists" in codes:
+        return RenameConflictError("An item with the target name already exists in OneDrive", details=details)
+    if status == 409:
+        return RenameConflictError("OneDrive rename conflict", details=details)
+    if status == 429:
+        return RateLimitError("Microsoft Graph rate limit reached", details=details)
+    if status == 400:
+        return ValidationError("Microsoft Graph rejected the request", details=details)
+    return ProviderError("Microsoft Graph request failed", details=details)
 
 
 class OneDriveProvider(StorageProvider):
@@ -237,8 +272,7 @@ class OneDriveProvider(StorageProvider):
                 retry_auth = True
                 retry_after = max(retry_after, min(2**attempt, 8))
             else:
-                body_value = response_body if isinstance(response_body, dict) else {}
-                results[file_id] = self._graph_error(status, body_value)
+                results[file_id] = self._graph_error(status, response_body)
         if retry:
             if retry_after:
                 await asyncio.sleep(retry_after)
@@ -354,18 +388,17 @@ class OneDriveProvider(StorageProvider):
                 except ProviderError:
                     results[request.file_id] = RenameOutcomeUnknownError("Microsoft Graph returned incomplete write metadata")
             elif status == 408 or status >= 500:
-                results[request.file_id] = RenameOutcomeUnknownError("Remote write outcome is unknown", details=self._graph_error(status, response_body if isinstance(response_body, dict) else {}).details)
+                results[request.file_id] = RenameOutcomeUnknownError("Remote write outcome is unknown", details=self._graph_error(status, response_body).details)
             elif status == 429 and budget.available:
-                results[request.file_id] = self._graph_error(status, response_body if isinstance(response_body, dict) else {})
+                results[request.file_id] = self._graph_error(status, response_body)
                 retry.append(request)
             elif status == 401 and budget.available:
-                results[request.file_id] = self._graph_error(status, response_body if isinstance(response_body, dict) else {})
+                results[request.file_id] = self._graph_error(status, response_body)
                 retry.append(request)
                 retry_auth = True
                 retry_after = max(retry_after, min(2**attempt, 8))
             else:
-                body_value = response_body if isinstance(response_body, dict) else {}
-                results[request.file_id] = self._graph_error(status, body_value)
+                results[request.file_id] = self._graph_error(status, response_body)
 
         if retry and not any(isinstance(outcome, RenameOutcomeUnknownError) for outcome in results.values()):
             # An uncertain part goes to reconciliation before any more writes are sent.
@@ -449,19 +482,19 @@ class OneDriveProvider(StorageProvider):
                 self._cooldown.defer(self._retry_delay(response.headers.get("Retry-After"), attempt))
                 if budget.available:
                     continue
-                raise self._graph_error(429, self._error_payload(response))
+                raise self._graph_error(429, read_error_payload(response))
             if response.status_code == 401 and budget.available:
                 force_refresh = True
                 continue
             if writing and (response.status_code == 408 or response.status_code >= 500):
-                raise RenameOutcomeUnknownError("Remote write outcome is unknown; metadata must be checked", details=self._graph_error(response.status_code, self._error_payload(response)).details)
+                raise RenameOutcomeUnknownError("Remote write outcome is unknown; metadata must be checked", details=self._graph_error(response.status_code, read_error_payload(response)).details)
             if self._is_retryable(response.status_code) and budget.available:
                 await asyncio.sleep(
                     self._retry_delay(response.headers.get("Retry-After"), attempt)
                 )
                 continue
             if response.is_error:
-                raise self._graph_error(response.status_code, self._error_payload(response))
+                raise self._graph_error(response.status_code, read_error_payload(response))
             try:
                 payload = response.json()
             except ValueError as exc:
@@ -560,49 +593,5 @@ class OneDriveProvider(StorageProvider):
         return retry_after_delay(value, min(2**attempt, 8))
 
     @staticmethod
-    def _error_payload(response: httpx.Response) -> dict[str, object]:
-        # Diagnostic parsing must not change classification of an HTTP refusal.
-        try:
-            payload = response.json()
-        except ValueError:
-            return {}
-        return payload if isinstance(payload, dict) else {}
-
-    @staticmethod
-    def _graph_error(status: int, payload: dict[str, object]) -> AppError:
-        error = payload.get("error")
-        message = None
-        if isinstance(error, dict) and isinstance(error.get("message"), str):
-            message = error["message"]
-        codes: list[str] = []
-        inner = error
-        while isinstance(inner, dict):
-            code = inner.get("code")
-            if isinstance(code, str):
-                codes.append(code)
-            inner = inner.get("innerError") or inner.get("innererror")
-        details = {**http_error_details("onedrive", status, codes), "graph_status": status}
-        if status == 401:
-            return AuthenticationError(
-                message or "OneDrive authorization failed", details=details
-            )
-        if status == 403:
-            return PermissionDeniedError(
-                message or "OneDrive permission denied", details=details
-            )
-        if status == 404:
-            return NotFoundError(message or "OneDrive item was not found", details=details)
-        if status in {409, 412}:
-            return RenameConflictError(
-                message or "OneDrive rename conflict",
-                details={**details, "reason": "SOURCE_CHANGED"} if status == 412 else details,
-            )
-        if status == 429:
-            return RateLimitError(
-                message or "Microsoft Graph rate limit reached", details=details
-            )
-        if status == 400:
-            return ValidationError(
-                message or "Microsoft Graph rejected the request", details=details
-            )
-        return ProviderError(message or "Microsoft Graph request failed", details=details)
+    def _graph_error(status: int, payload: object) -> AppError:
+        return _map_graph_error(status, _extract_graph_codes(payload))

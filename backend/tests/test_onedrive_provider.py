@@ -7,7 +7,14 @@ from email.utils import format_datetime
 import pytest
 import httpx
 
-from app.core.errors import PermissionDeniedError, ProviderError, RateLimitError, RenameOutcomeUnknownError, ValidationError
+from app.core.errors import (
+    PermissionDeniedError,
+    ProviderError,
+    RateLimitError,
+    RenameConflictError,
+    RenameOutcomeUnknownError,
+    ValidationError,
+)
 from app.providers.retry import RetryBudget
 from app.providers.base import RenameRequest
 from app.providers.onedrive.driver import GRAPH_ROOT, OneDriveProvider
@@ -75,6 +82,38 @@ class StubOneDriveProvider(OneDriveProvider):
             budget.used += 1
         self.calls.append((method, url, json))
         return self.responses.pop(0)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(("status", "inner_code", "expected_code", "expected_reason"), [
+    (400, "nameAlreadyExists", "RENAME_CONFLICT", None),
+    (409, "resourceModified", "RENAME_CONFLICT", "SOURCE_CHANGED"),
+    (400, "unrecognizedCode", "VALIDATION_ERROR", None),
+    (412, "unrecognizedCode", "RENAME_CONFLICT", "SOURCE_CHANGED"),
+])
+async def test_batch_rename_classifies_graph_codes_without_exposing_message(
+    status: int, inner_code: str, expected_code: str, expected_reason: str | None,
+) -> None:
+    upstream_message = "Upstream diagnostic with a private file path"
+    provider = StubOneDriveProvider([{"responses": [{
+        "id": "0",
+        "status": status,
+        "body": {"error": {
+            "code": "generalException",
+            "message": upstream_message,
+            "innerError": {"code": inner_code, "message": upstream_message},
+        }},
+    }]}])
+
+    result = (await provider.rename_many([RenameRequest("a", "new.txt")]))["a"]
+
+    assert isinstance(result, (RenameConflictError, ValidationError))
+    assert result.code == expected_code
+    assert result.details.get("reason") == expected_reason
+    assert result.details["provider_codes"] == ["generalException", inner_code]
+    assert result.details["provider_status"] == status
+    assert upstream_message not in result.message
+    assert upstream_message not in str(result.details)
 
 
 @pytest.mark.asyncio
