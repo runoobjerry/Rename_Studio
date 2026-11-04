@@ -6,6 +6,9 @@ import AddIcon from "@mui/icons-material/Add";
 import FolderOpenIcon from "@mui/icons-material/FolderOpen";
 import ErrorIcon from "@mui/icons-material/Error";
 import Verified from "@mui/icons-material/Verified";
+import AccountCircleIcon from "@mui/icons-material/AccountCircle";
+import GoogleIcon from "@mui/icons-material/Google";
+import MicrosoftIcon from "@mui/icons-material/Microsoft";
 import {
   Alert, Box, Button, Card, Dialog, DialogActions, DialogContent, DialogTitle,
   Divider, MenuItem, Stack, Chip, TextField, Typography, Table, TableBody,
@@ -21,6 +24,11 @@ import {
 import type { StorageConfigField, StorageInfo, StorageProviderDefinition } from "../../types";
 import { errorMessage, useNotification } from "../../components/NotificationProvider";
 import { PanelIconButton } from "../../components/PanelIconButton";
+
+const authorizationIcons = new Map([
+  ["google_drive", GoogleIcon],
+  ["onedrive", MicrosoftIcon],
+]);
 
 const connectionBodySx = {
   "& .MuiInputBase-root, & .MuiInputLabel-root, & .MuiButton-root": {
@@ -304,8 +312,8 @@ function ConnectionRow({ storage, executing, definition }: {
     authTitle = t("settings:connection.unauthorized");
     authDescription = t("settings:connection.signInHelp");
   }
-  // 图标反映查询状态；操作按钮仍按已有账号数据决定，保留刷新失败时的行为。
-  const showVerified = !status.isPending && !status.error && status.data?.connected;
+  const AuthorizationIcon = authorizationIcons.get(definition.provider_type) ?? AccountCircleIcon;
+  const authorizationIconColor = status.isSuccess && status.data.connected ? "text.primary" : "text.disabled";
   return <>
     <TableRow hover>
       <TableCell sx={{ maxWidth: 240, overflowWrap: "anywhere", color: "text.primary" }}>{storage.name}</TableCell>
@@ -348,11 +356,7 @@ function ConnectionRow({ storage, executing, definition }: {
             <>
               <Divider />
               <Stack direction="row" spacing={1.5} sx={{ alignItems: "center" }}>
-                {showVerified ? (
-                  <Verified sx={{ color: "success.main", flexShrink: 0 }} />
-                ) : (
-                  <ErrorIcon sx={{ color: "warning.main", flexShrink: 0 }} />
-                )}
+                <AuthorizationIcon sx={{ color: authorizationIconColor, flexShrink: 0 }} />
                 <Box sx={{ flex: 1, minWidth: 0, overflowWrap: "anywhere" }}>
                   <Typography variant="body2" sx={{ lineHeight: 1.5 }}>
                     {authTitle}
