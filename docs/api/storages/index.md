@@ -25,7 +25,7 @@
 | --- | --- | --- | --- |
 | `storage_id` | string | 否 | 连接标识，用于路径参数。 |
 | `provider_type` | string | 否 | [Provider 类型](../providers/index.md#providers)。 |
-| `name` | string | 否 | 用户设置的连接名称，1–200 字符。 |
+| `name` | string | 否 | 用户设置的连接名称；最大限制 20 字符。 |
 | `config` | object | 否 | [公开配置](../providers/index.md#provider-config)，不含 Token 或 Secret。 |
 | `revision` | integer | 否 | 连接版本，初始 `1`；配置或账号授权状态变化时递增。 |
 | `busy` | boolean | 否 | 是否正在执行重命名。 |
@@ -88,7 +88,7 @@ GET /storages
 | 字段 | 类型 | 必填 | 可空 | 说明 |
 | --- | --- | --- | --- | --- |
 | `provider_type` | string | 是 | 否 | 已注册的 Provider 类型。 |
-| `name` | string | 是 | 否 | 1–200 字符。 |
+| `name` | string | 是 | 否 | 1–20 字符。 |
 | `config` | object | 是 | 否 | 对应 Provider 的[配置对象](../providers/index.md#provider-config)。 |
 | `client_secret` | string | 否 | 是 | 只写，默认 `null`；1–4096 字符，去除两端空白后不能为空。 |
 
@@ -178,7 +178,7 @@ GET /storages/default-local
 
 | 字段 | 类型 | 必填 | 可空 | 说明 |
 | --- | --- | --- | --- | --- |
-| `name` | string | 否 | 是 | 1–200 字符；省略或 `null` 保留原名。 |
+| `name` | string | 否 | 是 | 1–20 字符；省略或 `null` 保留原名。 |
 | `config` | object | 否 | 是 | 省略或 `null` 保留原配置；提供对象时[整体替换](../providers/index.md#provider-config)。 |
 | `client_secret` | string | 否 | 是 | 1–4096 字符，去除两端空白后不能为空；省略或 `null` 保留原密钥，不能用于清空密钥。 |
 

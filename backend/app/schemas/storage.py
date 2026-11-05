@@ -107,13 +107,13 @@ class StorageClientSecret(BaseModel):
 class StorageCreate(StorageClientSecret):
     model_config = ConfigDict(extra="forbid")
     provider_type: str
-    name: str = Field(min_length=1, max_length=200)
+    name: str = Field(min_length=1, max_length=20)
     config: dict[str, object]
 
 
 class StorageUpdate(StorageClientSecret):
     model_config = ConfigDict(extra="forbid")
-    name: str | None = Field(default=None, min_length=1, max_length=200)
+    name: str | None = Field(default=None, min_length=1, max_length=20)
     config: dict[str, object] | None = None
 
 
