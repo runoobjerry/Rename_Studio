@@ -2,8 +2,7 @@
   "externalNavigation": {
     "opened": "已打开来自 {{host}} 的目录",
     "unconfirmed": "未收到打开结果，请查看 Rename Studio。",
-    "rejected": "外部导航已停止（{{code}}）。请检查连接或完成当前操作后重试。",
-    "retry": "重试读取目录"
+    "rejected": "外部导航已停止（{{code}}）。请检查连接或完成当前操作后重试。"
   },
   "types": {
     "file": "文件",
@@ -65,19 +64,15 @@
     "returnedError": "返回错误：{{message}}，请尝试刷新文件目录。",
     "progressUnavailable": "暂时无法读取进度：{{message}}；执行请求仍在进行，请勿重复提交。",
     "processed": "当前任务已处理 {{processed}} 项，共 {{total}} 项。",
-    "confirm": "将按当前预览重命名「{{connectionName}}」中的 {{count}} 个项目。",
-    "unknownOutcome": "未收到完整的修改结果。请刷新目录并核对实际名称，核对前不要重复执行。"
+    "confirm": "将按当前预览重命名「{{connectionName}}」中的 {{count}} 个项目。"
   },
   "notifications": {
     "renamedElsewhere": "重命名成功，但该项目已移动至其他目录。",
-    "invalidPreview": "预览包含无效名称或冲突，请检查结果。",
     "rootSelected": "已选择本地根文件夹。",
     "sessionUnavailable": "浏览器无法保存当前目录，刷新页面后需重新打开。",
     "defaultUnavailable": "无法读取默认路径，将打开云盘根目录。",
     "refreshed": "目录已刷新。",
-    "previewFailed": "预览失败：{{message}}",
     "completed": "本次修改已全部完成：{{count}} 项已修改。",
-    "unknownOutcome": "未收到完整的修改结果。请刷新目录并核对实际名称，核对前不要重复执行。",
     "pickFailed": "选择文件夹失败：{{message}}",
     "defaultSaved": "已将“{{path}}”设为当前账号的默认路径。",
     "defaultRootSaved": "已将“根目录”设为当前账号的默认路径。",
@@ -98,23 +93,20 @@
     "setDefault": "设为默认",
     "picking": "等待选择…",
     "browse": "浏览…",
-    "storageMissing": "当前存储已删除，请选择其他连接。",
-    "pickerFailed": "无法打开文件夹选择器：{{message}}",
-    "connectAccount": "请先前往设置页面连接 {{service}} 账号。"
+    "pickerFailed": "无法打开文件夹选择器：{{message}}"
   },
   "sidebar": {
     "title": "存储位置",
     "loading": "正在加载存储位置"
   },
   "workspace": {
-    "loading": "正在加载工作台配置",
+    "loading": "正在加载主页…",
     "loadingSettings": "正在读取存储设置…",
     "loadingDirectory": "正在读取目录…",
     "unavailable": "目录暂不可用，请检查存储设置。",
     "loadFailed": "无法加载主页信息，请重启应用。",
-    "directoryFailed": "目录读取失败：{{message}}",
-    "connectToBrowse": "在设置页面授权{{service}}后可浏览云端文件。",
-    "definitionMissing": "无法加载此连接的服务信息，请刷新页面后重试。"
+    "directoryFailed": "目录加载失败：{{message}}",
+    "connectToBrowse": "在设置页面授权{{service}}后可浏览云端文件。"
   },
   "summary": "共 {{total}} 项 · 已选择 {{selected}} 项",
   "showing": " · 显示 {{count}} 项",
@@ -123,7 +115,7 @@
   "selectFile": "选择文件 {{name}}",
   "selectFolder": "选择文件夹 {{name}}",
   "verification": {
-    "required": "部分项目的重命名结果尚未确认。请刷新目录，或前往文件源进行检查，核对前不要重复执行。"
+    "required": "重命名结果尚未确认。请刷新目录或前往文件源核对实际名称，核对前不要重复执行。"
   },
   "taskTitle": "当前任务",
   "quickRename": {

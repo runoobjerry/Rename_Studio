@@ -154,12 +154,6 @@ export function scanSource(text, filename) {
     else dynamic.add(`${filename}: ${node.getText(source)}`);
   }
   function visit(node) {
-    if (ts.isVariableDeclaration(node) && node.name.getText(source) === "translatedCodes" && node.initializer && ts.isArrayLiteralExpression(node.initializer)) {
-      for (const code of node.initializer.elements) {
-        if (ts.isStringLiteral(code)) required.add(`errors:codes.${code.text}`);
-        else errors.push(`${filename}: translatedCodes requires literal strings`);
-      }
-    }
     if (ts.isCallExpression(node) && /^(?:t|i18n\.t)$/.test(node.expression.getText(source))) keys(node.arguments[0], node.expression.getText(source) === "i18n.t" ? "common" : namespaceAt(node));
     // Also includes notification descriptors and labelKey maps outside calls to t().
     if (ts.isStringLiteralLike(node) && namespaces.some((ns) => node.text.startsWith(`${ns}:`)) && /^[a-z]+:[\w.]+$/.test(node.text)) required.add(node.text);

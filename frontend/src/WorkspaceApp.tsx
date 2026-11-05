@@ -260,7 +260,6 @@ function Workspace({ preference, setPreference, settingsError, hasSettings }: {
                   defaultPathDisabled={!cloudAccountId || !cloudReady || !files.isSuccess || files.isFetching || Boolean(files.error) || cloudStatus.isError}
                   browseDisabled={!activeStorage || pickLocalRoot.isPending || isExecuting || activeStorage.busy}
                   isPickingFolder={pickLocalRoot.isPending}
-                  storageMissing={!activeStorage && !providers.isPending}
                   pickerError={pickLocalRoot.error}
                   onOpenNavigation={() => setMobileNavOpen(true)}
                   onNavigate={navigateLocation}
@@ -285,7 +284,7 @@ function Workspace({ preference, setPreference, settingsError, hasSettings }: {
                         selectedIds={selectedIds}
                         disabled={externalPending || isExecuting || isPreviewing || files.isFetching || Boolean(activeStorage?.busy)}
                         isRefreshing={files.isFetching}
-                        refreshError={files.error ? errorMessage(files.error, t) : undefined}
+                        refreshError={files.error ? errorMessage(files.error, t, "directory") : undefined}
                         onNavigate={navigate}
                         onRefresh={refreshDirectory}
                         onToggle={toggleFile}
@@ -296,9 +295,12 @@ function Workspace({ preference, setPreference, settingsError, hasSettings }: {
                     ) : (
                       <section className="panel">
                         {files.error ? (
-                          <Alert severity="error" sx={{ m: 2 }}>
-                            {t("files:workspace.directoryFailed", { message: errorMessage(files.error, t) })}
-                            <Button onClick={refreshDirectory}>{t("files:externalNavigation.retry")}</Button>
+                          <Alert severity="error" sx={{ m: 2 }} action={
+                            <Button color="inherit" size="small" onClick={refreshDirectory}>
+                              {t("common:retry")}
+                            </Button>
+                          }>
+                            {t("files:workspace.directoryFailed", { message: errorMessage(files.error, t, "directory") })}
                           </Alert>
                         ) : (
                           settingsLoading || files.isFetching ? (

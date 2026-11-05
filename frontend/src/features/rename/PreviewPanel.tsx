@@ -184,7 +184,7 @@ function statusFor(item: PreviewResponse["items"][number], result: ExecuteRespon
     label = t("files:preview.filters.unchanged");
     className = "neutral";
   } else if (item.error) {
-    label = item.conflict && !item.details?.reason ? t("errors:reasons.duplicateNames")
+    label = item.conflict && !item.details?.reason ? t("errors:duplicateNames")
       : errorMessage({ code: "VALIDATION_ERROR", message: item.error, details: item.details ?? undefined }, t);
     className = "invalid";
   } else if (!item.valid) {

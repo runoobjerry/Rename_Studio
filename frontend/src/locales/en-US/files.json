@@ -2,8 +2,7 @@
   "externalNavigation": {
     "opened": "Opened a folder from {{host}}",
     "unconfirmed": "No open result received. Please check Rename Studio.",
-    "rejected": "External navigation stopped ({{code}}). Check the connection or finish the current operation, then retry.",
-    "retry": "Retry directory"
+    "rejected": "External navigation stopped ({{code}}). Check the connection or finish the current operation, then retry."
   },
   "types": {
     "file": "File",
@@ -65,19 +64,15 @@
     "returnedError": "An error was returned: {{message}}. Try refreshing the file directory.",
     "progressUnavailable": "Progress is temporarily unavailable: {{message}}. The execution request is still in progress; do not submit it again.",
     "processed": "Processed {{processed}} of {{total}} items in this task.",
-    "confirm": "Rename items in “{{connectionName}}” according to the current preview. Number of items: {{count}}.",
-    "unknownOutcome": "Complete rename results were not received. Refresh the directory and verify the actual names before running this operation again."
+    "confirm": "Rename items in “{{connectionName}}” according to the current preview. Number of items: {{count}}."
   },
   "notifications": {
     "renamedElsewhere": "Renamed successfully, but the item has moved to another directory.",
-    "invalidPreview": "The preview contains invalid names or conflicts. Review the results.",
     "rootSelected": "Local root folder selected.",
     "sessionUnavailable": "The browser cannot save the current directory. You will need to reopen it after refreshing the page.",
     "defaultUnavailable": "Could not read the default location. Opening the cloud drive root.",
     "refreshed": "Directory refreshed.",
-    "previewFailed": "Preview failed: {{message}}",
     "completed": "Renaming completed. Items renamed: {{count}}.",
-    "unknownOutcome": "Complete rename results were not received. Refresh the directory and verify the actual names before running this operation again.",
     "pickFailed": "Could not select a folder: {{message}}",
     "defaultSaved": "Set “{{path}}” as the default location for the current account.",
     "defaultRootSaved": "Set the root directory as the default location for the current account.",
@@ -98,23 +93,20 @@
     "setDefault": "Set as default",
     "picking": "Waiting for selection…",
     "browse": "Browse…",
-    "storageMissing": "This storage connection has been deleted. Select another connection.",
-    "pickerFailed": "Could not open the folder picker: {{message}}",
-    "connectAccount": "Go to Settings and connect your {{service}} account first."
+    "pickerFailed": "Could not open the folder picker: {{message}}"
   },
   "sidebar": {
     "title": "Storage locations",
     "loading": "Loading storage locations"
   },
   "workspace": {
-    "loading": "Loading workspace configuration",
+    "loading": "Loading homepage configuration…",
     "loadingSettings": "Loading storage settings…",
     "loadingDirectory": "Loading directory…",
     "unavailable": "The directory is temporarily unavailable. Check your storage settings.",
-    "loadFailed": "Could not load the home page information. Restart the app.",
+    "loadFailed": "Could not load the homepage information. Restart the app.",
     "directoryFailed": "Could not load the directory: {{message}}",
-    "connectToBrowse": "Authorize {{service}} in Settings to browse cloud files.",
-    "definitionMissing": "Could not load service information for this connection. Refresh the page and try again."
+    "connectToBrowse": "Authorize {{service}} in Settings to browse cloud files."
   },
   "summary": "Total: {{total}} · Selected: {{selected}}",
   "showing": " · {{count}} shown",
@@ -123,7 +115,7 @@
   "selectFile": "Select file {{name}}",
   "selectFolder": "Select folder {{name}}",
   "verification": {
-    "required": "Some rename results are unconfirmed. Refresh the directory, or check the files at their source before running this operation again."
+    "required": "Rename results are unconfirmed. Refresh the directory or check the actual names at their source. Do not repeat the operation until you have verified the results."
   },
   "taskTitle": "Current task",
   "quickRename": {

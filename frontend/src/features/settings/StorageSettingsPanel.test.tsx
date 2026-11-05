@@ -244,7 +244,7 @@ describe("storage settings", () => {
     vi.mocked(api.updateStorage).mockRejectedValueOnce(new api.ApiError(422, "Save failed", "VALIDATION_ERROR"));
     fireEvent.change(screen.getByLabelText("client_secret"), { target: { value: "replacement-secret" } });
     fireEvent.click(screen.getByRole("button", { name: "保存" }));
-    await within(screen.getByRole("dialog")).findByText("无法使用当前输入完成操作，请检查名称和设置后重试。");
+    await within(screen.getByRole("dialog")).findByText("填写的信息不完整或不符合要求，请检查后重试。");
     expect(screen.getByLabelText("client_secret")).toHaveValue("replacement-secret");
     fireEvent.click(screen.getByRole("button", { name: "保存" }));
     await waitFor(() => expect(screen.getByLabelText("client_secret")).toHaveValue(""));
@@ -416,7 +416,7 @@ describe("storage settings", () => {
     fireEvent.change(screen.getByRole("textbox", { name: "连接名称" }), { target: { value: "Other" } });
     fireEvent.change(screen.getByRole("textbox", { name: "directory" }), { target: { value: "D:\\other" } });
     fireEvent.click(screen.getByRole("button", { name: "保存连接" }));
-    expect(await within(screen.getByRole("dialog")).findByText("无法使用当前输入完成操作，请检查名称和设置后重试。")).toBeInTheDocument();
+    expect(await within(screen.getByRole("dialog")).findByText("填写的信息不完整或不符合要求，请检查后重试。")).toBeInTheDocument();
     expect(screen.getByRole("textbox", { name: "连接名称" })).toHaveValue("Other");
     fireEvent.click(screen.getByRole("button", { name: "取消" }));
     await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());

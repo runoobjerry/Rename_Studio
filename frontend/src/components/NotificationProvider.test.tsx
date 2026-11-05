@@ -69,7 +69,7 @@ describe("shared notifications", () => {
   });
 
   it("shows a localized recovery hint for an unclassified error", () => {
-    expect(errorMessage(new Error("Network unavailable"))).toBe("无法读取数据，请检查网络和应用是否正在运行后重试。");
+    expect(errorMessage(new Error("Network unavailable"))).toBe("无法获取数据，请检查网络连接。");
   });
 });
 

@@ -15,5 +15,6 @@
   "numberField": {
     "decrease": "Decrease {{label}} by one",
     "increase": "Increase {{label}} by one"
-  }
+  },
+  "retry": "Retry"
 }

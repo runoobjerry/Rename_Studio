@@ -111,7 +111,7 @@ export function useSingleRename({ storageId, location, workspaceSession, revisio
             void queryClient.fetchQuery({ queryKey: input.directoryKey,
               queryFn: () => fetchStorageFiles(input.storageId, input.location) }).catch((error: Error) => {
               if (isCurrentSession(input.target.workspaceSession)) {
-                notify({ key: "files:notifications.refreshFailed", error }, "error");
+                notify({ key: "files:notifications.refreshFailed", error, errorContext: "directory" }, "error");
               }
             });
           }
@@ -142,7 +142,7 @@ export function useSingleRename({ storageId, location, workspaceSession, revisio
       if (!(error instanceof ApiError && error.status >= 400 && error.status < 500)) recordUnknown(input, input.operationId);
       if (isCurrentSession(input.target.workspaceSession)) {
         setSingleError(useRenameStore.getState().unknownExecution
-          ? { key: "files:notifications.unknownOutcome", error } : error);
+          ? { key: "files:verification.required", error } : error);
       }
     },
     onSettled: () => {
@@ -202,7 +202,7 @@ export function useSingleRename({ storageId, location, workspaceSession, revisio
   return {
     singleRenameTarget: singleTarget?.workspaceSession === workspaceSession ? singleTarget : null,
     singleRenameError: singleError ? typeof singleError === "object" && "message" in singleError
-      ? errorMessage(singleError, t) : translateMessage(singleError, t) : undefined,
+      ? errorMessage(singleError, t, "singleRename") : translateMessage(singleError, t) : undefined,
     canSingleRename, isSingleRenaming: singleRename.isPending,
     openSingleRename, closeSingleRename, applySingleRename,
     isPending, reset,

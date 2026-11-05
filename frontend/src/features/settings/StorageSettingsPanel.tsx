@@ -100,7 +100,7 @@ function ConfigFields({ definition, draft, clientSecret, disabled, creating = fa
     return pickable ? (
       <Stack key={field.key} direction="row" spacing={1} sx={{ alignItems: "flex-end" }}>
         {input}
-        <Tooltip title={creating ? t("settings:connection.browseDraft") : t("settings:connection.browse")}
+        <Tooltip title={t("settings:connection.browse")}
           slotProps={{ tooltip: { sx: { fontSize: "caption.fontSize" } } }}>
           <span>
             <PanelIconButton aria-label={t("settings:connection.browse")} disabled={disabled} onClick={() => onPick(field.key)}>
@@ -154,7 +154,7 @@ function ConnectionRow({ storage, executing, definition }: {
       refresh();
       notify(action.message, action.severity);
     },
-    onError: (error) => notify(error, "error"),
+    onError: (error) => notify({ error, errorContext: "connection" }, "error"),
   });
   const pick = useMutation({
     mutationFn: (_fieldKey: string) => pickStorageFolder(storage.storage_id),
@@ -164,7 +164,7 @@ function ConnectionRow({ storage, executing, definition }: {
       refresh();
       notify({ key: "files:notifications.rootSelected" });
     },
-    onError: (error) => notify(error, "error"),
+    onError: (error) => notify({ error, errorContext: "connection" }, "error"),
   });
   const connect = useMutation({
     mutationFn: () => startStorageAuth(storage.storage_id),
@@ -176,7 +176,7 @@ function ConnectionRow({ storage, executing, definition }: {
     },
     onError: (error) => {
       popup.current?.close();
-      setAuthError(error);
+      setAuthError({ error, errorContext: "connection" });
     },
   });
   useEffect(() => {
@@ -222,7 +222,7 @@ function ConnectionRow({ storage, executing, definition }: {
   const requestError = operation.error ?? pick.error ?? connect.error ?? status.error;
   const nameTooLong = Array.from(name.trim()).length > 20;
   const saveDisabled = busy || !name.trim() || nameTooLong || missingRequiredConfig(definition.config_fields, draft);
-  const requestErrorMessage = authError !== undefined ? translateMessage(authError, t) : requestError ? errorMessage(requestError, t) : "";
+  const requestErrorMessage = authError !== undefined ? translateMessage(authError, t) : requestError ? errorMessage(requestError, t, "connection") : "";
   const save = () => {
     if (nameTooLong) return;
     operation.mutate({
@@ -343,7 +343,7 @@ function ConnectionRow({ storage, executing, definition }: {
       <DialogContent dividers>
         <Stack spacing={2}>
           <TextField variant="standard" label={t("settings:connection.name")} size="small" value={name} disabled={busy}
-            error={nameTooLong} helperText={nameTooLong ? t("settings:connection.nameTooLong") : undefined}
+            error={nameTooLong} helperText={nameTooLong ? t("errors:connectionNameLength") : undefined}
             onChange={(event) => setName(event.target.value)} />
           <ConfigFields definition={definition} draft={draft} clientSecret={clientSecret}
             disabled={busy} hasClientSecret={storage.has_client_secret}
@@ -427,14 +427,14 @@ export function StorageSettingsPanel({ executingStorageId }: { executingStorageI
       void queryClient.invalidateQueries({ queryKey: ["storages"] });
       notify({ key: "settings:connection.created" });
     },
-    onError: (error) => notify(error, "error"),
+    onError: (error) => notify({ error, errorContext: "connection" }, "error"),
   });
   const pickDraft = useMutation({
     mutationFn: (_fieldKey: string) => pickLocalFolderDraft(),
     onSuccess: (result, fieldKey) => {
       if (result.selected) setDraft((current) => ({ ...current, [fieldKey]: result.root_path }));
     },
-    onError: (error) => notify(error, "error"),
+    onError: (error) => notify({ error, errorContext: "connection" }, "error"),
   });
   const addingBusy = create.isPending || pickDraft.isPending;
   const createError = create.error ?? pickDraft.error ?? providers.error;
@@ -514,7 +514,7 @@ export function StorageSettingsPanel({ executingStorageId }: { executingStorageI
                     <TableCell>{storage.name}</TableCell>
                     <TableCell>{storage.provider_type}</TableCell>
                     <TableCell colSpan={2}>
-                      <Typography variant="caption" color="text.secondary">{t("settings:connection.definitionPending")}</Typography>
+                      <Typography variant="caption" color="text.secondary">{t("errors:providerDefinitionUnavailable")}</Typography>
                     </TableCell>
                   </TableRow>
                 );
@@ -549,7 +549,7 @@ export function StorageSettingsPanel({ executingStorageId }: { executingStorageI
             ))}
           </TextField>
           <TextField variant="standard" label={t("settings:connection.name")} size="small" value={name} disabled={addingBusy}
-            error={nameTooLong} helperText={nameTooLong ? t("settings:connection.nameTooLong") : undefined}
+            error={nameTooLong} helperText={nameTooLong ? t("errors:connectionNameLength") : undefined}
             onChange={(event) => setName(event.target.value)} />
           {activeProvider && (
             <ConfigFields definition={activeProvider} draft={draft} clientSecret={clientSecret}
@@ -557,7 +557,7 @@ export function StorageSettingsPanel({ executingStorageId }: { executingStorageI
               onChange={(key, value) => setDraft((current) => ({ ...current, [key]: value }))}
               onSecretChange={setClientSecret} onPick={(key) => pickDraft.mutate(key)} />
           )}
-          {createError && <Alert severity="error">{errorMessage(createError, t)}</Alert>}
+          {createError && <Alert severity="error">{errorMessage(createError, t, "connection")}</Alert>}
         </Stack>
       </DialogContent>
       <DialogActions sx={{ px: 3, py: 2 }}>

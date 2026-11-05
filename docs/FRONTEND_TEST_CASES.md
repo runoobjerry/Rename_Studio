@@ -33,7 +33,7 @@
 | 部分成功伴随未知/缺失结果时，只合并确认身份，阻止新的预览和写入；成功项可重新选择 | 工作流 Hook |
 | 未执行状态及原因展示不依赖英文诊断；未提供当前名称不误报未知；诊断为空时仍按状态提示 | [PreviewPanel](../frontend/src/features/rename/PreviewPanel.test.tsx) |
 | 执行前确认，无变化时禁止执行，进度失败不虚构结果，执行中锁定控件；最终响应到达后关闭弹窗，不停留展示完成状态 | [RenameActions](../frontend/src/features/rename/RenameActions.test.tsx)、工作台集成 |
-| 复核失败仅在 Modal 展示 codes 译文，点击刷新预览创建新预览，不重放执行、不进入未知结果保护 | [RenameActions](../frontend/src/features/rename/RenameActions.test.tsx)、[工作流 Hook](../frontend/src/features/rename/useRenameWorkflow.test.ts) |
+| 复核失败仅在 Modal 展示本地化提示，点击刷新预览创建新预览，不重放执行、不进入未知结果保护 | [RenameActions](../frontend/src/features/rename/RenameActions.test.tsx)、[工作流 Hook](../frontend/src/features/rename/useRenameWorkflow.test.ts) |
 | 未知执行结果在预览栏显示可关闭的 Alert，关闭仅隐藏提醒，同次执行保持隐藏，新执行重新提醒；待核对项显示 N/A 并归入错误筛选；已移除自动回滚结果场景，无人工解锁入口，刷新目录成功只解锁刷新预览并保留旧预览及待核对展示，刷新失败保留锁定 | 工作台集成、PreviewPanel |
 | 全选和过滤覆盖完整数据集，包括虚拟列表未挂载的行 | FileBrowser、[虚拟列表](../frontend/src/features/files/FileBrowser.virtual.test.tsx) |
 | 重置应用请求异常时提示刷新核对，保留规则、配置、路径记忆与当前连接，并保持确认框打开 | [偏好与重置集成](../frontend/src/WorkspaceApp.preferences.test.tsx) |
@@ -64,6 +64,7 @@
 | 首次读取门控、语言即时切换与持久化恢复、保存失败回退、连续切换、auto 跟随浏览器且不重挂载 | [语言 Provider](../frontend/src/i18n/LanguageProvider.test.tsx) |
 | 设置语言菜单接线；首次读取失败提示默认设置和刷新步骤；保存响应丢失提示恢复界面后刷新核对；切换时保留选择且不重新请求目录/元数据 | [偏好与重置集成](../frontend/src/WorkspaceApp.preferences.test.tsx) |
 | 已有预览与确认框随语言更新；保持选中项和降序排列，不额外预览、执行或释放快照 | 工作台集成 |
+| API 类别复用 UX 语义；精确原因及请求字段优先、场景覆盖、未知读写安全回退；写入响应未知优先于所有场景，复核未开始写入保留原提示；仅输出允许的插值参数 | [错误解析器](../frontend/src/i18n/errorPresentation.test.ts) |
 | 错误码显示完整本地化提示，原始 message/details 保留用于诊断；未知 code 或普通异常显示通用读取恢复提示，不直接展示原文 | [错误翻译](../frontend/src/i18n/messages.test.ts) |
 | 源状态变化按 RENAME_CONFLICT / SOURCE_CHANGED 展示，供应商 graph_status 仅保留诊断 | [错误翻译](../frontend/src/i18n/messages.test.ts) |
 | 连接创建/编辑/关闭草稿、本地选择器、授权状态与失败保留输入；已连接 chip 显示邮箱，编辑面板显示账号详情，退出成功通知 | StorageSettingsPanel |

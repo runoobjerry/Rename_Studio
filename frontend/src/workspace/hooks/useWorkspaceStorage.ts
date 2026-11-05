@@ -75,7 +75,7 @@ export function useWorkspaceStorage({ pauseFileQueries, onLocalRootSelected }: W
   const supportsLocation = useCallback((value: StorageLocation) =>
     providerDefinition?.locations.includes(value.kind) === true, [providerDefinition]);
   const providerError = providerDefinitions.error ?? (activeStorage && providerDefinitions.isSuccess && !providerDefinition
-    ? new Error(t("files:workspace.definitionMissing", { provider: providerId })) : null);
+    ? new Error(t("errors:providerDefinitionUnavailable")) : null);
   const cloudStatus = useQuery({
     queryKey: ["storage-auth", storageId, activeStorage?.revision],
     queryFn: () => fetchStorageAuthStatus(storageId),
@@ -324,13 +324,13 @@ export function useWorkspaceStorage({ pauseFileQueries, onLocalRootSelected }: W
     if (!cloudAccountId || !cloudReady || !files.isSuccess || files.isFetching || files.error) return;
     void appSettings.save({ cloud_default_locations: { [storageId]: { account_id: cloudAccountId, location: files.data.location! } } })
       .then(() => notify(files.data.path ? { key: "files:notifications.defaultSaved", values: { path: files.data.path } } : { key: "files:notifications.defaultRootSaved" }))
-      .catch((error: Error) => notify({ key: "files:notifications.defaultSaveFailed", error }, "error"));
+      .catch((error: Error) => notify({ key: "files:notifications.defaultSaveFailed", error, errorContext: "settings" }, "error"));
   }, [cloudAccountId, cloudReady, files.isSuccess, files.isFetching, files.error, files.data, storageId, notify, appSettings.save]);
 
   const refreshFiles = useCallback((onRefreshed?: () => void) => {
     if (!locationReady) return;
     void files.refetch().then((result) => {
-      if (result.error) notify({ key: "files:notifications.refreshFailed", error: result.error }, "error");
+      if (result.error) notify({ key: "files:notifications.refreshFailed", error: result.error, errorContext: "directory" }, "error");
       else {
         onRefreshed?.();
         notify({ key: "files:notifications.refreshed" });

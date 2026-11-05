@@ -279,7 +279,7 @@ describe("external OneDrive navigation", () => {
       ? { ...directory(), drive_id: "other-drive" } : { ...listing(1), location });
     await mount();
     expect(await start().reply()).toMatchObject({ status: "rejected", code: "unsupported_scope" });
-    fireEvent.click(screen.getByRole("button", { name: "重试读取目录" }));
+    fireEvent.click(screen.getByRole("button", { name: "重试" }));
     await waitFor(() => expect(api.fetchStorageFiles).toHaveBeenCalledTimes(3));
     expect(screen.queryByText("target-file.txt")).not.toBeInTheDocument();
     expect(readWorkspaceSession().session.locations["user-onedrive"]).toBeUndefined();
@@ -296,7 +296,7 @@ describe("external OneDrive navigation", () => {
     expect(await start().reply()).toMatchObject({ status: "rejected", code });
     expect(readWorkspaceSession().session.locations["user-onedrive"]).toBeUndefined();
     fail = false;
-    fireEvent.click(screen.getByRole("button", { name: "重试读取目录" }));
+    fireEvent.click(screen.getByRole("button", { name: "重试" }));
     await screen.findByText("target-file.txt");
     expect(api.fetchStorageFiles).not.toHaveBeenCalledWith("user-onedrive", { kind: "root" });
   });

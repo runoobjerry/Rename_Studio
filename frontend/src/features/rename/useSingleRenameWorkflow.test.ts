@@ -128,7 +128,7 @@ describe("single rename workflow", () => {
     expect(useRenameStore.getState().selectedIds).toEqual([]);
     expect(api.executeStorageSingleRename).toHaveBeenCalledTimes(1);
     expect(notify).toHaveBeenCalledWith({ key: "files:notifications.refreshFailed",
-      error: expect.objectContaining({ message: "Directory unavailable" }) }, "error");
+      error: expect.objectContaining({ message: "Directory unavailable" }), errorContext: "directory" }, "error");
   });
 
   it.each([
@@ -381,12 +381,15 @@ describe("single rename workflow", () => {
     ));
   });
 
-  it("shows an explicit HTTP rejection without locking either workflow", async () => {
+  it.each([
+    { status: 403, code: "PERMISSION_DENIED", text: "没有修改此项目的权限，请检查访问权限，或使用有权限的账号。" },
+    { status: 409, code: "STORAGE_CONNECTION_CHANGED", text: "连接或账号已变化，请刷新目录后重新选择项目。" },
+  ])("shows $code without locking either workflow", async ({ status, code, text }) => {
     const hook = await setupWorkspace(1);
-    vi.mocked(api.executeStorageSingleRename).mockRejectedValueOnce(new api.ApiError(403, "Denied", "PERMISSION_DENIED"));
+    vi.mocked(api.executeStorageSingleRename).mockRejectedValueOnce(new api.ApiError(status, "Rejected", code));
     act(() => hook.result.current.workflow.openSingleRename("file-0.txt"));
     act(() => hook.result.current.workflow.applySingleRename("new", ".txt"));
-    await waitFor(() => expect(hook.result.current.workflow.singleRenameError).toBe("没有修改此项目的权限，请检查访问权限，或使用有权限的账号。"));
+    await waitFor(() => expect(hook.result.current.workflow.singleRenameError).toBe(text));
     expect(hook.result.current.workflow.canSingleRename).toBe(true);
     expect(useRenameStore.getState().unknownExecution).toBeNull();
     expect(api.executePreview).not.toHaveBeenCalled();

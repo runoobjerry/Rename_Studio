@@ -31,6 +31,12 @@
 | `components/`、`hooks/useVirtualTable.ts`、`theme.ts`、`styles.css` | 共享通知、筛选、图标按钮、表格虚拟化、主题与布局 |
 | `api/client.ts` | 共享 HTTP 层和连接级 API 客户端 |
 
+错误展示链路为 `api/client.ts` → `i18n/errorPresentation.ts` → `i18n/messages.ts` → i18next 资源。API 层保留诊断字段及读写性质；独立解析器只输出 UX 语义键和允许的展示参数，按“未知写入保护 → 匹配错误码的具体原因/请求字段 → 可选场景覆盖 → 通用类别 → 安全回退”解析。多个 API 类别可复用同一语义，新增语言只维护资源，不能展示后端原始 message。
+
+统一入口保留 `errorMessage(error, t)`，有歧义时使用第三个参数 `directory`、`settings`、`connection` 或 `singleRename`。通知可使用 `{ error, errorContext }`，或在原有 `{ key, values, error }` 上附加 `errorContext`，保持显示时翻译。场景只覆盖少量通用类别，不按接口复制映射。示例：目录读取的 `PERMISSION_DENIED` 显示访问权限提示，默认重命名场景仍显示修改权限提示；5xx/响应丢失的写入始终先提示核对。
+
+解析器不改变重试、任务状态或结果确定性；批量/单项的未知结果锁定、逐项 unknown/not_attempted 提示、设置保存与重置的专用核对提示继续由原业务模块负责。`details.params` 只允许文案声明的参数名和字符串/有限数值，字符列表及前缀仅格式化后用于插值，不作为 i18next 选项。
+
 TanStack Query 管理服务端状态，Zustand 管理选择、规则、任务成员及原始快照、预览读取门控和待核对执行信息；筛选留在组件，文件排序由 WorkspaceApp 保存在页面内存并显式传给工作流与表格，不修改目录缓存。连接与重命名 Hook 不直接互相调用，由 WorkspaceApp 显式传入数据及重置动作，展示组件不承载工作流状态机。
 
 `useRenameWorkflow` 内部组合独立的单项与批量 Hook，保持工作台、Dialog 与测试的调用接口。单项自行请求 API，保留原生 `operation_id` 响应，仅通过回调使批量预览失效；互斥、连接上下文与任务身份继续由工作流入口统一协调。

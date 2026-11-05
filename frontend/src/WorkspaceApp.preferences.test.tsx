@@ -69,7 +69,7 @@ describe("language settings", () => {
     renderWorkspace();
     fireEvent.click(await screen.findByRole("checkbox", { name: "选择文件 keep.txt" }));
     fireEvent.click(screen.getByRole("button", { name: "设置" }));
-    const menu = await screen.findByRole("combobox", { name: "界面语言" });
+    const menu = await screen.findByRole("combobox", { name: "语言" });
     const filesRequests = vi.mocked(api.fetchStorageFiles).mock.calls.length;
     const metadataRequests = vi.mocked(api.fetchStorageProviders).mock.calls.length;
     fireEvent.mouseDown(menu);

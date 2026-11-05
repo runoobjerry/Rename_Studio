@@ -292,7 +292,7 @@ export function useRenameWorkflow({
     previewError,
     revalidationError,
     executeError: batchExecution?.error ? unknownExecution?.previewId === batchExecution.variables?.source.preview_id
-      ? t("files:rename.unknownOutcome") : errorMessage(batchExecution.error, t) : undefined,
+      ? t("files:verification.required") : errorMessage(batchExecution.error, t) : undefined,
     executionPreviewId: batchExecution?.variables?.source.preview_id,
     isPreviewing: preview.isPending, isExecuting, hasExecuted: Boolean(batchExecution?.data),
     ...singleRename,

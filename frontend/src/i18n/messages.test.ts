@@ -26,14 +26,14 @@ describe("translated diagnostics", () => {
   it("does not infer a category from an unknown code or message", () => {
     const message = "Authentication failed; preview expired";
     for (const error of [new Error(message), new ApiError(502, message, "FUTURE_PROVIDER_ERROR")]) {
-      expect(errorMessage(error, i18n.getFixedT("zh-CN"))).toBe("无法读取数据，请检查网络和应用是否正在运行后重试。");
-      expect(errorMessage(error, i18n.getFixedT("en-US"))).toBe("Could not read data. Check your network connection and that the app is running, then try again.");
+      expect(errorMessage(error, i18n.getFixedT("zh-CN"))).toBe("无法获取数据，请检查网络连接。");
+      expect(errorMessage(error, i18n.getFixedT("en-US"))).toBe("Could not retrieve data. Check your network connection.");
     }
   });
 
   it("translates an error inside a notification when it is displayed", () => {
-    const message = { key: "files:notifications.previewFailed", error: new ApiError(429, "Retry later", "RATE_LIMIT_ERROR") };
-    expect(translateMessage(message, i18n.getFixedT("zh-CN"))).toBe("预览失败：请求过于频繁，请稍后重试。");
-    expect(translateMessage(message, i18n.getFixedT("en-US"))).toBe("Preview failed: Too many requests. Try again later.");
+    const message = { key: "files:notifications.refreshFailed", error: new ApiError(429, "Retry later", "RATE_LIMIT_ERROR") };
+    expect(translateMessage(message, i18n.getFixedT("zh-CN"))).toBe("刷新失败：请求过于频繁，请稍后重试。");
+    expect(translateMessage(message, i18n.getFixedT("en-US"))).toBe("Refresh failed: Too many requests. Try again later.");
   });
 });

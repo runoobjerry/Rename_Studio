@@ -99,7 +99,7 @@ def register_builtin_providers(registry, settings):
     const scan = scanSource(`const { t } = useTranslation("settings");
       t("title"); t(flag ? "common:save" : "common:cancel"); t(["files:title", "common:close"]);
       const notice = { key: "files:notifications.refreshed" }; const url = "about:blank";
-      const translatedCodes = ["DEMO_ERROR"];
+      const codeKeys = new Map([["DEMO_ERROR", "errors:operationUnavailable"]]);
       const phaseLabels = { renaming: "files:rename.phases.renaming" };
       function Other() { const { t } = useTranslation(); t("loadingPage"); }
       t(variable); t(\`providers:\${type}.name\`);
@@ -107,7 +107,7 @@ def register_builtin_providers(registry, settings):
     expect(scan.errors).toEqual([]);
     expect([...scan.required]).toEqual(expect.arrayContaining([
       "settings:title", "common:save", "common:cancel", "common:close", "common:loadingPage", "files:title",
-      "files:notifications.refreshed", "errors:codes.DEMO_ERROR", "files:rename.phases.renaming",
+      "files:notifications.refreshed", "errors:operationUnavailable", "files:rename.phases.renaming",
     ]));
     expect(scan.required.has("about:blank")).toBe(false);
     expect(scan.dynamic.size).toBe(2);

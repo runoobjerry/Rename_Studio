@@ -15,5 +15,6 @@
   "numberField": {
     "decrease": "{{label}}减一",
     "increase": "{{label}}加一"
-  }
+  },
+  "retry": "重试"
 }
