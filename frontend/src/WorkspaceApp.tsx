@@ -96,11 +96,12 @@ function Workspace({ preference, setPreference, settingsError, hasSettings }: {
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [view, setView] = useState<AppView>("workspace");
   const [fileSort, setFileSort] = useState<FileSort>(defaultFileSort);
-  const previewActive = useRenameStore((state) => state.previewActive);
+  const isWritePending = useRenameStore((state) => Boolean(state.pendingRenameRecord));
   const unknownExecution = useRenameStore((state) => state.unknownExecution);
   const storage = useWorkspaceStorage({
-    pauseFileQueries: previewActive,
+    pauseFileQueries: isWritePending,
     onLocalRootSelected: () => resetForStorageChange(),
+    onDirectoryRead: unknownExecution ? (): void => onDirectoryRead(unknownExecution) : undefined,
   });
   const {
     storageId, location, setLocation, setPath, selectStorage, resetWorkspaceSession, locationReady,
@@ -112,14 +113,14 @@ function Workspace({ preference, setPreference, settingsError, hasSettings }: {
   } = storage;
   const definitions = useQuery({ queryKey: ["rules"], queryFn: fetchRules });
   const {
-    selectedIds, rules, browserItems, currentTask, changeSort, selectedCount,
-    previewData, executionData, previewError, executeError, revalidationError, executionPreviewId,
+    selectedIds, rules, browserItems, changeSort, selectedCount,
+    previewData, executionData, displayedUnknownOutcome, previewError, executeError, revalidationError, executionPreviewId,
     isPreviewing, isExecuting, hasExecuted,
     singleRenameTarget, singleRenameError, canSingleRename, isSingleRenaming,
     openSingleRename, closeSingleRename, applySingleRename,
     requestPreview, executeRename, onRulesChange,
-    resetOperation, endTask, toggleFile, selectAllFiles, clearFiles, invertFiles,
-    resetForStorageChange, onDirectoryRefreshed, releaseRetainedPreview,
+    resetOperation, toggleFile, selectAllFiles, clearFiles, invertFiles,
+    resetForStorageChange, onDirectoryRead,
   } = useRenameWorkflow({
     storageId, location, workspaceKey, cloudSession, locationReady,
     canRename: !externalPending && metadataReady && providerDefinition?.can_rename === true && !pickLocalRoot.isPending,
@@ -136,14 +137,6 @@ function Workspace({ preference, setPreference, settingsError, hasSettings }: {
     resetForStorageChange();
   }, [externalPending, isExecuting, metadataReady, requiresAuth, cloudSession, restoredCloudSession, appSettingsReady]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const refreshDirectory = () => {
-    const unknown = useRenameStore.getState().unknownExecution;
-    refreshFiles(() => {
-      // 迟到的目录刷新不能清除之后才产生的待核对记录。
-      if (unknown && useRenameStore.getState().unknownExecution === unknown) onDirectoryRefreshed();
-    });
-  };
-
   const loadError = providers.error ?? providerError ?? definitions.error ?? (requiresAuth ? cloudStatus.error : null);
   const { factoryReset, resetDisabledReason, resetPending, resetEpoch } = useFactoryReset({
     hasUnknownOutcome: Boolean(unknownExecution), isExecuting, isPreviewing,
@@ -156,7 +149,6 @@ function Workspace({ preference, setPreference, settingsError, hasSettings }: {
     busy: isPreviewing || isExecuting || pickLocalRoot.isPending || resetPending,
     context: String(resetEpoch),
     beforeSwitch: () => {
-      releaseRetainedPreview();
       resetForStorageChange();
       setView("workspace");
       setMobileNavOpen(false);
@@ -274,19 +266,17 @@ function Workspace({ preference, setPreference, settingsError, hasSettings }: {
                         onNavigateLocation={navigateLocation}
                         listing={files.data}
                         items={browserItems}
-                        hasTask={Boolean(currentTask)}
-                        onEndTask={endTask}
                         onRename={openSingleRename}
                         renameDisabled={!canSingleRename}
                         sort={fileSort}
                         onSortChange={(next) => { storage.cancelExternalNavigation(); changeSort(next); }}
                         providerName={providerName}
                         selectedIds={selectedIds}
-                        disabled={externalPending || isExecuting || isPreviewing || files.isFetching || Boolean(activeStorage?.busy)}
+                        disabled={externalPending || isExecuting || files.isFetching || Boolean(activeStorage?.busy)}
                         isRefreshing={files.isFetching}
                         refreshError={files.error ? errorMessage(files.error, t, "directory") : undefined}
                         onNavigate={navigate}
-                        onRefresh={refreshDirectory}
+                        onRefresh={refreshFiles}
                         onToggle={toggleFile}
                         onSelectAll={selectAllFiles}
                         onClearSelection={clearFiles}
@@ -296,7 +286,7 @@ function Workspace({ preference, setPreference, settingsError, hasSettings }: {
                       <section className="panel">
                         {files.error ? (
                           <Alert severity="error" sx={{ m: 2 }} action={
-                            <Button color="inherit" size="small" onClick={refreshDirectory}>
+                            <Button color="inherit" size="small" onClick={refreshFiles}>
                               {t("common:retry")}
                             </Button>
                           }>
@@ -323,7 +313,8 @@ function Workspace({ preference, setPreference, settingsError, hasSettings }: {
                     <PreviewPanel
                       preview={previewData}
                       execution={executionData}
-                      unknownExecution={unknownExecution}
+                      unknownExecution={displayedUnknownOutcome}
+                      verificationPending={Boolean(unknownExecution)}
                       providerName={providerName}
                       error={previewError}
                       executeError={revalidationError ? undefined : executeError}
@@ -343,7 +334,6 @@ function Workspace({ preference, setPreference, settingsError, hasSettings }: {
                       isPreviewing={isPreviewing}
                       isExecuting={isExecuting}
                       isBlocked={Boolean(unknownExecution) || renameBlocked}
-                      isPreviewBlocked={Boolean(unknownExecution && !unknownExecution.previewUnlocked) || renameBlocked}
                       hasExecuted={hasExecuted}
                       executionPreviewId={executionPreviewId}
                       executeError={executeError}

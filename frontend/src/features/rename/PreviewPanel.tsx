@@ -32,6 +32,7 @@ interface PreviewPanelProps {
   preview?: PreviewResponse;
   execution?: ExecuteResponse;
   unknownExecution?: UnknownExecution | null;
+  verificationPending?: boolean;
   providerName?: string;
   error?: string;
   executeError?: string;
@@ -41,6 +42,7 @@ export const PreviewPanel = memo(function PreviewPanel({
   preview,
   execution,
   unknownExecution,
+  verificationPending = Boolean(unknownExecution),
   providerName,
   error,
   executeError,
@@ -144,7 +146,7 @@ export const PreviewPanel = memo(function PreviewPanel({
       {executeError && !unknownExecution && (
         <Alert severity="error" sx={{ m: 2 }}>{t("files:preview.executeFailed", { message: executeError })}</Alert>
       )}
-      {unknownExecution && dismissedVerification !== verificationKey && (
+      {verificationPending && dismissedVerification !== verificationKey && (
         <Alert severity="warning" sx={{ m: 2 }} closeText={t("common:close")}
           onClose={() => setDismissedVerification(verificationKey)}>
           {t("files:preview.unknownOutcome")}

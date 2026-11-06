@@ -213,23 +213,3 @@ export interface StorageUpdate {
   config?: StorageInfo["config"];
   client_secret?: string | null;
 }
-
-// 创建任务时复制原始文件信息；重复执行仅更新当前身份和结果，不覆盖 before。
-export interface FileSnapshot extends Readonly<FileItem> {
-  readonly storageId: string;
-}
-
-export interface RenameTaskItem {
-  readonly taskItemId: string;
-  readonly before: FileSnapshot;
-  currentFileId: string;
-  after?: Readonly<SingleExecuteItem>;
-}
-
-export interface RenameTask {
-  readonly taskId: string;
-  readonly contextKey: string;
-  readonly storageId: string;
-  readonly location: Readonly<StorageLocation>;
-  readonly items: readonly RenameTaskItem[];
-}

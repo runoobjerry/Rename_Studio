@@ -23,28 +23,29 @@
 | 工作区按 browser_auth 判定授权；元数据 pending/error 不读取授权或文件，恢复后使用原目录；元数据刷新失败保留账号身份与选择 | [存储 Hook](../frontend/src/workspace/hooks/useWorkspaceStorage.test.ts) |
 | 非 Local 且无需浏览器授权的服务恢复 ID 位置，不发授权请求；未知 OAuth 服务等待授权，不支持的位置类型不请求 | 存储 Hook |
 | 无浏览器授权服务的选择随成功列表同步 | 工作流 Hook |
-| 选择及规则变化使旧预览失效；保留替换 ID、释放迟到或工作区变化后的预览 | [工作流 Hook](../frontend/src/features/rename/useRenameWorkflow.test.ts)、工作台集成 代表性 UI 接线 |
-| 多次改名保留原始快照及任务身份，确认的 Local ID 随执行更新 | [Rename Store](../frontend/src/stores/useRenameStore.test.ts)、工作流 Hook |
-| 首次刷新预览创建固定任务；禁止新增成员；规则变化和目录缺项不重建任务，结束任务释放预览 | 工作流 Hook |
+| 选择及规则变化使旧预览失效；保留替换 ID、释放迟到或工作区变化后的预览，选择改回原值也不会接收已失效的响应 | [工作流 Hook](../frontend/src/features/rename/useRenameWorkflow.test.ts)、工作台集成 代表性 UI 接线 |
+| 连续批量执行按每次提交时的文件身份更新最近记录，确认的 Local ID 随执行更新 | 工作流 Hook |
+| 进入子目录清理选择和释放预览，执行中禁用导航 | 工作台集成 |
 | 排序作用于完整列表和全部选中项，超过 1000 项也一次提交；改变排序使旧预览失效 | 工作流 Hook、工作台集成、[虚拟列表](../frontend/src/features/files/FileBrowser.virtual.test.tsx) |
-| 刷新只移除已消失的选择，失败保留选择；过滤隐藏项不恢复旧选择 | 工作流 Hook、工作台集成、[FileBrowser](../frontend/src/features/files/FileBrowser.test.tsx) |
-| 执行成功或响应丢失后暂停自动目录读取，允许人工刷新；合并服务端确认的文件身份 | 工作流 Hook |
-| 未确认阶段的服务端故障仍保留未知结果保护 | [工作流 Hook](../frontend/src/features/rename/useRenameWorkflow.test.ts) |
-| 部分成功伴随未知/缺失结果时，只合并确认身份，阻止新的预览和写入；成功项可重新选择 | 工作流 Hook |
+| 刷新移除已消失或不可修改的选择，同 ID 改名使旧预览失效，失败保留选择；过滤隐藏项不恢复旧选择 | 工作流 Hook、工作台集成、[FileBrowser](../frontend/src/features/files/FileBrowser.test.tsx) |
+| 批量执行成功后记录提交时的文件身份、目标名和服务端确认的元数据；刷新预览保留记录；响应丢失时保存未知结果；预览与执行完成后保持常规目录查询，写入期间暂停自动读取 | [工作流 Hook](../frontend/src/features/rename/useRenameWorkflow.test.ts) |
+| 后端明确在写入前拒绝单项或批量请求时保留上一条修改记录；未确认写入阶段的请求故障仍保存未知结果 | [工作流 Hook](../frontend/src/features/rename/useRenameWorkflow.test.ts)、[单项改名工作流](../frontend/src/features/rename/useSingleRenameWorkflow.test.ts) |
+| 批量部分成功逐项记录成功、跳过、失败、未尝试、未知和缺失结果；只合并确认身份；未知时阻止新的预览和写入 | 工作流 Hook |
+| 单项和批量执行的响应在连接切换后到达，仍记入原连接的修改记录，当前目录、选择和执行展示不受影响 | 工作流 Hook |
 | 未执行项目统一显示“未修改”，不依赖英文诊断或停止原因；未提供当前名称不误报未知；诊断为空时仍按状态提示 | [PreviewPanel](../frontend/src/features/rename/PreviewPanel.test.tsx) |
 | 执行前确认，无变化时禁止执行，进度失败不虚构结果，执行中锁定控件；最终响应到达后关闭弹窗，不停留展示完成状态 | [RenameActions](../frontend/src/features/rename/RenameActions.test.tsx)、工作台集成 |
 | 复核失败仅在 Modal 展示本地化提示，点击刷新预览创建新预览，不重放执行、不进入未知结果保护 | [RenameActions](../frontend/src/features/rename/RenameActions.test.tsx)、[工作流 Hook](../frontend/src/features/rename/useRenameWorkflow.test.ts) |
-| 未知执行结果在预览栏显示可关闭的 Alert，关闭仅隐藏提醒，同次执行保持隐藏，新执行重新提醒；待核对项显示 N/A 并归入错误筛选；已移除自动回滚结果场景，无人工解锁入口，刷新目录成功只解锁刷新预览并保留旧预览及待核对展示，刷新失败保留锁定 | 工作台集成、PreviewPanel |
+| 未知执行结果在预览栏显示可关闭的 Alert，关闭仅隐藏提醒，同次执行保持隐藏，新执行重新提醒；待核对项显示 N/A 并归入错误筛选；原目录手动或自动刷新成功后恢复单项改名和批量预览，保留最近记录，旧预览不可执行；刷新失败保留锁定 | 工作台集成、PreviewPanel |
 | 全选和过滤覆盖完整数据集，包括虚拟列表未挂载的行 | FileBrowser、[虚拟列表](../frontend/src/features/files/FileBrowser.virtual.test.tsx) |
 | 重置应用请求异常时提示刷新核对，保留规则、配置、路径记忆与当前连接，并保持确认框打开 | [偏好与重置集成](../frontend/src/WorkspaceApp.preferences.test.tsx) |
 | 预览创建传递替换 ID，释放只针对指定预览；错误项不能计入可修改数量 | [API client](../frontend/src/api/client.test.ts)、[PreviewPanel](../frontend/src/features/rename/PreviewPanel.test.tsx) |
 | 单项改名直接提交完整目标名称、原名及连接版本，连接及位置使用真实 ID，不请求预览 | API client |
-| 单项改名保留文件扩展名，无扩展名文件（如 .env）与文件夹按完整名称处理；普通目录不创建任务，成功后保留服务端确认的新 ID 选择；结果缺少完整路径时使用浏览上下文生成显示路径 | [单项改名工作流](../frontend/src/features/rename/useSingleRenameWorkflow.test.ts) |
-| 任务内单项改名保留成员、原始快照和其他成员结果，不修改规则链；打开或取消编辑保留批量预览，提交才失效并要求重新预览 | 单项改名工作流 |
-| 云盘根目录按 directory_id 比较归属，支持非内置 Provider；正常成功不额外读取目录；任务内已移走或明确 NOT_FOUND 的成员在收到 API 响应时退出缓存和选择，保留为不可选择的任务条目及原始快照和结果，不参与后续预览；NOT_FOUND 保留错误弹窗，关闭不再次更新缓存或任务，其他成员仍可继续预览；归属不明时在任务暂停自动读取期间主动刷新，不误报移动或重放写入 | 单项改名工作流 |
+| 单项改名保留文件扩展名，无扩展名文件（如 .env）与文件夹按完整名称处理；成功后保留服务端确认的新 ID；显示路径由浏览上下文补足，修改记录只保存服务端返回的元数据 | [单项改名工作流](../frontend/src/features/rename/useSingleRenameWorkflow.test.ts) |
+| 单项和批量可以交替执行；打开或取消编辑保留批量预览和最近记录，提交后更新记录并要求重新预览 | 单项改名工作流 |
+| 云盘根目录按 directory_id 比较归属，支持非内置 Provider；正常成功不额外读取目录；移走或明确 NOT_FOUND 的文件立即退出目录和选择；NOT_FOUND 保留错误弹窗，关闭后其他文件仍可预览；归属不明时恢复自动读取并重新查询，不误报移动或重放写入 | 单项改名工作流 |
 | 普通目录按不透明 ID 或规范路径比较，本地根目录与子目录不同；缺失父目录或未解析的云根目录返回无法确认 | [目录身份比较](../frontend/src/features/files/directoryIdentity.test.ts) |
 | 单项直接执行的重复提交保护及刷新错误/忙碌门控 | 单项改名工作流 |
-| 单项独立请求保留 operation_id；权限、冲突、限流错误按统一错误码显示 helper text，明确失败可重试，文件不存在时阻止继续应用；写入结果缺失、未知、响应丢失或成功但缺少确认元数据时锁定后续单项与批量改名 | 单项改名工作流 |
+| 单项独立请求保留 operation_id；明确失败保存服务端状态与错误码，文件不存在时阻止继续应用；写入结果缺失、未知、响应丢失或成功但缺少确认元数据时锁定后续单项与批量改名，清理工作区展示后仍保留记录和核对保护 | 单项改名工作流 |
 | 虚拟列表滚动后，选中项的 Edit 仍使用正确文件 ID | [虚拟列表](../frontend/src/features/files/FileBrowser.virtual.test.tsx) |
 | 单项 Dialog 切换语言后更新标签，保留用户输入的主名与扩展名 | [SingleRenameDialog](../frontend/src/features/rename/SingleRenameDialog.test.tsx) |
 | 从行内 Edit 直接执行单项改名，请求中显示进度并禁用输入、取消和应用，成功更新选择 | [工作台重命名接线](../frontend/src/WorkspaceApp.test.tsx) |

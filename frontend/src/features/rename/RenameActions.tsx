@@ -32,7 +32,6 @@ export interface RenameActionsProps {
   isPreviewing: boolean;
   isExecuting: boolean;
   isBlocked?: boolean;
-  isPreviewBlocked?: boolean;
   hasExecuted: boolean;
   progress?: RenameProgress;
   progressError?: string;
@@ -49,7 +48,6 @@ export function RenameActions({
   isPreviewing,
   isExecuting,
   isBlocked = false,
-  isPreviewBlocked = isBlocked,
   hasExecuted,
   progress,
   progressError,
@@ -89,7 +87,7 @@ export function RenameActions({
           fullWidth
           variant="outlined"
           startIcon={isPreviewing ? <CircularProgress size={16} color="inherit" /> : <PreviewRoundedIcon />}
-          disabled={selectedCount === 0 || isPreviewing || isExecuting || isPreviewBlocked}
+          disabled={selectedCount === 0 || isPreviewing || isExecuting || isBlocked}
           onClick={onPreview}
         >
           {isPreviewing ? t("files:rename.refreshing") : t("files:rename.preview")}
@@ -127,7 +125,7 @@ export function RenameActions({
         </DialogContent>
         <DialogActions>
           {revalidationError ? (
-            <Button disabled={selectedCount === 0 || isPreviewing || isExecuting || isPreviewBlocked}
+            <Button disabled={selectedCount === 0 || isPreviewing || isExecuting || isBlocked}
               onClick={() => { setConfirming(false); onPreview(); }}>
               {t("files:rename.preview")}
             </Button>

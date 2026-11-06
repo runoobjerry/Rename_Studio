@@ -177,17 +177,15 @@ describe("external OneDrive navigation", () => {
     await mount();
     fireEvent.click(screen.getByRole("checkbox", { name: "选择当前显示且可修改名称的全部项目" }));
     fireEvent.click(screen.getByRole("button", { name: "刷新预览" }));
-    await waitFor(() => expect(useRenameStore.getState().previewActive).toBe(true));
+    await waitFor(() => expect(screen.getByRole("button", { name: "开始修改" })).toBeEnabled());
     expect((await start().reply()).status).toBe("opened");
     expect(api.releaseStoragePreview).toHaveBeenCalledWith("default-local", "task-preview");
-    expect(useRenameStore.getState().task).toBeNull();
-    expect(useRenameStore.getState().previewActive).toBe(false);
   });
 
   it("preserves unresolved write records and rejects navigation", async () => {
     await mount();
     // Existing unresolved write is the precondition; the operation under test uses the public business entry.
-    const unknown = { storageId: "default-local", previewId: "unknown-write", items: [] };
+    const unknown = { storageId: "default-local", location: { kind: "root" } as const, previewId: "unknown-write", items: [] };
     act(() => useRenameStore.getState().setUnknownExecution(unknown));
     expect(await start().reply()).toMatchObject({ status: "rejected", code: "outcome_unresolved" });
     expect(useRenameStore.getState().unknownExecution).toBe(unknown);

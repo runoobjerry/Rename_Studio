@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 import * as api from "./api/client";
 import { useRenameStore } from "./stores/useRenameStore";
 import { installWorkspaceAppTestHooks, renderWorkspace } from "./test/workspaceAppHarness";
+import { client } from "./test/workspaceHarness";
 import { fileItem, listing } from "./test/fixtures";
 
 vi.mock("./api/client", async (importOriginal) => {
@@ -35,9 +36,10 @@ it("connects MUI sorting to preview request and displayed order", async () => {
 });
 
 describe("workspace workflow wiring", () => {
-  const setup = async (count: number) => {
+  const setup = async (count: number, firstIsFolder = false) => {
     const data = listing(count);
     const items = data.items;
+    if (firstIsFolder) items[0] = { ...items[0], is_directory: true };
     vi.mocked(api.fetchStorageFiles).mockResolvedValue(data);
     vi.mocked(api.fetchRenameProgress).mockResolvedValue({ preview_id: "task-preview", total: count, processed: 0, phase: "renaming", error: null });
     renderWorkspace();
@@ -82,7 +84,6 @@ describe("workspace workflow wiring", () => {
     await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
     expect(screen.getByRole("checkbox", { name: "选择文件 资料.txt" })).toBeChecked();
     expect(useRenameStore.getState().selectedIds).toEqual(["provider-new-id"]);
-    expect(useRenameStore.getState().task).toBeNull();
     expect(api.createStoragePreview).not.toHaveBeenCalled();
     expect(api.executeStorageSingleRename).toHaveBeenCalledTimes(1);
   });
@@ -111,7 +112,7 @@ describe("workspace workflow wiring", () => {
   });
 
   it("keeps selection controls locked while execution is pending", async () => {
-    const items = await setup(2);
+    const items = await setup(2, true);
     const resolveExecution = deferred<Awaited<ReturnType<typeof api.executePreview>>>();
     vi.mocked(api.executePreview).mockImplementationOnce(() => resolveExecution.promise);
     fireEvent.click(screen.getByRole("button", { name: "刷新预览" }));
@@ -120,12 +121,13 @@ describe("workspace workflow wiring", () => {
     fireEvent.click(screen.getByRole("button", { name: "应用" }));
     await waitFor(() => expect(api.executePreview).toHaveBeenCalledTimes(1));
     // Dialog 打开时背景 aria-hidden，用真实 input 验证控件禁用状态。
-    const fileSelection = screen.getByLabelText("选择文件 file-0.txt");
+    const fileSelection = screen.getByLabelText("选择文件夹 file-0.txt");
     const allSelection = screen.getByLabelText("选择当前显示且可修改名称的全部项目");
     const invertSelection = screen.getByLabelText("反选", { selector: "button" });
     expect(fileSelection).toBeDisabled();
     expect(allSelection).toBeDisabled();
     expect(invertSelection).toBeDisabled();
+    expect(screen.getByText("file-0.txt", { selector: "span" }).closest("button")).toBeDisabled();
     fireEvent.click(fileSelection);
     fireEvent.click(allSelection);
     fireEvent.click(invertSelection);
@@ -137,7 +139,7 @@ describe("workspace workflow wiring", () => {
     })) }));
   });
 
-  it("preserves unknown results across directory refresh failures and unlocks previews after a successful refresh", async () => {
+  it.each(["manual", "automatic"] as const)("restores normal rename controls after a successful %s directory refresh", async (refreshMode) => {
     await setup(2);
     vi.mocked(api.executePreview).mockRejectedValueOnce(new Error("Execution response lost"));
     fireEvent.click(screen.getByRole("button", { name: "刷新预览" }));
@@ -159,16 +161,17 @@ describe("workspace workflow wiring", () => {
     expect(screen.getByRole("button", { name: "刷新预览" })).toBeDisabled();
     expect(panel.getAllByText("待核对")).toHaveLength(2);
     expect(panel.getAllByText("修改结果无法确认")).toHaveLength(2);
-    fireEvent.click(screen.getByRole("button", { name: "刷新" }));
-    await waitFor(() => expect(useRenameStore.getState().unknownExecution?.previewUnlocked).toBe(true));
-    expect(panel.getAllByText("待核对")).toHaveLength(2);
-    expect(panel.getAllByText("修改结果无法确认")).toHaveLength(2);
-    expect(panel.getByText("本次修改存在未知结果的项目，请刷新文件目录或前往文件源检查。")).toBeInTheDocument();
-    expect(api.releaseStoragePreview).not.toHaveBeenCalled();
+    const record = useRenameStore.getState().latestRenameRecord;
+    if (refreshMode === "manual") fireEvent.click(screen.getByRole("button", { name: "刷新" }));
+    else await act(async () => { await client.invalidateQueries({ queryKey: ["files"] }); });
+    await waitFor(() => expect(useRenameStore.getState().unknownExecution).toBeNull());
+    expect(useRenameStore.getState().latestRenameRecord).toBe(record);
     expect(screen.getByRole("button", { name: "开始修改" })).toBeDisabled();
     expect(api.executePreview).toHaveBeenCalledTimes(1);
     expect(api.createStoragePreview).toHaveBeenCalledTimes(1);
-    expect(screen.getByRole("button", { name: "刷新预览" })).toBeEnabled();
+    await waitFor(() => expect(screen.getByRole("button", { name: "刷新预览" })).toBeEnabled());
+    fireEvent.click(screen.getByRole("checkbox", { name: "选择文件 file-1.txt" }));
+    expect(screen.getByRole("button", { name: "重命名 file-0.txt" })).toBeEnabled();
   });
 
   it("releases a late preview to its original storage after switching connections", async () => {

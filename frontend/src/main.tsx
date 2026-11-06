@@ -8,6 +8,7 @@ import "./styles.css";
 const queryClient = new QueryClient({
   defaultOptions: { queries: { retry: 1, staleTime: 5_000 } },
 });
+queryClient.setQueryDefaults(["files"], { gcTime: 60_000 });
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>

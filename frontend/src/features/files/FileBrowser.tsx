@@ -4,7 +4,6 @@ import ArrowBackRoundedIcon from "@mui/icons-material/ArrowBackRounded";
 import EditRoundedIcon from "@mui/icons-material/EditRounded";
 import FolderRoundedIcon from "@mui/icons-material/FolderRounded";
 import InsertDriveFileOutlinedIcon from "@mui/icons-material/InsertDriveFileOutlined";
-import LogoutRoundedIcon from "@mui/icons-material/LogoutRounded";
 import RefreshRoundedIcon from "@mui/icons-material/RefreshRounded";
 import {
   Alert,
@@ -41,13 +40,16 @@ const fileCheckboxSx = {
   "& .MuiSvgIcon-root": { width: 20, height: 20, fontSize: 20 },
 };
 type FileFilter = typeof fileFilters[number]["value"];
+
+function matchesFileFilters(item: FileItem, filters: FileFilter[]) {
+  return filters.length === 0 || filters.includes(item.is_directory ? "folder" : "file");
+}
+
 interface FileBrowserProps {
   listing: DirectoryListing;
   items: FileItem[];
   sort: FileSort;
   onSortChange: (sort: FileSort) => void;
-  hasTask?: boolean;
-  onEndTask?: () => void;
   onRename?: (fileId: string) => void;
   renameDisabled?: boolean;
   disabled?: boolean;
@@ -79,7 +81,7 @@ function formatModifiedAt(value: string | null, formatter: Intl.DateTimeFormat):
 
 export const FileBrowser = memo(function FileBrowser({
   listing, items: panelItems, sort, onSortChange,
-  hasTask = false, onEndTask, onRename, renameDisabled = false, disabled = false,
+  onRename, renameDisabled = false, disabled = false,
   providerName,
   selectedIds,
   isRefreshing = false,
@@ -98,17 +100,15 @@ export const FileBrowser = memo(function FileBrowser({
     hour: "2-digit", minute: "2-digit", hour12: false,
   }), [i18n.resolvedLanguage]);
   const [filters, setFilters] = useState<FileFilter[]>([]);
-  const listedIds = useMemo(() => new Set(listing.items.map((item) => item.id)), [listing.items]);
-  const filteredItems = useCallback((nextFilters: FileFilter[]) => panelItems.filter((item) =>
-    nextFilters.length === 0 || nextFilters.includes(item.is_directory ? "folder" : "file")), [panelItems]);
+  const filteredItems = useCallback((nextFilters: FileFilter[]) =>
+    panelItems.filter((item) => matchesFileFilters(item, nextFilters)), [panelItems]);
   const visibleItems = useMemo(() => filteredItems(filters), [filteredItems, filters]);
   const filterOptions = fileFilters.map((option) => ({ ...option, label: t(option.labelKey) }));
   const totalCount = panelItems.length;
   const selectedSet = useMemo(() => new Set(selectedIds), [selectedIds]);
   const selectedCount = useMemo(() => panelItems.filter((item) => selectedSet.has(item.id)).length, [panelItems, selectedSet]);
   const visibleSelectedCount = useMemo(() => visibleItems.filter((item) => selectedSet.has(item.id)).length, [visibleItems, selectedSet]);
-  const selectableIds = useMemo(() => visibleItems.filter((item) => item.can_rename !== false &&
-    listedIds.has(item.id)).map((item) => item.id), [visibleItems, listedIds]);
+  const selectableIds = useMemo(() => visibleItems.filter((item) => item.can_rename !== false).map((item) => item.id), [visibleItems]);
   const [selectionAnchor, setSelectionAnchor] = useState<string | null>(null);
   useEffect(() => {
     setSelectionAnchor(null);
@@ -126,31 +126,36 @@ export const FileBrowser = memo(function FileBrowser({
     }
   }, [selectionAnchor, selectedSet, selectableIds, onSelectAll]);
   const scrollKey = useMemo(() => [listing.items, filters, sort], [listing.items, filters, sort]);
-  const columnValues = useMemo(() => [visibleItems.map(() => ""), visibleItems.map((item) => item.name),
-    visibleItems.map((item) => getExtension(item.name, item.is_directory, t("files:types.folder"))),
-    visibleItems.map((item) => formatModifiedAt(item.modified_at, modifiedAtFormatter))], [visibleItems, modifiedAtFormatter, t]);
+  const columnValues = useMemo(() => {
+    // 文本最大宽度与排序无关，测量数据直接来自目录列表。
+    const names: string[] = [];
+    const extensions: string[] = [];
+    const modifiedDates: string[] = [];
+    const folderLabel = t("files:types.folder");
+    for (const item of listing.items) {
+      if (!matchesFileFilters(item, filters)) continue;
+      names.push(item.name);
+      extensions.push(getExtension(item.name, item.is_directory, folderLabel));
+      modifiedDates.push(formatModifiedAt(item.modified_at, modifiedAtFormatter));
+    }
+    return [[], names, extensions, modifiedDates];
+  }, [listing.items, filters, modifiedAtFormatter, t]);
   const virtual = useVirtualTable(visibleItems.length, scrollKey, columnValues, fixedColumnWidths);
   const allSelected = selectableIds.length > 0 && selectableIds.every((id) => selectedSet.has(id));
   return (
     <section className="panel browser" aria-labelledby="files-title" aria-busy={isRefreshing}>
       <div className="panel-heading">
         <div className="panel-title-line">
-          <h2 id="files-title">{t(hasTask ? "files:taskTitle" : "files:title")}</h2>
+          <h2 id="files-title">{t("files:title")}</h2>
           <p className="panel-summary">
             {t("files:summary", { total: totalCount, selected: selectedCount })}
             {filters.length > 0 && t("files:showing", { count: visibleItems.length })}
           </p>
         </div>
         <div className="browser-heading-actions">
-          {hasTask ? (
-            <Tooltip title={t("files:endTask")} arrow>
-              <span><PanelIconButton size="small" aria-label={t("files:endTask")} disabled={disabled} onClick={onEndTask}>
-                <LogoutRoundedIcon fontSize="small" />
-              </PanelIconButton></span>
-            </Tooltip>
-          ) : (listing.parent_location !== undefined ? listing.parent_location !== null : listing.parent_path !== null) && (
+          {(listing.parent_location !== undefined ? listing.parent_location !== null : listing.parent_path !== null) && (
             <Tooltip title={t("files:parent")} arrow>
-              <PanelIconButton size="small" aria-label={t("files:parent")}
+              <PanelIconButton size="small" aria-label={t("files:parent")} disabled={disabled}
                 onClick={() => listing.parent_location && onNavigateLocation ? onNavigateLocation(listing.parent_location) : onNavigate(listing.parent_path ?? "")}>
                 <ArrowBackRoundedIcon fontSize="small" />
               </PanelIconButton>
@@ -254,17 +259,17 @@ export const FileBrowser = memo(function FileBrowser({
             {visibleItems.slice(virtual.start, virtual.end).map((item, offset) => (
               <FileBrowserRow key={item.id}
                 item={item} rowIndex={virtual.start + offset} selected={selectedSet.has(item.id)} modifiedAtFormatter={modifiedAtFormatter}
-                disabled={disabled || item.can_rename === false || !listedIds.has(item.id)}
+                disabled={disabled || item.can_rename === false}
                 showRename={selectedIds.length === 1 && selectedSet.has(item.id)}
                 renameDisabled={renameDisabled} onRename={onRename}
-                navigationDisabled={disabled || hasTask} onToggle={onToggle} onSelectRow={selectRow}
+                navigationDisabled={disabled} onToggle={onToggle} onSelectRow={selectRow}
                 onNavigate={onNavigate} onNavigateLocation={onNavigateLocation} />
             ))}
             <VirtualTableSpacer height={virtual.bottom} columns={4} />
             {visibleItems.length === 0 && (
               <TableRow>
                 <TableCell colSpan={4} align="center">
-                  {totalCount === 0 ? t(hasTask ? "files:emptyTask" : "files:emptyDirectory") : t("common:noMatches")}
+                  {totalCount === 0 ? t("files:emptyDirectory") : t("common:noMatches")}
                 </TableCell>
               </TableRow>
             )}

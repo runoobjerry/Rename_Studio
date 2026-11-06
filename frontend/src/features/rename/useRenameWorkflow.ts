@@ -3,9 +3,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { ApiError, createStoragePreview, releaseStoragePreview } from "../../api/client";
 import { errorMessage, useNotification } from "../../components/NotificationProvider";
-import { useRenameStore } from "../../stores/useRenameStore";
+import { hasPendingRename, useRenameStore, type UnknownExecution } from "../../stores/useRenameStore";
 import { sortFileItems, type FileSort } from "../files/fileSort";
-import { taskFileItems } from "./renameTask";
 import { useRenameExecution } from "./useRenameExecution";
 import { useSingleRename } from "./useSingleRename";
 import type { DirectoryListing, RuleSpec, StorageInfo, StorageLocation } from "../../types";
@@ -40,16 +39,15 @@ export function useRenameWorkflow({
 }: RenameWorkflowOptions) {
   const { t } = useTranslation();
   const notify = useNotification();
-  const task = useRenameStore((state) => state.task);
-  const resetTask = useRenameStore((state) => state.resetTask);
   const selectedIds = useRenameStore((state) => state.selectedIds);
-  const setPreviewActive = useRenameStore((state) => state.setPreviewActive);
   const rules = useRenameStore((state) => state.rules);
   const setRules = useRenameStore((state) => state.setRules);
   const toggleSelected = useRenameStore((state) => state.toggleSelected);
   const setSelectedIds = useRenameStore((state) => state.setSelectedIds);
   const clearSelection = useRenameStore((state) => state.clearSelection);
   const unknownExecution = useRenameStore((state) => state.unknownExecution);
+  const [retainedUnknownOutcome, setRetainedUnknownOutcome] = useState<UnknownExecution | null>(null);
+  const pendingRenameRecord = useRenameStore((state) => state.pendingRenameRecord);
   const mounted = useRef(false);
   useEffect(() => {
     mounted.current = true;
@@ -57,30 +55,27 @@ export function useRenameWorkflow({
   }, []);
 
   const workspaceSession = JSON.stringify([workspaceKey, cloudSession]);
-  const currentTask = task?.contextKey === workspaceSession ? task : null;
-  const browserItems = useMemo(() => {
-    const listed = files.data?.items ?? [];
-    return sortFileItems(currentTask ? taskFileItems(listed, currentTask, files.data) : listed, sort);
-  }, [files.data, currentTask, sort]);
-  const renamableFiles = useMemo(() => {
-    const availableIds = new Set(files.data?.items.map((item) => item.id));
-    return browserItems.filter((item) => item.can_rename !== false && availableIds.has(item.id));
-  }, [browserItems, files.data?.items]);
-  const currentSelectedIds = useMemo(() => {
+  const browserItems = useMemo(() => sortFileItems(files.data?.items ?? [], sort), [files.data, sort]);
+  const renamableFiles = useMemo(() => browserItems.filter((item) => item.can_rename !== false), [browserItems]);
+  const selectedFiles = useMemo(() => {
     const selected = new Set(selectedIds);
-    return renamableFiles.filter((item) => selected.has(item.id)).map((item) => item.id);
+    return renamableFiles.filter((item) => selected.has(item.id));
   }, [renamableFiles, selectedIds]);
-  const previewContext = useMemo(() => JSON.stringify([workspaceKey, cloudSession, currentSelectedIds, rules, sort]),
-    [workspaceKey, cloudSession, currentSelectedIds, rules, sort]);
+  const previewContext = useMemo(() => JSON.stringify([workspaceSession, selectedFiles.map(({ id, name }) => [id, name]), rules, sort]),
+    [workspaceSession, selectedFiles, rules, sort]);
   const currentSession = useRef(workspaceSession);
   currentSession.current = workspaceSession;
   const isCurrentSession = useCallback((session: string) => mounted.current && session === currentSession.current, []);
   const currentWorkspace = useRef(previewContext);
-  currentWorkspace.current = previewContext;
+  const previewVersion = useRef(0);
+  // 同一文件 ID 的名称也会变化。版本递增后，即使输入改回原值也不能恢复旧预览。
+  if (currentWorkspace.current !== previewContext) {
+    currentWorkspace.current = previewContext;
+    previewVersion.current++;
+  }
+  const invalidatePreviewForChanges = useCallback(() => { previewVersion.current++; }, []);
   // 界面 reset 不应丢失待释放 ID；规则和选择变化后仍可替代旧快照。
   const retainedPreview = useRef<{ storageId: string; previewId: string } | null>(null);
-  const [previewInvalidated, setPreviewInvalidated] = useState(false);
-  const preservePreviewDisplay = Boolean(currentTask || unknownExecution);
   const releaseRetainedPreview = useCallback(() => {
     const retained = retainedPreview.current;
     retainedPreview.current = null;
@@ -88,139 +83,116 @@ export function useRenameWorkflow({
       releasePreview(retained.storageId, retained.previewId);
     }
   }, []);
+  useEffect(() => releaseRetainedPreview, [releaseRetainedPreview]);
   const preview = useMutation({
     mutationKey: ["rename-preview"],
     gcTime: 0,
-    mutationFn: async (input: { contextKey: string; storageId: string; location: StorageLocation; fileIds: string[]; fileNames: Map<string, string>; rules: RuleSpec[] }) => {
-      const retained = retainedPreview.current;
-      const previousId = retained?.storageId === input.storageId ? retained.previewId : undefined;
+    mutationFn: async (input: { version: number; previousId?: string;
+      storageId: string; location: StorageLocation; fileIds: string[]; fileNames: Map<string, string>; rules: RuleSpec[] }) => {
+      const { previousId } = input;
       const result = previousId
         ? await createStoragePreview(input.storageId, input.location, input.fileIds, input.rules, previousId)
         : await createStoragePreview(input.storageId, input.location, input.fileIds, input.rules);
-      return { ...result, contextKey: input.contextKey, storageId: input.storageId };
+      return { ...result, version: input.version };
     },
-    onSuccess: (result) => {
-      if (result.contextKey !== currentWorkspace.current) {
-        releasePreview(result.storageId, result.preview_id);
+    onSuccess: (result, input) => {
+      if (!mounted.current || input.version !== previewVersion.current) {
+        if (retainedPreview.current?.previewId === input.previousId) retainedPreview.current = null;
+        releasePreview(input.storageId, result.preview_id);
         return;
       }
-      retainedPreview.current = { storageId: result.storageId, previewId: result.preview_id };
-      setPreviewInvalidated(false);
-      if (useRenameStore.getState().unknownExecution?.previewUnlocked) {
-        useRenameStore.getState().setUnknownExecution(null);
-      }
+      retainedPreview.current = { storageId: input.storageId, previewId: result.preview_id };
     },
   });
   const execution = useRenameExecution(isCurrentSession);
-  const invalidatePreviewForChanges = useCallback(() => {
-    if (preservePreviewDisplay) {
-      // 任务和待核对状态保留预览及执行结果；输入切回原值也不能恢复旧执行。
-      setPreviewInvalidated(true);
-    } else {
-      preview.reset();
-      execution.reset();
-    }
-  }, [preservePreviewDisplay, preview.reset, execution.reset]);
   const invalidateBatchPreview = useCallback(() => {
+    invalidatePreviewForChanges();
     releaseRetainedPreview();
+    setRetainedUnknownOutcome(null);
     preview.reset();
     execution.reset();
-  }, [releaseRetainedPreview, preview.reset, execution.reset]);
-  const { isPending: isSinglePending, reset: resetSingleRename, ...singleRename } = useSingleRename({
-    storageId, location, workspaceSession, revision: activeStorage?.revision, taskId: currentTask?.taskId,
-    selectedFile: locationReady && currentSelectedIds.length === 1
-      ? files.data?.items.find((item) => item.id === currentSelectedIds[0]) : undefined,
+  }, [invalidatePreviewForChanges, releaseRetainedPreview, preview.reset, execution.reset]);
+  const { reset: resetSingleRename, ...singleRename } = useSingleRename({
+    storageId, location, workspaceSession, revision: activeStorage?.revision,
+    selectedFile: locationReady && selectedFiles.length === 1 ? selectedFiles[0] : undefined,
     directoryKey: ["files", storageId, activeStorage?.revision, location],
     canStart: canRename && locationReady && Boolean(activeStorage) && !activeStorage?.busy &&
       files.isSuccess && !files.isFetching && !files.error && !preview.isPending && !execution.isPending &&
-      !unknownExecution && currentSelectedIds.length === 1,
+      !unknownExecution && !pendingRenameRecord && selectedFiles.length === 1,
     isCurrentSession, invalidateBatchPreview,
   });
-  const isExecuting = execution.isPending || singleRename.isSingleRenaming;
-  const batchExecution = execution;
-  const previewMatchesContext = preview.data?.contextKey === previewContext;
-  const hasPreviewExecution = Boolean(preview.data &&
-    batchExecution.variables?.source.preview_id === preview.data.preview_id &&
-    (execution.isPending || execution.data || execution.error));
-  const showPreview = previewMatchesContext || preservePreviewDisplay || hasPreviewExecution;
-  const previewIsStale = previewInvalidated || !previewMatchesContext;
-  // 展示只有三种结果：无预览、当前预览、仅供查看的旧预览；核对记录独立管理。
-  const previewData = !preview.data || !showPreview ? undefined
-    : previewIsStale ? { ...preview.data, valid: false } : preview.data;
-
+  const isExecuting = Boolean(pendingRenameRecord) || execution.isPending || singleRename.isSingleRenaming;
   const previousSession = useRef<string | null>(null);
+  const isCurrentWorkspace = previousSession.current === workspaceSession;
+  const batchExecution = isCurrentWorkspace ? execution : undefined;
+  // 忽略迟到响应。已接收的预览可继续展示，输入变化后只能重新预览。
+  const acceptedPreview = preview.data?.preview_id === retainedPreview.current?.previewId ? preview.data : undefined;
+  const previewData = !isCurrentWorkspace || !acceptedPreview ? undefined
+    : acceptedPreview.version === previewVersion.current ? acceptedPreview : { ...acceptedPreview, valid: false };
+
+  const resetForStorageChange = useCallback(() => {
+    clearSelection();
+    invalidateBatchPreview();
+    resetSingleRename();
+  }, [clearSelection, invalidateBatchPreview, resetSingleRename]);
+
   useEffect(() => {
     if (isExecuting || previousSession.current === workspaceSession) return;
     previousSession.current = workspaceSession;
-    releaseRetainedPreview();
-    clearSelection();
-    resetTask();
-    setPreviewActive(false);
-    preview.reset();
-    execution.reset();
-    resetSingleRename();
-  }, [workspaceSession, isExecuting]); // eslint-disable-line react-hooks/exhaustive-deps
+    resetForStorageChange();
+  }, [workspaceSession, isExecuting, resetForStorageChange]);
 
   useEffect(() => {
     // 刷新失败时保留选择；成功读取后移除消失或已明确不能改名的项，不自动选择新增项。
     // 单项结果会同时更新缓存和选择；等待整条请求结束，避免中间渲染误删新 ID。
-    if (!files.isSuccess || !locationReady || isSinglePending()) return;
-    if (currentSelectedIds.length === selectedIds.length) return;
-    setSelectedIds(currentSelectedIds);
-    // 不因目录后台变化丢失正在执行的请求和进度。
-    if (!isExecuting) invalidatePreviewForChanges();
-  }, [files.isSuccess, files.dataUpdatedAt, locationReady, currentSelectedIds, selectedIds.length,
-    setSelectedIds, invalidatePreviewForChanges, isExecuting, isSinglePending]);
-
+    if (!files.isSuccess || !locationReady || singleRename.isSingleRenaming ||
+      useRenameStore.getState().pendingRenameRecord?.kind === "single") return;
+    if (selectedFiles.length === selectedIds.length) return;
+    setSelectedIds(selectedFiles.map((item) => item.id));
+  }, [files.isSuccess, files.dataUpdatedAt, locationReady, selectedFiles, selectedIds.length,
+    setSelectedIds, singleRename.isSingleRenaming]);
   const requestPreview = () => {
-    if (!files.data || files.isFetching || files.error || isExecuting || isSinglePending() || preview.isPending || activeStorage?.busy) return;
+    if (!canRename || !locationReady || !isCurrentWorkspace || !files.data || files.isFetching || files.error || isExecuting || hasPendingRename() || preview.isPending || activeStorage?.busy) return;
     const unknown = useRenameStore.getState().unknownExecution;
-    if (unknown && !unknown.previewUnlocked) {
+    if (unknown) {
       notify({ key: "files:verification.required" }, "warning");
       return;
     }
     const state = useRenameStore.getState();
     const selected = new Set(state.selectedIds);
-    if (currentTask) {
-      const members = new Set(currentTask.items.map((item) => item.currentFileId));
-      if (state.selectedIds.some((id) => !members.has(id))) {
-        notify({ key: "files:notifications.fixedMembers" }, "warning");
-        return;
-      }
-    }
-    const fileIds = renamableFiles.filter((item) => selected.has(item.id)).map((item) => item.id);
-    if (!fileIds.length) return;
-    state.createTask(workspaceSession, storageId, location, renamableFiles);
+    const targets = renamableFiles.filter((item) => selected.has(item.id));
+    if (!targets.length) return;
     resetSingleRename();
-    setPreviewActive(true);
     execution.reset();
-    // 同一事件内选择可能已更新，使用 Store 中的实际选择，避免迟到响应覆盖新上下文。
-    const contextKey = JSON.stringify([workspaceKey, cloudSession, fileIds, rules, sort]);
+    setRetainedUnknownOutcome(null);
+    const contextKey = JSON.stringify([workspaceSession, targets.map(({ id, name }) => [id, name]), state.rules, sort]);
     currentWorkspace.current = contextKey;
-    // 保存请求时的名称，目录刷新后仍能展示已消失项目的校验错误。
-    const fileNames = new Map(renamableFiles.map((item) => [item.id, item.name]));
-    preview.mutate({ contextKey, storageId, location, fileIds, fileNames, rules });
+    const fileIds = targets.map((item) => item.id);
+    const fileNames = new Map(targets.map((item) => [item.id, item.name]));
+    const retained = retainedPreview.current;
+    const previousId = retained?.storageId === storageId ? retained.previewId : undefined;
+    preview.mutate({ version: ++previewVersion.current, previousId,
+      storageId, location, fileIds, fileNames, rules: state.rules });
   };
 
-  const resetOperation = useCallback(() => {
-    if (isExecuting || isSinglePending() || preview.isPending) return;
-    releaseRetainedPreview();
-    useRenameStore.getState().setUnknownExecution(null);
-    resetTask(); setPreviewActive(false); clearSelection(); preview.reset(); execution.reset();
-    resetSingleRename();
-  }, [isExecuting, isSinglePending, preview.isPending, releaseRetainedPreview, resetTask, setPreviewActive, clearSelection, preview.reset, execution.reset, resetSingleRename]);
-  const onDirectoryRefreshed = () => {
-    const unknown = useRenameStore.getState().unknownExecution;
-    if (isExecuting || isSinglePending() || !unknown) return;
-    // 保留旧预览和待核对展示，只允许创建新预览；旧执行仍被锁定。
+  const resetOperation = () => {
+    if (!isExecuting && !hasPendingRename() && !preview.isPending) resetForStorageChange();
+  };
+  const onDirectoryRead = (unknown: UnknownExecution) => {
+    if (hasPendingRename() || !isCurrentSession(workspaceSession) ||
+      useRenameStore.getState().unknownExecution !== unknown || unknown.storageId !== storageId ||
+      JSON.stringify(unknown.location) !== JSON.stringify(location)) return;
+    // 解锁后保留旧结果供查看，旧预览继续失效。
     invalidatePreviewForChanges();
-    useRenameStore.getState().setUnknownExecution({ ...unknown, previewUnlocked: true });
+    setRetainedUnknownOutcome(unknown);
+    resetSingleRename();
+    useRenameStore.getState().setUnknownExecution(null);
   };
   const changeSelection = useCallback((update: () => void) => {
-    if (isExecuting || isSinglePending()) return;
+    if (isExecuting || hasPendingRename()) return;
     update();
     invalidatePreviewForChanges();
-  }, [isExecuting, isSinglePending, invalidatePreviewForChanges]);
+  }, [isExecuting, invalidatePreviewForChanges]);
   const toggleFile = useCallback((fileId: string) => {
     changeSelection(() => toggleSelected(fileId));
   }, [changeSelection, toggleSelected]);
@@ -238,36 +210,35 @@ export function useRenameWorkflow({
   }, [changeSelection, setSelectedIds]);
 
   const onRulesChange = (nextRules: RuleSpec[]) => {
-    if (isExecuting || isSinglePending()) return;
+    if (isExecuting || hasPendingRename()) return;
     setRules(nextRules);
     invalidatePreviewForChanges();
   };
 
   const changeSort = useCallback((nextSort: FileSort) => {
-    if (isExecuting || isSinglePending() || preview.isPending) return;
+    if (isExecuting || hasPendingRename()) return;
     onSortChange(nextSort);
     invalidatePreviewForChanges();
-  }, [isExecuting, isSinglePending, preview.isPending, onSortChange, invalidatePreviewForChanges]);
+  }, [isExecuting, onSortChange, invalidatePreviewForChanges]);
 
-  // 本地根目录选择和默认云路径恢复复用原有清理顺序；不丢失待释放 ID。
-  const resetForStorageChange = useCallback(() => {
-    resetTask();
-    setPreviewActive(false);
-    clearSelection();
-    preview.reset();
-    execution.reset();
-    resetSingleRename();
-  }, [resetTask, setPreviewActive, clearSelection, preview.reset, execution.reset, resetSingleRename]);
   const executeRename = (previewId: string) => {
     // 已消费或结果未知的预览不能在同一页面重放；再次改名必须创建新预览。
-    if (isExecuting || isSinglePending() || execution.variables?.source.preview_id === previewId || useRenameStore.getState().unknownExecution ||
-      !currentTask || previewData?.preview_id !== previewId || !previewData.valid) return;
-    execution.mutate({ source: previewData, workspaceSession, taskId: currentTask.taskId,
-      directoryKey: ["files", storageId, activeStorage?.revision, location] });
+    if (!canRename || !locationReady || files.isFetching || files.error || preview.isPending ||
+      isExecuting || execution.variables?.record.operationId === previewId ||
+      !activeStorage || activeStorage.busy || previewData?.version !== previewVersion.current || previewData?.preview_id !== previewId || !previewData.valid) return;
+    const record = useRenameStore.getState().startRenameRecord({
+      operationId: previewId, kind: "batch", storageId, revision: activeStorage.revision, location,
+      items: previewData.items.map((item) => ({
+        before: { id: item.file_id, name: item.original_name }, targetName: item.new_name,
+      })),
+    });
+    if (!record) return;
+    execution.mutate({ previewItems: previewData.items, record, workspaceSession,
+      directoryKey: ["files", storageId, activeStorage.revision, location] });
   };
 
   let previewError: string | undefined;
-  if (preview.variables?.contextKey === previewContext && preview.error) {
+  if (preview.variables?.version === previewVersion.current && preview.error) {
     previewError = errorMessage(preview.error, t);
     if (preview.error instanceof ApiError && preview.error.code === "VALIDATION_ERROR") {
       const fileIds = preview.error.details.file_ids;
@@ -282,23 +253,23 @@ export function useRenameWorkflow({
     }
   }
 
-  const revalidationError = batchExecution.error instanceof ApiError && batchExecution.error.details.execution_started === false
+  const revalidationError = batchExecution?.error instanceof ApiError && batchExecution.error.details.execution_started === false
     ? errorMessage(batchExecution.error, t) : undefined;
 
   return {
-    selectedIds, rules, browserItems, currentTask, changeSort,
-    selectedCount: currentSelectedIds.length,
+    selectedIds, rules, browserItems, changeSort,
+    selectedCount: selectedFiles.length,
     previewData, executionData: batchExecution?.data,
+    displayedUnknownOutcome: unknownExecution ?? (isCurrentWorkspace ? retainedUnknownOutcome : null),
     previewError,
     revalidationError,
-    executeError: batchExecution?.error ? unknownExecution?.previewId === batchExecution.variables?.source.preview_id
+    executeError: batchExecution?.error ? unknownExecution?.previewId === batchExecution.variables?.record.operationId
       ? t("files:verification.required") : errorMessage(batchExecution.error, t) : undefined,
-    executionPreviewId: batchExecution?.variables?.source.preview_id,
+    executionPreviewId: batchExecution?.variables?.record.operationId,
     isPreviewing: preview.isPending, isExecuting, hasExecuted: Boolean(batchExecution?.data),
     ...singleRename,
     requestPreview, executeRename, onRulesChange,
-    resetOperation, endTask: resetOperation, toggleFile, selectAllFiles, clearFiles, invertFiles,
-    resetForStorageChange, onDirectoryRefreshed,
-    releaseRetainedPreview,
+    resetOperation, toggleFile, selectAllFiles, clearFiles, invertFiles,
+    resetForStorageChange, onDirectoryRead,
   };
 }

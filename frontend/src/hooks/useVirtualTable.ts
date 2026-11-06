@@ -12,11 +12,12 @@ export function useVirtualTable(count: number, resetKey: unknown, columnValues: 
   const frame = useRef<number>();
   const focusFrame = useRef<number>();
   const focusedIndex = useRef(0);
+  const widthContext = useRef<CanvasRenderingContext2D | null>(null);
   const [columnWidths, setColumnWidths] = useState<number[]>();
   const enabled = count > virtualizationThreshold;
   useLayoutEffect(() => {
     if (!container || !enabled) { setColumnWidths(undefined); return; }
-    const context = document.createElement("canvas").getContext("2d");
+    const context = widthContext.current ??= document.createElement("canvas").getContext("2d");
     if (!context) return; // 浏览器无法创建绘图上下文时仍可使用原生自动列宽。
     const updateWidths = () => {
       const cells = container.querySelectorAll<HTMLElement>("tr[data-row-index]:first-of-type > td");

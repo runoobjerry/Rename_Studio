@@ -23,7 +23,7 @@ export function installWorkspaceTestHooks() {
     notify.mockReset();
     window.localStorage.clear();
     window.sessionStorage.clear();
-    useRenameStore.setState({ selectedIds: [], rules: [], task: null, previewActive: false, unknownExecution: null });
+    useRenameStore.setState(useRenameStore.getInitialState());
     client = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } });
     serverSettings = appSettings();
     vi.mocked(api.fetchAppSettings).mockImplementation(async () => serverSettings);
@@ -63,8 +63,8 @@ export async function setupWorkspace(count = 2) {
   const wrapper = ({ children }: { children: ReactNode }) => <QueryClientProvider client={client}>{children}</QueryClientProvider>;
   const hook = renderHook(() => {
     const [sort, setSort] = useState<FileSort>(defaultFileSort);
-    const previewActive = useRenameStore((state) => state.previewActive);
-    const storage = useWorkspaceStorage({ pauseFileQueries: previewActive, onLocalRootSelected: (): void => workflow.resetForStorageChange() });
+    const isWritePending = useRenameStore((state) => Boolean(state.pendingRenameRecord));
+    const storage = useWorkspaceStorage({ pauseFileQueries: isWritePending, onLocalRootSelected: (): void => workflow.resetForStorageChange() });
     const workflow = useRenameWorkflow({ ...storage, sort, onSortChange: setSort,
       canRename: storage.metadataReady && storage.providerDefinition?.can_rename === true && !storage.pickLocalRoot.isPending });
     return { storage, workflow };
@@ -85,5 +85,5 @@ export async function openCloud(hook: Awaited<ReturnType<typeof setupWorkspace>>
 
 export async function preview(hook: Awaited<ReturnType<typeof setupWorkspace>>) {
   act(() => hook.result.current.workflow.requestPreview());
-  await waitFor(() => expect(hook.result.current.workflow.previewData?.preview_id).toBe("task-preview"));
+  await waitFor(() => expect(hook.result.current.workflow.previewData).toMatchObject({ preview_id: "task-preview", valid: true }));
 }

@@ -14,7 +14,7 @@ vi.mock("./api/client", async (importOriginal) => {
 installWorkspaceAppTestHooks();
 
 describe("language settings", () => {
-  it("updates an existing preview and confirmation without changing task, selection, order, or requests", async () => {
+  it("updates an existing preview and confirmation without changing selection, order, or requests", async () => {
     const items = ["文件2.txt", "文件10.txt"].map((name) => ({
       id: name, name, path: name, parent_path: "", is_directory: false, size: 1, modified_at: null,
     }));

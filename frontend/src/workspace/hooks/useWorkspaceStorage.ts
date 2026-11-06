@@ -12,6 +12,7 @@ import { clearWorkspaceSession, readWorkspaceSession, writeWorkspaceSession } fr
 interface WorkspaceStorageOptions {
   pauseFileQueries: boolean;
   onLocalRootSelected: () => void;
+  onDirectoryRead?: () => void;
 }
 
 interface ExternalNavigation {
@@ -22,7 +23,7 @@ interface ExternalNavigation {
   reject: (error: Error) => void;
 }
 
-export function useWorkspaceStorage({ pauseFileQueries, onLocalRootSelected }: WorkspaceStorageOptions) {
+export function useWorkspaceStorage({ pauseFileQueries, onLocalRootSelected, onDirectoryRead }: WorkspaceStorageOptions) {
   const { t } = useTranslation();
   const notify = useNotification();
   const queryClient = useQueryClient();
@@ -147,7 +148,8 @@ export function useWorkspaceStorage({ pauseFileQueries, onLocalRootSelected }: W
   const files = useQuery({
     // A temporary key forces a real read even when the ordinary directory cache is fresh.
     queryKey: externalFilesKey ? [...directoryKey, externalFilesKey] : directoryKey,
-    queryFn: async () => {
+    queryFn: async (context) => {
+      const signal = onDirectoryRead ? context.signal : undefined;
       // Only the dedicated external read belongs to this target; ordinary queries may still finish for the old connection.
       const target = externalFilesKey ? externalTarget.current : null;
       const result = await fetchStorageFiles(storageId, location);
@@ -157,6 +159,7 @@ export function useWorkspaceStorage({ pauseFileQueries, onLocalRootSelected }: W
             !result.location || !["root", "id"].includes(result.location.kind)) throw new NavigationError("cancelled");
         target.validateListing(result);
       }
+      if (!signal?.aborted) onDirectoryRead?.();
       return result;
     },
     ...(externalFilesKey ? { retry: false } : {}),
@@ -327,14 +330,11 @@ export function useWorkspaceStorage({ pauseFileQueries, onLocalRootSelected }: W
       .catch((error: Error) => notify({ key: "files:notifications.defaultSaveFailed", error, errorContext: "settings" }, "error"));
   }, [cloudAccountId, cloudReady, files.isSuccess, files.isFetching, files.error, files.data, storageId, notify, appSettings.save]);
 
-  const refreshFiles = useCallback((onRefreshed?: () => void) => {
+  const refreshFiles = useCallback(() => {
     if (!locationReady) return;
     void files.refetch().then((result) => {
       if (result.error) notify({ key: "files:notifications.refreshFailed", error: result.error, errorContext: "directory" }, "error");
-      else {
-        onRefreshed?.();
-        notify({ key: "files:notifications.refreshed" });
-      }
+      else notify({ key: "files:notifications.refreshed" });
     });
   }, [locationReady, files.refetch, notify]);
 

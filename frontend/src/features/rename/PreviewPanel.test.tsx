@@ -52,7 +52,7 @@ describe("PreviewPanel", () => {
       changed: id !== "unchanged",
     }));
     const unknownExecution = {
-      storageId: "default-local", previewId: validPreview.preview_id,
+      storageId: "default-local", location: { kind: "root" } as const, previewId: validPreview.preview_id,
       items: items.filter((item) => ["unknown", "missing"].includes(item.file_id)),
     };
     const { rerender } = render(<PreviewPanel preview={{ ...validPreview, items }} unknownExecution={unknownExecution} executeError="Execution response lost" execution={{
@@ -107,8 +107,6 @@ describe("PreviewPanel", () => {
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
     expect(table.getAllByText("待核对")).toHaveLength(2);
     expect(table.getAllByText("修改结果无法确认")).toHaveLength(2);
-    rerender(<PreviewPanel unknownExecution={{ ...unknownExecution, previewUnlocked: true }} />);
-    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
     rerender(<PreviewPanel unknownExecution={{ ...unknownExecution, previewId: "next-execution" }} />);
     expect(screen.getByRole("alert")).toHaveTextContent("本次修改存在未知结果的项目，请刷新文件目录或前往文件源检查。");
   });

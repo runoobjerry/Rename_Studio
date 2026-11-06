@@ -3,12 +3,13 @@ import { ApiError, executePreview } from "../../api/client";
 import { useNotification } from "../../components/NotificationProvider";
 import { useRenameStore } from "../../stores/useRenameStore";
 import { useTranslation } from "react-i18next";
-import type { DirectoryListing, PreviewResponse } from "../../types";
+import type { PendingRenameRecord } from "./renameRecord";
+import type { DirectoryListing, PreviewItem } from "../../types";
 
 type BatchExecutionInput = {
-  source: Pick<PreviewResponse, "preview_id" | "items"> & { storageId: string };
+  previewItems: PreviewItem[];
+  record: PendingRenameRecord;
   workspaceSession: string;
-  taskId?: string;
   directoryKey: readonly unknown[];
 };
 
@@ -20,24 +21,28 @@ export function useRenameExecution(isCurrentSession: (session: string) => boolea
   const setSelectedIds = useRenameStore((state) => state.setSelectedIds);
   return useMutation({
     gcTime: 0,
-    mutationFn: (input: BatchExecutionInput) => executePreview(input.source.preview_id),
+    mutationFn: async ({ record, directoryKey }: BatchExecutionInput) => {
+      await queryClient.cancelQueries({ queryKey: directoryKey, exact: true });
+      return executePreview(record.operationId);
+    },
     onSuccess: (result, input) => {
-      const source = input.source;
       const outcomes = new Map(result.items.map((item) => [item.file_id, item]));
-      const unknown = source.items.filter((item) => {
+      const unknown = input.previewItems.filter((item) => {
         const outcome = outcomes.get(item.file_id);
         return !outcome || outcome.status === "unknown";
       });
       if (unknown.length) useRenameStore.getState().setUnknownExecution({
-        storageId: source.storageId, previewId: result.preview_id, items: unknown,
+        storageId: input.record.storageId, location: input.record.location, previewId: result.preview_id, items: unknown,
       });
-      // 只更新发起执行的目录缓存；连接版本或账号变化后的响应不能覆盖当前选择。
+      useRenameStore.getState().settleRenameRecord(input.record, result.items);
+      if (!isCurrentSession(input.workspaceSession)) {
+        void queryClient.invalidateQueries({ queryKey: input.directoryKey, exact: true, refetchType: "none" });
+        return;
+      }
       const confirmed = new Map(result.items.filter((item) => item.current_file)
         .map((item) => [item.file_id, item.current_file!]));
       queryClient.setQueryData<DirectoryListing>(input.directoryKey, (listing) =>
         listing && { ...listing, items: listing.items.map((item) => confirmed.get(item.id) ?? item) });
-      if (!isCurrentSession(input.workspaceSession)) return;
-      if (input.taskId) useRenameStore.getState().applyTaskResults(input.taskId, result);
       const { renamed, skipped, failed: failedCount, not_attempted: notAttempted } = result.counts;
       if (result.status === "completed" && unknown.length === 0) {
         notify({ key: "files:notifications.completed", values: { count: renamed } }, "success");
@@ -59,15 +64,17 @@ export function useRenameExecution(isCurrentSession: (session: string) => boolea
       // 服务端确认复核未写入，或在读取预览/获取连接执行权时拒绝了请求。
       if (error instanceof ApiError && (error.details.execution_started === false ||
         ["PREVIEW_EXPIRED", "PREVIEW_NOT_FOUND", "STORAGE_CONNECTION_CHANGED", "STORAGE_BUSY"].includes(error.code ?? ""))) {
+        useRenameStore.getState().settleRenameRecord(input.record, null);
         return;
       }
       // 丢失响应不代表未写入；核对信息绑定原连接，不依赖当前预览展示。
       useRenameStore.getState().setUnknownExecution({
-        storageId: input.source.storageId, previewId: input.source.preview_id, items: input.source.items,
+        storageId: input.record.storageId, location: input.record.location, previewId: input.record.operationId, items: input.previewItems,
       });
+      useRenameStore.getState().settleRenameRecord(input.record, []);
       if (isCurrentSession(input.workspaceSession)) {
         notify({ key: "files:notifications.ended", values: {
-          results: t("files:notifications.unknownCount", { count: input.source.items.length }),
+          results: t("files:notifications.unknownCount", { count: input.previewItems.length }),
         } }, "warning");
       }
     },

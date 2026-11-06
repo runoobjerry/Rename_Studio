@@ -79,7 +79,6 @@
     "defaultRootSaved": "Set the root directory as the default location for the current account.",
     "defaultSaveFailed": "Could not save the default location: {{message}}",
     "refreshFailed": "Refresh failed: {{message}}",
-    "fixedMembers": "The current task can only process items already added. End the current task before selecting other items.",
     "ended": "Renaming finished: {{results}}.",
     "resultSeparator": ", ",
     "renamedCount": "{{count}} renamed",
@@ -118,7 +117,6 @@
   "verification": {
     "required": "Rename results are unconfirmed. Refresh the directory or check the actual names at their source. Do not repeat the operation until you have verified the results."
   },
-  "taskTitle": "Current task",
   "quickRename": {
     "title": "Rename",
     "editLabel": "Rename {{name}}",
@@ -126,7 +124,5 @@
     "extension": "Extension",
     "applying": "Renaming",
     "failed": "The item could not be renamed. Check the current file and try again."
-  },
-  "endTask": "End current task",
-  "emptyTask": "The current task is empty."
+  }
 }

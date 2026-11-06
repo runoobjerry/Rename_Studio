@@ -79,7 +79,6 @@
     "defaultRootSaved": "已将“根目录”设为当前账号的默认路径。",
     "defaultSaveFailed": "默认路径保存失败：{{message}}",
     "refreshFailed": "刷新失败：{{message}}",
-    "fixedMembers": "当前任务只能处理已加入的项目。要选择其他项目，请先结束当前任务。",
     "ended": "本次修改结束：{{results}}。",
     "resultSeparator": "，",
     "renamedCount": "{{count}} 项已修改",
@@ -118,7 +117,6 @@
   "verification": {
     "required": "重命名结果尚未确认。请刷新目录或前往文件源核对实际名称，核对前不要重复执行。"
   },
-  "taskTitle": "当前任务",
   "quickRename": {
     "title": "重命名",
     "editLabel": "重命名 {{name}}",
@@ -126,7 +124,5 @@
     "extension": "扩展名",
     "applying": "正在重命名",
     "failed": "项目重命名失败，请核对当前文件后重试。"
-  },
-  "endTask": "结束当前任务",
-  "emptyTask": "当前任务为空。"
+  }
 }
