@@ -9,5 +9,5 @@ export function executionItemMessage(item: ExecuteItem, t: TFunction): string {
       ? "files:preview.notAttempted" : "files:preview.notAttemptedOther");
   }
   return !item.error_code && item.error === null ? t("files:preview.failed")
-    : errorMessage({ code: item.error_code, message: item.error ?? "", details: item.details ?? undefined, operation: "write" }, t);
+    : errorMessage({ code: item.error_code, message: item.error ?? "", details: item.details ?? undefined, operation: "write" }, t, "renameStatus");
 }

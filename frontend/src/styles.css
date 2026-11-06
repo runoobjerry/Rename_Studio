@@ -199,41 +199,6 @@
   font-weight: 700 !important;
 }
 
-.status {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  padding: 3px 7px;
-  border-radius: 999px;
-  font-size: 12px;
-  font-weight: 750;
-  white-space: nowrap;
-}
-
-.status::before {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: currentColor;
-  content: "";
-}
-
-.status.valid {
-  color: var(--app-success);
-  background: var(--app-success-soft);
-}
-
-.status.invalid {
-  color: var(--app-danger);
-  background: var(--app-danger-soft);
-}
-
-.status.pending,
-.status.neutral {
-  color: var(--app-text-muted);
-  background: var(--app-surface-muted);
-}
-
 .notice,
 .empty-state {
   margin: 24px 26px;

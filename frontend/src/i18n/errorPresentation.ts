@@ -6,8 +6,8 @@ export interface PresentationError {
   status?: number;
 }
 
-export type ErrorPresentationContext = "directory" | "settings" | "connection" | "singleRename";
-type ErrorKey = `errors:${string}` | "files:verification.required";
+export type ErrorPresentationContext = "directory" | "settings" | "connection" | "singleRename" | "renameStatus";
+type ErrorKey = `errors:${string}` | "files:verification.required" | "files:preview.unknown";
 
 export interface ErrorPresentation {
   key: ErrorKey;
@@ -68,7 +68,7 @@ const reasonPresentations = new Map<string, ReasonPresentation>([
 ]);
 
 // 只覆盖通用类别；精确原因和写入结果确定性始终优先。
-const contextKeys: Record<ErrorPresentationContext, ReadonlyMap<string, ErrorKey>> = {
+const contextKeys: Record<Exclude<ErrorPresentationContext, "renameStatus">, ReadonlyMap<string, ErrorKey>> = {
   directory: new Map([
     ["NOT_FOUND", "errors:directoryMissing"],
     ["VALIDATION_ERROR", "errors:locationInvalid"],
@@ -90,6 +90,50 @@ const contextKeys: Record<ErrorPresentationContext, ReadonlyMap<string, ErrorKey
     ["STORAGE_CONNECTION_CHANGED", "errors:connectionRefreshRequired"],
   ]),
 };
+
+// 状态栏只描述原因；复用通用解析的确定性、原因优先级和安全参数。
+const renameStatusKeys = new Map<ErrorKey, ErrorKey>([
+  ["errors:operationUnavailable", "errors:renameStatus.unavailable"],
+  ["errors:itemMissing", "errors:renameStatus.itemMissing"],
+  ["errors:storageUnavailable", "errors:renameStatus.storageUnavailable"],
+  ["errors:authorizationUnavailable", "errors:renameStatus.authorizationUnavailable"],
+  ["errors:tooManyRequests", "errors:renameStatus.rateLimited"],
+  ["errors:renamePermissionDenied", "errors:renameStatus.permissionDenied"],
+  ["errors:operationInputInvalid", "errors:renameStatus.inputInvalid"],
+  ["errors:inputInvalid", "errors:renameStatus.inputInvalid"],
+  ["errors:ruleSettingsInvalid", "errors:renameStatus.ruleInvalid"],
+  ["errors:nameOccupied", "errors:renameStatus.nameOccupied"],
+  ["errors:duplicateNames", "errors:renameStatus.duplicateNames"],
+  ["errors:previewExpired", "errors:renameStatus.previewExpired"],
+  ["errors:previewMissing", "errors:renameStatus.previewMissing"],
+  ["errors:connectionBusy", "errors:renameStatus.connectionBusy"],
+  ["errors:connectionChanged", "errors:renameStatus.connectionChanged"],
+  ["errors:readUnavailable", "errors:renameStatus.unavailable"],
+  ["errors:fileChanged", "errors:renameStatus.fileChanged"],
+  ["errors:renameUnsupported", "errors:renameStatus.renameUnsupported"],
+  ["errors:itemRenameUnavailable", "errors:renameStatus.itemUnavailable"],
+  ["errors:connectionMissing", "errors:renameStatus.connectionMissing"],
+  ["errors:accountDisconnected", "errors:renameStatus.accountDisconnected"],
+  ["errors:authorizationExpired", "errors:renameStatus.authorizationExpired"],
+  ["errors:outsideRoot", "errors:renameStatus.outsideRoot"],
+  ["errors:symbolicLink", "errors:renameStatus.symbolicLink"],
+  ["errors:nameEmpty", "errors:renameStatus.nameEmpty"],
+  ["errors:nameNull", "errors:renameStatus.nameNull"],
+  ["errors:nameDots", "errors:renameStatus.nameDots"],
+  ["errors:nameCharacters", "errors:renameStatus.nameCharacters"],
+  ["errors:nameEnding", "errors:renameStatus.nameEnding"],
+  ["errors:nameReserved", "errors:renameStatus.nameReserved"],
+  ["errors:nameLength", "errors:renameStatus.nameLength"],
+  ["errors:pathLength", "errors:renameStatus.pathLength"],
+  ["errors:oneDriveStart", "errors:renameStatus.oneDriveStart"],
+  ["errors:oneDriveFolderStart", "errors:renameStatus.oneDriveFolderStart"],
+  ["errors:oneDriveReserved", "errors:renameStatus.oneDriveReserved"],
+  ["errors:oneDriveForms", "errors:renameStatus.oneDriveForms"],
+  ["errors:googleShortcut", "errors:renameStatus.googleShortcut"],
+  ["errors:rootRename", "errors:renameStatus.rootRename"],
+  ["errors:writeUnknown", "files:preview.unknown"],
+  ["files:verification.required", "files:preview.unknown"],
+]);
 
 function presentationValues(params: unknown, names: readonly string[]): Record<string, string | number> {
   const values: Record<string, string | number> = {};
@@ -116,7 +160,7 @@ function requestValidationKey(errors: unknown): ErrorKey | undefined {
   }
 }
 
-export function resolveErrorPresentation(error: PresentationError, context?: ErrorPresentationContext): ErrorPresentation {
+function resolveGeneralErrorPresentation(error: PresentationError, context?: Exclude<ErrorPresentationContext, "renameStatus">): ErrorPresentation {
   if (error.code === "RENAME_OUTCOME_UNKNOWN") return { key: "files:verification.required" };
   // 未收到可靠写入响应时，任何场景都不能将提示降级为直接重试。
   if (error.operation === "write" && error.details?.execution_started !== false &&
@@ -134,4 +178,11 @@ export function resolveErrorPresentation(error: PresentationError, context?: Err
   }
   const key = error.code ? (context && contextKeys[context].get(error.code)) || codeKeys.get(error.code) : undefined;
   return { key: key ?? (error.operation === "write" ? "errors:operationUnavailable" : "errors:readUnavailable") };
+}
+
+export function resolveErrorPresentation(error: PresentationError, context?: ErrorPresentationContext): ErrorPresentation {
+  const presentation = resolveGeneralErrorPresentation(error, context === "renameStatus" ? undefined : context);
+  if (context !== "renameStatus") return presentation;
+  const key = renameStatusKeys.get(presentation.key);
+  return key ? { ...presentation, key } : { key: "errors:renameStatus.unavailable" };
 }

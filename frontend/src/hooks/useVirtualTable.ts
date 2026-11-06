@@ -29,13 +29,16 @@ export function useVirtualTable(count: number, resetKey: unknown, columnValues: 
         const fixedWidth = fixedColumnWidths?.[index];
         if (fixedWidth !== undefined) return fixedWidth;
         const cell = dataCells[index] as HTMLElement;
-        const text = cell.querySelector<HTMLElement>(".file-name, .status") ?? cell;
+        const text = cell.querySelector<HTMLElement>(".file-name, .MuiChip-label") ?? cell;
         const style = getComputedStyle(text);
         context.font = style.font;
         const letterSpacing = parseFloat(style.letterSpacing) || 0;
         let width = values.reduce((max, value) => Math.max(max, context.measureText(value).width + value.length * letterSpacing), 0);
         if (text.classList.contains("file-name")) width = Math.min(width, innerWidth * 0.32, 420) + 28;
-        if (text.classList.contains("status")) width += 26; // 状态标签的左右内边距、圆点和间隔。
+        const chip = cell.querySelector<HTMLElement>(".MuiChip-root");
+        // Chip 的图标及内边距也参与完整数据列宽测量。
+        if (chip) width += chip.getBoundingClientRect().width - text.getBoundingClientRect().width
+          + parseFloat(style.paddingLeft) + parseFloat(style.paddingRight);
         const headerStyle = getComputedStyle(headers[index]);
         context.font = headerStyle.font;
         const sortIcon = headers[index].querySelector(".MuiTableSortLabel-icon");

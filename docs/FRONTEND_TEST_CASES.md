@@ -31,7 +31,7 @@
 | 执行成功或响应丢失后暂停自动目录读取，允许人工刷新；合并服务端确认的文件身份 | 工作流 Hook |
 | 未确认阶段的服务端故障仍保留未知结果保护 | [工作流 Hook](../frontend/src/features/rename/useRenameWorkflow.test.ts) |
 | 部分成功伴随未知/缺失结果时，只合并确认身份，阻止新的预览和写入；成功项可重新选择 | 工作流 Hook |
-| 未执行状态及原因展示不依赖英文诊断；未提供当前名称不误报未知；诊断为空时仍按状态提示 | [PreviewPanel](../frontend/src/features/rename/PreviewPanel.test.tsx) |
+| 未执行项目统一显示“未修改”，不依赖英文诊断或停止原因；未提供当前名称不误报未知；诊断为空时仍按状态提示 | [PreviewPanel](../frontend/src/features/rename/PreviewPanel.test.tsx) |
 | 执行前确认，无变化时禁止执行，进度失败不虚构结果，执行中锁定控件；最终响应到达后关闭弹窗，不停留展示完成状态 | [RenameActions](../frontend/src/features/rename/RenameActions.test.tsx)、工作台集成 |
 | 复核失败仅在 Modal 展示本地化提示，点击刷新预览创建新预览，不重放执行、不进入未知结果保护 | [RenameActions](../frontend/src/features/rename/RenameActions.test.tsx)、[工作流 Hook](../frontend/src/features/rename/useRenameWorkflow.test.ts) |
 | 未知执行结果在预览栏显示可关闭的 Alert，关闭仅隐藏提醒，同次执行保持隐藏，新执行重新提醒；待核对项显示 N/A 并归入错误筛选；已移除自动回滚结果场景，无人工解锁入口，刷新目录成功只解锁刷新预览并保留旧预览及待核对展示，刷新失败保留锁定 | 工作台集成、PreviewPanel |

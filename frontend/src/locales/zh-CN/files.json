@@ -38,6 +38,7 @@
     "original": "原文件名",
     "new": "新文件名",
     "failed": "修改失败",
+    "notModified": "未修改",
     "conflict": "名称冲突",
     "invalid": "不可修改",
     "summary": "{{pending}} 项待修改 · {{unchanged}} 项无需修改",
@@ -45,7 +46,7 @@
     "executeFailed": "执行失败：{{message}}",
     "unknownOutcome": "本次修改存在未知结果的项目，请刷新文件目录或前往文件源检查。",
     "needsVerification": "待核对",
-    "unknown": "未知",
+    "unknown": "修改结果无法确认",
     "notAttempted": "因其他项目的修改结果待核对，本项目未执行",
     "notAttemptedOther": "本项目尚未执行"
   },

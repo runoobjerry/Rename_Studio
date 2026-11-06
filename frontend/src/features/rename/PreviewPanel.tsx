@@ -4,6 +4,10 @@ import { errorMessage } from "../../i18n/messages";
 import type { TFunction } from "i18next";
 import { memo, useMemo, useState } from "react";
 import Alert from "@mui/material/Alert";
+import Chip, { type ChipProps } from "@mui/material/Chip";
+import CheckCircleIcon from "@mui/icons-material/CheckCircle";
+import InfoIcon from "@mui/icons-material/Info";
+import ErrorIcon from "@mui/icons-material/Error";
 import Table from "@mui/material/Table";
 import TableBody from "@mui/material/TableBody";
 import TableCell from "@mui/material/TableCell";
@@ -123,8 +127,8 @@ export const PreviewPanel = memo(function PreviewPanel({
             <TableBody>
               <VirtualTableSpacer height={virtual.top} columns={3} />
               {visibleItems.slice(virtual.start, virtual.end).map(({ item, status, newName }, offset) => (
-                <PreviewRow key={item.file_id} item={item} newName={newName} label={status.label} statusClassName={status.className}
-                  renamed={status.renamed} rowIndex={virtual.start + offset} />
+                <PreviewRow key={item.file_id} item={item} newName={newName} label={status.label} statusColor={status.color}
+                  pending={status.isPendingChange} renamed={status.renamed} rowIndex={virtual.start + offset} />
               ))}
               <VirtualTableSpacer height={virtual.bottom} columns={3} />
               {visibleItems.length === 0 && (
@@ -150,13 +154,20 @@ export const PreviewPanel = memo(function PreviewPanel({
   );
 });
 
-const PreviewRow = memo(function PreviewRow({ item, newName, label, statusClassName, renamed, rowIndex }: {
-  item: PreviewResponse["items"][number]; newName: string; label: string; statusClassName: string; renamed: boolean; rowIndex: number;
+const PreviewRow = memo(function PreviewRow({ item, newName, label, statusColor, pending, renamed, rowIndex }: {
+  item: PreviewResponse["items"][number]; newName: string; label: string; statusColor: ChipProps["color"]; pending: boolean; renamed: boolean; rowIndex: number;
 }) {
+  const icon = statusColor === "success" ? <CheckCircleIcon />
+    : statusColor === "default" ? (pending ? <CheckCircleIcon /> : <InfoIcon />) : <ErrorIcon />;
   return <TableRow data-row-index={rowIndex} aria-rowindex={rowIndex + 2} tabIndex={0}>
     <TableCell>{item.original_name}</TableCell>
     <TableCell className={renamed ? "renamed-name" : undefined}>{newName}</TableCell>
-    <TableCell><span className={`status ${statusClassName}`}>{label}</span></TableCell>
+    <TableCell>
+      <Chip size="small" variant="outlined" label={label} color={statusColor} icon={icon}
+        sx={{ fontSize: "12px", ...(statusColor === "default" && {
+          color: "text.secondary", "& .MuiChip-icon": { color: "inherit" },
+        }) }} />
+    </TableCell>
   </TableRow>;
 });
 
@@ -164,38 +175,40 @@ function statusFor(item: PreviewResponse["items"][number], result: ExecuteRespon
   // 待核对状态仅消费执行流程已有的判断，不在展示层重新推断结果。
   if (needsVerification) return {
     category: "error" as const,
-    label: t("files:preview.unknown"), className: "invalid", renamed: false,
+    label: t("files:preview.unknown"), color: "warning" as const, renamed: false,
     isPendingChange: false, isUnchanged: false,
   };
   // 已修改项保留原预览分类；失败和跳过的执行结果覆盖分类。
   let category: StatusFilter = item.error || !item.valid || item.conflict ? "error"
     : item.changed ? "pending" : "unchanged";
   let label: string;
-  let className: string;
+  let color: "success" | "warning" | "error" | "default";
   if (result?.status === "renamed") {
     label = t("files:preview.filters.renamed");
-    className = "valid";
-  } else if (result?.status === "failed" || result?.status === "not_attempted") {
+    color = "success";
+  } else if (result?.status === "not_attempted") {
+    category = "error";
+    label = t("files:preview.notModified");
+    color = "warning";
+  } else if (result?.status === "failed") {
     category = "error";
     label = executionItemMessage(result, t);
-    className = "invalid";
+    color = "error";
   } else if (result?.status === "skipped") {
     category = "unchanged";
     label = t("files:preview.filters.unchanged");
-    className = "neutral";
-  } else if (item.error) {
-    label = item.conflict && !item.details?.reason ? t("errors:duplicateNames")
-      : errorMessage({ code: "VALIDATION_ERROR", message: item.error, details: item.details ?? undefined }, t);
-    className = "invalid";
-  } else if (!item.valid) {
-    label = item.conflict ? t("files:preview.conflict") : t("files:preview.invalid");
-    className = "invalid";
+    color = "default";
+  } else if (item.error || !item.valid || item.conflict) {
+    label = !item.error && !item.details?.reason ? t(item.conflict ? "files:preview.conflict" : "files:preview.invalid")
+      : item.conflict && !item.details?.reason ? t("errors:renameStatus.duplicateNames")
+      : errorMessage({ code: "VALIDATION_ERROR", message: item.error ?? "", details: item.details ?? undefined }, t, "renameStatus");
+    color = "warning";
   } else {
     label = item.changed ? t("files:preview.filters.pending") : t("files:preview.filters.unchanged");
-    className = item.changed ? "pending" : "neutral";
+    color = "default";
   }
   return {
-    category, label, className, renamed: result?.status === "renamed",
+    category, label, color, renamed: result?.status === "renamed",
     // 副标题统计独立于筛选分类：有效变更且尚无执行结果才计为待修改。
     isPendingChange: item.changed && item.valid && !result,
     isUnchanged: !item.changed || result?.status === "skipped",

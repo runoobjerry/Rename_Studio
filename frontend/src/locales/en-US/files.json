@@ -38,6 +38,7 @@
     "original": "Original",
     "new": "New",
     "failed": "Rename failed",
+    "notModified": "Not renamed",
     "conflict": "Name conflict",
     "invalid": "Cannot rename",
     "summary": "{{pending}} to rename · {{unchanged}} unchanged",
@@ -45,7 +46,7 @@
     "executeFailed": "Execution failed: {{message}}",
     "unknownOutcome": "Some items have unknown rename results. Refresh the file directory or check the files at their source.",
     "needsVerification": "Needs verification",
-    "unknown": "Unknown",
+    "unknown": "This item could not be confirmed.",
     "notAttempted": "Not attempted because another item’s rename result needs verification.",
     "notAttemptedOther": "This item was not attempted."
   },
