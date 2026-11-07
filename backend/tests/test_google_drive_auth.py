@@ -554,6 +554,7 @@ async def test_google_api_executes_server_snapshot_or_rejects_changes(manager: S
                 "rules": [{"type": "replace", "config": {"search": "old", "replacement": "new"}}],
             })
             assert response.status_code == 200 and response.json()["valid"]
+            assert sum(request.url.path == "/drive/v3/files" for request in server.requests) == 1
             assert not server.writes
             preview_id = response.json()["preview_id"]
             if change == "source":
@@ -567,10 +568,61 @@ async def test_google_api_executes_server_snapshot_or_rejects_changes(manager: S
             })
             if change is not None:
                 assert response.status_code == 409 and not server.writes
+                if change == "source":
+                    assert response.json()["error"]["code"] == "PREVIEW_EXPIRED"
+                    assert sum(request.url.path == "/drive/v3/files" for request in server.requests) == 2
             else:
                 assert response.status_code == 200 and response.json()["status"] == "completed"
                 assert server.writes == [[("file", "new.txt")]]
                 assert (await client.get(f"/rename/progress/{preview_id}")).json()["phase"] == "finished"
                 assert (await client.post("/rename/execute", json={"preview_id": preview_id})).status_code == 404
+    finally:
+        await manager.aclose()
+
+
+@pytest.mark.asyncio
+async def test_directory_api_shares_previews_and_refreshes_then_disconnects(
+    manager: StorageManager, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from test_google_drive_provider import WritableDriveServer, drive_file
+
+    storage_id, auth = google_connection(manager)
+    mock_google(monkeypatch, google_response)
+    await authorize(auth)
+    server = WritableDriveServer([drive_file("file", "old.txt"), drive_file("sibling", "taken.txt")])
+    mock_google(monkeypatch, server)
+    storage_url = f"/storages/{storage_id}"
+    try:
+        async with ASYNC_CLIENT(transport=httpx.ASGITransport(app=api(manager).app), base_url="http://test") as client:
+            for _ in range(2):
+                response = await client.post(f"{storage_url}/files/list", json={})
+                assert response.status_code == 200 and response.json()["items"][0]["name"] == "old.txt"
+            for replacement in ["available", "taken"]:
+                response = await client.post(f"{storage_url}/rename/preview", json={
+                    "file_ids": ["file"],
+                    "rules": [{"type": "replace", "config": {"search": "old", "replacement": replacement}}],
+                })
+                assert response.status_code == 200
+                item = response.json()["items"][0]
+                assert item["new_name"] == f"{replacement}.txt" and item["conflict"] == (replacement == "taken")
+            assert sum(request.url.path == "/drive/v3/files" for request in server.requests) == 1
+
+            server.files["file"]["name"] = "changed.txt"
+            refreshed = await client.post(f"{storage_url}/files/list", json={"refresh": True})
+            assert refreshed.status_code == 200 and refreshed.json()["items"][0]["name"] == "changed.txt"
+            assert (await client.post(f"{storage_url}/files/list", json={})).json() == refreshed.json()
+            assert sum(request.url.path == "/drive/v3/files" for request in server.requests) == 2
+
+            assert (await client.delete(f"{storage_url}/auth/session")).status_code == 204
+            assert (await client.post(f"{storage_url}/files/list", json={})).status_code == 401
+            mock_google(monkeypatch, google_response)
+            await authorize(auth)
+            server.files["file"]["name"] = "reconnected.txt"
+            mock_google(monkeypatch, server)
+            reconnected = await client.post(f"{storage_url}/files/list", json={})
+            assert reconnected.status_code == 200
+            assert reconnected.json()["revision"] > refreshed.json()["revision"]
+            assert reconnected.json()["items"][0]["name"] == "reconnected.txt"
+            assert sum(request.url.path == "/drive/v3/files" for request in server.requests) == 3
     finally:
         await manager.aclose()

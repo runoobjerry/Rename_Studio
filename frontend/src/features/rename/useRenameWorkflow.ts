@@ -172,7 +172,7 @@ export function useRenameWorkflow({
     const retained = retainedPreview.current;
     const previousId = retained?.storageId === storageId ? retained.previewId : undefined;
     preview.mutate({ version: ++previewVersion.current, previousId,
-      storageId, location, fileIds, fileNames, rules: state.rules });
+      storageId, location: files.data.location ?? location, fileIds, fileNames, rules: state.rules });
   };
 
   const resetOperation = () => {

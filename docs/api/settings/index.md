@@ -78,7 +78,7 @@ GET /app-settings
 <a id="endpoint-post-app-settings-factory-reset"></a>
 ### 恢复默认设置
 
-恢复默认偏好与默认 Local 连接，删除其他连接、凭据和预览。
+恢复默认偏好与默认 Local 连接，删除其他连接、凭据和预览，清空后端目录缓存。
 
 `POST /app-settings/factory-reset`
 

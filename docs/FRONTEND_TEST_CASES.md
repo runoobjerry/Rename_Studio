@@ -21,6 +21,7 @@
 | 本体外部导航：按 Provider 声明的适配器接入，非内置类型同样可导航，缺失/禁用/未知适配器或不满足授权/位置能力时拒绝；Google 按邮箱唯一匹配并沿用稳定账号 ID，OneDrive 按 CID 唯一匹配，复用已有连接/授权状态且不主动二次刷新，授权及忙碌保护，外部目标优先于恢复位置并强制读取目录；释放旧预览、保留规则及未知写入记录；手动切换/连接 revision 变化取消迟到结果，重复业务请求在 accepted 前拒绝；目录不匹配、根 ID 规范化、权限或授权失效及手动重试仍检查云盘范围 | [能力匹配](../frontend/src/integrations/browser/navigation.test.ts)、[外部导航集成](../frontend/src/WorkspaceApp.externalNavigation.test.tsx) |
 | 不同账号连接的目录隔离，换号后的旧目录与旧预览不能污染新工作区 | [工作台存储集成](../frontend/src/WorkspaceApp.storage.test.tsx)、[默认云目录](../frontend/src/features/files/defaultCloudLocation.test.ts) |
 | 工作区按 browser_auth 判定授权；元数据 pending/error 不读取授权或文件，恢复后使用原目录；元数据刷新失败保留账号身份与选择 | [存储 Hook](../frontend/src/workspace/hooks/useWorkspaceStorage.test.ts) |
+| 手动目录刷新发送 `refresh: true`，可越过正在进行的普通读取并丢弃迟到结果；普通导航沿用默认读取模式。外部导航和重试同样强制刷新。经 OneDrive 路径进入目录后，预览发送返回的规范目录 ID | [API 请求体](../frontend/src/api/client.test.ts)、[存储 Hook](../frontend/src/workspace/hooks/useWorkspaceStorage.test.ts)、[外部导航集成](../frontend/src/WorkspaceApp.externalNavigation.test.tsx)、[预览工作流](../frontend/src/features/rename/useRenameWorkflow.test.ts) |
 | 非 Local 且无需浏览器授权的服务恢复 ID 位置，不发授权请求；未知 OAuth 服务等待授权，不支持的位置类型不请求 | 存储 Hook |
 | 无浏览器授权服务的选择随成功列表同步 | 工作流 Hook |
 | 选择及规则变化使旧预览失效；保留替换 ID、释放迟到或工作区变化后的预览，选择改回原值也不会接收已失效的响应 | [工作流 Hook](../frontend/src/features/rename/useRenameWorkflow.test.ts)、工作台集成 代表性 UI 接线 |
@@ -35,7 +36,7 @@
 | 未执行项目统一显示“未修改”，不依赖英文诊断或停止原因；未提供当前名称不误报未知；诊断为空时仍按状态提示 | [PreviewPanel](../frontend/src/features/rename/PreviewPanel.test.tsx) |
 | 执行前确认，无变化时禁止执行，进度失败不虚构结果，执行中锁定控件；最终响应到达后关闭弹窗，不停留展示完成状态 | [RenameActions](../frontend/src/features/rename/RenameActions.test.tsx)、工作台集成 |
 | 复核失败仅在 Modal 展示本地化提示，点击刷新预览创建新预览，不重放执行、不进入未知结果保护 | [RenameActions](../frontend/src/features/rename/RenameActions.test.tsx)、[工作流 Hook](../frontend/src/features/rename/useRenameWorkflow.test.ts) |
-| 未知执行结果在预览栏显示可关闭的 Alert，关闭仅隐藏提醒，同次执行保持隐藏，新执行重新提醒；待核对项显示 N/A 并归入错误筛选；原目录手动或自动刷新成功后恢复单项改名和批量预览，保留最近记录，旧预览不可执行；刷新失败保留锁定 | 工作台集成、PreviewPanel |
+| 未知执行结果在预览栏显示可关闭的 Alert，关闭仅隐藏提醒，同次执行保持隐藏，新执行重新提醒；待核对项显示 N/A 并归入错误筛选；原目录手动或自动发送 `refresh: true` 并读取成功后恢复单项改名和批量预览，保留最近记录，旧预览不可执行；刷新失败保留锁定 | [工作台集成](../frontend/src/WorkspaceApp.test.tsx)、PreviewPanel |
 | 全选和过滤覆盖完整数据集，包括虚拟列表未挂载的行 | FileBrowser、[虚拟列表](../frontend/src/features/files/FileBrowser.virtual.test.tsx) |
 | 重置应用请求异常时提示刷新核对，保留规则、配置、路径记忆与当前连接，并保持确认框打开 | [偏好与重置集成](../frontend/src/WorkspaceApp.preferences.test.tsx) |
 | 预览创建传递替换 ID，释放只针对指定预览；错误项不能计入可修改数量 | [API client](../frontend/src/api/client.test.ts)、[PreviewPanel](../frontend/src/features/rename/PreviewPanel.test.tsx) |

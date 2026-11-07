@@ -66,6 +66,7 @@ class PreviewService:
         siblings: list[FileItem] | None = None,
     ) -> tuple[list[PreviewItem], list[FileItem], bool]:
         provider = self.providers.get(request.storage_id)
+        directories = self.providers.manager.directories
         record = self.providers.manager.record(request.storage_id)
         supports_rename = self.providers.definition(record.provider_type).can_rename
         if len(request.file_ids) != len(set(request.file_ids)):
@@ -81,7 +82,7 @@ class PreviewService:
         if files is None and request.location is not None:
             # 浏览器已知父目录时，一次目录读取即可同时提供源元数据和冲突集合。
             with _timed_phase(request.storage_id, "source_directory", len(request.file_ids)):
-                listing = await provider.list_directory(request.location)
+                listing = await directories.list_directory(request.storage_id, request.location)
             prefetched_siblings = listing.items
             request.location = listing.location
             by_id = {item.id: item for item in prefetched_siblings}
@@ -125,7 +126,7 @@ class PreviewService:
                 siblings = (
                     prefetched_siblings
                     if prefetched_siblings is not None
-                    else await provider.list_siblings(files[0])
+                    else await directories.list_siblings(request.storage_id, files[0])
                 )
         with _timed_phase(request.storage_id, "validation", len(files)):
             duplicate_targets = {

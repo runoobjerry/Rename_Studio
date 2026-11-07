@@ -66,14 +66,9 @@ async def delete_storage(storage_id: str, manager: Manager) -> Response:
 
 @router.post("/storages/{storage_id}/files/list", response_model=DirectoryListing)
 async def list_files(storage_id: str, request: StorageListRequest, manager: Manager) -> DirectoryListing:
-    before = manager.record(storage_id)
-    revision = before.revision
-    listing = await manager.provider(storage_id).list_directory(request.location)
-    if manager.record(storage_id).revision != revision:
-        raise StorageConnectionChangedError("Storage changed while reading the directory")
-    listing.storage_id = before.storage_id
-    listing.revision = revision
-    return listing
+    return await manager.directories.list_directory(
+        storage_id, request.location, mode="refresh" if request.refresh else "cached",
+    )
 
 
 @router.post("/storages/{storage_id}/local/pick", response_model=LocalFolderPickResponse)

@@ -29,9 +29,9 @@ class StorageProvider(ABC):
         return DirectoryListing(provider=self.id, path=path, parent_path=parent, items=items,
                                 location=canonical, parent_location=parent_location)
 
-    async def list_siblings(self, item: FileItem) -> list[FileItem]:
-        location = item.parent_location or PathLocation(value=item.parent_path)
-        return (await self.list_directory(location)).items
+    @staticmethod
+    def parent_directory(item: FileItem) -> StorageLocation:
+        return item.parent_location or PathLocation(value=item.parent_path)
 
     @staticmethod
     def parent_key(item: FileItem) -> str:

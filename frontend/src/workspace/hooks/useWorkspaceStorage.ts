@@ -12,7 +12,7 @@ import { clearWorkspaceSession, readWorkspaceSession, writeWorkspaceSession } fr
 interface WorkspaceStorageOptions {
   pauseFileQueries: boolean;
   onLocalRootSelected: () => void;
-  onDirectoryRead?: () => void;
+  directoryVerification?: { storageId: string; location: StorageLocation; onRead: () => void };
 }
 
 interface ExternalNavigation {
@@ -23,7 +23,7 @@ interface ExternalNavigation {
   reject: (error: Error) => void;
 }
 
-export function useWorkspaceStorage({ pauseFileQueries, onLocalRootSelected, onDirectoryRead }: WorkspaceStorageOptions) {
+export function useWorkspaceStorage({ pauseFileQueries, onLocalRootSelected, directoryVerification }: WorkspaceStorageOptions) {
   const { t } = useTranslation();
   const notify = useNotification();
   const queryClient = useQueryClient();
@@ -144,22 +144,31 @@ export function useWorkspaceStorage({ pauseFileQueries, onLocalRootSelected, onD
     saveSession();
   }, [storageId, activeStorage, saveSession, externalPending]);
 
-  const directoryKey = ["files", storageId, activeStorage?.revision, location];
+  const directoryKey = useMemo(() => {
+    const key = ["files", storageId, activeStorage?.revision, location];
+    return externalFilesKey ? [...key, externalFilesKey] : key;
+  }, [storageId, activeStorage?.revision, location, externalFilesKey]);
+  const manualRefresh = useRef<{ key: string } | null>(null);
   const files = useQuery({
-    // A temporary key forces a real read even when the ordinary directory cache is fresh.
-    queryKey: externalFilesKey ? [...directoryKey, externalFilesKey] : directoryKey,
+    // External navigation keeps its response separate until it passes the target checks.
+    queryKey: directoryKey,
     queryFn: async (context) => {
-      const signal = onDirectoryRead ? context.signal : undefined;
+      const verify = directoryVerification?.storageId === storageId &&
+        JSON.stringify(directoryVerification.location) === JSON.stringify(location);
+      const signal = verify ? context.signal : undefined;
+      const refresh = externalFilesKey !== null || verify || manualRefresh.current?.key === JSON.stringify(context.queryKey);
       // Only the dedicated external read belongs to this target; ordinary queries may still finish for the old connection.
       const target = externalFilesKey ? externalTarget.current : null;
-      const result = await fetchStorageFiles(storageId, location);
+      const result = refresh ? await fetchStorageFiles(storageId, location, true) : await fetchStorageFiles(storageId, location);
       if (target) {
         const { storage } = target;
         if (result.storage_id !== storage.storage_id || result.revision !== storage.revision ||
             !result.location || !["root", "id"].includes(result.location.kind)) throw new NavigationError("cancelled");
         target.validateListing(result);
       }
-      if (!signal?.aborted) onDirectoryRead?.();
+      if (verify && !signal?.aborted && result.storage_id === storageId && result.revision === activeStorage?.revision) {
+        directoryVerification.onRead();
+      }
       return result;
     },
     ...(externalFilesKey ? { retry: false } : {}),
@@ -332,11 +341,18 @@ export function useWorkspaceStorage({ pauseFileQueries, onLocalRootSelected, onD
 
   const refreshFiles = useCallback(() => {
     if (!locationReady) return;
+    // refetch alone can join an initial request that has no data yet. Cancel that
+    // request first, and keep the refresh intent for any retries of this refetch.
+    void queryClient.cancelQueries({ queryKey: directoryKey, exact: true });
+    const operation = { key: JSON.stringify(directoryKey) };
+    manualRefresh.current = operation;
     void files.refetch().then((result) => {
+      if (manualRefresh.current !== operation) return;
+      manualRefresh.current = null;
       if (result.error) notify({ key: "files:notifications.refreshFailed", error: result.error, errorContext: "directory" }, "error");
       else notify({ key: "files:notifications.refreshed" });
     });
-  }, [locationReady, files.refetch, notify]);
+  }, [locationReady, queryClient, directoryKey, files.refetch, notify]);
 
   // 执行保护与重命名重置仍由工作区协调，Hook 不依赖任务 Store 或重命名 mutation。
   return {

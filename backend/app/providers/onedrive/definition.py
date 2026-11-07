@@ -29,6 +29,7 @@ def get_definition(settings: Settings) -> ProviderDefinition:
         "onedrive", OneDriveConfig, ("root", "id", "path"),
         lambda record, auth: OneDriveProvider(cast(ConnectionAuth, auth)),
         browser_navigation="onedrive_personal",
+        cache_directories=True,
         config_fields=(StorageConfigField(
             key="client_id", nullable=True,
         ),),

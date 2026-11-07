@@ -5,6 +5,18 @@ import { ApiError, createStoragePreview, executeStorageSingleRename, executePrev
 afterEach(() => vi.unstubAllGlobals());
 
 describe("API client", () => {
+  it("only sends the refresh flag for forced directory reads", async () => {
+    const fetchMock = vi.fn().mockImplementation(async () => new Response("{}"));
+    vi.stubGlobal("fetch", fetchMock);
+    const location = { kind: "id", value: "folder" } as const;
+    await fetchStorageFiles("connection", location);
+    await fetchStorageFiles("connection", location, true);
+    expect(fetchMock).toHaveBeenNthCalledWith(1, "/api/storages/connection/files/list",
+      expect.objectContaining({ method: "POST", body: JSON.stringify({ location }) }));
+    expect(fetchMock).toHaveBeenNthCalledWith(2, "/api/storages/connection/files/list",
+      expect.objectContaining({ method: "POST", body: JSON.stringify({ location, refresh: true }) }));
+  });
+
   it("marks POST reads and rename writes explicitly while preserving a lost response", async () => {
     const failure = new TypeError("Response lost");
     vi.stubGlobal("fetch", vi.fn().mockRejectedValue(failure));

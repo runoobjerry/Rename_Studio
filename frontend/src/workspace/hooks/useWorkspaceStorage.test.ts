@@ -190,6 +190,21 @@ function mountStorage() {
   });
 }
 
+it("forces a manual refresh past an older read and keeps later navigation in cache mode", async () => {
+  const old = deferred<DirectoryListing>();
+  const refreshed = listing(1);
+  vi.mocked(api.fetchStorageFiles).mockReturnValueOnce(old.promise).mockResolvedValueOnce(refreshed);
+  const hook = mountStorage();
+  await waitFor(() => expect(api.fetchStorageFiles).toHaveBeenCalledWith("default-local", { kind: "root" }));
+  act(() => hook.result.current.refreshFiles());
+  await waitFor(() => expect(hook.result.current.files.data).toEqual(refreshed));
+  expect(api.fetchStorageFiles).toHaveBeenLastCalledWith("default-local", { kind: "root" }, true);
+  await act(async () => old.resolve(listing(2)));
+  expect(hook.result.current.files.data).toEqual(refreshed);
+  act(() => hook.result.current.setPath("another"));
+  await waitFor(() => expect(api.fetchStorageFiles).toHaveBeenLastCalledWith("default-local", { kind: "path", value: "another" }));
+});
+
 describe("workspace session locations", () => {
   it("clears a deleted connection's memory and returns to the default Local connection", async () => {
     const storages = await api.fetchStorages();

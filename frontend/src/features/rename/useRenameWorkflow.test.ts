@@ -20,6 +20,18 @@ installWorkspaceTestHooks();
 
 describe("rename workflow", () => {
 
+  it("previews using the opaque directory ID returned for a OneDrive path", async () => {
+    const hook = await setupWorkspace();
+    await openCloud(hook);
+    const canonical = { kind: "id", value: "opaque-directory" } as const;
+    vi.mocked(api.fetchStorageFiles).mockResolvedValueOnce({ ...listing(), location: canonical });
+    act(() => hook.result.current.storage.setPath("display folder"));
+    await waitFor(() => expect(hook.result.current.storage.files.data?.location).toEqual(canonical));
+    act(() => hook.result.current.workflow.selectAllFiles(["file-0.txt"]));
+    await preview(hook);
+    expect(api.createStoragePreview).toHaveBeenLastCalledWith("user-onedrive", canonical, ["file-0.txt"], []);
+  });
+
   it("reconciles selection for a ready provider that does not use browser auth", async () => {
     const definitions = await api.fetchStorageProviders();
     const storages = await api.fetchStorages();

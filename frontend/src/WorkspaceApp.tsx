@@ -101,7 +101,11 @@ function Workspace({ preference, setPreference, settingsError, hasSettings }: {
   const storage = useWorkspaceStorage({
     pauseFileQueries: isWritePending,
     onLocalRootSelected: () => resetForStorageChange(),
-    onDirectoryRead: unknownExecution ? (): void => onDirectoryRead(unknownExecution) : undefined,
+    directoryVerification: unknownExecution ? {
+      storageId: unknownExecution.storageId,
+      location: unknownExecution.location,
+      onRead: (): void => onDirectoryRead(unknownExecution),
+    } : undefined,
   });
   const {
     storageId, location, setLocation, setPath, selectStorage, resetWorkspaceSession, locationReady,

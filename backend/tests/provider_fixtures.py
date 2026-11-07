@@ -16,7 +16,7 @@ class TestProviderConfig(BaseModel):
     pass
 
 
-def registry_for(providers: list[StorageProvider]) -> ProviderRegistry:
+def registry_for(providers: list[StorageProvider], *, cache_directories: bool = False) -> ProviderRegistry:
     """Exercise service tests through the same factory/connection contract as production."""
     registry = ProviderRegistry()
     connections = {}
@@ -24,6 +24,7 @@ def registry_for(providers: list[StorageProvider]) -> ProviderRegistry:
         registry.register(ProviderDefinition(
             provider.id, TestProviderConfig, ("root", "id", "path"),
             lambda record, auth, instance=provider: instance,
+            cache_directories=cache_directories,
         ))
         connections[provider.id] = StorageRecord(
             storage_id=provider.id, provider_type=provider.id,

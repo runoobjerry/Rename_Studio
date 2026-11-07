@@ -141,6 +141,8 @@ describe("workspace workflow wiring", () => {
 
   it.each(["manual", "automatic"] as const)("restores normal rename controls after a successful %s directory refresh", async (refreshMode) => {
     await setup(2);
+    const currentDirectory = { ...listing(2), storage_id: "default-local", revision: 1 };
+    vi.mocked(api.fetchStorageFiles).mockResolvedValue(currentDirectory);
     vi.mocked(api.executePreview).mockRejectedValueOnce(new Error("Execution response lost"));
     fireEvent.click(screen.getByRole("button", { name: "刷新预览" }));
     await waitFor(() => expect(screen.getByRole("button", { name: "开始修改" })).toBeEnabled());
@@ -157,6 +159,7 @@ describe("workspace workflow wiring", () => {
     vi.mocked(api.fetchStorageFiles).mockRejectedValueOnce(new Error("Directory unavailable"));
     fireEvent.click(screen.getByRole("button", { name: "刷新" }));
     await screen.findByText(/目录刷新失败，当前显示上次读取的内容/);
+    expect(api.fetchStorageFiles).toHaveBeenLastCalledWith("default-local", { kind: "root" }, true);
     expect(useRenameStore.getState().unknownExecution?.items).toHaveLength(2);
     expect(screen.getByRole("button", { name: "刷新预览" })).toBeDisabled();
     expect(panel.getAllByText("待核对")).toHaveLength(2);
@@ -165,6 +168,7 @@ describe("workspace workflow wiring", () => {
     if (refreshMode === "manual") fireEvent.click(screen.getByRole("button", { name: "刷新" }));
     else await act(async () => { await client.invalidateQueries({ queryKey: ["files"] }); });
     await waitFor(() => expect(useRenameStore.getState().unknownExecution).toBeNull());
+    expect(api.fetchStorageFiles).toHaveBeenLastCalledWith("default-local", { kind: "root" }, true);
     expect(useRenameStore.getState().latestRenameRecord).toBe(record);
     expect(screen.getByRole("button", { name: "开始修改" })).toBeDisabled();
     expect(api.executePreview).toHaveBeenCalledTimes(1);

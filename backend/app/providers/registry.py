@@ -26,6 +26,7 @@ class ProviderDefinition:
     config_fields: tuple[StorageConfigField, ...] = ()
     icon: Literal["computer", "cloud"] = "cloud"
     browser_navigation: str | None = None
+    cache_directories: bool = False
 
 
 class ProviderRegistry:

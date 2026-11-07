@@ -1,7 +1,8 @@
 import asyncio
 import logging
+from collections.abc import Callable
 
-from app.core.errors import AppError, ProviderError, ValidationError
+from app.core.errors import AppError, ProviderError, RenameOutcomeUnknownError, ValidationError
 from app.providers.base import RenameRequest, StorageProvider
 from app.providers.registry import ProviderRegistry
 from app.schemas.files import RenameFile
@@ -27,12 +28,18 @@ class SingleRenameService:
                 file_id=request.file_id, original_name=request.original_name,
                 new_name=request.target_name, status="failed",
             )
-            task = asyncio.create_task(self._rename(provider, RenameRequest(request.file_id, request.target_name)))
-            try:
-                outcome = await asyncio.shield(task)
-            except asyncio.CancelledError:
-                await drain_writes([task])
-                raise
+            directories = self.providers.manager.directories
+            scope = directories.single_rename_scope(storage_id, request)
+            with directories.writing(storage_id, scope):
+                task = asyncio.create_task(self._rename(
+                    provider, RenameRequest(request.file_id, request.target_name),
+                    lambda _, metadata: scope.observe(request.original_name, metadata),
+                ))
+                try:
+                    outcome = await asyncio.shield(task)
+                except asyncio.CancelledError:
+                    await drain_writes([task])
+                    raise
             if isinstance(outcome, AppError):
                 result.status = rename_failure_status(outcome)
                 result.error = outcome.message
@@ -53,11 +60,18 @@ class SingleRenameService:
             )
 
     @staticmethod
-    async def _rename(provider: StorageProvider, request: RenameRequest) -> RenameFile | AppError:
+    async def _rename(
+        provider: StorageProvider, request: RenameRequest,
+        observe: Callable[[str, RenameFile | RenameOutcomeUnknownError], None],
+    ) -> RenameFile | AppError:
+        outcome: RenameFile | AppError
         try:
             outcome = await provider.rename_single(request.file_id, request.new_name)
         except AppError as exc:
-            return await reconcile_unknown_rename(provider.get_single_metadata, request, exc)
+            outcome = exc
+        outcome = await reconcile_unknown_rename(provider.get_single_metadata, request, outcome, observe=observe)
+        if isinstance(outcome, AppError):
+            return outcome
         if outcome.name != request.new_name:
             return ProviderError(
                 "Rename target was not reached; current name was verified",

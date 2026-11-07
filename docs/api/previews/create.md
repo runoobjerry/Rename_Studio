@@ -29,6 +29,8 @@
 
 冲突比较遵循 Provider 名称语义。Local、OneDrive 忽略大小写；Google Drive 精确比较，区分大小写及 Unicode 形式。发生变化的目标不得重复其他目标或未选中兄弟项名称；已有重名可保持不变。
 
+预览可复用[目录读取](../directories/list.md)的有效缓存获取选中项和完整的同级项。每次请求都按本次选择、顺序和规则计算结果，单独生成预览快照。
+
 #### Returns
 
 HTTP 200，返回 `RenamePreviewResponse`。逐项名称、可用性或冲突校验不通过时返回 `valid: false`，不是 HTTP 错误。执行时只提交 `preview_id`。

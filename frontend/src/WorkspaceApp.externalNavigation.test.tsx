@@ -46,6 +46,8 @@ async function mount() {
   await screen.findByText("file-0.txt");
   await waitFor(() => expect(client.getQueryState(["storages"])?.status).toBe("success"));
 }
+const oneDriveLocations = () => vi.mocked(api.fetchStorageFiles).mock.calls
+  .filter(([id]) => id === "user-onedrive").map(([, location]) => location);
 
 describe("external Google Drive navigation", () => {
   const storageId = "user-google";
@@ -69,7 +71,7 @@ describe("external Google Drive navigation", () => {
   it("opens the email-matched folder using the connection's stable account identity", async () => {
     await mount();
     expect(await start(request).reply()).toMatchObject({ status: "opened", storage_id: storageId });
-    expect(api.fetchStorageFiles).toHaveBeenCalledWith(storageId, request.location);
+    expect(api.fetchStorageFiles).toHaveBeenCalledWith(storageId, request.location, true);
     await waitFor(() => expect(readWorkspaceSession().session.locations[storageId]?.accountId).toBe(accountId));
   });
 });
@@ -120,8 +122,8 @@ describe("external OneDrive navigation", () => {
     expect(await operation.reply()).toMatchObject({ status: "opened", storage_id: "user-onedrive" });
     expect(operation.accepted).toHaveBeenCalledWith({ version: 1, request_id: target.request_id, status: "accepted" });
     await screen.findByText("target-file.txt");
-    expect(api.fetchStorageFiles).toHaveBeenCalledWith("user-onedrive", { kind: "id", value: "target-id" });
-    expect(api.fetchStorageFiles).not.toHaveBeenCalledWith("user-onedrive", { kind: "id", value: "remembered-default" });
+    expect(api.fetchStorageFiles).toHaveBeenCalledWith("user-onedrive", { kind: "id", value: "target-id" }, true);
+    expect(oneDriveLocations()).not.toContainEqual({ kind: "id", value: "remembered-default" });
     await waitFor(() => expect(readWorkspaceSession().session.locations["user-onedrive"].location)
       .toEqual({ kind: "id", value: "target-id" }));
     expect(api.patchAppSettings).not.toHaveBeenCalled();
@@ -143,7 +145,7 @@ describe("external OneDrive navigation", () => {
     expect(await operation.reply()).toMatchObject({ status: "rejected",
       code: kind === "unauthorized" ? "auth_required" : "connection_not_found" });
     expect(screen.getByText("file-0.txt")).toBeInTheDocument();
-    expect(api.fetchStorageFiles).not.toHaveBeenCalledWith("user-onedrive", expect.anything());
+    expect(oneDriveLocations()).toEqual([]);
   });
 
   it("lets an external target win over account A restoration while switching to account B", async () => {
@@ -160,8 +162,8 @@ describe("external OneDrive navigation", () => {
     const operation = start();
     expect(await operation.reply()).toMatchObject({ status: "opened", storage_id: "user-onedrive" });
     await screen.findByText("target-file.txt");
-    expect(api.fetchStorageFiles).not.toHaveBeenCalledWith("user-onedrive", { kind: "id", value: "account-a-default" });
-    expect(api.fetchStorageFiles).not.toHaveBeenCalledWith("user-onedrive", { kind: "root" });
+    expect(oneDriveLocations()).not.toContainEqual({ kind: "id", value: "account-a-default" });
+    expect(oneDriveLocations()).not.toContainEqual({ kind: "root" });
   });
 
   it.each(["default-local", "user-onedrive"])("rejects a busy connection %s before changing workspace", async (id) => {
@@ -201,7 +203,7 @@ describe("external OneDrive navigation", () => {
     await waitFor(() => expect(api.createStoragePreview).toHaveBeenCalled());
     expect(await start().reply()).toMatchObject({ status: "rejected", code: "busy" });
     await act(async () => response.resolve({ preview_id: "preview", expires_at: "2099-01-01", valid: true, items: [] }));
-    expect(api.fetchStorageFiles).not.toHaveBeenCalledWith("user-onedrive", expect.anything());
+    expect(oneDriveLocations()).toEqual([]);
   });
 
   it("rejects while a direct single rename is writing", async () => {
@@ -216,7 +218,7 @@ describe("external OneDrive navigation", () => {
     await waitFor(() => expect(api.executeStorageSingleRename).toHaveBeenCalled());
     expect(await start().reply()).toMatchObject({ status: "rejected", code: "busy" });
     await act(async () => response.reject(new api.ApiError(409, "Conflict", "RENAME_CONFLICT")));
-    expect(api.fetchStorageFiles).not.toHaveBeenCalledWith("user-onedrive", expect.anything());
+    expect(oneDriveLocations()).toEqual([]);
   });
 
   it("rejects while batch execution is writing", async () => {
@@ -231,7 +233,7 @@ describe("external OneDrive navigation", () => {
     await waitFor(() => expect(api.executePreview).toHaveBeenCalled());
     expect(await start().reply()).toMatchObject({ status: "rejected", code: "busy" });
     await act(async () => response.reject(new api.ApiError(409, "Busy", "STORAGE_BUSY")));
-    expect(api.fetchStorageFiles).not.toHaveBeenCalledWith("user-onedrive", expect.anything());
+    expect(oneDriveLocations()).toEqual([]);
   });
 
   it.each(["manual", "revision", "account"])("cancels a late directory response after %s changes", async (kind) => {
@@ -240,7 +242,7 @@ describe("external OneDrive navigation", () => {
       id === "user-onedrive" ? response.promise : { ...listing(1), location });
     await mount();
     const operation = start();
-    await waitFor(() => expect(api.fetchStorageFiles).toHaveBeenCalledWith("user-onedrive", { kind: "id", value: "target-id" }));
+    await waitFor(() => expect(api.fetchStorageFiles).toHaveBeenCalledWith("user-onedrive", { kind: "id", value: "target-id" }, true));
     const second = start({ ...target, request_id: "second" });
     expect(await second.reply()).toMatchObject({ status: "rejected", code: "busy" });
     expect(second.accepted).not.toHaveBeenCalled();
@@ -279,6 +281,7 @@ describe("external OneDrive navigation", () => {
     expect(await start().reply()).toMatchObject({ status: "rejected", code: "unsupported_scope" });
     fireEvent.click(screen.getByRole("button", { name: "重试" }));
     await waitFor(() => expect(api.fetchStorageFiles).toHaveBeenCalledTimes(3));
+    expect(api.fetchStorageFiles).toHaveBeenLastCalledWith("user-onedrive", { kind: "id", value: "target-id" }, true);
     expect(screen.queryByText("target-file.txt")).not.toBeInTheDocument();
     expect(readWorkspaceSession().session.locations["user-onedrive"]).toBeUndefined();
   });
@@ -296,6 +299,6 @@ describe("external OneDrive navigation", () => {
     fail = false;
     fireEvent.click(screen.getByRole("button", { name: "重试" }));
     await screen.findByText("target-file.txt");
-    expect(api.fetchStorageFiles).not.toHaveBeenCalledWith("user-onedrive", { kind: "root" });
+    expect(oneDriveLocations()).not.toContainEqual({ kind: "root" });
   });
 });

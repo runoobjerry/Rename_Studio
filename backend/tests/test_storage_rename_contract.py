@@ -1,5 +1,6 @@
 from provider_fixtures import registry_for
 import asyncio
+from uuid import uuid4
 from pydantic import BaseModel
 import pytest
 
@@ -9,13 +10,14 @@ from app.providers.name_validation import NameValidationIssue
 from app.rules.base import RenameRule, RuleContext
 from app.rules.registry import RuleRegistry
 from app.schemas.files import DirectoryListing, FileItem
-from app.schemas.rename import RenamePreviewRequest
+from app.schemas.rename import RenamePreviewRequest, SingleRenameExecuteRequest
 from app.schemas.rules import RuleSpec
 from app.schemas.storage import IdLocation, RootLocation, StorageLocation
 from app.services.execute_service import ExecuteService
 from app.services.preview_service import PreviewService
 from app.services.preview_store import PreviewStore
 from app.services.rename_engine import RenameEngine
+from app.services.single_rename_service import SingleRenameService
 
 
 class MappingConfig(BaseModel):
@@ -347,8 +349,8 @@ async def test_interrupted_execution_holds_connection_until_in_flight_writes_fin
     assert provider.items["20"].name == "new-20"
 
 
-def services(provider: StableIdProvider):
-    registry = registry_for([provider])
+def services(provider: StableIdProvider, *, cache_directories: bool = False):
+    registry = registry_for([provider], cache_directories=cache_directories)
     rules = RuleRegistry()
     rules.register(MappingRule())
     store = PreviewStore()
@@ -406,6 +408,55 @@ async def test_unknown_outcome_stops_later_batches() -> None:
     assert result.items[0].actual_name is None
     assert provider.items["3"].name == "C"
     assert len(provider.writes) == 1
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("outcome", ["partial", "unknown", "single"])
+async def test_writes_invalidate_the_shared_directory_for_every_outcome(outcome: str) -> None:
+    unrelated = IdLocation(value="unrelated")
+
+    class TwoDirectoryProvider(StableIdProvider):
+        unrelated_reads = 0
+
+        async def list_directory(self, location: StorageLocation) -> DirectoryListing:
+            if location == unrelated:
+                self.unrelated_reads += 1
+                return DirectoryListing(provider=self.id, path="unrelated", parent_path="", location=unrelated)
+            return await super().list_directory(location)
+
+    provider = TwoDirectoryProvider({"1": "A", "2": "B"})
+    preview, execute = services(provider, cache_directories=True)
+    directory = IdLocation(value="directory")
+    cache = preview.providers.manager.directories
+    await cache.list_directory("stable", unrelated)
+    before = await cache.list_directory("stable", directory)
+    assert [item.name for item in before.items] == ["A", "B"]
+    if outcome == "single":
+        single = SingleRenameService(preview.providers)
+        result = await single.execute("stable", SingleRenameExecuteRequest(
+            operation_id=uuid4(), revision=1, location=directory,
+            file_id="1", original_name="A", target_name="X",
+        ))
+        assert result.items[0].status == "renamed"
+        expected = ["X", "B"]
+    else:
+        snapshot = await preview.preview(RenamePreviewRequest(
+            storage_id="stable", location=directory, file_ids=["1", "2"],
+            rules=[RuleSpec(type="mapping", config={"names": {"A": "X", "B": "Y"}})],
+        ))
+        if outcome == "partial":
+            provider.fail_targets.add("Y")
+        else:
+            provider.lose_response = provider.unreadable_after_write = True
+        batch = await execute.execute(snapshot.preview_id)
+        assert [item.status for item in batch.items] == (
+            ["renamed", "failed"] if outcome == "partial" else ["unknown", "unknown"]
+        )
+        expected = ["X", "B"] if outcome == "partial" else ["X", "Y"]
+    after = await cache.list_directory("stable", directory)
+    assert [item.name for item in after.items] == expected
+    await cache.list_directory("stable", unrelated)
+    assert provider.unrelated_reads == (2 if outcome == "unknown" else 1)
 
 
 @pytest.mark.asyncio

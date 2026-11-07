@@ -13,6 +13,8 @@ from app.providers.registry import ProviderRegistry
 from app.repositories.storage_repository import JsonStorageRepository
 from app.schemas.storage import AppPreferences, AppSettingsPatch, AppSettingsResponse, StorageCreate, StorageInfo, StorageRecord, StorageState, StorageUpdate, validate_preferences_size
 from app.services.connection_auth import ConnectionAuth
+from app.services.directory_cache import DirectoryCache
+from app.services.directory_service import DirectoryService
 from app.services.preview_store import PreviewStore
 
 
@@ -21,6 +23,7 @@ class StorageManager:
         self.registry = registry
         self.repository = repository
         self.state = state
+        self.directories = DirectoryService(self, DirectoryCache())
         self._clients: dict[str, tuple[int, StorageProvider]] = {}
         self._auth: dict[str, ConnectionAuth] = {}
         self._busy: set[str] = set()
@@ -49,6 +52,7 @@ class StorageManager:
             raise StorageBusyError("This storage is executing a rename; try again after it finishes")
 
     def _commit(self, record: StorageRecord | None, storage_id: str) -> None:
+        previous = self.state.connections.get(storage_id)
         state = self.state.model_copy(deep=True)
         if record is None:
             del state.connections[storage_id]
@@ -59,6 +63,8 @@ class StorageManager:
             del state.preferences.cloud_default_locations[storage_id]
         self.repository.save(state)
         self.state = state
+        if previous is not None and (record is None or record.revision != previous.revision):
+            self.directories.invalidate(storage_id)
 
     def app_settings(self) -> AppSettingsResponse:
         return AppSettingsResponse(preferences=self.state.preferences)
@@ -109,6 +115,7 @@ class StorageManager:
         self.authorization_sessions.clear()
         self._auth.clear()
         previews.clear()
+        self.directories.invalidate()
         clients = self._clients
         self._clients = {}
         for _, provider in clients.values():

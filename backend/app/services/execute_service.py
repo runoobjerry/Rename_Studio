@@ -13,6 +13,7 @@ from app.schemas.rename import (
     RenameExecuteResponse,
     RenameProgress,
 )
+from app.services.directory_cache import RenameCacheScope
 from app.services.preview_service import PreviewService
 from app.services.preview_store import PreviewSnapshot, PreviewStore
 from app.services.rename_write import drain_writes, reconcile_unknown_rename, rename_failure_status
@@ -61,13 +62,13 @@ class ExecuteService:
                 self._progress[preview_id] = (float("inf"), progress)
                 try:
                     try:
-                        await self._revalidate(snapshot)
+                        sources = await self._revalidate(snapshot)
                     except AppError as exc:
                         # 复核只读取状态，失败时可明确告知客户端尚未开始写入。
                         exc.details["execution_started"] = False
                         raise
                     self.previews.consume(preview_id)
-                    response = await self._execute_snapshot(snapshot, progress)
+                    response = await self._execute_snapshot(snapshot, sources, progress)
                     progress.processed = progress.total
                     progress.phase = "finished"
                 except (Exception, asyncio.CancelledError) as exc:
@@ -86,28 +87,33 @@ class ExecuteService:
                     )
                 return response
 
-    async def _revalidate(self, snapshot: PreviewSnapshot) -> None:
+    async def _revalidate(self, snapshot: PreviewSnapshot) -> list[FileItem]:
         if not snapshot.response.valid:
             raise ValidationError("Rename preview contains invalid items")
 
-        provider = self.providers.get(snapshot.request.storage_id)
+        storage_id = snapshot.request.storage_id
+        directories = self.providers.manager.directories
+        parent = StorageProvider.parent_directory(snapshot.sources[0])
         try:
-            siblings = await provider.list_siblings(snapshot.sources[0])
-            by_id = {item.id: item for item in siblings}
+            listing = await directories.list_directory(storage_id, parent, mode="fresh")
+            by_id = {item.id: item for item in listing.items}
             sources = [by_id[file_id] for file_id in snapshot.request.file_ids]
             items, _, _ = await self.preview_service.evaluate(
                 snapshot.request,
                 files=sources,
-                siblings=siblings,
+                siblings=listing.items,
             )
         except (KeyError, NotFoundError) as exc:
+            directories.invalidate_rename(storage_id, RenameCacheScope({parent}))
             raise PreviewExpiredError(
                 "Files changed after the preview was created"
             ) from exc
 
         # 与有效快照逐项一致即可保证有效性；源项始终按同一请求 ID 列表构建。
         if items != snapshot.response.items:
+            directories.invalidate_rename(storage_id, RenameCacheScope({parent}))
             raise PreviewExpiredError("Rename preview is no longer valid")
+        return sources
 
     @staticmethod
     async def _safe_rename_many(
@@ -115,6 +121,7 @@ class ExecuteService:
         requests: list[RenameRequest],
         *,
         on_unknown: Callable[[], None] | None = None,
+        observe: Callable[[str, FileItem | RenameOutcomeUnknownError], None] | None = None,
     ) -> dict[str, FileItem | AppError]:
         try:
             outcomes = await provider.rename_many(requests)
@@ -124,7 +131,9 @@ class ExecuteService:
             # 核查之前暂停补组，不能等元数据读取结束后才通知调度器。
             on_unknown()
         for request in requests:
-            outcomes[request.file_id] = await reconcile_unknown_rename(provider.get_metadata, request, outcomes[request.file_id])
+            outcomes[request.file_id] = await reconcile_unknown_rename(
+                provider.get_metadata, request, outcomes[request.file_id], observe=observe,
+            )
         return outcomes
 
     @staticmethod
@@ -132,6 +141,8 @@ class ExecuteService:
         provider: StorageProvider,
         requests: list[RenameRequest],
         progress: RenameProgress | None = None,
+        *,
+        observe: Callable[[str, FileItem | RenameOutcomeUnknownError], None] | None = None,
     ) -> dict[str, FileItem | AppError]:
         outcomes: dict[str, FileItem | AppError] = {}
         concurrency = provider.execution_batch_concurrency
@@ -151,7 +162,7 @@ class ExecuteService:
                 provider.id, request_id_context.get(), index, len(batch), active,
             )
             try:
-                return await ExecuteService._safe_rename_many(provider, batch, on_unknown=on_unknown)
+                return await ExecuteService._safe_rename_many(provider, batch, on_unknown=on_unknown, observe=observe)
             finally:
                 active -= 1
                 logger.info(
@@ -237,6 +248,7 @@ class ExecuteService:
     async def _execute_snapshot(
         self,
         snapshot: PreviewSnapshot,
+        sources: list[FileItem],
         progress: RenameProgress,
     ) -> RenameExecuteResponse:
         provider = self.providers.get(snapshot.request.storage_id)
@@ -253,12 +265,24 @@ class ExecuteService:
         if not changed:
             return self._response(snapshot.preview_id, results)
 
+        by_id = {source.id: source for source in sources}
+        previous_by_id = {source.id: source for source in snapshot.sources}
+        scope = RenameCacheScope(set())
+        for item in changed:
+            source = by_id[item.file_id]
+            previous = previous_by_id[item.file_id]
+            scope.parents.add(StorageProvider.parent_directory(source))
+            scope.observe(source.name, source)
+            if previous.is_directory:
+                scope.folder_paths.add(previous.path)
         progress.phase = "renaming"
-        outcomes = await self._rename_in_batches(
-            provider,
-            [RenameRequest(item.file_id, item.new_name) for item in changed],
-            progress,
-        )
+        with self.providers.manager.directories.writing(snapshot.request.storage_id, scope):
+            outcomes = await self._rename_in_batches(
+                provider,
+                [RenameRequest(item.file_id, item.new_name) for item in changed],
+                progress,
+                observe=lambda file_id, metadata: scope.observe(by_id[file_id].name, metadata),
+            )
         for item in changed:
             outcome = outcomes[item.file_id]
             if isinstance(outcome, AppError):
