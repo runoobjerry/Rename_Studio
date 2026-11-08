@@ -21,14 +21,19 @@ export async function findWorkspace(api, origin) {
   const candidates = tabs.filter((tab) => !tab.incognito && tab.url && new URL(tab.url).origin === origin);
   const responses = await Promise.all(candidates.map(async (tab) => {
     const requestId = crypto.randomUUID();
+    const sendProbe = () => api.tabs.sendMessage(tab.id,
+      { namespace: NAMESPACE, type: "probe", version: 1, request_id: requestId }, { frameId: 0 });
     try {
-      const ready = await deadline(api.tabs.sendMessage(tab.id,
-        { namespace: NAMESPACE, type: "probe", version: 1, request_id: requestId }, { frameId: 0 }), 1500, "transport_unavailable");
+      const ready = await deadline(sendProbe().catch(async () => {
+        // Install or reload can leave an already-open tab without a live receiver.
+        await api.scripting.executeScript({ target: { tabId: tab.id }, files: ["workspace.js"] });
+        return sendProbe();
+      }), 1500, "transport_unavailable");
       return ready?.namespace === NAMESPACE && ready.type === "ready" && ready.project === PROJECT &&
         ready.version === 1 && ready.request_id === requestId &&
         typeof ready.instance_id === "string" && /^[a-z0-9-]{36}$/iu.test(ready.instance_id)
         ? { tab, instanceId: ready.instance_id } : null;
-    } catch { return null; } // A localhost page without this bridge is not a ready workspace.
+    } catch { return null; } // Unreachable tabs cannot participate in workspace selection.
   }));
   const ready = responses.filter(Boolean);
   if (ready.length === 0) throw new TransportError("workspace_not_found");

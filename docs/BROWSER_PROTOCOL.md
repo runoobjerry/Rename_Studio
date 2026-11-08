@@ -89,6 +89,8 @@ Google 使用新增的 v1 请求类型，旧本体拒绝该请求并提示核对
 
 云盘网站的顶层脚本发送 `{namespace, type:'open-current-folder', request_id}`。worker 核对 extension ID、顶层 frame、普通窗口、已注册的网站 origin 和来源 documentId。候选本体页须通过 `{namespace, version:1, type:'probe', request_id}` 握手，回复 `{namespace, version:1, type:'ready', project:'rename-studio', request_id, instance_id}`；业务入口挂载后才答 ready。没有就绪页返回 workspace_not_found，多个返回 multiple_workspaces，唯一时才继续提取和投递。
 
+候选标签页的探测消息发送失败时，worker 向该标签页的顶层文档注入本体内容脚本，然后再探测一次。安装或重载扩展后，已打开的本体页可以通过这一步恢复通信。
+
 instance_id 是本体内容脚本文档的 UUID，用于关联文档，不是认证凭据。投递格式为 `{namespace, version:1, type:'navigate', request_id, instance_id, request}`。本体内容脚本以 window.postMessage 桥接应用，始终使用准确 targetOrigin：
 
 ```ts

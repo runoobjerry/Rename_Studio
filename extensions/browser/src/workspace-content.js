@@ -1,7 +1,9 @@
 import { WORKSPACE_ORIGIN } from "./config.js";
 import { NAMESPACE, PROJECT, validReply, validRequestId } from "./protocol.js";
 
-if (window.top === window && location.origin === WORKSPACE_ORIGIN) {
+// Manifest injection and on-demand recovery can meet in the same isolated world.
+const bridgeKey = Symbol.for(`${NAMESPACE}.workspace`);
+if (window.top === window && location.origin === WORKSPACE_ORIGIN && !window[bridgeKey]) {
   const instanceId = crypto.randomUUID();
   const pending = new Map();
   const post = (type, requestId, extra = {}) => window.postMessage({
@@ -47,4 +49,5 @@ if (window.top === window && location.origin === WORKSPACE_ORIGIN) {
     post(message.type, message.request_id, message.type === "navigate" ? { request: message.request } : {});
     return true;
   });
+  window[bridgeKey] = true;
 }
