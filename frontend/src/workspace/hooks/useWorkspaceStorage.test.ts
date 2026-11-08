@@ -253,9 +253,9 @@ describe("workspace session locations", () => {
     await waitFor(() => expect(hook.result.current.cloudConnected).toBe(true));
     act(() => hook.result.current.restoreDefaultCloudPath());
     await waitFor(() => expect(hook.result.current.files.isSuccess).toBe(true));
-    act(() => hook.result.current.setPath("断开前的目录"));
+    act(() => hook.result.current.setLocation({ kind: "id", value: "directory-before-disconnect" }));
     await waitFor(() => expect(readWorkspaceSession().session.locations["user-onedrive"].location)
-      .toEqual({ kind: "path", value: "断开前的目录" }));
+      .toEqual({ kind: "id", value: "directory-before-disconnect" }));
     act(() => client.setQueryData(["storage-auth", "user-onedrive", 1], { ...status(null), connected: false }));
     await waitFor(() => expect(readWorkspaceSession().session.locations["user-onedrive"]).toBeUndefined());
     expect(hook.result.current.locationReady).toBe(false);
