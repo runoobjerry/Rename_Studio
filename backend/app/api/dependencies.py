@@ -32,8 +32,8 @@ def get_storage_manager() -> StorageManager:
     state = repository.load_or_initialize(settings.local_storage_root, registry.validate_config)
     return StorageManager(
         registry, repository, state,
-        directory_cache=DirectoryCache(**settings.directory_caches.directory_listings.model_dump()),
-        directory_metadata=DirectoryMetadataIndex(**settings.directory_caches.directory_metadata.model_dump()),
+        directory_cache=DirectoryCache(settings.directory_caches.directory_listings),
+        directory_metadata=DirectoryMetadataIndex(settings.directory_caches.directory_metadata),
     )
 
 

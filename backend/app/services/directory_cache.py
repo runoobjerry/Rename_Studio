@@ -2,6 +2,7 @@ from collections import OrderedDict
 from dataclasses import dataclass, field
 from time import monotonic
 
+from app.core.config import DirectoryListingCacheSettings
 from app.core.errors import RenameOutcomeUnknownError
 from app.schemas.files import DirectoryListing, RenameFile
 from app.schemas.storage import IdLocation, PathLocation, RootLocation, StorageLocation
@@ -44,15 +45,13 @@ class _Entry:
 
 
 class DirectoryCache:
-    def __init__(
-        self, *, ttl: float = 300, empty_ttl: float = 30, max_entries: int = 64,
-        max_bytes: int = 32 * 1024**2, max_entry_bytes: int = 8 * 1024**2,
-    ) -> None:
-        self._ttl = ttl
-        self._empty_ttl = empty_ttl
-        self._max_entries = max_entries
-        self._max_bytes = max_bytes
-        self._max_entry_bytes = max_entry_bytes
+    def __init__(self, settings: DirectoryListingCacheSettings | None = None) -> None:
+        settings = settings if settings is not None else DirectoryListingCacheSettings()
+        self._ttl = settings.ttl
+        self._empty_ttl = settings.empty_ttl
+        self._max_entries = settings.max_entries
+        self._max_bytes = settings.max_bytes
+        self._max_entry_bytes = settings.max_entry_bytes
         self._entries: OrderedDict[DirectoryKey, _Entry] = OrderedDict()
         self._bytes = 0
 

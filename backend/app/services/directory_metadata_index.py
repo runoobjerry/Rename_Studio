@@ -3,6 +3,7 @@ import logging
 from collections import OrderedDict
 from time import monotonic
 
+from app.core.config import DirectoryMetadataCacheSettings
 from app.core.log_context import request_id_context
 from app.providers.directory_metadata import DirectoryMetadata, DirectoryMetadataRead, MetadataLoader
 
@@ -13,9 +14,10 @@ type _Key = tuple[_Scope, str | None]
 
 
 class DirectoryMetadataIndex:
-    def __init__(self, *, ttl: float = 60, max_entries: int = 2048) -> None:
-        self._ttl = ttl
-        self._max_entries = max_entries
+    def __init__(self, settings: DirectoryMetadataCacheSettings | None = None) -> None:
+        settings = settings if settings is not None else DirectoryMetadataCacheSettings()
+        self._ttl = settings.ttl
+        self._max_entries = settings.max_entries
         self._entries: OrderedDict[_Key, tuple[float, DirectoryMetadata]] = OrderedDict()
         self._pending: dict[_Key, asyncio.Task[DirectoryMetadata]] = {}
 

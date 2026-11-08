@@ -12,6 +12,7 @@ import pytest
 import pytest_asyncio
 import httpx
 
+from app.core.config import DirectoryMetadataCacheSettings
 from app.core.errors import (
     NotFoundError,
     PermissionDeniedError,
@@ -553,9 +554,9 @@ async def test_expired_ancestor_is_read_again_even_if_its_child_is_still_cached(
     manager, graph = directory_graph
     now = 0
     monkeypatch.setattr(directory_metadata_index, "monotonic", lambda: now)
-    for now, key in ((0, "a"), (50, "b")):
+    for now, key in ((0, "a"), (110, "b")):
         await manager.directories.list_directory("drive", IdLocation(value=key))
-    now = 60
+    now = 120
     graph.requests.clear()
     listing = await manager.directories.list_directory("drive", IdLocation(value="c"))
     assert listing.breadcrumbs[1].name == "A"
@@ -566,7 +567,8 @@ async def test_expired_ancestor_is_read_again_even_if_its_child_is_still_cached(
 async def test_metadata_capacity_evicts_oldest_hint_without_removing_listings(directory_graph) -> None:
     manager, graph = directory_graph
     directories = DirectoryService(
-        manager, DirectoryCache(), metadata=directory_metadata_index.DirectoryMetadataIndex(max_entries=2),
+        manager, DirectoryCache(),
+        metadata=directory_metadata_index.DirectoryMetadataIndex(DirectoryMetadataCacheSettings(max_entries=2)),
     )
     root = await directories.list_directory("drive", RootLocation())
     graph.requests.clear()

@@ -70,7 +70,7 @@ bash "/项目完整路径/Start.sh"
 | [浏览器扩展](extensions/browser/README.md#快速开始) | 下载独立扩展 ZIP、加载安装、更新及 OneDrive、Google Drive 网页目录跳转 |
 | [隐私政策](https://github.com/runoobjerry/Rename_Studio/wiki/Privacy-Policy) | 数据处理、本地凭据、浏览器会话、第三方请求、日志与数据清理 |
 
-编辑 [`backend/cache.toml`](backend/cache.toml) 可调整云盘目录列表和文件夹元数据的有效期及 LRU 容量上限。修改后重启后端。
+云盘目录列表和文件夹元数据的默认有效期及 LRU 容量上限定义在 [`config.py`](backend/app/core/config.py)。要覆盖默认值，在 [`backend/cache.toml`](backend/cache.toml) 填写对应字段，去掉该行开头的 `#`，然后重启后端。
 
 > [!WARNING] 
 > 云盘需自行配置 OAuth 客户端。`backend/settings.json` 是含长期登录凭据的**未加密 JSON**，不要公开或随发布包分发。完整说明见上述配置与隐私文档。

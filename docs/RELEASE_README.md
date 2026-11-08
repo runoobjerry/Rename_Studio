@@ -32,7 +32,7 @@ bash "/完整路径/Rename_Studio/Start.sh"
 
 连接、授权与偏好保存在 `backend/settings.json`，其中的刷新令牌与 Google 客户端密钥是未加密凭据，不要公开上传或分享。发布包不含任何用户状态或账号授权。
 
-可编辑 `backend/cache.toml` 调整云盘目录缓存的有效期和容量。修改后重启应用。如果调整过该文件，更新应用前请一并备份。
+要调整云盘目录缓存的有效期和容量，在 `backend/cache.toml` 填写对应字段，去掉该行开头的 `#`，然后重启应用。默认值见 `backend/app/core/config.py`。更新应用前请备份自定义配置。
 
 更新前先退出应用并备份 `backend/settings.json`，再替换程序文件及完整 `frontend/dist`，保留状态文件、用户 `.env` 和 `.runtime`。不要跨系统、架构复制虚拟环境；项目移动或 Python 变化后按启动提示重建 `.runtime/venv`，保留状态文件。
 

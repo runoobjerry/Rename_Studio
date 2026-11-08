@@ -1,13 +1,26 @@
-# 后端启动时读取。修改后重启后端。
-# 两层缓存均按 LRU 淘汰。max_entries 设置可保留的条目上限。
+# 留空的字段使用 app/core/config.py 中的默认值。
+# 要覆盖某项，填写等号右侧的值，去掉行首的 #，然后重启后端。
 
 [directory_listings]
-ttl = 600                    # 非空目录列表有效期，秒
-empty_ttl = 30               # 空目录列表有效期，秒
-max_entries = 64             # 目录列表数量上限
-max_bytes = 33_554_432        # 全部列表的序列化字节上限，32 MiB
-max_entry_bytes = 8_388_608   # 单个列表的序列化字节上限，8 MiB
+# 非空目录列表有效期，单位为秒
+# ttl =
+
+# 空目录列表有效期，单位为秒
+# empty_ttl =
+
+# 目录列表数量上限
+# max_entries =
+
+# 所有列表合计的序列化字节上限
+# max_bytes =
+
+# 单个列表的序列化字节上限
+# max_entry_bytes =
+
 
 [directory_metadata]
-ttl = 120                     # 文件夹元数据有效期，秒
-max_entries = 2048           # 文件夹元数据条目上限
+# 文件夹元数据有效期，单位为秒
+# ttl =
+
+# 文件夹元数据条目上限
+# max_entries =

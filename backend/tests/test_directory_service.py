@@ -2,6 +2,7 @@ import asyncio
 
 import pytest
 
+from app.core.config import DirectoryListingCacheSettings
 from app.core.errors import NotFoundError, ProviderError, StorageBusyError
 from app.providers.base import StorageProvider
 from app.providers.name_validation import NameValidationIssue
@@ -59,7 +60,7 @@ class DirectoryProvider(StorageProvider):
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize(("empty", "ttl"), [(False, 300), (True, 30)])
+@pytest.mark.parametrize(("empty", "ttl"), [(False, 600), (True, 30)])
 async def test_expiry_is_based_on_read_time_and_hits_are_isolated(
     monkeypatch: pytest.MonkeyPatch, empty: bool, ttl: int,
 ) -> None:
@@ -87,8 +88,9 @@ async def test_capacity_evicts_the_least_recently_used_listing(limit: str) -> No
     manager = registry_for([provider], cache_directories=True).manager
     sample = await manager.directories.list_directory("cloud", IdLocation(value="a"), mode="fresh")
     entry_size = len(sample.model_dump_json().encode("utf-8"))
-    cache = DirectoryCache(max_entries=2) if limit == "entries" else DirectoryCache(max_bytes=2 * entry_size)
-    directories = DirectoryService(manager, cache)
+    settings = (DirectoryListingCacheSettings(max_entries=2) if limit == "entries"
+                else DirectoryListingCacheSettings(max_bytes=2 * entry_size))
+    directories = DirectoryService(manager, DirectoryCache(settings))
     for value in ["a", "b", "a", "c", "a", "c"]:
         await directories.list_directory("cloud", IdLocation(value=value))
     assert provider.calls == 4  # One sample and three misses.
@@ -101,7 +103,7 @@ async def test_oversized_and_failed_reads_do_not_fill_cache() -> None:
     provider = DirectoryProvider()
     manager = registry_for([provider], cache_directories=True).manager
     provider.name = "a" * 2048
-    directories = DirectoryService(manager, DirectoryCache(max_entry_bytes=1024))
+    directories = DirectoryService(manager, DirectoryCache(DirectoryListingCacheSettings(max_entry_bytes=1024)))
     for _ in range(2):
         listing = await directories.list_directory("cloud", RootLocation())
         assert listing.items[0].name == provider.name

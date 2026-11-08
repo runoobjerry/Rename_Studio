@@ -12,7 +12,7 @@ _BACKEND_ROOT = Path(__file__).resolve().parents[2]
 
 
 class DirectoryListingCacheSettings(BaseModel, extra="forbid", strict=True):
-    ttl: float = Field(default=300, gt=0, allow_inf_nan=False)
+    ttl: float = Field(default=600, gt=0, allow_inf_nan=False)
     empty_ttl: float = Field(default=30, gt=0, allow_inf_nan=False)
     max_entries: PositiveInt = 64
     max_bytes: PositiveInt = 32 * 1024**2
@@ -20,7 +20,7 @@ class DirectoryListingCacheSettings(BaseModel, extra="forbid", strict=True):
 
 
 class DirectoryMetadataCacheSettings(BaseModel, extra="forbid", strict=True):
-    ttl: float = Field(default=60, gt=0, allow_inf_nan=False)
+    ttl: float = Field(default=120, gt=0, allow_inf_nan=False)
     max_entries: PositiveInt = 2048
 
 
