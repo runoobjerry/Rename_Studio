@@ -34,7 +34,7 @@ export const providerDefinitions = (): StorageProviderDefinition[] => [
   { provider_type: "local", locations: ["root", "path", "id"], can_rename: true,
     browser_auth: false, browser_navigation: null, local_picker: true, config_schema: {}, icon: "computer",
     config_fields: [{ key: "root_path", input_type: "directory", target: "config", required: true, nullable: false }] },
-  { provider_type: "onedrive", locations: ["root", "path", "id"], can_rename: true,
+  { provider_type: "onedrive", locations: ["root", "id"], can_rename: true,
     browser_auth: true, browser_navigation: "onedrive_personal", local_picker: false, config_schema: {}, icon: "cloud",
     config_fields: [{ key: "client_id", input_type: "text", target: "config", required: false, nullable: true }] },
 ];

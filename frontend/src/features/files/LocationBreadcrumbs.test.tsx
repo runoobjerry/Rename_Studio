@@ -1,7 +1,7 @@
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { LocationBreadcrumbs } from "./LocationBreadcrumbs";
-import type { DirectoryListing } from "../../types";
+import type { DirectoryBreadcrumb, DirectoryListing } from "../../types";
 
 let available: number;
 let resize: () => void;
@@ -20,13 +20,22 @@ beforeEach(() => {
 afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 
 const listing: DirectoryListing = {
-  provider: "onedrive", path: "目录A/目录B/目录C/目录D/目录E", parent_path: "目录A/目录B/目录C/目录D",
-  location: { kind: "id", value: "current-id" }, parent_location: { kind: "id", value: "parent-id" }, items: [],
+  provider: "local", path: "目录A/目录B/目录C/目录D/目录E", parent_path: "目录A/目录B/目录C/目录D",
+  location: { kind: "path", value: "目录A/目录B/目录C/目录D/目录E" },
+  parent_location: { kind: "path", value: "目录A/目录B/目录C/目录D" }, items: [],
 };
+const cloudBreadcrumbs: DirectoryBreadcrumb[] = [
+  { name: "云盘根目录", location: { kind: "root" } },
+  { name: "目录A", location: { kind: "id", value: "a-id" } },
+  { name: "目录A", location: { kind: "id", value: "b-id" } },
+  { name: "目录/C", location: { kind: "id", value: "c-id" } },
+  { name: "目录D", location: { kind: "id", value: "parent-id" } },
+  { name: "目录E", location: { kind: "id", value: "current-id" } },
+];
 
 describe("LocationBreadcrumbs", () => {
 
-  it("navigates to root, ancestors and the canonical parent/current locations", () => {
+  it("keeps root and relative path navigation for Local", () => {
     const onNavigate = vi.fn();
     render(<LocationBreadcrumbs listing={listing} rootLabel="根目录" disabled={false} onNavigate={onNavigate} />);
     const nav = within(screen.getByRole("navigation", { name: "文件路径" }));
@@ -35,29 +44,44 @@ describe("LocationBreadcrumbs", () => {
     fireEvent.click(nav.getByRole("button", { name: "目录B" }));
     expect(onNavigate).toHaveBeenLastCalledWith({ kind: "path", value: "目录A/目录B" });
     fireEvent.click(nav.getByRole("button", { name: "目录D" }));
-    expect(onNavigate).toHaveBeenLastCalledWith({ kind: "id", value: "parent-id" });
+    expect(onNavigate).toHaveBeenLastCalledWith({ kind: "path", value: "目录A/目录B/目录C/目录D" });
     fireEvent.click(nav.getByRole("button", { name: "目录E" }));
-    expect(onNavigate).toHaveBeenLastCalledWith({ kind: "id", value: "current-id" });
+    expect(onNavigate).toHaveBeenLastCalledWith({ kind: "path", value: "目录A/目录B/目录C/目录D/目录E" });
     expect(nav.getByRole("button", { name: "目录E" })).toHaveAttribute("aria-current", "page");
   });
 
-  it("folds only left ancestors to fit and expands again when space becomes available", () => {
+  it("navigates folded cloud ancestors by ID and keeps each provider's root label", () => {
     available = 210; // MoreHoriz + separator + D + separator + E = 192px.
     const onNavigate = vi.fn();
-    render(<LocationBreadcrumbs listing={listing} rootLabel="根目录" disabled={false} onNavigate={onNavigate} />);
+    const cloudListing: DirectoryListing = {
+      provider: "google_drive", path: "目录A/目录A/目录/C/目录D/目录E", parent_path: "目录A/目录A/目录/C/目录D", items: [],
+      location: { kind: "id", value: "current-id" }, parent_location: { kind: "id", value: "parent-id" },
+      breadcrumbs: cloudBreadcrumbs,
+    };
+    const { rerender } = render(
+      <LocationBreadcrumbs listing={cloudListing} rootLabel="根目录" disabled={false} onNavigate={onNavigate} />,
+    );
     const nav = within(screen.getByRole("navigation", { name: "文件路径" }));
-    expect(nav.queryByRole("button", { name: "目录C" })).not.toBeInTheDocument();
+    expect(nav.queryByRole("button", { name: "目录/C" })).not.toBeInTheDocument();
     expect(nav.getByRole("button", { name: "目录D" })).toBeInTheDocument();
     expect(nav.getByRole("button", { name: "目录E" })).toBeInTheDocument();
     fireEvent.click(nav.getByRole("button", { name: "显示父级目录" }));
     const menu = within(screen.getByRole("menu"));
-    expect(menu.getAllByRole("menuitem").map((item) => item.textContent)).toEqual(["根目录", "目录A", "目录B", "目录C"]);
-    fireEvent.click(menu.getByRole("menuitem", { name: "目录C" }));
-    expect(onNavigate).toHaveBeenCalledWith({ kind: "path", value: "目录A/目录B/目录C" });
+    expect(menu.getAllByRole("menuitem").map((item) => item.textContent)).toEqual(["云盘根目录", "目录A", "目录A", "目录/C"]);
+    fireEvent.click(menu.getByRole("menuitem", { name: "目录/C" }));
+    expect(onNavigate).toHaveBeenLastCalledWith({ kind: "id", value: "c-id" });
     available = 1000;
     act(() => resize());
     expect(nav.queryByRole("button", { name: "显示父级目录" })).not.toBeInTheDocument();
-    expect(nav.getByRole("button", { name: "目录A" })).toBeInTheDocument();
+    const [first, second] = nav.getAllByRole("button", { name: "目录A" });
+    fireEvent.click(first);
+    expect(onNavigate).toHaveBeenLastCalledWith({ kind: "id", value: "a-id" });
+    fireEvent.click(second);
+    expect(onNavigate).toHaveBeenLastCalledWith({ kind: "id", value: "b-id" });
+
+    rerender(<LocationBreadcrumbs listing={{ ...cloudListing, provider: "onedrive" }}
+      rootLabel="根目录" disabled={false} onNavigate={onNavigate} />);
+    expect(nav.getByRole("button", { name: "根目录" })).toBeInTheDocument();
   });
 
   it("keeps the current directory visible in narrow space and prevents navigation while busy", () => {

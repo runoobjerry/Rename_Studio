@@ -171,7 +171,7 @@ describe("workspace storage", () => {
   it("does not save a default from a failed directory request", async () => {
     const hook = await setupWorkspace();
     serverSettings.preferences.cloud_default_locations["user-onedrive"] = {
-      account_id: "account-a", location: { kind: "path", value: "照片" },
+      account_id: "account-a", location: { kind: "id", value: "photos-id" },
     };
     await openCloud(hook);
     vi.mocked(api.fetchStorageFiles).mockRejectedValueOnce(new Error("Directory not found"));
@@ -179,7 +179,7 @@ describe("workspace storage", () => {
     await waitFor(() => expect(hook.result.current.storage.files.error?.message).toBe("Directory not found"));
     act(() => hook.result.current.storage.setDefaultCloudPath());
     expect(api.patchAppSettings).not.toHaveBeenCalled();
-    expect(serverSettings.preferences.cloud_default_locations["user-onedrive"].location).toEqual({ kind: "path", value: "照片" });
+    expect(serverSettings.preferences.cloud_default_locations["user-onedrive"].location).toEqual({ kind: "id", value: "photos-id" });
   });
 });
 
@@ -300,11 +300,10 @@ describe("workspace session locations", () => {
 
   it("restores the active cloud connection and canonical location after remount without reading root or the default", async () => {
     serverSettings.preferences.cloud_default_locations["user-onedrive"] = {
-      account_id: "account-a", location: { kind: "path", value: "默认目录" },
+      account_id: "account-a", location: { kind: "id", value: "default-directory-id" },
     };
     vi.mocked(api.fetchStorageFiles).mockImplementation(async (provider, location) => ({
-      ...listing(), provider, location: location.kind === "path" && location.value === "工作目录"
-        ? { kind: "id", value: "opaque-directory-id" } : location,
+      ...listing(), provider, location,
     }));
     const hook = mountStorage();
     await waitFor(() => expect(hook.result.current.files.isSuccess).toBe(true));
@@ -313,7 +312,7 @@ describe("workspace session locations", () => {
     await waitFor(() => expect(hook.result.current.appSettingsReady).toBe(true));
     act(() => hook.result.current.restoreDefaultCloudPath());
     await waitFor(() => expect(hook.result.current.files.isSuccess).toBe(true));
-    act(() => hook.result.current.setPath("工作目录"));
+    act(() => hook.result.current.setLocation({ kind: "id", value: "opaque-directory-id" }));
     await waitFor(() => expect(readWorkspaceSession().session.locations["user-onedrive"].location)
       .toEqual({ kind: "id", value: "opaque-directory-id" }));
     hook.unmount();
@@ -385,7 +384,7 @@ describe("workspace session locations", () => {
       } },
     }));
     serverSettings.preferences.cloud_default_locations["user-onedrive"] = {
-      account_id: "account-a", location: { kind: "path", value: "当前账号默认目录" },
+      account_id: "account-a", location: { kind: "id", value: "current-account-directory" },
     };
     const hook = mountStorage();
     await waitFor(() => expect(hook.result.current.cloudConnected).toBe(true));
@@ -393,7 +392,7 @@ describe("workspace session locations", () => {
     act(() => hook.result.current.restoreDefaultCloudPath());
     await waitFor(() => expect(hook.result.current.files.isSuccess).toBe(true));
     expect(api.fetchStorageFiles).toHaveBeenCalledTimes(1);
-    expect(api.fetchStorageFiles).toHaveBeenCalledWith("user-onedrive", { kind: "path", value: "当前账号默认目录" });
+    expect(api.fetchStorageFiles).toHaveBeenCalledWith("user-onedrive", { kind: "id", value: "current-account-directory" });
   });
 
   it("keeps the last successful location when navigation fails", async () => {

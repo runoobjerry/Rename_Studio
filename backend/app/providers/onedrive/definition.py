@@ -26,7 +26,7 @@ class OneDriveConfig(BaseModel):
 
 def get_definition(settings: Settings) -> ProviderDefinition:
     return ProviderDefinition(
-        "onedrive", OneDriveConfig, ("root", "id", "path"),
+        "onedrive", OneDriveConfig, ("root", "id"),
         lambda record, auth: OneDriveProvider(cast(ConnectionAuth, auth)),
         browser_navigation="onedrive_personal",
         cache_directories=True,

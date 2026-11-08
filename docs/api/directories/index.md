@@ -27,8 +27,9 @@
 | `path` | string | 否 | 当前目录显示路径。 |
 | `parent_path` | string | 是 | 父目录显示路径；根目录为 `null`。 |
 | `items` | array of FileItem | 否 | 直接子项；空目录为 `[]`。 |
-| `breadcrumbs` | array of DirectoryBreadcrumb | 是 | Google Drive 返回从 My Drive 根目录到当前目录的导航项；其他内置 Provider 为 `null`。 |
+| `breadcrumbs` | array of DirectoryBreadcrumb | 是 | OneDrive 和 Google Drive 的导航项按根目录到当前目录的顺序返回。根项的 `location.kind` 为 `root`，其余项为 `id`。Local 为 `null`。 |
 | `directory_id` | string | 是 | 云目录真实 ID；Local 为 `null`。 |
+| `drive_id` | string | 是 | OneDrive 目录所属的驱动器 ID。未提供时为 `null`。 |
 
 #### 嵌套对象：DirectoryBreadcrumb
 

@@ -6,6 +6,7 @@ from app.schemas.files import DirectoryListing, FileItem, RenameFile
 from app.schemas.storage import PathLocation, RootLocation, StorageLocation
 from app.core.paths import normalize_storage_path
 from app.providers.name_validation import NameValidationIssue
+from app.providers.directory_metadata import DirectoryMetadataRead
 
 
 @dataclass(frozen=True, slots=True)
@@ -18,6 +19,13 @@ class StorageProvider(ABC):
     id: str
     execution_batch_size: int = 20
     execution_batch_concurrency: int = 1
+
+    async def read_directory(
+        self, location: StorageLocation, *,
+        metadata: DirectoryMetadataRead | None = None, include_breadcrumbs: bool = True,
+    ) -> DirectoryListing:
+        """Read a listing with optional browse context from the directory service."""
+        return await self.list_directory(location)
 
     async def list_directory(self, location: StorageLocation) -> DirectoryListing:
         """Path providers keep identity relative to their configured root."""

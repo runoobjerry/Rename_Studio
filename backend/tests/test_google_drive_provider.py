@@ -277,14 +277,19 @@ async def test_same_name_folders_and_separator_names_use_real_ancestor_ids(provi
     server = DriveServer([first, second, child])
     server.pages[None] = file_page([drive_file("file", "sample.txt", parent="child")])
     provider = provider_factory(server)
-    listing = await provider.list_directory(IdLocation(value="child"))
+    directories = registry_for([provider], cache_directories=True).manager.directories
+    location = IdLocation(value="child")
+    listing = await directories.list_directory(provider.id, location)
     assert listing.path == "same/with/slash"
     assert listing.directory_id == "child"
     assert listing.parent_location == IdLocation(value="b") and listing.location == IdLocation(value="child")
     assert [entry.name for entry in listing.breadcrumbs] == ["My Drive", "same", "with/slash"]
     assert [entry.location for entry in listing.breadcrumbs] == [RootLocation(), IdLocation(value="b"), IdLocation(value="child")]
     assert listing.items[0].parent_location == IdLocation(value="child")
-    assert not any(request.url.path.endswith("/a") for request in server.requests)
+    assert await directories.list_directory(provider.id, location) == listing
+    assert [request.url.path for request in server.requests] == [
+        "/drive/v3/files/root", "/drive/v3/files/child", "/drive/v3/files/b", "/drive/v3/files",
+    ]
     item = await provider.get_metadata("child")
     assert item.location == listing.location and item.parent_location == listing.parent_location
     root = await provider.get_metadata("root")
@@ -530,15 +535,122 @@ async def test_read_errors_are_classified_and_retries_bounded(provider_factory: 
 
 
 @pytest.mark.asyncio
-async def test_ancestry_is_reloaded_after_external_move(provider_factory: Callable) -> None:
-    folder = drive_file("folder", "Folder", mime=FOLDER_MIME)
-    server = DriveServer([folder])
-    server.pages[None] = file_page([])
+async def test_browsing_reuses_google_root_and_folders_from_completed_listings(provider_factory: Callable) -> None:
+    server = WritableDriveServer([
+        drive_file("other", "Same", mime=FOLDER_MIME),
+        drive_file("a", "Same", mime=FOLDER_MIME),
+        drive_file("b", "with/slash", "a", FOLDER_MIME),
+        drive_file("c", "C", "b", FOLDER_MIME),
+        drive_file("d", "D", "c", FOLDER_MIME),
+        drive_file("file", "File", "d"),
+    ])
     provider = provider_factory(server)
-    assert (await provider.list_directory(IdLocation(value="folder"))).parent_location == RootLocation()
-    folder["parents"] = []
-    with pytest.raises(ValidationError):
-        await provider.list_directory(IdLocation(value="folder"))
+    directories = registry_for([provider], cache_directories=True).manager.directories
+    ids = [IdLocation(value=key) for key in ("a", "b", "c", "d")]
+    for location in [RootLocation(), *ids]:
+        listing = await directories.list_directory(provider.id, location)
+    assert [(crumb.name, crumb.location) for crumb in listing.breadcrumbs] == [
+        ("My Drive", RootLocation()), *zip(["Same", "with/slash", "C", "D"], ids, strict=True),
+    ]
+    assert listing.items[0].path == "Same/with/slash/C/D/File"
+    assert await directories.list_directory(provider.id, ids[-1]) == listing
+    assert [request.url.path.removeprefix("/drive/v3/") for request in server.requests] == [
+        "files/root", "files", "files", "files", "files", "files",
+    ]
+
+
+@pytest.mark.asyncio
+async def test_google_missing_target_does_not_retry_or_evict_the_root(provider_factory: Callable) -> None:
+    server = WritableDriveServer([drive_file("folder", "Folder", mime=FOLDER_MIME)])
+    provider = provider_factory(server)
+    directories = registry_for([provider], cache_directories=True).manager.directories
+    root = await directories.list_directory(provider.id, RootLocation())
+    server.requests.clear()
+    with pytest.raises(NotFoundError):
+        await directories.list_directory(provider.id, IdLocation(value="missing"))
+    assert await directories.list_directory(provider.id, RootLocation()) == root
+    assert [request.url.path for request in server.requests] == ["/drive/v3/files/missing"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("change", ["move", "deleted", "permission"])
+async def test_google_live_validation_does_not_accept_old_scope_or_permissions(provider_factory: Callable, change: str) -> None:
+    server = WritableDriveServer([
+        drive_file("other", "Other"),
+        drive_file("folder", "Folder", mime=FOLDER_MIME),
+        drive_file("child", "Child", "folder"),
+    ])
+
+    def respond(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/files") and "'folder' in parents" in request.url.params["q"] and change == "permission":
+            server.requests.append(request)
+            return file_page()
+        return server(request)
+
+    provider = provider_factory(respond)
+    directories = registry_for([provider], cache_directories=True).manager.directories
+    folder = IdLocation(value="folder")
+    await directories.list_directory(provider.id, RootLocation())
+    if change == "move":
+        opened = await directories.list_directory(provider.id, folder)
+        assert opened.parent_location == RootLocation()
+        server.files["folder"]["parents"] = []
+        error = ValidationError
+    elif change == "deleted":
+        del server.files["folder"]
+        error = NotFoundError
+    else:
+        server.files["folder"]["capabilities"]["canListChildren"] = False
+        error = PermissionDeniedError
+    # Revoked folder access can present as an empty successful files.list response.
+    mode = "cached" if change == "permission" else "refresh"
+    server.requests.clear()
+    with pytest.raises(error):
+        await directories.list_directory(provider.id, folder, mode=mode)
+    assert any(request.url.path.endswith("/files/folder") for request in server.requests)
+    server.requests.clear()
+    await directories.list_directory(provider.id, RootLocation())
+    assert [request.url.path for request in server.requests] == ["/drive/v3/files"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("invalidate", [False, True])
+async def test_google_parallel_browsing_shares_root_reads_and_fences_old_results(provider_factory: Callable, invalidate: bool) -> None:
+    server = WritableDriveServer([
+        drive_file(key, key, mime=FOLDER_MIME) for key in ("a", "b", "c")
+    ] + [drive_file(f"file-{key}", "File", key) for key in ("a", "b", "c")])
+    started, release = asyncio.Event(), asyncio.Event()
+    roots = 0
+
+    async def respond(request: httpx.Request) -> httpx.Response:
+        nonlocal roots
+        response = server(request)
+        if request.url.path.endswith("/files/root"):
+            roots += 1
+            if roots == 1:
+                started.set()
+                await release.wait()
+        return response
+
+    provider = provider_factory(respond)
+    directories = registry_for([provider], cache_directories=True).manager.directories
+    a, b, c = (IdLocation(value=key) for key in ("a", "b", "c"))
+    first = asyncio.create_task(directories.list_directory(provider.id, a))
+    second = asyncio.create_task(directories.list_directory(provider.id, b))
+    try:
+        await asyncio.wait_for(started.wait(), timeout=5)
+        if invalidate:
+            directories.invalidate(provider.id)
+            server.files["root-id"] = {**ROOT, "name": "Updated root"}
+            assert (await directories.list_directory(provider.id, c)).breadcrumbs[0].name == "Updated root"
+    finally:
+        release.set()
+        await asyncio.gather(first, second)
+    assert roots == (2 if invalidate else 1)
+    if invalidate:
+        reopened = await directories.list_directory(provider.id, a)
+        assert reopened.breadcrumbs[0].name == "Updated root"
+        assert sum(request.url.path.endswith("/files/a") for request in server.requests) == 2
 
 
 @pytest.mark.asyncio

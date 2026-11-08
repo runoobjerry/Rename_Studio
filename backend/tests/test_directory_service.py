@@ -2,7 +2,7 @@ import asyncio
 
 import pytest
 
-from app.core.errors import ProviderError, StorageBusyError
+from app.core.errors import NotFoundError, ProviderError, StorageBusyError
 from app.providers.base import StorageProvider
 from app.providers.name_validation import NameValidationIssue
 from app.schemas.files import DirectoryBreadcrumb, DirectoryListing, FileItem
@@ -23,6 +23,7 @@ class DirectoryProvider(StorageProvider):
         self.fail = False
         self.started, self.resume = asyncio.Event(), asyncio.Event()
         self.pause_next = False
+        self.pause_error: NotFoundError | None = None
 
     async def list_directory(self, location: StorageLocation) -> DirectoryListing:
         self.calls += 1
@@ -37,6 +38,8 @@ class DirectoryProvider(StorageProvider):
             self.pause_next = False
             self.started.set()
             await self.resume.wait()
+            if self.pause_error is not None:
+                raise self.pause_error
         return DirectoryListing(
             provider=self.id, path="", parent_path=None, location=canonical,
             directory_id=directory_id, items=[] if self.empty else [item],
@@ -175,6 +178,24 @@ async def test_concurrent_misses_share_a_read_without_repopulating_after_refresh
     original.items[0].name = "mutated"
     assert follower.items[0].name == "original"
     assert (await directories.list_directory("cloud", location)).items[0].name == "updated"
+    assert provider.calls == 2
+
+
+@pytest.mark.asyncio
+async def test_late_not_found_does_not_evict_a_successful_refresh() -> None:
+    provider = DirectoryProvider()
+    directories = registry_for([provider], cache_directories=True).manager.directories
+    provider.pause_next = True
+    provider.pause_error = NotFoundError("Directory was missing")
+    old_read = asyncio.create_task(directories.list_directory("cloud", RootLocation()))
+    try:
+        await asyncio.wait_for(provider.started.wait(), timeout=5)
+        refreshed = await directories.list_directory("cloud", IdLocation(value="root-id"), mode="refresh")
+    finally:
+        provider.resume.set()
+        with pytest.raises(NotFoundError):
+            await old_read
+    assert await directories.list_directory("cloud", RootLocation()) == refreshed
     assert provider.calls == 2
 
 

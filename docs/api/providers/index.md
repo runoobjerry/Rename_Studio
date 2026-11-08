@@ -23,7 +23,7 @@
 | `config_schema` | object | 否 | `config` 的 JSON Schema，不包含凭据。 |
 | `config_fields` | array of StorageConfigField | 否 | 按显示顺序排列的配置字段。 |
 | `icon` | string | 否 | `computer` 或 `cloud`。 |
-| `locations` | array of string | 否 | 接受的位置类型，当前取值为 `root`、`id`、`path`。 |
+| `locations` | array of string | 否 | 此 Provider 接受的 [`StorageLocation.kind`](../common/locations.md#locations) 值。 |
 | `can_rename` | boolean | 否 | 是否支持重命名。 |
 | `browser_auth` | boolean | 否 | 是否使用浏览器授权。 |
 | `browser_navigation` | string | 是 | 外部浏览器导航适配器的稳定标识。OneDrive 为 `onedrive_personal`，Google Drive 为 `google_drive_my_drive`，Local 为 `null`。 |
@@ -109,7 +109,7 @@ GET /storage-providers
     },
     "config_fields": [{"key":"client_id","input_type":"text","target":"config","required":false,"nullable":true}],
     "icon": "cloud",
-    "locations": ["root","id","path"],
+    "locations": ["root","id"],
     "can_rename": true,
     "browser_auth": true,
     "browser_navigation": "onedrive_personal",

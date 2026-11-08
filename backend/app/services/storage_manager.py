@@ -14,16 +14,22 @@ from app.repositories.storage_repository import JsonStorageRepository
 from app.schemas.storage import AppPreferences, AppSettingsPatch, AppSettingsResponse, StorageCreate, StorageInfo, StorageRecord, StorageState, StorageUpdate, validate_preferences_size
 from app.services.connection_auth import ConnectionAuth
 from app.services.directory_cache import DirectoryCache
+from app.services.directory_metadata_index import DirectoryMetadataIndex
 from app.services.directory_service import DirectoryService
 from app.services.preview_store import PreviewStore
 
 
 class StorageManager:
-    def __init__(self, registry: ProviderRegistry, repository: JsonStorageRepository, state: StorageState) -> None:
+    def __init__(
+        self, registry: ProviderRegistry, repository: JsonStorageRepository, state: StorageState, *,
+        directory_cache: DirectoryCache | None = None, directory_metadata: DirectoryMetadataIndex | None = None,
+    ) -> None:
         self.registry = registry
         self.repository = repository
         self.state = state
-        self.directories = DirectoryService(self, DirectoryCache())
+        self.directories = DirectoryService(
+            self, directory_cache if directory_cache is not None else DirectoryCache(), metadata=directory_metadata,
+        )
         self._clients: dict[str, tuple[int, StorageProvider]] = {}
         self._auth: dict[str, ConnectionAuth] = {}
         self._busy: set[str] = set()
@@ -81,8 +87,11 @@ class StorageManager:
                 if default is None:
                     preferences.cloud_default_locations.pop(storage_id, None)
                 else:
-                    if default.account_id != self.record(storage_id).credentials.get("account_id"):
+                    record = self.record(storage_id)
+                    if default.account_id != record.credentials.get("account_id"):
                         raise StorageConnectionChangedError("Default location belongs to a different account")
+                    if default.location.kind not in self.registry.definition(record.provider_type).locations:
+                        raise ValidationError("Default location type is not supported by this storage")
                     preferences.cloud_default_locations[storage_id] = default
         try:
             # A valid patch may exceed the aggregate limits after merging with saved connections.

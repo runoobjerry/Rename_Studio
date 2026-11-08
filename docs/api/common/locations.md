@@ -12,7 +12,9 @@
 | `kind` | string | 是 | 否 | `root`、`id` 或 `path`。 |
 | `value` | string | 条件 | 否 | `id`、`path` 时必填；`root` 时禁止提供。`id` 至少 1 个字符。 |
 
-位置对象拒绝未知字段。`path` 将反斜杠转为 `/`，移除重复、开头和结尾的分隔符；拒绝 `.`、`..` 路径分量。是否接受某种位置由 Provider 的 `locations` 决定。Google Drive 不接受任何 `path`，空路径也不例外。
+位置对象拒绝未知字段。`path` 将反斜杠转为 `/`，移除重复、开头和结尾的分隔符，并拒绝 `.`、`..` 路径分量。
+
+通过 [Provider 定义](../providers/index.md#endpoint-get-storage-providers)的 `locations` 确认连接支持的位置类型。OneDrive 和 Google Drive 的目录读取只接受 `root` 和 `id`。
 
 ```json
 {"kind":"root"}

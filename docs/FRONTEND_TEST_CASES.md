@@ -21,7 +21,7 @@
 | 本体外部导航：按 Provider 声明的适配器接入，非内置类型同样可导航，缺失/禁用/未知适配器或不满足授权/位置能力时拒绝；Google 按邮箱唯一匹配并沿用稳定账号 ID，OneDrive 按 CID 唯一匹配，复用已有连接/授权状态且不主动二次刷新，授权及忙碌保护，外部目标优先于恢复位置并强制读取目录；释放旧预览、保留规则及未知写入记录；手动切换/连接 revision 变化取消迟到结果，重复业务请求在 accepted 前拒绝；目录不匹配、根 ID 规范化、权限或授权失效及手动重试仍检查云盘范围 | [能力匹配](../frontend/src/integrations/browser/navigation.test.ts)、[外部导航集成](../frontend/src/WorkspaceApp.externalNavigation.test.tsx) |
 | 不同账号连接的目录隔离，换号后的旧目录与旧预览不能污染新工作区 | [工作台存储集成](../frontend/src/WorkspaceApp.storage.test.tsx)、[默认云目录](../frontend/src/features/files/defaultCloudLocation.test.ts) |
 | 工作区按 browser_auth 判定授权；元数据 pending/error 不读取授权或文件，恢复后使用原目录；元数据刷新失败保留账号身份与选择 | [存储 Hook](../frontend/src/workspace/hooks/useWorkspaceStorage.test.ts) |
-| 手动目录刷新发送 `refresh: true`，可越过正在进行的普通读取并丢弃迟到结果；普通导航沿用默认读取模式。外部导航和重试同样强制刷新。经 OneDrive 路径进入目录后，预览发送返回的规范目录 ID | [API 请求体](../frontend/src/api/client.test.ts)、[存储 Hook](../frontend/src/workspace/hooks/useWorkspaceStorage.test.ts)、[外部导航集成](../frontend/src/WorkspaceApp.externalNavigation.test.tsx)、[预览工作流](../frontend/src/features/rename/useRenameWorkflow.test.ts) |
+| 手动目录刷新发送 `refresh: true`，可越过正在进行的普通读取并丢弃迟到结果；普通导航沿用默认读取模式。外部导航和重试同样强制刷新。通过真实根 ID 进入 OneDrive 时，预览使用返回的规范根位置 | [API 请求体](../frontend/src/api/client.test.ts)、[存储 Hook](../frontend/src/workspace/hooks/useWorkspaceStorage.test.ts)、[外部导航集成](../frontend/src/WorkspaceApp.externalNavigation.test.tsx)、[预览工作流](../frontend/src/features/rename/useRenameWorkflow.test.ts) |
 | 非 Local 且无需浏览器授权的服务恢复 ID 位置，不发授权请求；未知 OAuth 服务等待授权，不支持的位置类型不请求 | 存储 Hook |
 | 无浏览器授权服务的选择随成功列表同步 | 工作流 Hook |
 | 选择及规则变化使旧预览失效；保留替换 ID、释放迟到或工作区变化后的预览，选择改回原值也不会接收已失效的响应 | [工作流 Hook](../frontend/src/features/rename/useRenameWorkflow.test.ts)、工作台集成 代表性 UI 接线 |
@@ -75,6 +75,7 @@
 | 任意 Provider 通过元数据定义配置字段及密码式顶层密钥，缺词显示原始 Provider/字段 ID；创建/切换/重开清空，配置不完整禁用登录，授权弹窗校验来源和连接 | StorageSettingsPanel |
 | 明确不可重命名项在权限变化后退出旧选择和预览请求，未知权限项保留 | 工作流 Hook |
 | 目录语义导航、文本选择不误导航、目录折叠与键盘/滚动访问 | FileBrowser、虚拟列表、[LocationBreadcrumbs](../frontend/src/features/files/LocationBreadcrumbs.test.tsx) |
+| OneDrive 跨级面包屑向目录 API 提交祖先 ID。云盘折叠菜单支持同名及含分隔符的目录，OneDrive 和 Google Drive 显示各自的根标签，Local 使用相对路径。 | [工作区导航](../frontend/src/WorkspaceApp.storage.test.tsx)、[LocationBreadcrumbs](../frontend/src/features/files/LocationBreadcrumbs.test.tsx) |
 | 虚拟列表先对完整数据排序再截取渲染行；切换排序重置滚动位置，全选使用完整排序结果 | [虚拟列表](../frontend/src/features/files/FileBrowser.virtual.test.tsx) |
 | 规则添加、编辑、移动、复制、删除及数字草稿归属；加载时禁止添加，溢出菜单仍可访问；公共数字字段的草稿、边界提交及规则字段接线 | [RuleEditor](../frontend/src/features/rules/RuleEditor.test.tsx)、[RuleFields](../frontend/src/features/rules/RuleFields.test.tsx)、[NumberField](../frontend/src/components/NumberField.test.tsx) |
 | 未知规则显示稳定 ID，切换启用状态保留原始 type/config | RuleEditor |

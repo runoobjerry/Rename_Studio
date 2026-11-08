@@ -9,6 +9,8 @@ from app.rules.insert import InsertRule
 from app.rules.padding import PaddingRule
 from app.rules.registry import RuleRegistry
 from app.rules.text_operations import RemoveRule, ReplaceRule
+from app.services.directory_cache import DirectoryCache
+from app.services.directory_metadata_index import DirectoryMetadataIndex
 from app.services.execute_service import ExecuteService
 from app.services.single_rename_service import SingleRenameService
 from app.services.preview_service import PreviewService
@@ -28,7 +30,11 @@ def get_storage_manager() -> StorageManager:
     register_builtin_providers(registry, settings)
     repository = JsonStorageRepository(settings.storage_state_file)
     state = repository.load_or_initialize(settings.local_storage_root, registry.validate_config)
-    return StorageManager(registry, repository, state)
+    return StorageManager(
+        registry, repository, state,
+        directory_cache=DirectoryCache(**settings.directory_caches.directory_listings.model_dump()),
+        directory_metadata=DirectoryMetadataIndex(**settings.directory_caches.directory_metadata.model_dump()),
+    )
 
 
 @lru_cache

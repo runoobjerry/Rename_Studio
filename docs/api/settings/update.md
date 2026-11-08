@@ -22,6 +22,8 @@
 
 字段直接放在请求体，不包裹 `preferences`。`{}` 不修改偏好；保存失败保留既有状态。
 
+新增或替换默认目录时，`account_id` 必须匹配连接的当前账号，`location.kind` 必须在该 Provider 的 [`locations`](../providers/index.md#providers) 中。保存时不检查目标目录是否存在。
+
 #### Returns
 
 HTTP 200，返回完整 `AppSettingsResponse`，包含未修改字段。偏好不提供 `revision`。
@@ -63,4 +65,4 @@ Content-Type: application/json
 - 404 `NOT_FOUND`：新增或替换默认目录时连接不存在。刷新连接列表；删除不存在的默认记录不报错。
 - 409 `STORAGE_CONNECTION_CHANGED`：账号不符。重新读取账号，不保存旧账号位置。
 - 422 `REQUEST_VALIDATION_ERROR`：格式、枚举、长度或请求大小无效。
-- 422 `VALIDATION_ERROR`：合并后偏好超过数量或大小限制。
+- 422 `VALIDATION_ERROR`。默认位置无效或连接不支持该位置类型，或合并后的偏好超限。

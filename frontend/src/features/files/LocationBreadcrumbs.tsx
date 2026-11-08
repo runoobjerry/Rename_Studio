@@ -32,7 +32,11 @@ export function LocationBreadcrumbs({ listing, rootLabel, disabled, onNavigate }
   const entries = useMemo(() => {
     // ID 型 Provider 的显示名可含分隔符或重名；只使用服务端祖先身份导航。
     if (listing?.breadcrumbs) {
-      return listing.breadcrumbs.map((entry) => ({ label: entry.name, location: entry.location }));
+      return listing.breadcrumbs.map((entry) => ({
+        // OneDrive 根节点继续显示连接名称，导航位置仍由服务端提供。
+        label: listing.provider === "onedrive" && entry.location.kind === "root" ? rootLabel : entry.name,
+        location: entry.location,
+      }));
     }
     const segments = listing?.path.split("/").filter(Boolean) ?? [];
     return [

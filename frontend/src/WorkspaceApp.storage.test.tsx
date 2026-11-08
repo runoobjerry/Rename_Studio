@@ -6,8 +6,8 @@ import { useRenameStore } from "./stores/useRenameStore";
 import { readWorkspaceSession, workspaceSessionKey } from "./workspace/workspaceSession";
 import { client, serverSettings } from "./test/workspaceHarness";
 import { installWorkspaceAppTestHooks, renderWorkspace, savedCloud, seedCloud } from "./test/workspaceAppHarness";
-import { status } from "./test/fixtures";
-import type { StorageInfo } from "./types";
+import { listing as localListing, status } from "./test/fixtures";
+import type { DirectoryBreadcrumb, StorageInfo } from "./types";
 
 vi.mock("./api/client", async (importOriginal) => {
   const { workspaceApiMock } = await import("./test/workspaceApiMock");
@@ -87,22 +87,23 @@ describe("directory refresh selection", () => {
 
 describe("cloud default path integration", () => {
   it("restores on entry and re-entry and saves the directory opened through folder navigation", async () => {
+    const photos = { kind: "id", value: "photos-id" } as const;
     vi.mocked(api.fetchStorageFiles).mockImplementation(async (provider, location) => ({
-      provider, location, path: location.kind === "root" ? "" : location.value === "document-id" ? "照片/文档" : location.value,
+      provider, location, path: location.kind === "root" ? "" : location.value === "document-id" ? "照片/文档" : "照片",
       parent_path: location.kind === "root" ? null : "", items: [{
         id: "document-id", name: "文档", path: "照片/文档", parent_path: "照片",
         location: { kind: "id", value: "document-id" }, is_directory: true, size: null, modified_at: null,
       }],
     }));
-    seedCloud("user-onedrive", "account-a", { kind: "path", value: "照片" });
+    seedCloud("user-onedrive", "account-a", photos);
     await openCloud();
     expect(screen.getByRole("button", { name: "照片" })).toHaveAttribute("aria-current", "page");
-    expect(api.fetchStorageFiles).toHaveBeenCalledWith("user-onedrive", { kind: "path", value: "照片" });
+    expect(api.fetchStorageFiles).toHaveBeenCalledWith("user-onedrive", photos);
     expect(api.fetchStorageFiles).not.toHaveBeenCalledWith("user-onedrive", { kind: "root" });
     expect(screen.queryByRole("textbox", { name: "云端文件夹路径" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "打开文件夹" })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "设为默认" }));
-    await waitFor(() => expect(savedCloud("user-onedrive", "account-a")).toEqual({ kind: "path", value: "照片" }));
+    await waitFor(() => expect(savedCloud("user-onedrive", "account-a")).toEqual(photos));
     expect(await screen.findByText("已将“照片”设为当前账号的默认路径。")).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("checkbox", { name: "选择文件夹 文档" }));
@@ -127,14 +128,14 @@ describe("cloud default path integration", () => {
     // 测试查询缓存长期有效；重进目录复用缓存，不依赖全局最后一次请求的顺序。
     expect(vi.mocked(api.fetchStorageFiles).mock.calls.filter(([storageId]) => storageId === "user-onedrive"))
       .toHaveLength(cloudRequestsBeforeReentry);
-    expect(savedCloud("user-onedrive", "account-a")).toEqual({ kind: "path", value: "照片" });
+    expect(savedCloud("user-onedrive", "account-a")).toEqual(photos);
     await waitFor(() => expect(screen.getByRole("button", { name: "设为默认" })).toBeEnabled());
     fireEvent.click(screen.getByRole("button", { name: "设为默认" }));
     await waitFor(() => expect(savedCloud("user-onedrive", "account-a")).toEqual({ kind: "id", value: "document-id" }));
   });
 
   it("switches accounts without reusing the previous directory or selection", async () => {
-    seedCloud("user-onedrive", "account-a", { kind: "path", value: "a-folder" });
+    seedCloud("user-onedrive", "account-a", { kind: "id", value: "a-folder" });
     await openCloud();
     useRenameStore.setState({ selectedIds: ["old-file"] });
     vi.mocked(api.fetchStorageFiles).mockClear();
@@ -142,7 +143,7 @@ describe("cloud default path integration", () => {
     client.setQueryData(["app-settings"], serverSettings);
     client.setQueryData(["storage-auth", "user-onedrive", 1], status("account-b"));
     await waitFor(() => expect(api.fetchStorageFiles).toHaveBeenCalledWith("user-onedrive", { kind: "root" }));
-    expect(api.fetchStorageFiles).not.toHaveBeenCalledWith("user-onedrive", { kind: "path", value: "a-folder" });
+    expect(api.fetchStorageFiles).not.toHaveBeenCalledWith("user-onedrive", { kind: "id", value: "a-folder" });
     expect(useRenameStore.getState().selectedIds).toEqual([]);
     await waitFor(() => expect(screen.getByRole("button", { name: "设为默认" })).toBeEnabled());
     fireEvent.click(screen.getByRole("button", { name: "设为默认" }));
@@ -160,6 +161,31 @@ describe("cloud default path integration", () => {
 });
 
 describe("workspace path navigation", () => {
+  it("requests a OneDrive ancestor by ID when jumping from a deep directory", async () => {
+    const breadcrumbs: DirectoryBreadcrumb[] = [
+      { name: "Root", location: { kind: "root" } },
+      { name: "A", location: { kind: "id", value: "ancestor-id" } },
+      { name: "B", location: { kind: "id", value: "parent-id" } },
+      { name: "C", location: { kind: "id", value: "deep-id" } },
+    ];
+    const ancestor = breadcrumbs[1].location;
+    const deep = breadcrumbs[3].location;
+    seedCloud("user-onedrive", "account-a", deep);
+    vi.mocked(api.fetchStorageFiles).mockImplementation(async (storageId, location) => {
+      if (storageId === "default-local") return localListing(0);
+      const isDeep = location.kind === "id" && location.value === "deep-id";
+      return { provider: "onedrive", location, path: isDeep ? "A/B/C" : "A", parent_path: isDeep ? "A/B" : "",
+        breadcrumbs: isDeep ? breadcrumbs : breadcrumbs.slice(0, 2), items: [] };
+    });
+    await openCloud();
+    const nav = within(screen.getByRole("navigation", { name: "文件路径" }));
+    expect(await nav.findByRole("button", { name: "C" })).toHaveAttribute("aria-current", "page");
+    fireEvent.click(nav.getByRole("button", { name: "A" }));
+    await waitFor(() => expect(nav.getByRole("button", { name: "A" })).toHaveAttribute("aria-current", "page"));
+    expect(vi.mocked(api.fetchStorageFiles).mock.calls.filter(([storageId]) => storageId === "user-onedrive"))
+      .toEqual([["user-onedrive", deep], ["user-onedrive", ancestor]]);
+  });
+
   it("keeps the current directory through both settings return actions", async () => {
     window.sessionStorage.setItem(workspaceSessionKey, JSON.stringify({
       version: 1, activeStorageId: "default-local", locations: {

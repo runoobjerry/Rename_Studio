@@ -2,8 +2,9 @@ import asyncio
 import logging
 from time import perf_counter
 from collections.abc import Awaitable, Callable
+from contextlib import nullcontext
 from datetime import datetime
-from urllib.parse import quote, urlsplit
+from urllib.parse import quote, unquote, urlsplit
 
 import httpx
 
@@ -22,9 +23,10 @@ from app.core.errors import (
 from app.providers.errors import http_error_details, read_error_payload
 from app.providers.retry import RetryBudget
 from app.providers.base import RenameRequest, StorageProvider
+from app.providers.directory_metadata import DirectoryMetadata, DirectoryMetadataConflict, DirectoryMetadataRead
 from app.providers.cooldown import ConnectionCooldown, retry_after_delay
 from app.providers.name_validation import NameValidationIssue, validate_onedrive_name
-from app.schemas.files import DirectoryListing, FileItem
+from app.schemas.files import DirectoryBreadcrumb, DirectoryListing, FileItem
 from app.schemas.storage import IdLocation, PathLocation, RootLocation, StorageLocation
 from app.services.connection_auth import ConnectionAuth
 
@@ -37,6 +39,10 @@ MAX_BATCH_SIZE = 20
 READ_BATCH_CONCURRENCY = 3
 WRITE_BATCH_CONCURRENCY = 2
 DRIVE_ITEM_SELECT = "id,name,parentReference,folder,root,size,lastModifiedDateTime"
+
+
+class _NotDirectory(ValidationError):
+    pass
 
 
 def _extract_graph_codes(payload: object) -> list[str]:
@@ -90,61 +96,128 @@ class OneDriveProvider(StorageProvider):
         self._client = client
         self._owns_client = client is None
         self._cooldown = ConnectionCooldown()
-        self._root_id: str | None = None
-        self._root_item: FileItem | None = None
-        self._drive_id: str | None = None
 
     async def list_directory(self, location: StorageLocation) -> DirectoryListing:
-        if self._root_id is None:
-            root = await self._request_json("GET", f"{GRAPH_ROOT}/me/drive/root")
-            self._root_item = self._to_item(root)
-            self._root_id = self._root_item.id
-            parent_reference = root.get("parentReference")
-            if isinstance(parent_reference, dict):
-                drive_id = parent_reference.get("driveId")
-                if isinstance(drive_id, str) and drive_id:
-                    self._drive_id = drive_id
-        directory_id = self._root_id
-        if isinstance(location, IdLocation):
-            directory_id = location.value
-        elif isinstance(location, PathLocation):
-            # Resolve every segment explicitly: remote duplicate names must not pick an arbitrary object.
-            for segment in location.value.split("/") if location.value else []:
-                listing = await self._list_url(f"{GRAPH_ROOT}/me/drive/items/{quote(directory_id, safe='')}/children")
-                matches = [item for item in listing if item.is_directory and self.normalize_name(item.name) == self.normalize_name(segment)]
-                if not matches:
-                    raise NotFoundError("Directory not found")
-                if len(matches) != 1:
-                    raise ValidationError("Directory path is ambiguous; navigate using its ID")
-                directory_id = matches[0].id
-        directory = self._root_item if directory_id == self._root_id else await self.get_metadata(directory_id)
-        assert directory is not None
-        if not directory.is_directory:
+        return await self.read_directory(location)
+
+    async def read_directory(
+        self, location: StorageLocation, *,
+        metadata: DirectoryMetadataRead | None = None, include_breadcrumbs: bool = True,
+    ) -> DirectoryListing:
+        if isinstance(location, PathLocation):
+            raise ValidationError("OneDrive directories must be addressed by ID")
+        try:
+            return await self._read_directory(location, metadata, include_breadcrumbs)
+        except (DirectoryMetadataConflict, NotFoundError, PermissionDeniedError) as exc:
+            if (metadata is None or not metadata.used_cache
+                    or (metadata.failure_id is not None and not isinstance(exc, DirectoryMetadataConflict))):
+                raise
+            metadata.retry_live()
+            return await self._read_directory(location, metadata, include_breadcrumbs)
+
+    async def _read_directory(
+        self, location: RootLocation | IdLocation, metadata: DirectoryMetadataRead | None, include_breadcrumbs: bool,
+    ) -> DirectoryListing:
+        root = await metadata.load(None, self._read_root) if metadata is not None else await self._read_root()
+        directory = root
+        if isinstance(location, IdLocation) and location.value != root.id:
+            with metadata.reading_target(location.value) if metadata is not None else nullcontext():
+                directory = await self._load_folder(location.value, metadata)
+
+        target_id = None if directory.id == root.id else directory.id
+        with metadata.reading_target(target_id) if metadata is not None else nullcontext():
+            items = await self._children(directory.id, metadata)
+        canonical = RootLocation() if directory.id == root.id else IdLocation(value=directory.id)
+        parent = (None if directory.parent_id is None else RootLocation() if directory.parent_id == root.id
+                  else IdLocation(value=directory.parent_id))
+        display_parent = directory.parent_path
+        breadcrumbs = None
+        if include_breadcrumbs:
+            chain = await self._directory_chain(directory, root, metadata)
+            ancestor_ids = {folder.id for folder in chain}
+            parent_path = "/".join(folder.name for folder in chain[1:-1])
+            child_parent_path = "/".join(folder.name for folder in chain[1:])
+            # Parent IDs determine the chain. Graph paths can reveal a move or rename since caching.
+            if (directory.parent_path and unquote(directory.parent_path) != parent_path
+                    or any(item.id in ancestor_ids or (item.parent_path and unquote(item.parent_path) != child_parent_path)
+                           for item in items)):
+                raise DirectoryMetadataConflict("Microsoft Graph returned inconsistent directory ancestry")
+            breadcrumbs = [
+                DirectoryBreadcrumb(name=folder.name, location=RootLocation() if folder.id == root.id else IdLocation(value=folder.id))
+                for folder in chain
+            ]
+            if not display_parent:
+                display_parent = "/".join(quote(folder.name, safe="") for folder in chain[1:-1])
+        path = "" if parent is None else f"{display_parent}/{directory.name}".strip("/")
+        return DirectoryListing(provider=self.id, path=path, parent_path=None if parent is None else display_parent,
+                                location=canonical, directory_id=directory.id, drive_id=root.drive_id,
+                                parent_location=parent, items=items, breadcrumbs=breadcrumbs)
+
+    async def _read_root(self) -> DirectoryMetadata:
+        payload = await self._request_json("GET", f"{GRAPH_ROOT}/me/drive/root")
+        item = self._to_item(payload)
+        if not item.is_directory:
             raise ValidationError("Selected location is not a directory")
-        canonical = RootLocation() if directory_id == self._root_id else IdLocation(value=directory_id)
-        parent = None if directory_id == self._root_id else directory.parent_location
-        if parent is None and directory_id != self._root_id:
-            raise ProviderError("Microsoft Graph omitted the parent directory ID")
-        if isinstance(parent, IdLocation) and parent.value == self._root_id:
-            parent = RootLocation()
+        parent_reference = payload.get("parentReference")
+        drive_id = parent_reference.get("driveId") if isinstance(parent_reference, dict) else None
+        return DirectoryMetadata(item.id, item.name, None, drive_id=drive_id if isinstance(drive_id, str) and drive_id else None)
+
+    @staticmethod
+    def _folder(item: FileItem, parent_id: str) -> DirectoryMetadata:
+        return DirectoryMetadata(item.id, item.name, parent_id, parent_path=item.parent_path)
+
+    async def _load_folder(
+        self, directory_id: str, metadata: DirectoryMetadataRead | None, *, ancestor: bool = False,
+    ) -> DirectoryMetadata:
+        async def fetch() -> DirectoryMetadata:
+            item = await self.get_metadata(directory_id)
+            if item.id != directory_id:
+                raise ProviderError("Microsoft Graph returned invalid directory identity")
+            if not item.is_directory:
+                raise _NotDirectory("Selected location is not a directory")
+            if not isinstance(item.parent_location, IdLocation):
+                raise DirectoryMetadataConflict("Microsoft Graph omitted the parent directory ID")
+            return self._folder(item, item.parent_location.value)
+
+        try:
+            return await metadata.load(directory_id, fetch) if metadata is not None else await fetch()
+        except _NotDirectory:
+            if ancestor:
+                raise DirectoryMetadataConflict("Microsoft Graph returned a non-directory ancestor") from None
+            raise
+
+    async def _directory_chain(
+        self, directory: DirectoryMetadata, root: DirectoryMetadata, metadata: DirectoryMetadataRead | None,
+    ) -> list[DirectoryMetadata]:
+        chain = [directory]
+        seen = {directory.id}
+        while (parent_id := chain[-1].parent_id) is not None:
+            if parent_id in seen:
+                raise DirectoryMetadataConflict("Microsoft Graph returned a cycle in the directory ancestors")
+            seen.add(parent_id)
+            chain.append(root if parent_id == root.id else await self._load_folder(parent_id, metadata, ancestor=True))
+        return list(reversed(chain))
+
+    async def _children(self, directory_id: str, metadata: DirectoryMetadataRead | None) -> list[FileItem]:
         items = await self._list_url(f"{GRAPH_ROOT}/me/drive/items/{quote(directory_id, safe='')}/children")
+        parent = IdLocation(value=directory_id)
         for item in items:
-            if item.parent_location is not None and item.parent_location != IdLocation(value=directory_id):
+            if item.parent_location is not None and item.parent_location != parent:
                 raise ProviderError("Microsoft Graph returned an item outside the requested directory")
-            item.parent_location = IdLocation(value=directory_id)
-        path = "" if isinstance(canonical, RootLocation) else directory.path
-        return DirectoryListing(provider=self.id, path=path, parent_path=None if parent is None else directory.parent_path,
-                                location=canonical, directory_id=directory_id, drive_id=self._drive_id,
-                                parent_location=parent, items=items)
+            item.parent_location = parent
+        if metadata is not None:
+            folder_ids: set[str] = set()
+            for item in items:
+                if item.is_directory:
+                    metadata.observe(self._folder(item, directory_id))
+                    folder_ids.add(item.id)
+            metadata.listed[directory_id] = folder_ids
+        return items
 
     async def list_files(self, path: str) -> list[FileItem]:
-        normalized = path.replace("\\", "/").strip("/")
-        if normalized:
-            encoded = quote(normalized, safe="/")
-            url = f"{GRAPH_ROOT}/me/drive/root:/{encoded}:/children"
-        else:
-            url = f"{GRAPH_ROOT}/me/drive/root/children"
-        return await self._list_url(url)
+        if path:
+            raise ValidationError("OneDrive directories must be addressed by ID")
+        return await self._list_url(f"{GRAPH_ROOT}/me/drive/root/children")
 
     async def _list_url(self, url: str) -> list[FileItem]:
         url = f"{url}?$select={DRIVE_ITEM_SELECT}&$top=200"

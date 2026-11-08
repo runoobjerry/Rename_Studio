@@ -38,7 +38,7 @@ const builtinDefinitions: StorageProviderDefinition[] = [
   { provider_type: "local", locations: ["root", "path", "id"], browser_auth: false, browser_navigation: null,
     local_picker: true, can_rename: true, config_schema: {}, icon: "computer",
     config_fields: [field("root_path", { input_type: "directory", required: true })] },
-  { provider_type: "onedrive", locations: ["root", "id", "path"], browser_auth: true, browser_navigation: null,
+  { provider_type: "onedrive", locations: ["root", "id"], browser_auth: true, browser_navigation: null,
     local_picker: false, can_rename: true, config_schema: {}, icon: "cloud",
     config_fields: [field("client_id", { nullable: true })] },
   { provider_type: "google_drive", locations: ["root", "id"], browser_auth: true, browser_navigation: null,

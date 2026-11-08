@@ -15,6 +15,7 @@ def package_files(platform: str) -> dict[str, Path]:
         "README.md": ROOT / "docs/RELEASE_README.md",
         "LICENSE": ROOT / "LICENSE",
         "backend/pyproject.toml": ROOT / "backend/pyproject.toml",
+        "backend/cache.toml": ROOT / "backend/cache.toml",
         "backend/requirements-runtime.txt": ROOT / "backend/requirements-runtime.txt",
     }
     if platform == "windows":

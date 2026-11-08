@@ -2,12 +2,41 @@ from functools import lru_cache
 import os
 from pathlib import Path
 import sys
+import tomllib
 
-from pydantic import Field, field_validator
+from pydantic import BaseModel, Field, PositiveInt, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 _BACKEND_ROOT = Path(__file__).resolve().parents[2]
+
+
+class DirectoryListingCacheSettings(BaseModel, extra="forbid", strict=True):
+    ttl: float = Field(default=300, gt=0, allow_inf_nan=False)
+    empty_ttl: float = Field(default=30, gt=0, allow_inf_nan=False)
+    max_entries: PositiveInt = 64
+    max_bytes: PositiveInt = 32 * 1024**2
+    max_entry_bytes: PositiveInt = 8 * 1024**2
+
+
+class DirectoryMetadataCacheSettings(BaseModel, extra="forbid", strict=True):
+    ttl: float = Field(default=60, gt=0, allow_inf_nan=False)
+    max_entries: PositiveInt = 2048
+
+
+class DirectoryCacheSettings(BaseModel, extra="forbid"):
+    directory_listings: DirectoryListingCacheSettings = Field(default_factory=DirectoryListingCacheSettings)
+    directory_metadata: DirectoryMetadataCacheSettings = Field(default_factory=DirectoryMetadataCacheSettings)
+
+
+def load_directory_cache_settings(path: Path) -> DirectoryCacheSettings:
+    try:
+        with path.open("rb") as config_file:
+            return DirectoryCacheSettings.model_validate(tomllib.load(config_file))
+    except FileNotFoundError:
+        return DirectoryCacheSettings()
+    except (OSError, ValueError) as exc:
+        raise ValueError(f"Invalid directory cache configuration in {path}: {exc}") from exc
 
 
 def default_documents_directory() -> Path:
@@ -28,6 +57,7 @@ class Settings(BaseSettings):
     frontend_origin: str = "http://localhost:5173"
     storage_state_file: Path = _BACKEND_ROOT / "settings.json"
     storage_redirect_uri: str = "http://localhost:8000/auth/storage/callback"
+    directory_caches: DirectoryCacheSettings = Field(default_factory=DirectoryCacheSettings)
 
     model_config = SettingsConfigDict(
         env_file=("../.env", ".env"),
@@ -43,4 +73,4 @@ class Settings(BaseSettings):
 
 @lru_cache
 def get_settings() -> Settings:
-    return Settings()
+    return Settings(directory_caches=load_directory_cache_settings(_BACKEND_ROOT / "cache.toml"))

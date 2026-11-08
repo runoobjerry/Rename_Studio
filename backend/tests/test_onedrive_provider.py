@@ -1,13 +1,19 @@
 from typing import Any
 import asyncio
 import json
+from collections.abc import AsyncIterator
 from datetime import UTC, datetime, timedelta
 from email.utils import format_datetime
+from pathlib import Path
+from urllib.parse import quote
+from uuid import uuid4
 
 import pytest
+import pytest_asyncio
 import httpx
 
 from app.core.errors import (
+    NotFoundError,
     PermissionDeniedError,
     ProviderError,
     RateLimitError,
@@ -17,11 +23,20 @@ from app.core.errors import (
 )
 from app.providers.retry import RetryBudget
 from app.providers.base import RenameRequest
+from app.providers.registry import ProviderDefinition, ProviderRegistry
+from app.providers.onedrive.definition import OneDriveConfig
 from app.providers.onedrive.driver import GRAPH_ROOT, OneDriveProvider
+from app.repositories.storage_repository import JsonStorageRepository
 from app.schemas.files import FileItem
-from app.schemas.storage import IdLocation, PathLocation, RootLocation
+from app.schemas.rename import SingleRenameExecuteRequest
+from app.schemas.storage import IdLocation, RootLocation, StorageRecord, StorageState, StorageUpdate
 from app.providers.onedrive.auth import OneDriveAuthService
+from app.services import directory_metadata_index
+from app.services.directory_cache import DirectoryCache
+from app.services.directory_service import DirectoryService
 from app.services.execute_service import ExecuteService
+from app.services.single_rename_service import SingleRenameService
+from app.services.storage_manager import StorageManager
 from provider_fixtures import CooldownClock
 
 
@@ -179,7 +194,7 @@ async def test_single_patch_incomplete_metadata_is_unknown() -> None:
 
 
 @pytest.mark.asyncio
-async def test_lists_path_with_pagination_and_maps_folders() -> None:
+async def test_lists_root_with_pagination_and_maps_folders() -> None:
     next_link = f"{GRAPH_ROOT}/next-page"
     provider = StubOneDriveProvider(
         [
@@ -188,9 +203,9 @@ async def test_lists_path_with_pagination_and_maps_folders() -> None:
         ]
     )
 
-    items = await provider.list_files("Photos/2026")
+    items = await provider.list_files("")
 
-    assert "/root:/Photos/2026:/children?" in provider.calls[0][1]
+    assert "/root/children?" in provider.calls[0][1]
     assert "$select=" in provider.calls[0][1]
     assert provider.calls[1][1] == next_link
     assert [item.name for item in items] == ["Trip", "photo.jpg"]
@@ -372,18 +387,6 @@ def folder(key: str, name: str, parent: str = "root-id"):
 
 
 @pytest.mark.asyncio
-async def test_id_directory_and_parent_do_not_depend_on_names() -> None:
-    root = {**folder("root-id", "root"), "root": {}}
-    provider = StubOneDriveProvider([root, folder("opaque-id", "same"), {"value": [folder("child-id", "same", "opaque-id")]}])
-    listing = await provider.list_directory(IdLocation(value="opaque-id"))
-    assert listing.location == IdLocation(value="opaque-id")
-    assert listing.directory_id == "opaque-id"
-    assert listing.parent_location == RootLocation()
-    assert listing.items[0].parent_location == IdLocation(value="opaque-id")
-    assert any("/items/opaque-id/children" in url for _, url, _ in provider.calls)
-
-
-@pytest.mark.asyncio
 @pytest.mark.parametrize("drive_id", [None, "opaque-default-drive"])
 async def test_root_listing_exposes_real_identity_without_extra_requests(drive_id: str | None) -> None:
     root = {**folder("root-id", "root"), "root": {}}
@@ -396,18 +399,222 @@ async def test_root_listing_exposes_real_identity_without_extra_requests(drive_i
     assert listing.drive_id == drive_id
     assert listing.items[0].parent_location == IdLocation(value=listing.directory_id)
     assert len(provider.calls) == 2
-    provider.responses.extend([folder("nested", "nested"), {"value": []}])
+    provider.responses.extend([root, folder("nested", "nested"), {"value": []}])
     nested = await provider.list_directory(IdLocation(value="nested"))
     assert nested.drive_id == drive_id
-    assert len(provider.calls) == 4  # Reuses the default root identity without another root request.
+    assert len(provider.calls) == 5  # A direct Provider read has no shared browse index.
+
+
+class DirectoryGraph:
+    def __init__(self) -> None:
+        self.folders = {
+            "root-id": {**folder("root-id", "root"), "root": {}},
+            "a": folder("a", "A"),
+            "b": folder("b", "B", "a"),
+            "c": folder("c", "C", "b"),
+            "d": folder("d", "D", "c"),
+            "other": folder("other", "Other"),
+        }
+        self.requests: list[tuple[str, str]] = []
+
+    def payload(self, key: str) -> dict:
+        item = self.folders[key]
+        if key == "root-id":
+            return item
+        parent = item["parentReference"]["id"]
+        names = []
+        while parent != "root-id":
+            names.append(quote(self.folders[parent]["name"], safe=""))
+            parent = self.folders[parent]["parentReference"]["id"]
+        return {**item, "parentReference": {
+            **item["parentReference"], "path": "/drive/root:/" + "/".join(reversed(names)),
+        }}
+
+    def __call__(self, request: httpx.Request) -> httpx.Response:
+        route = request.url.path.removeprefix("/v1.0/me/drive/")
+        self.requests.append((request.method, route))
+        if route == "root":
+            return httpx.Response(200, json=self.folders["root-id"])
+        _, key, *suffix = route.split("/")
+        if key not in self.folders:
+            return httpx.Response(404, json={"error": {"code": "itemNotFound"}})
+        if suffix == ["children"]:
+            return httpx.Response(200, json={"value": [
+                self.payload(item["id"]) for item in self.folders.values()
+                if item["id"] != "root-id" and item["parentReference"]["id"] == key
+            ]})
+        item = self.folders[key]
+        if request.method == "PATCH":
+            item["name"] = json.loads(request.content)["name"]
+        return httpx.Response(200, json=self.payload(key))
+
+
+@pytest_asyncio.fixture
+async def directory_graph(tmp_path: Path) -> AsyncIterator[tuple[StorageManager, DirectoryGraph]]:
+    class AuthorizedAuth(OneDriveAuthService):
+        async def access_token(self, *, force_refresh: bool = False) -> str:
+            return "fixture-token"
+
+    graph = DirectoryGraph()
+    auth = AuthorizedAuth("http://localhost/callback", initial_state={}, persist=lambda payload: None)
+    async with httpx.AsyncClient(transport=httpx.MockTransport(graph)) as client:
+        registry = ProviderRegistry()
+        registry.register(ProviderDefinition(
+            "onedrive", OneDriveConfig, ("root", "id"),
+            lambda record, _: OneDriveProvider(auth, client=client), cache_directories=True,
+        ))
+        record = StorageRecord(storage_id="drive", provider_type="onedrive", name="Drive", config={"client_id": "original"})
+        manager = StorageManager(registry, JsonStorageRepository(tmp_path / "state.json"), StorageState(connections={"drive": record}))
+        yield manager, graph
 
 
 @pytest.mark.asyncio
-async def test_ambiguous_name_path_is_rejected() -> None:
-    root = {**folder("root-id", "root"), "root": {}}
-    provider = StubOneDriveProvider([root, {"value": [folder("one", "same"), folder("two", "same")]}])
-    with pytest.raises(ValidationError, match="ambiguous"):
-        await provider.list_directory(PathLocation(value="same"))
+async def test_browsing_and_repeated_breadcrumb_jumps_share_existing_listings(directory_graph, caplog) -> None:
+    manager, graph = directory_graph
+    caplog.set_level("DEBUG", logger="rename_studio.directory")
+    directories = manager.directories
+    chain = [("root", RootLocation()), ("A", IdLocation(value="a")), ("B", IdLocation(value="b")),
+             ("C", IdLocation(value="c")), ("D", IdLocation(value="d"))]
+    for index, (_, location) in enumerate(chain):
+        listing = await directories.list_directory("drive", location)
+        assert [(crumb.name, crumb.location) for crumb in listing.breadcrumbs] == chain[:index + 1]
+        if index:
+            assert listing.parent_location == chain[index - 1][1]
+    assert graph.requests == [("GET", "root"), ("GET", "items/root-id/children")] + [
+        ("GET", f"items/{key}/children") for key in ("a", "b", "c", "d")
+    ]
+    assert any(record.message.startswith("directory metadata index hit storage_id=drive") for record in caplog.records)
+    count = len(graph.requests)
+    caplog.clear()
+    a, b = listing.breadcrumbs[1:3]
+    d = listing.breadcrumbs[-1]
+    for target in (a, d, b, d, a):
+        opened = await directories.list_directory("drive", target.location)
+        assert opened.location == target.location
+    assert sum(record.message == "directory cache hit storage_id=drive" for record in caplog.records) == 5
+    assert len(graph.requests) == count
+
+
+@pytest.mark.asyncio
+async def test_graph_missing_target_does_not_retry_or_evict_other_directories(directory_graph) -> None:
+    manager, graph = directory_graph
+    directories = manager.directories
+    root = await directories.list_directory("drive", RootLocation())
+    graph.requests.clear()
+    with pytest.raises(NotFoundError):
+        await directories.list_directory("drive", IdLocation(value="missing"))
+    assert await directories.list_directory("drive", RootLocation()) == root
+    await directories.list_directory("drive", IdLocation(value="a"))
+    assert graph.requests == [("GET", "items/missing"), ("GET", "items/a/children")]
+
+
+@pytest.mark.asyncio
+async def test_graph_deleted_folder_evicts_descendants_but_keeps_unrelated_listings(directory_graph) -> None:
+    manager, graph = directory_graph
+    directories = manager.directories
+    parent, child, other = (IdLocation(value=value) for value in ("a", "b", "other"))
+    await directories.list_directory("drive", parent)
+    await directories.list_directory("drive", child)
+    unrelated = await directories.list_directory("drive", other)
+    for folder_id in ("a", "b", "c", "d"):
+        del graph.folders[folder_id]
+    with pytest.raises(NotFoundError):
+        await directories.list_directory("drive", parent, mode="refresh")
+
+    graph.requests.clear()
+    assert await directories.list_directory("drive", other) == unrelated
+    with pytest.raises(NotFoundError):
+        await directories.list_directory("drive", child)
+    assert graph.requests == [("GET", "items/b")]
+
+
+@pytest.mark.asyncio
+async def test_cold_deep_listing_resolves_ancestor_ids_with_duplicate_and_separator_names(directory_graph) -> None:
+    manager, graph = directory_graph
+    graph.folders["a"]["name"] = graph.folders["other"]["name"] = "Same"
+    graph.folders["b"]["name"] = "with/slash"
+    graph.folders["nested"] = folder("nested", "D", "d")
+    location = IdLocation(value="d")
+    listing = await manager.directories.list_directory("drive", location)
+    assert [(crumb.name, crumb.location) for crumb in listing.breadcrumbs] == [
+        ("root", RootLocation()), ("Same", IdLocation(value="a")), ("with/slash", IdLocation(value="b")),
+        ("C", IdLocation(value="c")), ("D", IdLocation(value="d")),
+    ]
+    assert listing.location == location and listing.directory_id == "d"
+    assert listing.items[0].parent_location == location
+    assert listing.path == "Same/with%2Fslash/C/D"
+    assert graph.requests == [("GET", route) for route in (
+        "root", "items/d", "items/d/children", "items/c", "items/b", "items/a",
+    )]
+
+
+@pytest.mark.asyncio
+async def test_expired_ancestor_is_read_again_even_if_its_child_is_still_cached(directory_graph, monkeypatch) -> None:
+    manager, graph = directory_graph
+    now = 0
+    monkeypatch.setattr(directory_metadata_index, "monotonic", lambda: now)
+    for now, key in ((0, "a"), (50, "b")):
+        await manager.directories.list_directory("drive", IdLocation(value=key))
+    now = 60
+    graph.requests.clear()
+    listing = await manager.directories.list_directory("drive", IdLocation(value="c"))
+    assert listing.breadcrumbs[1].name == "A"
+    assert graph.requests == [("GET", route) for route in ("root", "items/c/children", "items/b", "items/a")]
+
+
+@pytest.mark.asyncio
+async def test_metadata_capacity_evicts_oldest_hint_without_removing_listings(directory_graph) -> None:
+    manager, graph = directory_graph
+    directories = DirectoryService(
+        manager, DirectoryCache(), metadata=directory_metadata_index.DirectoryMetadataIndex(max_entries=2),
+    )
+    root = await directories.list_directory("drive", RootLocation())
+    graph.requests.clear()
+    await directories.list_directory("drive", IdLocation(value="a"))
+    assert await directories.list_directory("drive", RootLocation()) == root
+    assert graph.requests == [("GET", "root"), ("GET", "items/a/children")]
+
+
+@pytest.mark.asyncio
+async def test_live_graph_child_paths_repair_a_cached_parent_after_external_move(directory_graph) -> None:
+    manager, graph = directory_graph
+    directories = manager.directories
+    a, b = (IdLocation(value=key) for key in ("a", "b"))
+    await directories.list_directory("drive", a)
+    graph.folders["b"]["parentReference"]["id"] = "other"
+    graph.requests.clear()
+    moved = await directories.list_directory("drive", b)
+    assert moved.parent_location == IdLocation(value="other")
+    assert moved.path == "Other/B" and moved.items[0].parent_path == "Other/B"
+    assert [crumb.name for crumb in moved.breadcrumbs] == ["root", "Other", "B"]
+    assert ("GET", "items/b") in graph.requests
+    assert (await directories.list_directory("drive", a)).items == []
+
+
+@pytest.mark.asyncio
+async def test_rename_and_connection_revision_invalidate_cached_directory_ancestors(directory_graph) -> None:
+    manager, graph = directory_graph
+    directories = manager.directories
+    a, d, other = (IdLocation(value=key) for key in ("a", "d", "other"))
+    for location in (a, d, other):
+        await directories.list_directory("drive", location)
+    result = await SingleRenameService(manager.registry).execute("drive", SingleRenameExecuteRequest(
+        revision=1, operation_id=uuid4(), location=RootLocation(), file_id="a", original_name="A", target_name="Renamed",
+    ))
+    assert result.items[0].status == "renamed"
+    graph.requests.clear()
+    await directories.list_directory("drive", other)
+    assert graph.requests == []
+    assert (await directories.list_directory("drive", d)).breadcrumbs[1].name == "Renamed"
+    assert (await directories.list_directory("drive", a)).breadcrumbs[1].name == "Renamed"
+    assert ("GET", "items/d/children") in graph.requests and ("GET", "items/a/children") in graph.requests
+
+    await manager.update("drive", StorageUpdate(config={"client_id": "replacement"}))
+    graph.folders["a"]["name"] = "New connection"
+    graph.requests.clear()
+    reopened = await directories.list_directory("drive", d)
+    assert reopened.revision == 2 and reopened.breadcrumbs[1].name == "New connection"
+    assert ("GET", "root") in graph.requests and ("GET", "items/a") in graph.requests
 
 
 @pytest.mark.asyncio
