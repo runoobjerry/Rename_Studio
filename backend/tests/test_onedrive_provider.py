@@ -25,7 +25,7 @@ from app.providers.retry import RetryBudget
 from app.providers.base import RenameRequest
 from app.providers.registry import ProviderDefinition, ProviderRegistry
 from app.providers.onedrive.definition import OneDriveConfig
-from app.providers.onedrive.driver import GRAPH_ROOT, OneDriveProvider
+from app.providers.onedrive.driver import GRAPH_ROOT, OneDriveDriver
 from app.repositories.storage_repository import JsonStorageRepository
 from app.schemas.files import DirectoryListing, FileItem
 from app.rules.registry import RuleRegistry
@@ -43,27 +43,27 @@ from provider_fixtures import CooldownClock
 @pytest.mark.asyncio
 @pytest.mark.parametrize("status", [408, 503])
 async def test_uncertain_part_preserves_success_and_refusal_without_resubmission(status: int) -> None:
-    provider = StubOneDriveProvider([{"responses": [
+    driver = StubOneDriveDriver([{"responses": [
         {"id": "0", "status": 200, "body": drive_item("a", "AA")},
         {"id": "1", "status": status},
         {"id": "2", "status": 429, "headers": {"Retry-After": "0"}},
     ]}])
-    result = await provider.rename_many([RenameRequest("a", "AA"), RenameRequest("b", "BB"), RenameRequest("c", "CC")])
+    result = await driver.rename_many([RenameRequest("a", "AA"), RenameRequest("b", "BB"), RenameRequest("c", "CC")])
     assert result["a"].name == "AA"
     assert isinstance(result["b"], RenameOutcomeUnknownError)
     assert isinstance(result["c"], RateLimitError)
-    assert len(provider.calls) == 1
+    assert len(driver.calls) == 1
 
 
 @pytest.mark.asyncio
 async def test_verified_different_batch_name_is_failed_without_replay() -> None:
-    provider = StubOneDriveProvider([{"responses": [
+    driver = StubOneDriveDriver([{"responses": [
         {"id": "0", "status": 200, "body": drive_item("a", "external.txt")},
     ]}])
-    result = await provider.rename_many([RenameRequest("a", "new.txt")])
+    result = await driver.rename_many([RenameRequest("a", "new.txt")])
     assert isinstance(result["a"], ProviderError)
     assert result["a"].details["actual_name"] == "external.txt"
-    assert len(provider.calls) == 1
+    assert len(driver.calls) == 1
 
 
 def drive_item(item_id: str, name: str, *, folder: bool = False) -> dict[str, Any]:
@@ -79,7 +79,7 @@ def drive_item(item_id: str, name: str, *, folder: bool = False) -> dict[str, An
     return item
 
 
-class StubOneDriveProvider(OneDriveProvider):
+class StubOneDriveDriver(OneDriveDriver):
     def __init__(self, responses: list[dict[str, object]]) -> None:
         super().__init__(OneDriveAuthService("http://localhost/callback", initial_state={}, persist=lambda payload: None))
         self.responses = responses
@@ -110,7 +110,7 @@ async def test_batch_rename_classifies_graph_codes_without_exposing_message(
     status: int, inner_code: str, expected_code: str, expected_reason: str | None,
 ) -> None:
     upstream_message = "Upstream diagnostic with a private file path"
-    provider = StubOneDriveProvider([{"responses": [{
+    driver = StubOneDriveDriver([{"responses": [{
         "id": "0",
         "status": status,
         "body": {"error": {
@@ -120,7 +120,7 @@ async def test_batch_rename_classifies_graph_codes_without_exposing_message(
         }},
     }]}])
 
-    result = (await provider.rename_many([RenameRequest("a", "new.txt")]))["a"]
+    result = (await driver.rename_many([RenameRequest("a", "new.txt")]))["a"]
 
     assert isinstance(result, (RenameConflictError, ValidationError))
     assert result.code == expected_code
@@ -160,8 +160,8 @@ async def test_single_patch_maps_graph_permission_denied(
 
     auth = AuthorizedAuth("http://localhost/callback", initial_state={}, persist=lambda payload: None)
     async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as client:
-        provider = OneDriveProvider(auth, client=client)
-        task = asyncio.create_task(provider.rename("opaque-id", "new.txt"))
+        driver = OneDriveDriver(auth, client=client)
+        task = asyncio.create_task(driver.rename("opaque-id", "new.txt"))
         try:
             if delay:
                 assert await clock.next_wait() == delay
@@ -170,7 +170,7 @@ async def test_single_patch_maps_graph_permission_denied(
             with pytest.raises(RateLimitError if final_status == 429 else PermissionDeniedError) as caught:
                 await asyncio.wait_for(task, 5)
             if final_status == 429:
-                task = asyncio.create_task(provider.get_metadata("after"))
+                task = asyncio.create_task(driver.get_metadata("after"))
                 assert await clock.next_wait() == delay + 60
                 assert len(requests) == 4
                 clock.advance(delay + 60)
@@ -187,27 +187,27 @@ async def test_single_patch_maps_graph_permission_denied(
 
 @pytest.mark.asyncio
 async def test_single_patch_incomplete_metadata_is_unknown() -> None:
-    provider = StubOneDriveProvider([{}])
+    driver = StubOneDriveDriver([{}])
     with pytest.raises(RenameOutcomeUnknownError):
-        await provider.rename("opaque-id", "new.txt")
-    assert len(provider.calls) == 1
+        await driver.rename("opaque-id", "new.txt")
+    assert len(driver.calls) == 1
 
 
 @pytest.mark.asyncio
 async def test_lists_root_with_pagination_and_maps_folders() -> None:
     next_link = f"{GRAPH_ROOT}/next-page"
-    provider = StubOneDriveProvider(
+    driver = StubOneDriveDriver(
         [
             {"value": [drive_item("1", "Trip", folder=True)], "@odata.nextLink": next_link},
             {"value": [drive_item("2", "photo.jpg")]},
         ]
     )
 
-    items = await provider.list_files("")
+    items = await driver.list_files("")
 
-    assert "/root/children?" in provider.calls[0][1]
-    assert "$select=" in provider.calls[0][1]
-    assert provider.calls[1][1] == next_link
+    assert "/root/children?" in driver.calls[0][1]
+    assert "$select=" in driver.calls[0][1]
+    assert driver.calls[1][1] == next_link
     assert [item.name for item in items] == ["Trip", "photo.jpg"]
     assert items[0].is_directory is True
     assert items[0].parent_path == "Photos"
@@ -256,25 +256,25 @@ async def test_rename_many_uses_graph_batch_response(
 
     auth = AuthorizedAuth("http://localhost/callback", initial_state={}, persist=lambda payload: None)
     async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as client:
-        provider = OneDriveProvider(auth, client=client)
+        driver = OneDriveDriver(auth, client=client)
         tasks: list[asyncio.Task] = []
         try:
             # These requests are already in flight when the first batch reports throttling.
             for key in gates:
-                tasks.append(asyncio.create_task(provider.get_metadata(key)))
+                tasks.append(asyncio.create_task(driver.get_metadata(key)))
                 assert await asyncio.wait_for(started.get(), 5) == key
             if operation == "write":
-                batch_task = asyncio.create_task(provider.rename_many([RenameRequest("a", "new-a.txt"), RenameRequest("b", "new-b.txt")]))
+                batch_task = asyncio.create_task(driver.rename_many([RenameRequest("a", "new-a.txt"), RenameRequest("b", "new-b.txt")]))
             else:
-                batch_task = asyncio.create_task(provider.get_metadata_many(["a", "b"]))
+                batch_task = asyncio.create_task(driver.get_metadata_many(["a", "b"]))
             tasks.append(batch_task)
             assert await clock.next_wait() == 60
-            queued = asyncio.create_task(provider.get_metadata("queued"))
+            queued = asyncio.create_task(driver.get_metadata("queued"))
             tasks.append(queued)
             assert await clock.next_wait() == 60
             # A distinct connection shares neither the deadline nor cancellation state.
-            independent = OneDriveProvider(auth, client=client)
-            assert (await independent.get_metadata("independent")).id == "independent"
+            independent_driver = OneDriveDriver(auth, client=client)
+            assert (await independent_driver.get_metadata("independent")).id == "independent"
             assert batches == [["a", "b"]]
             assert "queued" not in attempts
 
@@ -292,7 +292,7 @@ async def test_rename_many_uses_graph_batch_response(
             queued.cancel()
             with pytest.raises(asyncio.CancelledError):
                 await queued
-            survivor = asyncio.create_task(provider.get_metadata("survivor"))
+            survivor = asyncio.create_task(driver.get_metadata("survivor"))
             tasks.append(survivor)
             assert await clock.next_wait() == 95
             clock.advance(95)
@@ -311,16 +311,16 @@ async def test_rename_many_uses_graph_batch_response(
 
 
 def test_rejects_onedrive_reserved_names() -> None:
-    provider = StubOneDriveProvider([])
+    driver = StubOneDriveDriver([])
 
-    assert provider.validate_name("desktop.ini") is not None
-    assert provider.validate_name("~$draft.docx") is not None
-    assert provider.validate_name("valid file.txt") is None
+    assert driver.validate_name("desktop.ini") is not None
+    assert driver.validate_name("~$draft.docx") is not None
+    assert driver.validate_name("valid file.txt") is None
 
 
 @pytest.mark.asyncio
 async def test_service_two_group_window_does_not_multiply_graph_concurrency() -> None:
-    class GatedGraphProvider(StubOneDriveProvider):
+    class GatedGraphDriver(StubOneDriveDriver):
         def __init__(self) -> None:
             super().__init__([])
             self.started: asyncio.Queue[int] = asyncio.Queue()
@@ -356,25 +356,25 @@ async def test_service_two_group_window_does_not_multiply_graph_concurrency() ->
             finally:
                 self.active -= 1
 
-    provider = GatedGraphProvider()
+    driver = GatedGraphDriver()
     requests = [RenameRequest(f"file-{index}", f"new-{index}.txt") for index in range(41)]
-    task = asyncio.create_task(ExecuteService._rename_in_batches(provider, requests))
+    task = asyncio.create_task(ExecuteService._rename_in_batches(driver, requests))
     try:
-        assert [await asyncio.wait_for(provider.started.get(), 5),
-                await asyncio.wait_for(provider.started.get(), 5)] == [0, 1]
-        assert provider.active == provider.peak == 2
-        provider.gates[1].set()
-        assert await asyncio.wait_for(provider.started.get(), 5) == 2
-        assert not provider.gates[0].is_set()
-        assert provider.active == 2
+        assert [await asyncio.wait_for(driver.started.get(), 5),
+                await asyncio.wait_for(driver.started.get(), 5)] == [0, 1]
+        assert driver.active == driver.peak == 2
+        driver.gates[1].set()
+        assert await asyncio.wait_for(driver.started.get(), 5) == 2
+        assert not driver.gates[0].is_set()
+        assert driver.active == 2
     finally:
-        provider.release_all = True
-        for gate in provider.gates:
+        driver.release_all = True
+        for gate in driver.gates:
             gate.set()
         outcomes = await asyncio.wait_for(task, 5)
-    assert [len(body["requests"]) for _, _, body in provider.calls] == [20, 20, 1]
-    assert provider.peak == 2
-    assert provider.active == 0
+    assert [len(body["requests"]) for _, _, body in driver.calls] == [20, 20, 1]
+    assert driver.peak == 2
+    assert driver.active == 0
     assert set(outcomes) == {entry.file_id for entry in requests}
     for entry in requests:
         outcome = outcomes[entry.file_id]
@@ -392,17 +392,17 @@ async def test_root_listing_exposes_real_identity_without_extra_requests(drive_i
     root = {**folder("root-id", "root"), "root": {}}
     if drive_id is not None:
         root["parentReference"]["driveId"] = drive_id
-    provider = StubOneDriveProvider([root, {"value": [folder("child", "child")]}])
-    listing = await provider.list_directory(RootLocation())
+    driver = StubOneDriveDriver([root, {"value": [folder("child", "child")]}])
+    listing = await driver.list_directory(RootLocation())
     assert listing.location == RootLocation()
     assert listing.directory_id == "root-id"
     assert listing.drive_id == drive_id
     assert listing.items[0].parent_location == IdLocation(value=listing.directory_id)
-    assert len(provider.calls) == 2
-    provider.responses.extend([root, folder("nested", "nested"), {"value": []}])
-    nested = await provider.list_directory(IdLocation(value="nested"))
+    assert len(driver.calls) == 2
+    driver.responses.extend([root, folder("nested", "nested"), {"value": []}])
+    nested = await driver.list_directory(IdLocation(value="nested"))
     assert nested.drive_id == drive_id
-    assert len(provider.calls) == 5
+    assert len(driver.calls) == 5
 
 
 class DirectoryGraph:
@@ -461,7 +461,7 @@ async def directory_graph(tmp_path: Path) -> AsyncIterator[tuple[StorageManager,
         registry = ProviderRegistry()
         registry.register(ProviderDefinition(
             "onedrive", OneDriveConfig, ("root", "id"),
-            lambda record, _: OneDriveProvider(auth, client=client), cache_directories=True,
+            lambda record, _: OneDriveDriver(auth, client=client), cache_directories=True,
         ))
         record = StorageRecord(storage_id="drive", provider_type="onedrive", name="Drive", config={"client_id": "original"})
         manager = StorageManager(registry, JsonStorageRepository(tmp_path / "state.json"), StorageState(connections={"drive": record}))
@@ -660,13 +660,13 @@ async def test_connection_revision_invalidates_cached_directory_ancestors(direct
 @pytest.mark.asyncio
 @pytest.mark.parametrize("next_link", [123, "https://untrusted.example/page", f"{GRAPH_ROOT}/me/drive/root/children?$select=id,name,parentReference,folder,root,size,lastModifiedDateTime&$top=200"])
 async def test_invalid_or_repeated_pagination_never_returns_partial_items(next_link) -> None:
-    provider = StubOneDriveProvider([{"value": [folder("one", "same")], "@odata.nextLink": next_link}])
+    driver = StubOneDriveDriver([{"value": [folder("one", "same")], "@odata.nextLink": next_link}])
     with pytest.raises(ProviderError):
-        await provider.list_files("")
+        await driver.list_files("")
 
 
 @pytest.mark.asyncio
 async def test_invalid_directory_item_is_not_silently_skipped() -> None:
-    provider = StubOneDriveProvider([{"value": [folder("one", "same"), None]}])
+    driver = StubOneDriveDriver([{"value": [folder("one", "same"), None]}])
     with pytest.raises(ProviderError):
-        await provider.list_files("")
+        await driver.list_files("")

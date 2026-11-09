@@ -8,11 +8,11 @@ from pathlib import Path
 from pydantic import SecretStr
 
 from app.core.errors import NotFoundError, StorageAccountAlreadyConnectedError, StorageBusyError, StorageConnectionChangedError, ValidationError
-from app.providers.base import StorageProvider
+from app.providers.base import StorageDriver
 from app.providers.registry import ProviderRegistry
 from app.repositories.storage_repository import JsonStorageRepository
 from app.schemas.storage import AppPreferences, AppSettingsPatch, AppSettingsResponse, StorageCreate, StorageInfo, StorageRecord, StorageState, StorageUpdate, validate_preferences_size
-from app.services.connection_auth import ConnectionAuth
+from app.services.storage_auth import StorageAuth
 from app.services.directory_cache import DirectoryCache
 from app.services.directory_service import DirectoryService
 from app.services.preview_store import PreviewStore
@@ -27,8 +27,8 @@ class StorageManager:
         self.repository = repository
         self.state = state
         self.directories = DirectoryService(self, directory_cache if directory_cache is not None else DirectoryCache())
-        self._clients: dict[str, tuple[int, StorageProvider]] = {}
-        self._auth: dict[str, ConnectionAuth] = {}
+        self._drivers: dict[str, tuple[int, StorageDriver]] = {}
+        self._auth: dict[str, StorageAuth] = {}
         self._busy: set[str] = set()
         self._closing: set[asyncio.Task[None]] = set()
         self.authorization_sessions: dict[str, tuple[str, int, str, datetime]] = {}
@@ -122,10 +122,10 @@ class StorageManager:
         self._auth.clear()
         previews.clear()
         self.directories.invalidate()
-        clients = self._clients
-        self._clients = {}
-        for _, provider in clients.values():
-            task = asyncio.create_task(provider.aclose())
+        drivers = self._drivers
+        self._drivers = {}
+        for _, driver in drivers.values():
+            task = asyncio.create_task(driver.aclose())
             self._closing.add(task)
             task.add_done_callback(self._closing.discard)
         return self.app_settings()
@@ -178,20 +178,20 @@ class StorageManager:
         self._commit(None, record.storage_id)
         await self._invalidate(record.storage_id)
 
-    def provider(self, storage_id: str) -> StorageProvider:
+    def get_driver(self, storage_id: str) -> StorageDriver:
         record = self.record(storage_id)
-        cached = self._clients.get(record.storage_id)
+        cached = self._drivers.get(record.storage_id)
         if cached is not None and cached[0] == record.revision:
             return cached[1]
-        factory = self.registry.definition(record.provider_type).factory
-        provider = factory(record, self.auth(record.storage_id, required=False))
-        self._clients[record.storage_id] = (record.revision, provider)
-        return provider
+        driver_factory = self.registry.definition(record.provider_type).driver_factory
+        driver = driver_factory(record, self.auth(record.storage_id, required=False))
+        self._drivers[record.storage_id] = (record.revision, driver)
+        return driver
 
-    def auth(self, storage_id: str, *, required: bool = True) -> ConnectionAuth | None:
+    def auth(self, storage_id: str, *, required: bool = True) -> StorageAuth | None:
         record = self.record(storage_id)
-        factory = self.registry.definition(record.provider_type).auth_factory
-        if factory is None:
+        auth_factory = self.registry.definition(record.provider_type).auth_factory
+        if auth_factory is None:
             if required:
                 raise ValidationError("This storage does not use browser authentication")
             return None
@@ -206,7 +206,7 @@ class StorageManager:
                     raise StorageConnectionChangedError("Authorization belongs to an old storage configuration")
                 self._persist_auth(record.storage_id, config, credentials)
 
-            auth = factory(record, persist, guard)
+            auth = auth_factory(record, persist, guard)
             self._auth[record.storage_id] = auth
         return self._auth[record.storage_id]
 
@@ -234,7 +234,7 @@ class StorageManager:
             record.revision += 1
         self._commit(record, storage_id)
         if changed:
-            cached = self._clients.pop(storage_id, None)
+            cached = self._drivers.pop(storage_id, None)
             if cached is not None:
                 task = asyncio.create_task(cached[1].aclose())
                 self._closing.add(task)
@@ -242,7 +242,7 @@ class StorageManager:
 
     async def _invalidate(self, storage_id: str) -> None:
         self._auth.pop(storage_id, None)
-        cached = self._clients.pop(storage_id, None)
+        cached = self._drivers.pop(storage_id, None)
         if cached is not None:
             await cached[1].aclose()
 
@@ -262,4 +262,4 @@ class StorageManager:
             self._busy.remove(record.storage_id)
 
     async def aclose(self) -> None:
-        await asyncio.gather(*(entry[1].aclose() for entry in self._clients.values()), *self._closing)
+        await asyncio.gather(*(entry[1].aclose() for entry in self._drivers.values()), *self._closing)

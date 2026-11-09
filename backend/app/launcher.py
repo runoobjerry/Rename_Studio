@@ -82,7 +82,7 @@ async def serve(stop_file: Path, parent_pid: int, instance_id: str) -> None:
         server = uvicorn.Server(uvicorn.Config(
             create_release_app(dist, instance_id), host="127.0.0.1", port=8000,
             workers=1, reload=False, access_log=False, loop="asyncio",
-            # Let in-flight rename requests finish before closing provider clients.
+            # Let in-flight rename requests finish before closing storage drivers.
             timeout_graceful_shutdown=None,
         ))
 

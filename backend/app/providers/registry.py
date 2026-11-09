@@ -6,9 +6,9 @@ from typing import TYPE_CHECKING, Literal
 from pydantic import BaseModel, ValidationError as ModelValidationError
 
 from app.core.errors import ValidationError
-from app.providers.base import StorageProvider
+from app.providers.base import StorageDriver
 from app.schemas.storage import StorageConfigField, StorageRecord
-from app.services.connection_auth import ConnectionAuth
+from app.services.storage_auth import StorageAuth
 
 if TYPE_CHECKING:
     from app.services.storage_manager import StorageManager
@@ -19,8 +19,8 @@ class ProviderDefinition:
     provider_type: str
     config_model: type[BaseModel]
     locations: tuple[str, ...]
-    factory: Callable[[StorageRecord, ConnectionAuth | None], StorageProvider]
-    auth_factory: Callable[[StorageRecord, Callable[[dict[str, object], dict[str, str]], None], Callable[[], None]], ConnectionAuth] | None = None
+    driver_factory: Callable[[StorageRecord, StorageAuth | None], StorageDriver]
+    auth_factory: Callable[[StorageRecord, Callable[[dict[str, object], dict[str, str]], None], Callable[[], None]], StorageAuth] | None = None
     local_picker: bool = False
     can_rename: bool = True
     config_fields: tuple[StorageConfigField, ...] = ()
@@ -50,16 +50,16 @@ class ProviderRegistry:
         except ModelValidationError as exc:
             raise ValidationError("Invalid storage configuration", details={"provider": provider_type}) from exc
 
-    def revision(self, provider_id: str) -> int:
-        return self.manager.record(provider_id).revision
+    def revision(self, storage_id: str) -> int:
+        return self.manager.record(storage_id).revision
 
     @contextmanager
-    def execution(self, provider_id: str, revision: int) -> Iterator[None]:
-        with self.manager.execution(provider_id, revision):
+    def execution(self, storage_id: str, revision: int) -> Iterator[None]:
+        with self.manager.execution(storage_id, revision):
             yield
 
-    def get(self, provider_id: str) -> StorageProvider:
-        return self.manager.provider(provider_id)
+    def get_driver(self, storage_id: str) -> StorageDriver:
+        return self.manager.get_driver(storage_id)
 
     async def aclose(self) -> None:
         await self.manager.aclose()

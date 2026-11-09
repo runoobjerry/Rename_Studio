@@ -5,7 +5,7 @@ from pathlib import Path
 
 from pydantic import BaseModel
 
-from app.providers.base import StorageProvider
+from app.providers.base import StorageDriver
 from app.providers.registry import ProviderDefinition, ProviderRegistry
 from app.repositories.storage_repository import JsonStorageRepository
 from app.schemas.storage import StorageRecord, StorageState
@@ -16,22 +16,22 @@ class TestProviderConfig(BaseModel):
     pass
 
 
-def registry_for(providers: list[StorageProvider], *, cache_directories: bool = False) -> ProviderRegistry:
-    """Exercise service tests through the same factory/connection contract as production."""
+def registry_for(drivers: dict[str, StorageDriver], *, cache_directories: bool = False) -> ProviderRegistry:
+    """Exercise service tests through the same driver factory and storage lookup as production."""
     registry = ProviderRegistry()
-    connections = {}
-    for provider in providers:
+    records = {}
+    for storage_id, driver in drivers.items():
         registry.register(ProviderDefinition(
-            provider.id, TestProviderConfig, ("root", "id", "path"),
-            lambda record, auth, instance=provider: instance,
+            driver.provider_type, TestProviderConfig, ("root", "id", "path"),
+            lambda record, auth, instance=driver: instance,
             cache_directories=cache_directories,
         ))
-        connections[provider.id] = StorageRecord(
-            storage_id=provider.id, provider_type=provider.id,
-            name=provider.id, config={},
+        records[storage_id] = StorageRecord(
+            storage_id=storage_id, provider_type=driver.provider_type,
+            name=storage_id, config={},
         )
     StorageManager(registry, JsonStorageRepository(Path("unused-unit-test-state.json")),
-                   StorageState(connections=connections))
+                   StorageState(connections=records))
     return registry
 
 

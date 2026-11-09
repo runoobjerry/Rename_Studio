@@ -12,7 +12,7 @@ from app.core.errors import (
     ProviderError,
     ValidationError,
 )
-from app.providers.local.driver import LocalProvider
+from app.providers.local.driver import LocalDriver
 from app.providers.base import RenameRequest
 from app.rules.base import RenameRule, RuleContext
 from app.rules.registry import RuleRegistry
@@ -39,14 +39,14 @@ class MappingRule(RenameRule[MappingConfig]):
         return config.names.get(filename, filename)
 
 
-class FailingLocalProvider(LocalProvider):
+class FailingLocalDriver(LocalDriver):
     async def rename(self, file_id: str, new_name: str) -> FileItem:
         if new_name == "two-new.txt":
             raise ProviderError("Injected provider failure")
         return await super().rename(file_id, new_name)
 
 
-class TrackingLocalProvider(LocalProvider):
+class TrackingLocalDriver(LocalDriver):
     def __init__(self, root: Path) -> None:
         super().__init__(root)
         self.rename_targets: list[str] = []
@@ -57,9 +57,9 @@ class TrackingLocalProvider(LocalProvider):
 
 
 def build_services(
-    root: Path, provider: LocalProvider | None = None
+    root: Path, driver: LocalDriver | None = None
 ) -> tuple[PreviewService, ExecuteService]:
-    providers = registry_for([provider or LocalProvider(root)])
+    providers = registry_for({"local": driver or LocalDriver(root)})
     rules = RuleRegistry()
     rules.register(MappingRule())
     store = PreviewStore()
@@ -78,7 +78,7 @@ def request_for(names: dict[str, str]) -> RenamePreviewRequest:
 
 @pytest.mark.asyncio
 async def test_progress_tracks_completed_batches_and_survives_consumption(tmp_path: Path) -> None:
-    class PausingProvider(LocalProvider):
+    class PausingDriver(LocalDriver):
         def __init__(self, root: Path) -> None:
             super().__init__(root)
             self.calls = 0
@@ -95,14 +95,14 @@ async def test_progress_tracks_completed_batches_and_survives_consumption(tmp_pa
     names = {f"old-{index}.txt": f"new-{index}.txt" for index in range(41)}
     for name in names:
         (tmp_path / name).write_text("data", encoding="utf-8")
-    provider = PausingProvider(tmp_path)
-    assert provider.execution_batch_concurrency == 1
-    preview_service, execute_service = build_services(tmp_path, provider)
+    driver = PausingDriver(tmp_path)
+    assert driver.execution_batch_concurrency == 1
+    preview_service, execute_service = build_services(tmp_path, driver)
     preview = await preview_service.preview(request_for(names))
     assert execute_service.progress(preview.preview_id).phase == "waiting"
     task = asyncio.create_task(execute_service.execute(preview.preview_id))
     try:
-        await asyncio.wait_for(provider.paused.wait(), timeout=5)
+        await asyncio.wait_for(driver.paused.wait(), timeout=5)
         progress = execute_service.progress(preview.preview_id)
         assert progress.total == 41
         assert progress.processed == 20
@@ -110,7 +110,7 @@ async def test_progress_tracks_completed_batches_and_survives_consumption(tmp_pa
         progress.processed = 0
         assert execute_service.progress(preview.preview_id).processed == 20
     finally:
-        provider.resume.set()
+        driver.resume.set()
         result = await asyncio.wait_for(task, timeout=5)
     assert result.status == "completed"
     progress = execute_service.progress(preview.preview_id)
@@ -123,8 +123,8 @@ async def test_progress_tracks_completed_batches_and_survives_consumption(tmp_pa
 @pytest.mark.asyncio
 async def test_executes_valid_preview_once(tmp_path: Path) -> None:
     (tmp_path / "one.txt").write_text("one", encoding="utf-8")
-    provider = TrackingLocalProvider(tmp_path)
-    preview_service, execute_service = build_services(tmp_path, provider)
+    driver = TrackingLocalDriver(tmp_path)
+    preview_service, execute_service = build_services(tmp_path, driver)
     preview = await preview_service.preview(request_for({"one.txt": "renamed.txt"}))
 
     result = await execute_service.execute(preview.preview_id)
@@ -132,7 +132,7 @@ async def test_executes_valid_preview_once(tmp_path: Path) -> None:
     assert result.status == "completed"
     assert result.items[0].status == "renamed"
     assert (tmp_path / "renamed.txt").exists()
-    assert provider.rename_targets == ["renamed.txt"]
+    assert driver.rename_targets == ["renamed.txt"]
     assert result.items[0].file_id == "one.txt"
     assert result.items[0].current_file.id == "renamed.txt"
     assert result.items[0].current_file.path == "renamed.txt"
@@ -193,8 +193,8 @@ async def test_rejects_source_replaced_by_link_after_preview(tmp_path: Path) -> 
 async def test_rejects_invalid_preview(tmp_path: Path) -> None:
     (tmp_path / "one.txt").write_text("one", encoding="utf-8")
     (tmp_path / "occupied.txt").write_text("occupied", encoding="utf-8")
-    provider = TrackingLocalProvider(tmp_path)
-    preview_service, execute_service = build_services(tmp_path, provider)
+    driver = TrackingLocalDriver(tmp_path)
+    preview_service, execute_service = build_services(tmp_path, driver)
     preview = await preview_service.preview(
         request_for({"one.txt": "occupied.txt"})
     )
@@ -204,7 +204,7 @@ async def test_rejects_invalid_preview(tmp_path: Path) -> None:
     with pytest.raises(ValidationError) as exc:
         await execute_service.execute(preview.preview_id)
     assert exc.value.details["execution_started"] is False
-    assert provider.rename_targets == []
+    assert driver.rename_targets == []
     progress = execute_service.progress(preview.preview_id)
     assert progress.phase == "failed"
     assert progress.processed == 0
@@ -214,8 +214,8 @@ async def test_rejects_invalid_preview(tmp_path: Path) -> None:
 async def test_reports_partial_provider_failure(tmp_path: Path) -> None:
     (tmp_path / "one.txt").write_text("one", encoding="utf-8")
     (tmp_path / "two.txt").write_text("two", encoding="utf-8")
-    provider = FailingLocalProvider(tmp_path)
-    preview_service, execute_service = build_services(tmp_path, provider)
+    driver = FailingLocalDriver(tmp_path)
+    preview_service, execute_service = build_services(tmp_path, driver)
     preview = await preview_service.preview(
         request_for({"one.txt": "one-new.txt", "two.txt": "two-new.txt"})
     )

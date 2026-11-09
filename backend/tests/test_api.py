@@ -9,7 +9,7 @@ from fastapi.testclient import TestClient
 from provider_fixtures import registry_for
 from app.api.dependencies import get_execute_service, get_rule_registry, get_single_rename_service, get_storage_manager, get_preview_service, get_preview_store
 from app.main import create_app
-from app.providers.local.driver import LocalProvider
+from app.providers.local.driver import LocalDriver
 from app.services.execute_service import ExecuteService
 from app.services.single_rename_service import SingleRenameService
 from app.services.preview_service import PreviewService
@@ -54,7 +54,7 @@ def test_execution_api_preserves_unknown_status_after_committed_write(
 
 @pytest.fixture
 def api_client(tmp_path: Path) -> Iterator[TestClient]:
-    providers = registry_for([LocalProvider(tmp_path)])
+    providers = registry_for({"local": LocalDriver(tmp_path)})
     store = PreviewStore()
     preview = PreviewService(providers, RenameEngine(get_rule_registry()), store)
     execute = ExecuteService(providers, store, preview)

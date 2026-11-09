@@ -4,10 +4,10 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.core.config import Settings
 from app.providers.onedrive.auth import OneDriveAuthService
-from app.providers.onedrive.driver import OneDriveProvider
+from app.providers.onedrive.driver import OneDriveDriver
 from app.providers.registry import ProviderDefinition
 from app.schemas.storage import StorageConfigField
-from app.services.connection_auth import ConnectionAuth
+from app.services.storage_auth import StorageAuth
 
 
 class OneDriveConfig(BaseModel):
@@ -27,7 +27,7 @@ class OneDriveConfig(BaseModel):
 def get_definition(settings: Settings) -> ProviderDefinition:
     return ProviderDefinition(
         "onedrive", OneDriveConfig, ("root", "id"),
-        lambda record, auth: OneDriveProvider(cast(ConnectionAuth, auth)),
+        lambda record, auth: OneDriveDriver(cast(StorageAuth, auth)),
         browser_navigation="onedrive_personal",
         cache_directories=True,
         config_fields=(StorageConfigField(

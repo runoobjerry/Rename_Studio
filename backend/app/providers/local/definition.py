@@ -3,7 +3,7 @@ from pathlib import Path
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.core.config import Settings
-from app.providers.local.driver import LocalProvider
+from app.providers.local.driver import LocalDriver
 from app.providers.registry import ProviderDefinition
 from app.schemas.storage import StorageConfigField
 
@@ -24,7 +24,7 @@ class LocalConfig(BaseModel):
 def get_definition(settings: Settings) -> ProviderDefinition:
     return ProviderDefinition(
         "local", LocalConfig, ("root", "path", "id"),
-        lambda record, auth: LocalProvider(Path(str(record.config["root_path"]))),
+        lambda record, auth: LocalDriver(Path(str(record.config["root_path"]))),
         local_picker=True, icon="computer",
         config_fields=(StorageConfigField(
             key="root_path", input_type="directory", required=True,

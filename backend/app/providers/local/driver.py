@@ -12,14 +12,14 @@ from app.core.errors import (
     RenameConflictError,
     ValidationError,
 )
-from app.providers.base import StorageProvider
+from app.providers.base import StorageDriver
 from app.providers.name_validation import NameValidationIssue, validate_portable_name
 from app.schemas.files import FileItem
 from app.schemas.storage import PathLocation, RootLocation
 
 
-class LocalProvider(StorageProvider):
-    id = "local"
+class LocalDriver(StorageDriver):
+    provider_type = "local"
 
     def __init__(self, root: Path) -> None:
         try:

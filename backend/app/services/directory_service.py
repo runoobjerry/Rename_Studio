@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING, Literal
 
 from app.core.errors import NotFoundError, PermissionDeniedError, StorageBusyError, StorageConnectionChangedError, ValidationError
 from app.core.log_context import request_id_context
-from app.providers.base import StorageProvider
+from app.providers.base import StorageDriver
 from app.providers.directory_metadata import DirectoryHint, DirectoryMetadataConflict
 from app.schemas.files import DirectoryListing, FileItem
 from app.schemas.rename import SingleRenameExecuteRequest
@@ -79,7 +79,7 @@ class DirectoryService:
             self._writing.remove(storage_id)
 
     async def list_siblings(self, storage_id: str, item: FileItem) -> list[FileItem]:
-        location = StorageProvider.parent_directory(item)
+        location = StorageDriver.parent_directory(item)
         return (await self.list_directory(storage_id, location)).items
 
     async def list_directory(
@@ -128,7 +128,7 @@ class DirectoryService:
         storage_id, revision, location = key
         logger.info("directory provider read storage_id=%s mode=%s request_id=%s",
                     storage_id, mode, request_id_context.get())
-        listing = await self._manager.provider(storage_id).read_directory(
+        listing = await self._manager.get_driver(storage_id).read_directory(
             location, hint=hint, include_breadcrumbs=mode != "fresh",
         )
         self._check_revision(key)

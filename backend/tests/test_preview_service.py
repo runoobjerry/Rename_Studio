@@ -7,7 +7,7 @@ import pytest
 from pydantic import BaseModel
 
 from app.core.errors import PreviewExpiredError, PreviewNotFoundError, ValidationError
-from app.providers.local.driver import LocalProvider
+from app.providers.local.driver import LocalDriver
 from app.rules.base import EmptyRuleConfig, RenameRule, RuleContext
 from app.rules.registry import RuleRegistry
 from app.schemas.files import FileItem
@@ -32,7 +32,7 @@ class ConstantRule(RenameRule[ConstantConfig]):
         return config.value
 
 
-class CountingLocalProvider(LocalProvider):
+class CountingLocalDriver(LocalDriver):
     def __init__(self, root: Path) -> None:
         super().__init__(root)
         self.list_calls = 0
@@ -56,7 +56,7 @@ class IndexRule(RenameRule[EmptyRuleConfig]):
 
 
 def build_service(root: Path, *, with_test_rule: bool = False) -> PreviewService:
-    providers = registry_for([LocalProvider(root)])
+    providers = registry_for({"local": LocalDriver(root)})
     rules = RuleRegistry()
     if with_test_rule:
         rules.register(ConstantRule())
@@ -83,9 +83,9 @@ async def test_empty_rules_produce_read_only_unchanged_preview(tmp_path: Path) -
 @pytest.mark.asyncio
 async def test_known_directory_preview_uses_one_listing(tmp_path: Path) -> None:
     (tmp_path / "one.txt").write_text("one", encoding="utf-8")
-    provider = CountingLocalProvider(tmp_path)
+    driver = CountingLocalDriver(tmp_path)
     service = PreviewService(
-        registry_for([provider]), RenameEngine(RuleRegistry())
+        registry_for({"local": driver}), RenameEngine(RuleRegistry())
     )
 
     preview = await service.preview(
@@ -95,8 +95,8 @@ async def test_known_directory_preview_uses_one_listing(tmp_path: Path) -> None:
     )
 
     assert preview.valid is True
-    assert provider.list_calls == 1
-    assert provider.metadata_many_calls == 0
+    assert driver.list_calls == 1
+    assert driver.metadata_many_calls == 0
 
 
 @pytest.mark.asyncio
@@ -106,7 +106,7 @@ async def test_request_order_controls_rule_context_and_preview_items(tmp_path: P
         (tmp_path / name).write_text(name, encoding="utf-8")
     rules = RuleRegistry()
     rules.register(IndexRule())
-    service = PreviewService(registry_for([LocalProvider(tmp_path)]), RenameEngine(rules))
+    service = PreviewService(registry_for({"local": LocalDriver(tmp_path)}), RenameEngine(rules))
     preview = await service.preview(RenamePreviewRequest(
         storage_id="local", location=RootLocation() if known_directory else None,
         file_ids=["002.jpg", "001.jpg"], rules=[RuleSpec(type="test_index")],

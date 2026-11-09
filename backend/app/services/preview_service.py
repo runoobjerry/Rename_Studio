@@ -65,7 +65,7 @@ class PreviewService:
         files: list[FileItem] | None = None,
         siblings: list[FileItem] | None = None,
     ) -> tuple[list[PreviewItem], list[FileItem], bool]:
-        provider = self.providers.get(request.storage_id)
+        driver = self.providers.get_driver(request.storage_id)
         directories = self.providers.manager.directories
         record = self.providers.manager.record(request.storage_id)
         supports_rename = self.providers.definition(record.provider_type).can_rename
@@ -97,7 +97,7 @@ class PreviewService:
             files = [by_id[file_id] for file_id in request.file_ids]
         elif files is None:
             with _timed_phase(request.storage_id, "source_metadata", len(request.file_ids)):
-                files = await provider.get_metadata_many(request.file_ids)
+                files = await driver.get_metadata_many(request.file_ids)
 
         # 配置仅在本轮评估中解析一次；执行前重新评估时仍会重新校验。
         with _timed_phase(request.storage_id, "rules", len(files)):
@@ -119,7 +119,7 @@ class PreviewService:
                     )
                     for index, item in enumerate(files)
                 ]
-            normalized_targets = [provider.normalize_name(name) for name in candidates]
+            normalized_targets = [driver.normalize_name(name) for name in candidates]
 
         with _timed_phase(request.storage_id, "conflict_directory", len(files)):
             if siblings is None:
@@ -136,12 +136,12 @@ class PreviewService:
             # 目标名被其他文件占用即冲突，包括本批次中将要改名的文件。
             name_owners: dict[str, set[str]] = {}
             for sibling in siblings:
-                name_owners.setdefault(provider.normalize_name(sibling.name), set()).add(sibling.id)
+                name_owners.setdefault(driver.normalize_name(sibling.name), set()).add(sibling.id)
             results: list[PreviewItem] = []
             for item, new_name, normalized_target in zip(
                 files, candidates, normalized_targets, strict=True
             ):
-                validation = provider.validate_target_name(item, new_name)
+                validation = driver.validate_target_name(item, new_name)
                 error = validation.message if validation is not None else None
                 details = validation.details if validation is not None else None
                 if (not supports_rename or item.can_rename is False) and item.name != new_name:

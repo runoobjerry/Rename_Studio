@@ -15,7 +15,7 @@ from app.schemas.files import DirectoryListing
 from app.schemas.storage import LocalFolderPickResponse
 from app.schemas.rename import RenamePreviewRequest, RenamePreviewResponse, SingleRenameExecuteRequest, SingleRenameExecuteResponse
 from app.schemas.storage import AuthorizationStatus, StorageAuthStartResponse, StorageCreate, StorageInfo, StorageListRequest, StoragePreviewRequest, StorageProviderInfo, StorageUpdate
-from app.services.connection_auth import ConnectionAuth
+from app.services.storage_auth import StorageAuth
 from app.services.local_folder_picker import choose_local_directory
 from app.services.preview_service import PreviewService
 from app.services.preview_store import PreviewStore
@@ -99,14 +99,14 @@ async def pick_local_draft() -> LocalFolderPickResponse:
 
 @router.get("/storages/{storage_id}/auth/status", response_model=AuthorizationStatus)
 async def auth_status(storage_id: str, manager: Manager) -> AuthorizationStatus:
-    return cast(ConnectionAuth, manager.auth(storage_id)).status()
+    return cast(StorageAuth, manager.auth(storage_id)).status()
 
 
 @router.post("/storages/{storage_id}/auth/start", response_model=StorageAuthStartResponse)
 async def auth_start(storage_id: str, manager: Manager) -> StorageAuthStartResponse:
     manager.ensure_mutable(storage_id)
     record = manager.record(storage_id)
-    auth = cast(ConnectionAuth, manager.auth(storage_id))
+    auth = cast(StorageAuth, manager.auth(storage_id))
     result = auth.start_authorization(get_settings().storage_redirect_uri)
     provider_state = parse_qs(urlsplit(result.authorization_url).query)["state"][0]
     now = datetime.now(UTC)
@@ -117,7 +117,7 @@ async def auth_start(storage_id: str, manager: Manager) -> StorageAuthStartRespo
 
 @router.delete("/storages/{storage_id}/auth/session", status_code=204)
 async def disconnect(storage_id: str, manager: Manager) -> Response:
-    cast(ConnectionAuth, manager.auth(storage_id)).disconnect()
+    cast(StorageAuth, manager.auth(storage_id)).disconnect()
     return Response(status_code=204)
 
 
@@ -137,7 +137,7 @@ async def callback(manager: Manager, code: str | None = Query(default=None), sta
         if manager.record(storage_id).revision != revision:
             raise StorageConnectionChangedError("Storage changed during authorization")
         manager.ensure_mutable(storage_id)
-        await cast(ConnectionAuth, manager.auth(storage_id)).finish_authorization(code, provider_state)
+        await cast(StorageAuth, manager.auth(storage_id)).finish_authorization(code, provider_state)
         success = True
         message = "Storage connected. You can close this window."
     except AppError as exc:

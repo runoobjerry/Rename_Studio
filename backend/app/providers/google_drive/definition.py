@@ -4,10 +4,10 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.core.config import Settings
 from app.providers.google_drive.auth import GoogleDriveAuthService
-from app.providers.google_drive.driver import GoogleDriveProvider
+from app.providers.google_drive.driver import GoogleDriveDriver
 from app.providers.registry import ProviderDefinition
 from app.schemas.storage import StorageConfigField
-from app.services.connection_auth import ConnectionAuth
+from app.services.storage_auth import StorageAuth
 
 
 class GoogleDriveConfig(BaseModel):
@@ -27,7 +27,7 @@ class GoogleDriveConfig(BaseModel):
 def get_definition(settings: Settings) -> ProviderDefinition:
     return ProviderDefinition(
         "google_drive", GoogleDriveConfig, ("root", "id"),
-        lambda record, auth: GoogleDriveProvider(cast(ConnectionAuth, auth)),
+        lambda record, auth: GoogleDriveDriver(cast(StorageAuth, auth)),
         browser_navigation="google_drive_my_drive",
         cache_directories=True,
         config_fields=(

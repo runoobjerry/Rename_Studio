@@ -21,7 +21,7 @@ from app.repositories.storage_repository import JsonStorageRepository
 from app.schemas.rename import RenamePreviewRequest
 from app.schemas.rules import RuleSpec
 from app.schemas.storage import AppSettingsPatch, StorageConfigField, RootLocation, StorageCreate, StorageUpdate
-from app.services.connection_auth import ConnectionAuth
+from app.services.storage_auth import StorageAuth
 from app.services.execute_service import ExecuteService
 from app.providers.onedrive.auth import OneDriveAuthService
 from app.services.preview_service import PreviewService
@@ -263,7 +263,7 @@ async def test_connection_changes_remove_current_account_default(tmp_path: Path,
         "cloud_default_locations": {cloud.storage_id: {"account_id": "account-a", "location": {"kind": "root"}}},
     }))
     if action == "disconnect":
-        cast(ConnectionAuth, manager.auth(cloud.storage_id)).disconnect()
+        cast(StorageAuth, manager.auth(cloud.storage_id)).disconnect()
     elif action == "configure":
         await manager.update(cloud.storage_id, StorageUpdate(config={"client_id": "other-app"}))
     else:

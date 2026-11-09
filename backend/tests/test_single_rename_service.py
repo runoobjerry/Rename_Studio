@@ -6,7 +6,7 @@ import pytest
 from app.core.errors import (
     AppError, NotFoundError, RenameOutcomeUnknownError, StorageBusyError, StorageConnectionChangedError,
 )
-from app.providers.base import StorageProvider
+from app.providers.base import StorageDriver
 from app.providers.name_validation import NameValidationIssue
 from app.schemas.files import FileItem
 from app.schemas.rename import SingleRenameExecuteRequest
@@ -14,8 +14,11 @@ from app.services.single_rename_service import SingleRenameService
 from provider_fixtures import registry_for
 
 
-class DirectProvider(StorageProvider):
-    id = "custom-direct"
+STORAGE_ID = "direct-storage"
+
+
+class DirectDriver(StorageDriver):
+    provider_type = "custom-direct"
 
     def __init__(self, error: AppError | None = None, *, confirmed_name: str | None = None) -> None:
         self.error = error
@@ -57,14 +60,14 @@ def request() -> SingleRenameExecuteRequest:
 @pytest.mark.asyncio
 @pytest.mark.parametrize("current_name", ["new.txt", "external.txt", None])
 async def test_single_unknown_write_is_reconciled_once_without_replay(current_name: str | None) -> None:
-    provider = DirectProvider(RenameOutcomeUnknownError("Lost response"), confirmed_name=current_name)
-    result = await SingleRenameService(registry_for([provider])).execute(provider.id, request())
-    assert provider.writes == 1
-    assert provider.reads == 1
+    driver = DirectDriver(RenameOutcomeUnknownError("Lost response"), confirmed_name=current_name)
+    result = await SingleRenameService(registry_for({STORAGE_ID: driver})).execute(STORAGE_ID, request())
+    assert driver.writes == 1
+    assert driver.reads == 1
     item = result.items[0]
     assert item.status == ("renamed" if current_name == "new.txt" else "unknown" if current_name is None else "failed")
     if current_name == "new.txt":
-        assert item.current_file == provider.item("new.txt")
+        assert item.current_file == driver.item("new.txt")
     else:
         assert item.error_code == ("RENAME_OUTCOME_UNKNOWN" if current_name is None else "PROVIDER_ERROR")
         assert item.actual_name == current_name
@@ -72,38 +75,38 @@ async def test_single_unknown_write_is_reconciled_once_without_replay(current_na
 
 @pytest.mark.asyncio
 async def test_single_rename_rejects_stale_revision_and_busy_connection_before_writing() -> None:
-    provider = DirectProvider()
-    registry = registry_for([provider])
+    driver = DirectDriver()
+    registry = registry_for({STORAGE_ID: driver})
     service = SingleRenameService(registry)
     stale = request().model_copy(update={"revision": 2})
     with pytest.raises(StorageConnectionChangedError):
-        await service.execute(provider.id, stale)
-    with registry.execution(provider.id, 1):
+        await service.execute(STORAGE_ID, stale)
+    with registry.execution(STORAGE_ID, 1):
         with pytest.raises(StorageBusyError):
-            await service.execute(provider.id, request())
-    assert provider.writes == 0
+            await service.execute(STORAGE_ID, request())
+    assert driver.writes == 0
 
 
 @pytest.mark.asyncio
 async def test_cancelled_single_write_keeps_connection_busy_until_provider_finishes() -> None:
     started, release = asyncio.Event(), asyncio.Event()
 
-    class WaitingProvider(DirectProvider):
+    class WaitingDriver(DirectDriver):
         async def rename(self, file_id: str, new_name: str) -> FileItem:
             started.set()
             await release.wait()
             return await super().rename(file_id, new_name)
 
-    provider = WaitingProvider()
-    registry = registry_for([provider])
+    driver = WaitingDriver()
+    registry = registry_for({STORAGE_ID: driver})
     service = SingleRenameService(registry)
-    execution = asyncio.create_task(service.execute(provider.id, request()))
+    execution = asyncio.create_task(service.execute(STORAGE_ID, request()))
     await started.wait()
     execution.cancel()
     with pytest.raises(StorageBusyError):
-        await service.execute(provider.id, request())
+        await service.execute(STORAGE_ID, request())
     release.set()
     with pytest.raises(asyncio.CancelledError):
         await execution
-    with registry.execution(provider.id, 1):
-        assert provider.writes == 1
+    with registry.execution(STORAGE_ID, 1):
+        assert driver.writes == 1

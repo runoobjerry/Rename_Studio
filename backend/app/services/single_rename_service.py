@@ -2,7 +2,7 @@ import asyncio
 import logging
 
 from app.core.errors import AppError, ValidationError
-from app.providers.base import RenameRequest, StorageProvider
+from app.providers.base import RenameRequest, StorageDriver
 from app.providers.registry import ProviderRegistry
 from app.schemas.files import RenameFile
 from app.schemas.rename import SingleExecuteItem, SingleRenameExecuteRequest, SingleRenameExecuteResponse
@@ -19,7 +19,7 @@ class SingleRenameService:
     async def execute(self, storage_id: str, request: SingleRenameExecuteRequest) -> SingleRenameExecuteResponse:
         # StorageManager also guards batch execution and connection changes.
         with self.providers.execution(storage_id, request.revision):
-            provider = self.providers.get(storage_id)
+            driver = self.providers.get_driver(storage_id)
             record = self.providers.manager.record(storage_id)
             if not self.providers.definition(record.provider_type).can_rename:
                 raise ValidationError("This storage does not support renaming")
@@ -31,7 +31,7 @@ class SingleRenameService:
             scope = directories.single_rename_scope(storage_id, request)
             with directories.writing(storage_id, request.revision, scope):
                 task = asyncio.create_task(self._rename(
-                    provider, RenameRequest(request.file_id, request.target_name),
+                    driver, RenameRequest(request.file_id, request.target_name),
                     lambda file_id, outcome, target_confirmed: scope.observe(
                         file_id, request.location, request.original_name, outcome, target_confirmed=target_confirmed,
                     ),
@@ -52,7 +52,7 @@ class SingleRenameService:
                 result.current_file = outcome
                 result.actual_name = outcome.name
             logger.info(
-                "single rename provider=%s operation=%s file_id=%s status=%s error_code=%s",
+                "single rename storage_id=%s operation=%s file_id=%s status=%s error_code=%s",
                 storage_id, request.operation_id, request.file_id, result.status, result.error_code,
             )
             return SingleRenameExecuteResponse(
@@ -62,14 +62,14 @@ class SingleRenameService:
 
     @staticmethod
     async def _rename(
-        provider: StorageProvider, request: RenameRequest,
+        driver: StorageDriver, request: RenameRequest,
         observe: RenameObserver[RenameFile],
     ) -> RenameFile | AppError:
         outcome: RenameFile | AppError
         try:
-            outcome = await provider.rename_single(request.file_id, request.new_name)
+            outcome = await driver.rename_single(request.file_id, request.new_name)
         except AppError as exc:
             outcome = exc
         return await resolve_rename_outcome(
-            provider.get_single_metadata, request, outcome, observe=observe, require_direct_target=True,
+            driver.get_single_metadata, request, outcome, observe=observe, require_direct_target=True,
         )

@@ -15,8 +15,8 @@ class RenameRequest:
     new_name: str
 
 
-class StorageProvider(ABC):
-    id: str
+class StorageDriver(ABC):
+    provider_type: str
     execution_batch_size: int = 20
     execution_batch_concurrency: int = 1
 
@@ -34,7 +34,7 @@ class StorageProvider(ABC):
         parent = path.rpartition("/")[0] if path else None
         canonical = PathLocation(value=path) if path else RootLocation()
         parent_location = (PathLocation(value=parent) if parent else RootLocation()) if parent is not None else None
-        return DirectoryListing(provider=self.id, path=path, parent_path=parent, items=items,
+        return DirectoryListing(provider=self.provider_type, path=path, parent_path=parent, items=items,
                                 location=canonical, parent_location=parent_location)
 
     @staticmethod
@@ -92,4 +92,4 @@ class StorageProvider(ABC):
         return name.casefold()
 
     async def aclose(self) -> None:
-        """Release provider-owned network resources when the app shuts down."""
+        """Release driver-owned network resources when the app shuts down."""

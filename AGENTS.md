@@ -36,7 +36,7 @@ Rename Engine 不依赖具体云盘实现；名称限制和文件读写由 Provi
 
 - 对单个文件或文件夹进行重命名，不使用规则链，也不创建预览。
 - 客户端提交 `storage_id`、连接版本、目录位置、文件 ID、原名、目标名和 `operation_id`。`operation_id` 只标识操作，不是预览 ID，也不保证重复请求只执行一次。
-- 单项使用独立服务和前端请求流程，与批量共用 StorageManager 的连接执行互斥。核对连接版本后按文件 ID 直接调用 Provider，不读取整个目录、不重算预览、不比对原名；原名与目录位置仅保留为请求上下文。
+- 单项使用独立服务和前端请求流程，与批量共用 StorageManager 的连接执行互斥。核对连接版本后按文件 ID 直接调用 StorageDriver，不读取整个目录、不重算预览、不比对原名；原名与目录位置仅保留为请求上下文。
 - 名称、权限和冲突由 Provider 及第三方 API 判断，接受 Provider 的同名语义（例如 Google Drive 允许同目录同名）；Google 单项直接按 ID PATCH，由 API 决定是否允许，不做 My Drive、祖先、类型或权限预检；批量和浏览的范围限制保留。成功按返回文件更新身份，明确错误按统一错误码显示在输入框下。
 - 单项结果的确认元数据不要求完整显示路径；显示路径由前端结合浏览上下文生成，不作为身份或成功依据。写入结果未知时先按文件 ID 读取元数据核对；无法确认就明确返回未知结果，不自动重放请求。
 
@@ -58,18 +58,18 @@ class RenameRule:
 
 ## Providers 与认证
 
-所有存储经统一 `StorageProvider` 访问，至少覆盖目录列举、单项/批量元数据与单项/批量重命名。`provider_type` 是实现类型，`storage_id` 是独立连接配置和账号，两者不得混用或为 Local/OneDrive 设置别名。
+Storage 是具体文件来源，前端称为「连接」，由 `storage_id` 标识，包含配置、凭据和版本。Provider 是由 `provider_type` 标识的存储服务提供者。每个 Storage 通过对应的运行时 `StorageDriver` 列举目录、读取单项或批量元数据并执行单项或批量重命名。Connection 用于描述连接、认证和断开等行为。`storage_id` 与 `provider_type` 不得混用或为 Local/OneDrive 设置别名。
 
-- Provider 负责目录定位、名称校验与规范化、目标名限制、执行批大小和可用的批量语义；服务层据此做冲突检测和执行规划。逐项重命名仅是无批量 API 时的兼容回退。
-- 每个 Provider 在自身模块维护配置 Model、Provider/认证工厂及 `ProviderDefinition`，经 `providers/builtin.py` 显式注册；认证实现遵守 `ConnectionAuth`。公共 Schema、依赖装配和业务层不重复维护各 Provider 的配置或类型分支。
+- StorageDriver 负责目录定位、名称校验与规范化、目标名限制、执行批大小和可用的批量语义；服务层据此做冲突检测和执行规划。逐项重命名仅是无批量 API 时的兼容回退。
+- 每个 Provider 在自身模块维护配置 Model、驱动工厂、认证工厂及 `ProviderDefinition`，经 `providers/builtin.py` 显式注册；认证实现遵守 `StorageAuth`。公共 Schema、依赖装配和业务层不重复维护各 Provider 的配置或类型分支。
 - 配置字段、授权需求、位置类型和选择器等能力由 Provider 元数据声明，前端据此渲染和启用操作；元数据未就绪或缺失时暂停依赖操作，不以 Provider 名称推断能力。元数据不包含连接凭据，配置校验仍由服务端执行。
 - `StorageLocation` 为根目录、Provider 不透明 ID 或边界规范化路径。前端和服务层将位置及文件 ID 视为不透明值；显示路径不是云资源身份，不假定重命名后文件 ID 不变。
-- 业务层经 `Service -> StorageProvider -> OneDriveProvider -> Microsoft Graph API` 调用 Graph，不直接调用 Graph。
+- 业务层经 `Service -> StorageDriver -> OneDriveDriver -> Microsoft Graph API` 调用 Graph，不直接调用 Graph。
 - OneDrive 使用 OAuth 2.0 授权码/浏览器登录；不硬编码 Token、不提交 Token、不保存账号密码。处理分页、批量、限流、重试、超时、401 刷新和 429 `Retry-After`，优先 batch、async 与有界并发，避免逐项串行请求。
 
 ## 目录读取与缓存
 
-- `DirectoryService` 统一协调浏览和重命名流程的目录读取及缓存失效。目录缓存由 Provider 定义显式启用，按连接和版本隔离，只保存以规范位置为键的完整目录列表。进入子目录时，可按已知父位置复用父列表中的子项和面包屑。Provider 负责解析位置、验证访问范围和构建目录结果。
+- `DirectoryService` 统一协调浏览和重命名流程的目录读取及缓存失效。目录缓存由 Provider 定义显式启用，按连接和版本隔离，只保存以规范位置为键的完整目录列表。进入子目录时，可按已知父位置复用父列表中的子项和面包屑。StorageDriver 负责解析位置、验证访问范围和构建目录结果。
 - 浏览和预览可复用目录缓存。强制刷新直接读取存储并替换对应列表。批量执行前复核直接读取存储，结果只用于该次复核。未知写入仍按文件 ID 核对。
 - 连接版本变化或删除时清除该连接的目录缓存。单项和批量写入期间，同一连接的普通目录读取绕过缓存，写入前发起的迟到读取也不得回填。写入结束后，在释放连接执行锁前按确认结果更新仍有效且一致的父目录列表，保留原到期时间，并使被改名文件夹的子树失效。无法安全更新的受影响目录失效，写入结果仍未知时清除连接缓存。
 
@@ -104,7 +104,7 @@ class RenameRule:
 
 ## 日志
 
-- 日志记录 provider、operation、file_id、request_id、duration、error，避免重复记录。严禁记录 access/refresh token、密码或 authorization header。
+- 日志按上下文记录 `provider`（Provider 类型）或 `storage_id`，以及 operation、file_id、request_id、duration、error，避免重复记录。严禁记录 access/refresh token、密码或 authorization header。
 
 ## 测试
 

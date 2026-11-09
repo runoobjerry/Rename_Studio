@@ -15,7 +15,7 @@ from pydantic import BaseModel
 
 from app.core.errors import AuthenticationError, NotFoundError, PermissionDeniedError, PreviewExpiredError, ProviderError, RateLimitError, RenameOutcomeUnknownError, ValidationError
 from app.providers.base import RenameRequest
-from app.providers.google_drive.driver import BATCH_URL, FOLDER_MIME, READ_BATCH_SIZE, SHORTCUT_MIME, GoogleDriveProvider
+from app.providers.google_drive.driver import BATCH_URL, FOLDER_MIME, READ_BATCH_SIZE, SHORTCUT_MIME, GoogleDriveDriver
 
 
 from app.rules.base import RenameRule, RuleContext
@@ -31,6 +31,9 @@ from app.services.rename_engine import RenameEngine
 from provider_fixtures import CooldownClock, registry_for
 
 
+STORAGE_ID = "google-drive-storage"
+
+
 @pytest.mark.parametrize(("status", "reason", "error_type"), [
     (401, "authError", AuthenticationError),
     (403, "rateLimitExceeded", RateLimitError),
@@ -42,7 +45,7 @@ from provider_fixtures import CooldownClock, registry_for
     (503, "backendError", ProviderError),
 ])
 def test_http_classification_keeps_vendor_reasons_as_diagnostics(status: int, reason: str, error_type: type[Exception]) -> None:
-    error = GoogleDriveProvider._response_error(httpx.Response(status, json={
+    error = GoogleDriveDriver._response_error(httpx.Response(status, json={
         "error": {
             "errors": [{"reason": 123}, None, {"reason": reason}],
             "message": "must-not-escape",
@@ -59,7 +62,7 @@ def test_http_classification_keeps_vendor_reasons_as_diagnostics(status: int, re
     httpx.Response(403, json={"error": {"errors": {"reason": "rateLimitExceeded"}}}),
 ])
 def test_unreadable_google_error_reasons_fall_back_to_http_status(response: httpx.Response) -> None:
-    error = GoogleDriveProvider._response_error(response)
+    error = GoogleDriveDriver._response_error(response)
 
     assert isinstance(error, PermissionDeniedError)
     assert error.details == {"provider_type": "google_drive", "provider_status": 403, "google_status": 403}
@@ -226,13 +229,13 @@ class WritableDriveServer(DriveServer):
 
 
 @pytest_asyncio.fixture
-async def provider_factory() -> AsyncIterator[Callable]:
+async def driver_factory() -> AsyncIterator[Callable]:
     clients: list[httpx.AsyncClient] = []
 
-    def create(handler: Callable, auth: FakeAuth | None = None) -> GoogleDriveProvider:
+    def create(handler: Callable, auth: FakeAuth | None = None) -> GoogleDriveDriver:
         client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
         clients.append(client)
-        return GoogleDriveProvider(auth or FakeAuth(), client=client)
+        return GoogleDriveDriver(auth or FakeAuth(), client=client)
 
     yield create
     for client in clients:
@@ -240,7 +243,7 @@ async def provider_factory() -> AsyncIterator[Callable]:
 
 
 @pytest.mark.asyncio
-async def test_root_pagination_continues_empty_page_and_maps_types_permissions(provider_factory: Callable) -> None:
+async def test_root_pagination_continues_empty_page_and_maps_types_permissions(driver_factory: Callable) -> None:
     folder = drive_file("folder", "same", mime=FOLDER_MIME, size="123")
     document = drive_file("doc", "Budget.2026", mime="application/vnd.google-apps.spreadsheet")
     shortcut = drive_file("shortcut", "Folder link", mime=SHORTCUT_MIME, shortcutDetails={"targetId": "outside", "targetMimeType": FOLDER_MIME})
@@ -252,7 +255,7 @@ async def test_root_pagination_continues_empty_page_and_maps_types_permissions(p
         "opaque/token?value=1": file_page([], nextPageToken="last"),
         "last": file_page([document, shortcut, readonly, unknown]),
     }
-    listing = await provider_factory(server).list_directory(RootLocation())
+    listing = await driver_factory(server).list_directory(RootLocation())
     assert listing.location == RootLocation() and listing.parent_location is None and listing.path == ""
     assert listing.directory_id == "root-id"
     assert [(entry.name, entry.location) for entry in listing.breadcrumbs] == [("My Drive", RootLocation())]
@@ -270,37 +273,37 @@ async def test_root_pagination_continues_empty_page_and_maps_types_permissions(p
 
 
 @pytest.mark.asyncio
-async def test_same_name_folders_and_separator_names_use_real_ancestor_ids(provider_factory: Callable) -> None:
+async def test_same_name_folders_and_separator_names_use_real_ancestor_ids(driver_factory: Callable) -> None:
     first = drive_file("a", "same", mime=FOLDER_MIME)
     second = drive_file("b", "same", mime=FOLDER_MIME)
     child = drive_file("child", "with/slash", parent="b", mime=FOLDER_MIME)
     server = DriveServer([first, second, child])
     server.pages[None] = file_page([drive_file("file", "sample.txt", parent="child")])
-    provider = provider_factory(server)
-    directories = registry_for([provider], cache_directories=True).manager.directories
+    driver = driver_factory(server)
+    directories = registry_for({STORAGE_ID: driver}, cache_directories=True).manager.directories
     location = IdLocation(value="child")
-    listing = await directories.list_directory(provider.id, location)
+    listing = await directories.list_directory(STORAGE_ID, location)
     assert listing.path == "same/with/slash"
     assert listing.directory_id == "child"
     assert listing.parent_location == IdLocation(value="b") and listing.location == IdLocation(value="child")
     assert [entry.name for entry in listing.breadcrumbs] == ["My Drive", "same", "with/slash"]
     assert [entry.location for entry in listing.breadcrumbs] == [RootLocation(), IdLocation(value="b"), IdLocation(value="child")]
     assert listing.items[0].parent_location == IdLocation(value="child")
-    assert await directories.list_directory(provider.id, location) == listing
+    assert await directories.list_directory(STORAGE_ID, location) == listing
     assert [request.url.path for request in server.requests] == [
         "/drive/v3/files/root", "/drive/v3/files/child", "/drive/v3/files/b", "/drive/v3/files",
     ]
-    item = await provider.get_metadata("child")
+    item = await driver.get_metadata("child")
     assert item.location == listing.location and item.parent_location == listing.parent_location
-    root = await provider.get_metadata("root")
+    root = await driver.get_metadata("root")
     assert root.location == RootLocation() and root.parent_location is None and root.can_rename is False
     child["capabilities"]["canListChildren"] = False
     with pytest.raises(PermissionDeniedError):
-        await provider.list_directory(item.location)
+        await driver.list_directory(item.location)
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("failure", ["shared_drive", "outside_root", "trashed_item", "trashed_ancestor", "shortcut", "cycle"])
-async def test_directory_boundary_rejects_unsupported_locations_before_listing(provider_factory: Callable, failure: str) -> None:
+async def test_directory_boundary_rejects_unsupported_locations_before_listing(driver_factory: Callable, failure: str) -> None:
     folder = drive_file("folder", "Folder", mime=FOLDER_MIME)
     parent = drive_file("parent", "Parent", mime=FOLDER_MIME)
     if failure == "shared_drive":
@@ -320,24 +323,24 @@ async def test_directory_boundary_rejects_unsupported_locations_before_listing(p
         parent["parents"] = ["folder"]
     server = DriveServer([folder, parent])
     with pytest.raises((ValidationError, NotFoundError, ProviderError)):
-        await provider_factory(server).list_directory(IdLocation(value="folder"))
+        await driver_factory(server).list_directory(IdLocation(value="folder"))
     assert not any(request.url.path == "/drive/v3/files" for request in server.requests)
 
 
 @pytest.mark.asyncio
-async def test_paths_are_rejected_without_network(provider_factory: Callable) -> None:
+async def test_paths_are_rejected_without_network(driver_factory: Callable) -> None:
     def unexpected(request: httpx.Request) -> httpx.Response:
         raise AssertionError("Unsupported paths must not contact Google")
 
-    provider = provider_factory(unexpected)
+    driver = driver_factory(unexpected)
     for location in (PathLocation(value=""), PathLocation(value="same/child")):
         with pytest.raises(ValidationError):
-            await provider.list_directory(location)
+            await driver.list_directory(location)
 
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("failure", ["incomplete", "repeated_token", "duplicate_item", "wrong_parent", "malformed_item", "malformed_page", "page_failed"])
-async def test_listing_failure_never_returns_partial_directory(provider_factory: Callable, failure: str) -> None:
+async def test_listing_failure_never_returns_partial_directory(driver_factory: Callable, failure: str) -> None:
     file = drive_file("file", "file.txt")
     server = DriveServer()
     server.pages[None] = file_page([file], nextPageToken="next")
@@ -357,17 +360,17 @@ async def test_listing_failure_never_returns_partial_directory(provider_factory:
         final = httpx.Response(400, json={"error": {"message": "invalid page token"}})
     server.pages["next"] = final
     with pytest.raises((ProviderError, ValidationError)):
-        await provider_factory(server).list_directory(RootLocation())
+        await driver_factory(server).list_directory(RootLocation())
 
 
 @pytest.mark.asyncio
-async def test_metadata_batches_keep_requested_order_and_reuse_batched_ancestors(provider_factory: Callable) -> None:
+async def test_metadata_batches_keep_requested_order_and_reuse_batched_ancestors(driver_factory: Callable) -> None:
     left = drive_file("left", "same", mime=FOLDER_MIME)
     right = drive_file("right", "same", mime=FOLDER_MIME)
     files = [drive_file(str(index), f"file-{index}", parent="left" if index % 2 else "right") for index in range(READ_BATCH_SIZE + 1)]
     server = DriveServer([left, right, *files])
     requested = [str(index) for index in reversed(range(len(files)))]
-    items = await provider_factory(server).get_metadata_many(requested)
+    items = await driver_factory(server).get_metadata_many(requested)
     assert [item.id for item in items] == requested
     assert {item.parent_location.value for item in items} == {"left", "right"}
     batches = [batch_requests(request) for request in server.requests if request.method == "POST"]
@@ -377,7 +380,7 @@ async def test_metadata_batches_keep_requested_order_and_reuse_batched_ancestors
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("failure", ["outside_root", "shared_drive", "trashed", "wrong_id", "nonfolder_parent"])
-async def test_metadata_batches_cannot_bypass_my_drive_boundary(provider_factory: Callable, failure: str) -> None:
+async def test_metadata_batches_cannot_bypass_my_drive_boundary(driver_factory: Callable, failure: str) -> None:
     first = drive_file("first", "first")
     second = drive_file("second", "second")
     if failure == "outside_root":
@@ -399,12 +402,12 @@ async def test_metadata_batches_cannot_bypass_my_drive_boundary(provider_factory
         return server(request)
 
     with pytest.raises((ValidationError, NotFoundError, ProviderError)):
-        await provider_factory(respond).get_metadata_many(["first", "second"])
+        await driver_factory(respond).get_metadata_many(["first", "second"])
 
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("failure", ["not_multipart", "missing", "duplicate", "unexpected", "bad_http", "bad_json", "truncated"])
-async def test_malformed_batch_never_returns_partial_metadata(provider_factory: Callable, failure: str, monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_malformed_batch_never_returns_partial_metadata(driver_factory: Callable, failure: str, monkeypatch: pytest.MonkeyPatch) -> None:
     clock = CooldownClock(monkeypatch)
     server = DriveServer()
     first, second = drive_file("first", "first"), drive_file("second", "second")
@@ -435,12 +438,12 @@ async def test_malformed_batch_never_returns_partial_metadata(provider_factory: 
             content = content.removesuffix(b"--test-boundary--\r\n")
         return httpx.Response(200, headers=response.headers, content=content)
 
-    provider = provider_factory(respond)
+    driver = driver_factory(respond)
     with pytest.raises(ProviderError):
-        await provider.get_metadata_many(["first", "second"])
+        await driver.get_metadata_many(["first", "second"])
     if failure == "bad_json":
         # An earlier malformed success must not hide a later part's cooldown.
-        task = asyncio.create_task(provider.get_single_metadata("root-id"))
+        task = asyncio.create_task(driver.get_single_metadata("root-id"))
         try:
             assert await clock.next_wait() == 60
             clock.advance(60)
@@ -453,7 +456,7 @@ async def test_malformed_batch_never_returns_partial_metadata(provider_factory: 
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("status", [401, 403, 429, 503])
-async def test_only_failed_metadata_parts_are_retried(provider_factory: Callable, status: int, monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_only_failed_metadata_parts_are_retried(driver_factory: Callable, status: int, monkeypatch: pytest.MonkeyPatch) -> None:
     clock = CooldownClock(monkeypatch)
     first, second = drive_file("first", "first"), drive_file("second", "second")
     server = DriveServer([first, second, drive_file("peer", "peer")])
@@ -472,16 +475,16 @@ async def test_only_failed_metadata_parts_are_retried(provider_factory: Callable
             return response
         return batch_response([(0, 200, second)])
 
-    provider = provider_factory(respond, auth)
+    driver = driver_factory(respond, auth)
     if status in (403, 429):
-        task = asyncio.create_task(provider.get_metadata_many(["first", "second"]))
+        task = asyncio.create_task(driver.get_metadata_many(["first", "second"]))
         peer = None
         try:
             assert await clock.next_wait() == 60
-            peer = asyncio.create_task(provider.get_single_metadata("peer"))
+            peer = asyncio.create_task(driver.get_single_metadata("peer"))
             assert await clock.next_wait() == 60
             assert not any(request.url.path.endswith("/peer") for request in server.requests)
-            assert (await provider_factory(server).get_single_metadata("peer")).id == "peer"
+            assert (await driver_factory(server).get_single_metadata("peer")).id == "peer"
             assert batches == [["first", "second"]]
             clock.advance(60)
             items = await asyncio.wait_for(task, 5)
@@ -493,7 +496,7 @@ async def test_only_failed_metadata_parts_are_retried(provider_factory: Callable
                     entry.cancel()
             await asyncio.gather(*tasks, return_exceptions=True)
     else:
-        items = await provider.get_metadata_many(["first", "second"])
+        items = await driver.get_metadata_many(["first", "second"])
     assert [item.id for item in items] == ["first", "second"]
     assert batches == [["first", "second"], ["second"]]
     assert auth.refreshes == (1 if status == 401 else 0)
@@ -501,7 +504,7 @@ async def test_only_failed_metadata_parts_are_retried(provider_factory: Callable
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(("status", "reason", "error_type"), [(401, "authError", AuthenticationError), (403, "insufficientFilePermissions", PermissionDeniedError), (403, "rateLimitExceeded", RateLimitError), (404, "notFound", NotFoundError), (429, "rateLimitExceeded", RateLimitError), (503, "backendError", ProviderError)])
-async def test_read_errors_are_classified_and_retries_bounded(provider_factory: Callable, status: int, reason: str, error_type: type[Exception], monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_read_errors_are_classified_and_retries_bounded(driver_factory: Callable, status: int, reason: str, error_type: type[Exception], monkeypatch: pytest.MonkeyPatch) -> None:
     clock = CooldownClock(monkeypatch)
     calls = 0
     auth = FakeAuth()
@@ -514,14 +517,14 @@ async def test_read_errors_are_classified_and_retries_bounded(provider_factory: 
         delay = "60" if error_type is RateLimitError and calls == 4 else "0"
         return httpx.Response(status, headers={"Retry-After": delay}, json={"error": {"message": "fixture-secret-must-not-echo", "errors": [{"reason": reason}]}})
 
-    provider = provider_factory(respond, auth)
+    driver = driver_factory(respond, auth)
     with pytest.raises(error_type) as caught:
-        await provider.list_directory(RootLocation())
+        await driver.list_directory(RootLocation())
     assert "fixture-secret-must-not-echo" not in str(caught.value)
     assert calls == (2 if status == 401 else 4 if status in (429, 503) or reason == "rateLimitExceeded" else 1)
     assert auth.refreshes == (1 if status == 401 else 0)
     if error_type is RateLimitError:
-        task = asyncio.create_task(provider.get_single_metadata("after"))
+        task = asyncio.create_task(driver.get_single_metadata("after"))
         try:
             assert await clock.next_wait() == 60
             assert calls == 4
@@ -535,7 +538,7 @@ async def test_read_errors_are_classified_and_retries_bounded(provider_factory: 
 
 
 @pytest.mark.asyncio
-async def test_browsing_reuses_google_root_and_folders_from_completed_listings(provider_factory: Callable) -> None:
+async def test_browsing_reuses_google_root_and_folders_from_completed_listings(driver_factory: Callable) -> None:
     server = WritableDriveServer([
         drive_file("other", "Same", mime=FOLDER_MIME),
         drive_file("a", "Same", mime=FOLDER_MIME),
@@ -544,40 +547,40 @@ async def test_browsing_reuses_google_root_and_folders_from_completed_listings(p
         drive_file("d", "D", "c", FOLDER_MIME),
         drive_file("file", "File", "d"),
     ])
-    provider = provider_factory(server)
-    directories = registry_for([provider], cache_directories=True).manager.directories
+    driver = driver_factory(server)
+    directories = registry_for({STORAGE_ID: driver}, cache_directories=True).manager.directories
     ids = [IdLocation(value=key) for key in ("a", "b", "c", "d")]
     chain = [RootLocation(), *ids]
     for index, location in enumerate(chain):
-        listing = await directories.list_directory(provider.id, location, parent_location=chain[index - 1] if index else None)
+        listing = await directories.list_directory(STORAGE_ID, location, parent_location=chain[index - 1] if index else None)
     assert [(crumb.name, crumb.location) for crumb in listing.breadcrumbs] == [
         ("My Drive", RootLocation()), *zip(["Same", "with/slash", "C", "D"], ids, strict=True),
     ]
     assert listing.items[0].path == "Same/with/slash/C/D/File"
-    assert (await directories.list_directory(provider.id, listing.breadcrumbs[2].location)).location == ids[1]
-    assert await directories.list_directory(provider.id, ids[-1]) == listing
-    assert (await directories.list_directory(provider.id, IdLocation(value="root-id"))).location == RootLocation()
+    assert (await directories.list_directory(STORAGE_ID, listing.breadcrumbs[2].location)).location == ids[1]
+    assert await directories.list_directory(STORAGE_ID, ids[-1]) == listing
+    assert (await directories.list_directory(STORAGE_ID, IdLocation(value="root-id"))).location == RootLocation()
     assert [request.url.path.removeprefix("/drive/v3/") for request in server.requests] == [
         "files/root", "files", "files", "files", "files", "files",
     ]
 
 
 @pytest.mark.asyncio
-async def test_google_missing_target_does_not_retry_or_evict_the_root(provider_factory: Callable) -> None:
+async def test_google_missing_target_does_not_retry_or_evict_the_root(driver_factory: Callable) -> None:
     server = WritableDriveServer([drive_file("folder", "Folder", mime=FOLDER_MIME)])
-    provider = provider_factory(server)
-    directories = registry_for([provider], cache_directories=True).manager.directories
-    root = await directories.list_directory(provider.id, RootLocation())
+    driver = driver_factory(server)
+    directories = registry_for({STORAGE_ID: driver}, cache_directories=True).manager.directories
+    root = await directories.list_directory(STORAGE_ID, RootLocation())
     server.requests.clear()
     with pytest.raises(NotFoundError):
-        await directories.list_directory(provider.id, IdLocation(value="missing"))
-    assert await directories.list_directory(provider.id, RootLocation()) == root
+        await directories.list_directory(STORAGE_ID, IdLocation(value="missing"))
+    assert await directories.list_directory(STORAGE_ID, RootLocation()) == root
     assert [request.url.path for request in server.requests] == ["/drive/v3/files/root", "/drive/v3/files/missing"]
 
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("change", ["move", "deleted", "permission"])
-async def test_google_live_validation_does_not_accept_old_scope_or_permissions(provider_factory: Callable, change: str) -> None:
+async def test_google_live_validation_does_not_accept_old_scope_or_permissions(driver_factory: Callable, change: str) -> None:
     server = WritableDriveServer([
         drive_file("other", "Other"),
         drive_file("folder", "Folder", mime=FOLDER_MIME),
@@ -590,12 +593,12 @@ async def test_google_live_validation_does_not_accept_old_scope_or_permissions(p
             return file_page()
         return server(request)
 
-    provider = provider_factory(respond)
-    directories = registry_for([provider], cache_directories=True).manager.directories
+    driver = driver_factory(respond)
+    directories = registry_for({STORAGE_ID: driver}, cache_directories=True).manager.directories
     folder = IdLocation(value="folder")
-    await directories.list_directory(provider.id, RootLocation())
+    await directories.list_directory(STORAGE_ID, RootLocation())
     if change == "move":
-        opened = await directories.list_directory(provider.id, folder)
+        opened = await directories.list_directory(STORAGE_ID, folder)
         assert opened.parent_location == RootLocation()
         server.files["folder"]["parents"] = []
         error = ValidationError
@@ -609,15 +612,15 @@ async def test_google_live_validation_does_not_accept_old_scope_or_permissions(p
     mode = "cached" if change == "permission" else "refresh"
     server.requests.clear()
     with pytest.raises(error):
-        await directories.list_directory(provider.id, folder, mode=mode, parent_location=RootLocation())
+        await directories.list_directory(STORAGE_ID, folder, mode=mode, parent_location=RootLocation())
     assert any(request.url.path.endswith("/files/folder") for request in server.requests)
     server.requests.clear()
-    await directories.list_directory(provider.id, RootLocation())
+    await directories.list_directory(STORAGE_ID, RootLocation())
     assert [request.url.path for request in server.requests] == ["/drive/v3/files/root", "/drive/v3/files"]
 
 
 @pytest.mark.asyncio
-async def test_refresh_fences_a_child_read_using_old_breadcrumbs(provider_factory: Callable) -> None:
+async def test_refresh_fences_a_child_read_using_old_breadcrumbs(driver_factory: Callable) -> None:
     server = WritableDriveServer([
         drive_file("a", "A", mime=FOLDER_MIME), drive_file("file", "File", "a"),
     ])
@@ -630,19 +633,19 @@ async def test_refresh_fences_a_child_read_using_old_breadcrumbs(provider_factor
             await release.wait()
         return response
 
-    provider = provider_factory(respond)
-    directories = registry_for([provider], cache_directories=True).manager.directories
+    driver = driver_factory(respond)
+    directories = registry_for({STORAGE_ID: driver}, cache_directories=True).manager.directories
     root, a = RootLocation(), IdLocation(value="a")
-    await directories.list_directory(provider.id, root)
-    first = asyncio.create_task(directories.list_directory(provider.id, a, parent_location=root))
+    await directories.list_directory(STORAGE_ID, root)
+    first = asyncio.create_task(directories.list_directory(STORAGE_ID, a, parent_location=root))
     try:
         await asyncio.wait_for(started.wait(), timeout=5)
         server.files["a"]["name"] = "Updated"
-        await directories.list_directory(provider.id, root, mode="refresh")
+        await directories.list_directory(STORAGE_ID, root, mode="refresh")
     finally:
         release.set()
         assert (await first).path == "A"
-    reopened = await directories.list_directory(provider.id, a, parent_location=root)
+    reopened = await directories.list_directory(STORAGE_ID, a, parent_location=root)
     assert reopened.path == "Updated"
     assert sum("'a' in parents" in request.url.params.get("q", "") for request in server.requests) == 2
 
@@ -650,50 +653,50 @@ async def test_refresh_fences_a_child_read_using_old_breadcrumbs(provider_factor
 @pytest.mark.asyncio
 @pytest.mark.parametrize("cached_capability", [True, None])
 async def test_empty_google_folder_checks_live_permission_and_lists_once(
-    provider_factory: Callable, cached_capability: bool | None,
+    driver_factory: Callable, cached_capability: bool | None,
 ) -> None:
     server = WritableDriveServer([drive_file("folder", "Folder", mime=FOLDER_MIME,
                                             capabilities={"canListChildren": cached_capability})])
-    provider = provider_factory(server)
-    directories = registry_for([provider], cache_directories=True).manager.directories
-    root = await directories.list_directory(provider.id, RootLocation())
+    driver = driver_factory(server)
+    directories = registry_for({STORAGE_ID: driver}, cache_directories=True).manager.directories
+    root = await directories.list_directory(STORAGE_ID, RootLocation())
     assert root.items[0].can_list_children is cached_capability
     server.files["folder"]["capabilities"] = {"canListChildren": True}
     server.requests.clear()
-    listing = await directories.list_directory(provider.id, IdLocation(value="folder"), parent_location=root.location)
+    listing = await directories.list_directory(STORAGE_ID, IdLocation(value="folder"), parent_location=root.location)
     assert not listing.items and listing.parent_location == RootLocation()
     paths = [request.url.path.removeprefix("/drive/v3/") for request in server.requests]
     assert paths == (["files", "files/folder"] if cached_capability else ["files/folder", "files"])
 
 
 @pytest.mark.asyncio
-async def test_google_empty_response_cannot_confirm_an_unknown_permission(provider_factory: Callable) -> None:
+async def test_google_empty_response_cannot_confirm_an_unknown_permission(driver_factory: Callable) -> None:
     server = WritableDriveServer([drive_file("folder", "Folder", mime=FOLDER_MIME, capabilities={})])
-    provider = provider_factory(server)
+    driver = driver_factory(server)
     with pytest.raises(PermissionDeniedError):
-        await provider.list_directory(IdLocation(value="folder"))
+        await driver.list_directory(IdLocation(value="folder"))
 
 
 @pytest.mark.asyncio
-async def test_google_requires_real_root_id_and_nonroot_parent_metadata(provider_factory: Callable) -> None:
+async def test_google_requires_real_root_id_and_nonroot_parent_metadata(driver_factory: Callable) -> None:
     folder = drive_file("folder", "Folder", mime=FOLDER_MIME)
     folder.pop("parents")
     server = WritableDriveServer([folder])
     server.files["root-id"] = {key: value for key, value in ROOT.items() if key not in {"id", "parents"}}
-    provider = provider_factory(server)
+    driver = driver_factory(server)
     with pytest.raises(ProviderError):
-        await provider.list_directory(RootLocation())
+        await driver.list_directory(RootLocation())
     assert [request.url.path for request in server.requests] == ["/drive/v3/files/root"]
 
     server.files["root-id"]["id"] = "root-id"
     server.requests.clear()
     with pytest.raises(ValidationError):
-        await provider.list_directory(IdLocation(value="folder"))
+        await driver.list_directory(IdLocation(value="folder"))
     assert [request.url.path for request in server.requests] == ["/drive/v3/files/root", "/drive/v3/files/folder"]
 
 
 @pytest.mark.asyncio
-async def test_google_structural_conflict_invalidates_the_hint_and_retries_live(provider_factory: Callable) -> None:
+async def test_google_structural_conflict_invalidates_the_hint_and_retries_live(driver_factory: Callable) -> None:
     server = WritableDriveServer([drive_file("folder", "Folder", mime=FOLDER_MIME),
                                   drive_file("child", "Child", "folder")])
     reject_once = True
@@ -706,33 +709,33 @@ async def test_google_structural_conflict_invalidates_the_hint_and_retries_live(
             return file_page([drive_file("child", "Child", "wrong-folder")])
         return response
 
-    provider = provider_factory(respond)
-    directories = registry_for([provider], cache_directories=True).manager.directories
+    driver = driver_factory(respond)
+    directories = registry_for({STORAGE_ID: driver}, cache_directories=True).manager.directories
     root = RootLocation()
-    await directories.list_directory(provider.id, root)
+    await directories.list_directory(STORAGE_ID, root)
     server.requests.clear()
-    opened = await directories.list_directory(provider.id, IdLocation(value="folder"), parent_location=root)
+    opened = await directories.list_directory(STORAGE_ID, IdLocation(value="folder"), parent_location=root)
     assert opened.items[0].id == "child"
     assert [request.url.path.removeprefix("/drive/v3/") for request in server.requests] == [
         "files", "files/root", "files/folder", "files",
     ]
     server.requests.clear()
-    await directories.list_directory(provider.id, root)
+    await directories.list_directory(STORAGE_ID, root)
     assert len(server.requests) == 2
 
 
 @pytest.mark.asyncio
-async def test_name_policy_and_single_native_document_rename(provider_factory: Callable) -> None:
+async def test_name_policy_and_single_native_document_rename(driver_factory: Callable) -> None:
     mime = "application/vnd.google-apps.spreadsheet"
     server = WritableDriveServer([drive_file("doc/?", "Budget", parent="external-parent", mime=mime, driveId="shared-drive")])
-    provider = provider_factory(server)
+    driver = driver_factory(server)
     for name in ("", " \t", "bad\x00name"):
-        assert provider.validate_name(name) is not None
+        assert driver.validate_name(name) is not None
     for name in ("CON", "a/b\\c:*?", "trailing. ", "文" * 300):
-        assert provider.validate_name(name) is None
-        assert provider.normalize_name(name) == name
-    assert provider.normalize_name("A") != provider.normalize_name("a")
-    item = await provider.rename_single("doc/?", "预算/2026")
+        assert driver.validate_name(name) is None
+        assert driver.normalize_name(name) == name
+    assert driver.normalize_name("A") != driver.normalize_name("a")
+    item = await driver.rename_single("doc/?", "预算/2026")
     assert item.id == "doc/?" and item.name == "预算/2026"
     assert item.location == IdLocation(value="doc/?") and item.parent_location == IdLocation(value="external-parent")
     assert item.mime_type == mime
@@ -740,14 +743,14 @@ async def test_name_policy_and_single_native_document_rename(provider_factory: C
     assert server.writes == [[("doc/?", "预算/2026")]]
     assert [request.method for request in server.requests] == ["PATCH"]
     assert item.path is None and item.parent_path is None
-    metadata = await provider.get_single_metadata(item.id)
+    metadata = await driver.get_single_metadata(item.id)
     assert metadata == item
     assert [request.method for request in server.requests] == ["PATCH", "GET"]
 
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("fault", ["transport", "503", "malformed", "wrong_id", "moved"])
-async def test_single_patch_handles_response_without_replaying_writes(provider_factory: Callable, fault: str) -> None:
+async def test_single_patch_handles_response_without_replaying_writes(driver_factory: Callable, fault: str) -> None:
     server = WritableDriveServer([drive_file("a", "A")])
 
     def respond(request: httpx.Request) -> httpx.Response:
@@ -764,20 +767,20 @@ async def test_single_patch_handles_response_without_replaying_writes(provider_f
         return httpx.Response(200, json=data)
 
     if fault == "moved":
-        result = await provider_factory(respond).rename_single("a", "AA")
+        result = await driver_factory(respond).rename_single("a", "AA")
         assert result.name == "AA"
         assert result.parent_location == IdLocation(value="elsewhere")
         assert result.path is None
     else:
         with pytest.raises(RenameOutcomeUnknownError):
-            await provider_factory(respond).rename_single("a", "AA")
+            await driver_factory(respond).rename_single("a", "AA")
     assert server.writes == [[("a", "AA")]]
     assert [request.method for request in server.requests] == ["PATCH"]
 
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("status", [401, 429])
-async def test_single_patch_retries_explicit_auth_and_throttle_refusals(provider_factory: Callable, status: int, monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_single_patch_retries_explicit_auth_and_throttle_refusals(driver_factory: Callable, status: int, monkeypatch: pytest.MonkeyPatch) -> None:
     clock = CooldownClock(monkeypatch)
     server = WritableDriveServer([drive_file("a", "A")])
     server.reject_once["a"] = status
@@ -789,7 +792,7 @@ async def test_single_patch_retries_explicit_auth_and_throttle_refusals(provider
             return httpx.Response(429, headers={"Retry-After": "60"}, content=response.content)
         return response
 
-    task = asyncio.create_task(provider_factory(respond, auth).rename_single("a", "AA"))
+    task = asyncio.create_task(driver_factory(respond, auth).rename_single("a", "AA"))
     try:
         if status == 429:
             assert await clock.next_wait() == 60
@@ -807,7 +810,7 @@ async def test_single_patch_retries_explicit_auth_and_throttle_refusals(provider
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("status", [401, 403, 429])
-async def test_write_batch_retries_only_explicitly_refused_parts(provider_factory: Callable, status: int, monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_write_batch_retries_only_explicitly_refused_parts(driver_factory: Callable, status: int, monkeypatch: pytest.MonkeyPatch) -> None:
     clock = CooldownClock(monkeypatch)
     server = WritableDriveServer([drive_file("a", "A"), drive_file("b", "B")])
     server.reject_once["b"] = status
@@ -819,13 +822,13 @@ async def test_write_batch_retries_only_explicitly_refused_parts(provider_factor
             return httpx.Response(200, headers=response.headers, content=response.content.replace(b"Retry-After: 0", b"Retry-After: 60"))
         return response
 
-    provider = provider_factory(respond, auth)
-    task = asyncio.create_task(provider.rename_many([RenameRequest("a", "AA"), RenameRequest("b", "BB")]))
+    driver = driver_factory(respond, auth)
+    task = asyncio.create_task(driver.rename_many([RenameRequest("a", "AA"), RenameRequest("b", "BB")]))
     peer = None
     try:
         if status in (403, 429):
             assert await clock.next_wait() == 60
-            peer = asyncio.create_task(provider.get_single_metadata("a"))
+            peer = asyncio.create_task(driver.get_single_metadata("a"))
             assert await clock.next_wait() == 60
             assert server.writes == [[("a", "AA"), ("b", "BB")]]
             clock.advance(60)
@@ -845,7 +848,7 @@ async def test_write_batch_retries_only_explicitly_refused_parts(provider_factor
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(("status", "error_type", "attempts"), [(401, AuthenticationError, 2), (429, RateLimitError, 4)])
-async def test_write_part_retry_is_bounded(provider_factory: Callable, status: int, error_type: type[Exception], attempts: int, monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_write_part_retry_is_bounded(driver_factory: Callable, status: int, error_type: type[Exception], attempts: int, monkeypatch: pytest.MonkeyPatch) -> None:
     clock = CooldownClock(monkeypatch)
     server = WritableDriveServer([drive_file("a", "A")])
 
@@ -858,13 +861,13 @@ async def test_write_part_retry_is_bounded(provider_factory: Callable, status: i
             return response
         return server(request)
 
-    provider = provider_factory(respond)
-    result = await provider.rename_many([RenameRequest("a", "AA")])
+    driver = driver_factory(respond)
+    result = await driver.rename_many([RenameRequest("a", "AA")])
     assert isinstance(result["a"], error_type)
     assert len(server.writes) == attempts
     assert server.files["a"]["name"] == "A"
     if status == 429:
-        task = asyncio.create_task(provider.get_single_metadata("a"))
+        task = asyncio.create_task(driver.get_single_metadata("a"))
         try:
             assert await clock.next_wait() == 60
             assert len(server.writes) == attempts
@@ -877,21 +880,21 @@ async def test_write_part_retry_is_bounded(provider_factory: Callable, status: i
 
 
 @pytest.mark.asyncio
-async def test_unknown_part_prevents_retry_of_other_refused_parts(provider_factory: Callable) -> None:
+async def test_unknown_part_prevents_retry_of_other_refused_parts(driver_factory: Callable) -> None:
     server = WritableDriveServer([drive_file("a", "A"), drive_file("b", "B")])
     server.reject_once = {"a": 503, "b": 429}
-    result = await provider_factory(server).rename_many([RenameRequest("a", "AA"), RenameRequest("b", "BB")])
+    result = await driver_factory(server).rename_many([RenameRequest("a", "AA"), RenameRequest("b", "BB")])
     assert isinstance(result["a"], RenameOutcomeUnknownError)
     assert isinstance(result["b"], RateLimitError)
     assert len(server.writes) == 1
 
 
 @pytest.mark.asyncio
-async def test_write_batches_keep_successes_and_permanent_failures(provider_factory: Callable) -> None:
+async def test_write_batches_keep_successes_and_permanent_failures(driver_factory: Callable) -> None:
     mimes = ["text/plain", FOLDER_MIME, "application/vnd.google-apps.document"]
     server = WritableDriveServer([drive_file(str(index), f"old-{index}", mime=mimes[index % len(mimes)]) for index in range(21)])
     server.fail_targets.add("new-1")
-    result = await provider_factory(server).rename_many([RenameRequest(str(index), f"new-{index}") for index in range(21)])
+    result = await driver_factory(server).rename_many([RenameRequest(str(index), f"new-{index}") for index in range(21)])
     assert [len(batch) for batch in server.writes] == [20, 1]
     assert isinstance(result["1"], PermissionDeniedError)
     assert all(result[str(index)].name == f"new-{index}" for index in range(21) if index != 1)
@@ -900,7 +903,7 @@ async def test_write_batches_keep_successes_and_permanent_failures(provider_fact
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("kind", ["root", "shortcut", "readonly", "outside", "shared", "trashed"])
-async def test_batch_write_preflight_enforces_scope_and_permissions(provider_factory: Callable, kind: str) -> None:
+async def test_batch_write_preflight_enforces_scope_and_permissions(driver_factory: Callable, kind: str) -> None:
     item = drive_file("item", "Old")
     if kind == "shortcut":
         item["mimeType"] = SHORTCUT_MIME
@@ -914,14 +917,14 @@ async def test_batch_write_preflight_enforces_scope_and_permissions(provider_fac
         item["trashed"] = True
     server = WritableDriveServer([item])
     file_id = "root-id" if kind == "root" else "item"
-    result = await provider_factory(server).rename_many([RenameRequest(file_id, "New")])
+    result = await driver_factory(server).rename_many([RenameRequest(file_id, "New")])
     assert isinstance(result[file_id], (ValidationError, PermissionDeniedError, NotFoundError))
     assert not server.writes
 
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("fault", ["outer_503", "part_503", "malformed", "missing_part", "wrong_id", "moved"])
-async def test_ambiguous_write_response_is_never_replayed(provider_factory: Callable, fault: str) -> None:
+async def test_ambiguous_write_response_is_never_replayed(driver_factory: Callable, fault: str) -> None:
     server = WritableDriveServer([drive_file("a", "A"), drive_file("b", "B")])
 
     def respond(request: httpx.Request) -> httpx.Response:
@@ -939,13 +942,13 @@ async def test_ambiguous_write_response_is_never_replayed(provider_factory: Call
         data = {**server.files["a"], **({"id": "other"} if fault == "wrong_id" else {"parents": ["elsewhere"]})}
         return batch_response([(0, 200, data), (1, 200, server.files["b"])])
 
-    result = await provider_factory(respond).rename_many([RenameRequest("a", "AA"), RenameRequest("b", "BB")])
+    result = await driver_factory(respond).rename_many([RenameRequest("a", "AA"), RenameRequest("b", "BB")])
     assert isinstance(result["a"], RenameOutcomeUnknownError)
     assert len(server.writes) == 1
 
 
 @pytest.mark.asyncio
-async def test_unexpected_returned_name_is_reported_as_actual_name(provider_factory: Callable) -> None:
+async def test_unexpected_returned_name_is_reported_as_actual_name(driver_factory: Callable) -> None:
     server = WritableDriveServer([drive_file("a", "A")])
 
     def respond(request: httpx.Request) -> httpx.Response:
@@ -955,8 +958,8 @@ async def test_unexpected_returned_name_is_reported_as_actual_name(provider_fact
             return httpx.Response(200, json=server.files["a"])
         return response
 
-    provider = provider_factory(respond)
-    result = await SingleRenameService(registry_for([provider])).execute(provider.id, SingleRenameExecuteRequest(
+    driver = driver_factory(respond)
+    result = await SingleRenameService(registry_for({STORAGE_ID: driver})).execute(STORAGE_ID, SingleRenameExecuteRequest(
         operation_id=uuid4(), revision=1, file_id="a", original_name="A", target_name="AA",
     ))
     assert result.items[0].status == "failed"
@@ -977,26 +980,26 @@ class MappingRule(RenameRule[MappingConfig]):
         return config.names.get(filename, filename)
 
 
-def rename_services(provider: GoogleDriveProvider, *, cache_directories: bool = False) -> tuple[PreviewService, ExecuteService]:
-    registry = registry_for([provider], cache_directories=cache_directories)
+def rename_services(driver: GoogleDriveDriver, *, cache_directories: bool = False) -> tuple[PreviewService, ExecuteService]:
+    registry = registry_for({STORAGE_ID: driver}, cache_directories=cache_directories)
     rules = RuleRegistry()
     rules.register(MappingRule())
     preview = PreviewService(registry, RenameEngine(rules), PreviewStore())
     return preview, ExecuteService(registry, preview.store, preview)
 
 
-def rename_request(provider: GoogleDriveProvider, ids: list[str], names: dict[str, str]) -> RenamePreviewRequest:
-    return RenamePreviewRequest(storage_id=provider.id, location=RootLocation(), file_ids=ids,
+def rename_request(ids: list[str], names: dict[str, str]) -> RenamePreviewRequest:
+    return RenamePreviewRequest(storage_id=STORAGE_ID, location=RootLocation(), file_ids=ids,
                                 rules=[RuleSpec(type="mapping", config={"names": names})])
 
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(("names", "valid"), [({}, True), ({"Old": "New"}, True), ({"Old": "Same"}, False), ({"Old": "same"}, True), ({"Same": "New", "Old": "New"}, False)])
-async def test_preview_preserves_existing_duplicates_but_blocks_new_conflicts(provider_factory: Callable, names: dict[str, str], valid: bool) -> None:
+async def test_preview_preserves_existing_duplicates_but_blocks_new_conflicts(driver_factory: Callable, names: dict[str, str], valid: bool) -> None:
     server = WritableDriveServer([drive_file("a", "Same"), drive_file("b", "Same"), drive_file("c", "Old")])
-    provider = provider_factory(server)
-    preview, execute = rename_services(provider)
-    result = await preview.preview(rename_request(provider, ["a", "b", "c"], names))
+    driver = driver_factory(server)
+    preview, execute = rename_services(driver)
+    result = await preview.preview(rename_request(["a", "b", "c"], names))
     assert result.valid is valid
     assert not server.writes
     # 执行只保留一个代表场景，其余参数专门检查名称冲突策略。
@@ -1010,20 +1013,20 @@ async def test_preview_preserves_existing_duplicates_but_blocks_new_conflicts(pr
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("change", ["permission", "occupied"])
-async def test_execute_revalidates_google_snapshot_before_any_write(provider_factory: Callable, change: str) -> None:
+async def test_execute_revalidates_google_snapshot_before_any_write(driver_factory: Callable, change: str) -> None:
     folder = IdLocation(value="folder")
     server = WritableDriveServer([
         drive_file(folder.value, "Folder", mime=FOLDER_MIME),
         drive_file("other-folder", "Other", mime=FOLDER_MIME),
         drive_file("a", "A", folder.value),
     ])
-    provider = provider_factory(server)
-    preview, execute = rename_services(provider, cache_directories=True)
+    driver = driver_factory(server)
+    preview, execute = rename_services(driver, cache_directories=True)
     directories = preview.providers.manager.directories
-    await directories.list_directory(provider.id, RootLocation())
-    await directories.list_directory(provider.id, folder, parent_location=RootLocation())
+    await directories.list_directory(STORAGE_ID, RootLocation())
+    await directories.list_directory(STORAGE_ID, folder, parent_location=RootLocation())
     snapshot = await preview.preview(RenamePreviewRequest(
-        storage_id=provider.id, location=folder, file_ids=["a"], target_name="B",
+        storage_id=STORAGE_ID, location=folder, file_ids=["a"], target_name="B",
     ))
     assert snapshot.valid
     server.files[folder.value]["parents"] = ["other-folder"]
@@ -1031,7 +1034,7 @@ async def test_execute_revalidates_google_snapshot_before_any_write(provider_fac
         server.files["a"]["capabilities"]["canRename"] = False
     else:
         server.files["other"] = drive_file("other", "B", folder.value)
-    assert (await directories.list_directory(provider.id, folder)).path == "Folder"
+    assert (await directories.list_directory(STORAGE_ID, folder)).path == "Folder"
     server.requests.clear()
     with pytest.raises(PreviewExpiredError):
         await execute.execute(snapshot.preview_id)
@@ -1043,7 +1046,7 @@ async def test_execute_revalidates_google_snapshot_before_any_write(provider_fac
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("unreadable", [False, True])
-async def test_engine_reconciles_lost_google_write_without_replay(provider_factory: Callable, unreadable: bool) -> None:
+async def test_engine_reconciles_lost_google_write_without_replay(driver_factory: Callable, unreadable: bool) -> None:
     server = WritableDriveServer([drive_file(str(index), f"old-{index}") for index in range(21)])
 
     def respond(request: httpx.Request) -> httpx.Response:
@@ -1054,10 +1057,10 @@ async def test_engine_reconciles_lost_google_write_without_replay(provider_facto
             raise httpx.ReadTimeout("Response lost after commit", request=request)
         return response
 
-    provider = provider_factory(respond)
-    preview, execute = rename_services(provider)
+    driver = driver_factory(respond)
+    preview, execute = rename_services(driver)
     names = {f"old-{index}": f"new-{index}" for index in range(21)}
-    snapshot = await preview.preview(rename_request(provider, [str(index) for index in range(21)], names))
+    snapshot = await preview.preview(rename_request([str(index) for index in range(21)], names))
     result = await execute.execute(snapshot.preview_id)
     counts = Counter(file_id for batch in server.writes for file_id, _ in batch)
     assert all(count == 1 for count in counts.values())

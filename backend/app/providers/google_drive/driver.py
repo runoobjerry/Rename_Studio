@@ -17,13 +17,13 @@ from app.core.errors import AppError, AuthenticationError, NotFoundError, Permis
 from app.core.log_context import request_id_context
 from app.providers.errors import http_error_details, read_error_payload
 from app.providers.retry import RetryBudget
-from app.providers.base import RenameRequest, StorageProvider
+from app.providers.base import RenameRequest, StorageDriver
 from app.providers.directory_metadata import DirectoryHint, DirectoryMetadataConflict
 from app.providers.cooldown import ConnectionCooldown, retry_after_delay
 from app.providers.name_validation import NameValidationIssue
 from app.schemas.files import DirectoryBreadcrumb, DirectoryListing, FileItem, RenameFile
 from app.schemas.storage import IdLocation, PathLocation, RootLocation, StorageLocation
-from app.services.connection_auth import ConnectionAuth
+from app.services.storage_auth import StorageAuth
 
 
 DRIVE_ROOT = "https://www.googleapis.com/drive/v3"
@@ -88,10 +88,10 @@ def _map_google_error(status: int, reasons: list[str]) -> AppError:
     return ProviderError("Google Drive request failed", details=details)
 
 
-class GoogleDriveProvider(StorageProvider):
-    id = "google_drive"
+class GoogleDriveDriver(StorageDriver):
+    provider_type = "google_drive"
 
-    def __init__(self, auth: ConnectionAuth, *, timeout: float = 30.0, client: httpx.AsyncClient | None = None) -> None:
+    def __init__(self, auth: StorageAuth, *, timeout: float = 30.0, client: httpx.AsyncClient | None = None) -> None:
         self.auth = auth
         self.timeout = timeout
         self._client = client
@@ -124,7 +124,7 @@ class GoogleDriveProvider(StorageProvider):
         items = await self._list_children(directory.id, canonical, path, {folder.id for folder in chain})
         self._require_listing_permission(can_list, empty=not items)
         return DirectoryListing(
-            provider=self.id, path=path,
+            provider=self.provider_type, path=path,
             parent_path=self._display_path(chain[:-1]) if len(chain) > 1 else None,
             location=canonical, directory_id=directory.id,
             parent_location=self._location(chain[-2], root) if len(chain) > 1 else None,
@@ -154,7 +154,7 @@ class GoogleDriveProvider(StorageProvider):
             path = "/".join(filter(None, (hint.parent_path, name)))
         self._require_listing_permission(can_list, empty=not items)
         return DirectoryListing(
-            provider=self.id, path=path, parent_path=hint.parent_path, location=location,
+            provider=self.provider_type, path=path, parent_path=hint.parent_path, location=location,
             directory_id=folder.id, parent_location=hint.parent_location,
             breadcrumbs=hint.breadcrumbs(name), items=items,
         )

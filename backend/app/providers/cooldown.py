@@ -6,7 +6,7 @@ from time import monotonic
 
 
 class ConnectionCooldown:
-    """One cached Provider represents one connection; all its requests share this gate."""
+    """Requests from one cached driver share this gate."""
 
     def __init__(self) -> None:
         self._until = 0.0

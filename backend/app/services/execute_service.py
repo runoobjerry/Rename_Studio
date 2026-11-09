@@ -5,7 +5,7 @@ from time import monotonic
 
 from app.core.errors import AppError, NotFoundError, PreviewExpiredError, ValidationError, RenameOutcomeUnknownError, ProviderError
 from app.core.log_context import request_id_context
-from app.providers.base import RenameRequest, StorageProvider
+from app.providers.base import RenameRequest, StorageDriver
 from app.providers.registry import ProviderRegistry
 from app.schemas.files import FileItem
 from app.schemas.rename import (
@@ -79,7 +79,7 @@ class ExecuteService:
                     self._progress[preview_id] = (monotonic() + 600, progress)
                 for item in response.items:
                     logger.info(
-                        "rename execution provider=%s file_id=%s status=%s error=%s",
+                        "rename execution storage_id=%s file_id=%s status=%s error=%s",
                         snapshot.request.storage_id,
                         item.file_id,
                         item.status,
@@ -93,7 +93,7 @@ class ExecuteService:
 
         storage_id = snapshot.request.storage_id
         directories = self.providers.manager.directories
-        parent = StorageProvider.parent_directory(snapshot.sources[0])
+        parent = StorageDriver.parent_directory(snapshot.sources[0])
         try:
             listing = await directories.list_directory(storage_id, parent, mode="fresh")
             by_id = {item.id: item for item in listing.items}
@@ -117,14 +117,14 @@ class ExecuteService:
 
     @staticmethod
     async def _safe_rename_many(
-        provider: StorageProvider,
+        driver: StorageDriver,
         requests: list[RenameRequest],
         *,
         on_unknown: Callable[[], None] | None = None,
         observe: RenameObserver[FileItem] | None = None,
     ) -> dict[str, FileItem | AppError]:
         try:
-            outcomes = await provider.rename_many(requests)
+            outcomes = await driver.rename_many(requests)
         except AppError as exc:
             outcomes = {request.file_id: exc for request in requests}
         if on_unknown is not None and any(isinstance(outcome, RenameOutcomeUnknownError) for outcome in outcomes.values()):
@@ -132,20 +132,20 @@ class ExecuteService:
             on_unknown()
         for request in requests:
             outcomes[request.file_id] = await resolve_rename_outcome(
-                provider.get_metadata, request, outcomes[request.file_id], observe=observe,
+                driver.get_metadata, request, outcomes[request.file_id], observe=observe,
             )
         return outcomes
 
     @staticmethod
     async def _rename_in_batches(
-        provider: StorageProvider,
+        driver: StorageDriver,
         requests: list[RenameRequest],
         progress: RenameProgress | None = None,
         *,
         observe: RenameObserver[FileItem] | None = None,
     ) -> dict[str, FileItem | AppError]:
         outcomes: dict[str, FileItem | AppError] = {}
-        concurrency = provider.execution_batch_concurrency
+        concurrency = driver.execution_batch_concurrency
         offset = 0
         active = 0
 
@@ -159,21 +159,21 @@ class ExecuteService:
             started = monotonic()
             logger.info(
                 "write_batch event=start provider=%s request_id=%s group=%s item_count=%s in_flight=%s",
-                provider.id, request_id_context.get(), index, len(batch), active,
+                driver.provider_type, request_id_context.get(), index, len(batch), active,
             )
             try:
-                return await ExecuteService._safe_rename_many(provider, batch, on_unknown=on_unknown, observe=observe)
+                return await ExecuteService._safe_rename_many(driver, batch, on_unknown=on_unknown, observe=observe)
             finally:
                 active -= 1
                 logger.info(
                     "write_batch event=finish provider=%s request_id=%s group=%s item_count=%s in_flight=%s duration_ms=%.2f",
-                    provider.id, request_id_context.get(), index, len(batch), active, (monotonic() - started) * 1000,
+                    driver.provider_type, request_id_context.get(), index, len(batch), active, (monotonic() - started) * 1000,
                 )
 
         if concurrency == 1:
-            for offset in range(0, len(requests), provider.execution_batch_size):
-                batch = requests[offset:offset + provider.execution_batch_size]
-                task = asyncio.create_task(run_batch(offset // provider.execution_batch_size + 1, batch))
+            for offset in range(0, len(requests), driver.execution_batch_size):
+                batch = requests[offset:offset + driver.execution_batch_size]
+                task = asyncio.create_task(run_batch(offset // driver.execution_batch_size + 1, batch))
                 try:
                     # 单组也保护已启动的写入，取消后等待其完成再释放执行锁。
                     batch_outcomes = await asyncio.shield(task)
@@ -199,8 +199,8 @@ class ExecuteService:
         def start_batches() -> None:
             nonlocal offset
             while not stopped and not reconciling and len(pending) < concurrency and offset < len(requests):
-                index = offset // provider.execution_batch_size + 1
-                batch = requests[offset:offset + provider.execution_batch_size]
+                index = offset // driver.execution_batch_size + 1
+                batch = requests[offset:offset + driver.execution_batch_size]
                 task = asyncio.create_task(run_batch(index, batch, lambda index=index: reconciling.add(index)))
                 pending[task] = (index, batch)
                 offset += len(batch)
@@ -251,7 +251,7 @@ class ExecuteService:
         sources: list[FileItem],
         progress: RenameProgress,
     ) -> RenameExecuteResponse:
-        provider = self.providers.get(snapshot.request.storage_id)
+        driver = self.providers.get_driver(snapshot.request.storage_id)
         results = {
             item.file_id: ExecuteItem(
                 file_id=item.file_id,
@@ -268,7 +268,7 @@ class ExecuteService:
         by_id = {source.id: source for source in sources}
         previous_by_id = {source.id: source for source in snapshot.sources}
         requests = [RenameRequest(item.file_id, item.new_name) for item in changed]
-        source_parents = {request.file_id: StorageProvider.parent_directory(by_id[request.file_id]) for request in requests}
+        source_parents = {request.file_id: StorageDriver.parent_directory(by_id[request.file_id]) for request in requests}
         scope = RenameCacheScope(set(source_parents.values()))
 
         def observe(file_id: str, outcome: FileItem | AppError, target_confirmed: bool) -> None:
@@ -280,7 +280,7 @@ class ExecuteService:
 
         progress.phase = "renaming"
         with self.providers.manager.directories.writing(snapshot.request.storage_id, snapshot.connection_revision, scope):
-            outcomes = await self._rename_in_batches(provider, requests, progress, observe=observe)
+            outcomes = await self._rename_in_batches(driver, requests, progress, observe=observe)
         for item in changed:
             outcome = outcomes[item.file_id]
             if isinstance(outcome, AppError):

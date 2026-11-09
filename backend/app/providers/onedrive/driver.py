@@ -21,13 +21,13 @@ from app.core.errors import (
 )
 from app.providers.errors import http_error_details, read_error_payload
 from app.providers.retry import RetryBudget
-from app.providers.base import RenameRequest, StorageProvider
+from app.providers.base import RenameRequest, StorageDriver
 from app.providers.directory_metadata import DirectoryHint, DirectoryMetadata, DirectoryMetadataConflict
 from app.providers.cooldown import ConnectionCooldown, retry_after_delay
 from app.providers.name_validation import NameValidationIssue, validate_onedrive_name
 from app.schemas.files import DirectoryBreadcrumb, DirectoryListing, FileItem
 from app.schemas.storage import IdLocation, PathLocation, RootLocation, StorageLocation
-from app.services.connection_auth import ConnectionAuth
+from app.services.storage_auth import StorageAuth
 
 
 logger = logging.getLogger("rename_studio.onedrive_performance")
@@ -75,13 +75,13 @@ def _map_graph_error(status: int, codes: list[str]) -> AppError:
     return ProviderError("Microsoft Graph request failed", details=details)
 
 
-class OneDriveProvider(StorageProvider):
-    id = "onedrive"
+class OneDriveDriver(StorageDriver):
+    provider_type = "onedrive"
     execution_batch_concurrency = WRITE_BATCH_CONCURRENCY
 
     def __init__(
         self,
-        auth: ConnectionAuth,
+        auth: StorageAuth,
         *,
         timeout: float = 30.0,
         client: httpx.AsyncClient | None = None,
@@ -108,7 +108,7 @@ class OneDriveProvider(StorageProvider):
             self._check_directory_items(items, {crumb.location for crumb in breadcrumbs} | {IdLocation(value=hint.parent_id)})
             parent_path = folder.parent_path or "/".join(quote(crumb.name, safe="") for crumb in hint.parent_breadcrumbs[1:])
             return DirectoryListing(
-                provider=self.id, path="/".join(filter(None, (parent_path, folder.name))),
+                provider=self.provider_type, path="/".join(filter(None, (parent_path, folder.name))),
                 parent_path=parent_path, location=location, directory_id=folder.id,
                 drive_id=hint.drive_id, parent_location=hint.parent_location, items=items, breadcrumbs=breadcrumbs,
             )
@@ -134,7 +134,7 @@ class OneDriveProvider(StorageProvider):
             if not display_parent:
                 display_parent = "/".join(quote(folder.name, safe="") for folder in chain[1:-1])
         path = "" if parent is None else f"{display_parent}/{directory.name}".strip("/")
-        return DirectoryListing(provider=self.id, path=path, parent_path=None if parent is None else display_parent,
+        return DirectoryListing(provider=self.provider_type, path=path, parent_path=None if parent is None else display_parent,
                                 location=canonical, directory_id=directory.id, drive_id=root.drive_id,
                                 parent_location=parent, items=items, breadcrumbs=breadcrumbs)
 
@@ -584,7 +584,7 @@ class OneDriveProvider(StorageProvider):
         name = payload.get("name")
         if not isinstance(item_id, str) or not item_id or not isinstance(name, str):
             raise DirectoryMetadataConflict("Microsoft Graph returned incomplete file metadata")
-        parent = OneDriveProvider._parent_path(payload.get("parentReference"))
+        parent = OneDriveDriver._parent_path(payload.get("parentReference"))
         parent_reference = payload.get("parentReference")
         parent_id = parent_reference.get("id") if isinstance(parent_reference, dict) else None
         modified = payload.get("lastModifiedDateTime")
