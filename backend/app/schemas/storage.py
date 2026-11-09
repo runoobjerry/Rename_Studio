@@ -162,6 +162,7 @@ class StorageInfo(BaseModel):
 class StorageListRequest(BaseModel):
     location: StorageLocation = Field(default_factory=RootLocation)
     refresh: bool = False
+    parent_location: StorageLocation | None = None
 
 
 class StoragePreviewRequest(RenamePreviewInput):

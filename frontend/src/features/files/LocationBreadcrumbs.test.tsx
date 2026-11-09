@@ -69,15 +69,15 @@ describe("LocationBreadcrumbs", () => {
     const menu = within(screen.getByRole("menu"));
     expect(menu.getAllByRole("menuitem").map((item) => item.textContent)).toEqual(["云盘根目录", "目录A", "目录A", "目录/C"]);
     fireEvent.click(menu.getByRole("menuitem", { name: "目录/C" }));
-    expect(onNavigate).toHaveBeenLastCalledWith({ kind: "id", value: "c-id" });
+    expect(onNavigate).toHaveBeenLastCalledWith({ kind: "id", value: "c-id" }, { kind: "id", value: "b-id" });
     available = 1000;
     act(() => resize());
     expect(nav.queryByRole("button", { name: "显示父级目录" })).not.toBeInTheDocument();
     const [first, second] = nav.getAllByRole("button", { name: "目录A" });
     fireEvent.click(first);
-    expect(onNavigate).toHaveBeenLastCalledWith({ kind: "id", value: "a-id" });
+    expect(onNavigate).toHaveBeenLastCalledWith({ kind: "id", value: "a-id" }, { kind: "root" });
     fireEvent.click(second);
-    expect(onNavigate).toHaveBeenLastCalledWith({ kind: "id", value: "b-id" });
+    expect(onNavigate).toHaveBeenLastCalledWith({ kind: "id", value: "b-id" }, { kind: "id", value: "a-id" });
 
     rerender(<LocationBreadcrumbs listing={{ ...cloudListing, provider: "onedrive" }}
       rootLabel="根目录" disabled={false} onNavigate={onNavigate} />);

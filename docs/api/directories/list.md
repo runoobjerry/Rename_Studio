@@ -19,6 +19,7 @@
 | --- | --- | --- | --- | --- |
 | `location` | StorageLocation | 否 | 否 | 默认 `{"kind":"root"}`。支持的位置类型见 [StorageLocation](../common/locations.md#locations)。 |
 | `refresh` | boolean | 否 | 否 | 默认 `false`，允许返回缓存结果。设为 `true` 时绕过目录缓存并直接读取存储。 |
+| `parent_location` | StorageLocation | 否 | 是 | 普通导航可传目标的已知父目录位置。提示用于同连接版本的缓存复用或失效。强制刷新始终以云端结果为准。 |
 
 请求体必需，读取根目录可提交 `{}`。不提供分页、搜索、排序或筛选参数，也不设应用级目录数量上限。
 
@@ -26,9 +27,11 @@
 
 HTTP 200，返回 `DirectoryListing`。服务端汇总云端分页，读取失败时返回错误。
 
-再次访问当前目录时，传回响应的 `location`。访问祖先目录时，传回对应的 `breadcrumbs[].location`。
+再次访问当前目录时，传回响应的 `location`。从列表进入子文件夹时，可将当前列表的 `location` 作为 `parent_location`。访问面包屑中的祖先时，目标及其父位置取自对应面包屑条目。
 
-OneDrive 和 Google Drive 的普通读取可复用同一连接版本下的缓存，外部变更可能延迟可见。重命名会清除受影响的父目录缓存。改名项为文件夹时，也会清除该文件夹及其子目录的缓存。缓存有效期和容量由[部署配置](../../../backend/cache.toml)决定。Local 每次读取文件系统。
+OneDrive 和 Google Drive 在命中目标列表时直接返回目录内容和面包屑。目标未命中时，服务端可从已知父列表复用子项与祖先链。提示缺失或不足时，Provider 按 ID 获取必要的目录元数据和内容。外部变更可能延迟到缓存过期才可见。
+
+强制刷新成功后替换目标列表。批量重命名执行前直接读取云端数据，复核结果不回填目录缓存。重命名使受影响的父目录失效。改名项为文件夹时，也使该文件夹及其已缓存后代失效。无法确定影响范围时清除连接缓存。缓存有效期和容量见[部署配置](../../../backend/cache.toml)。Local 每次读取文件系统。
 
 #### Request / Response 示例
 
@@ -56,6 +59,7 @@ Content-Type: application/json
       "location":{"kind":"path","value":"IMG_1.jpg"},
       "parent_location":{"kind":"root"},
       "can_rename":true,
+      "can_list_children":null,
       "mime_type":null
     }
   ],
@@ -73,6 +77,7 @@ Content-Type: application/json
 
 - 409 `STORAGE_CONNECTION_CHANGED`。读取期间连接变化，重新读取连接状态后再加载目录。
 - 409 `STORAGE_BUSY`。强制刷新时，连接正在执行或目录在读取期间失效。等待执行结束或重试刷新。
+- 403 `PERMISSION_DENIED`。Provider 拒绝列举目录。Google Drive 返回空列表且实时权限仍未知时，也返回此错误。
 - 422 `VALIDATION_ERROR`。连接不支持该位置类型，或位置无效、超出范围、指向链接目录。
 
 #### Google Drive 目录约束

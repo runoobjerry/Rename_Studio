@@ -26,6 +26,7 @@ export interface FileItem {
   location?: StorageLocation | null;
   parent_location?: StorageLocation | null;
   can_rename?: boolean | null;
+  can_list_children?: boolean | null;
   mime_type?: string | null;
 }
 

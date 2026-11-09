@@ -10,7 +10,7 @@ interface LocationBreadcrumbsProps {
   listing?: DirectoryListing;
   rootLabel: string;
   disabled: boolean;
-  onNavigate: (location: StorageLocation) => void;
+  onNavigate: (location: StorageLocation, parent?: StorageLocation) => void;
 }
 
 export const locationButtonSx = {
@@ -50,6 +50,12 @@ export function LocationBreadcrumbs({ listing, rootLabel, disabled, onNavigate }
       })),
     ];
   }, [listing, rootLabel]);
+
+  const navigate = (index: number) => {
+    const { location } = entries[index];
+    if (listing?.breadcrumbs && location.kind === "id") onNavigate(location, entries[index - 1]?.location);
+    else onNavigate(location);
+  };
 
   useLayoutEffect(() => {
     const update = () => {
@@ -95,7 +101,7 @@ export function LocationBreadcrumbs({ listing, rootLabel, disabled, onNavigate }
           const current = hiddenCount + offset === entries.length - 1;
           return <Tooltip key={hiddenCount + offset} title={entry.label}>
             <Button disabled={disabled} aria-current={current ? "page" : undefined}
-              onClick={() => onNavigate(entry.location)}
+              onClick={() => navigate(hiddenCount + offset)}
               sx={{ ...buttonSx, ...(current && { flexShrink: 1, overflow: "hidden", color: "text.primary" }) }}>
               <Box component="span" sx={{ overflow: "hidden", textOverflow: "ellipsis" }}>{entry.label}</Box>
             </Button>
@@ -104,7 +110,7 @@ export function LocationBreadcrumbs({ listing, rootLabel, disabled, onNavigate }
       </Breadcrumbs>
       <Menu id="location-parents-menu" anchorEl={anchor} open={Boolean(anchor) && !disabled} onClose={() => setAnchor(null)}>
         {entries.slice(0, hiddenCount).map((entry, index) => (
-          <MenuItem key={index} onClick={() => { setAnchor(null); onNavigate(entry.location); }}>
+          <MenuItem key={index} onClick={() => { setAnchor(null); navigate(index); }}>
             <Box component="span" title={entry.label} sx={{ maxWidth: "min(360px, 70vw)", overflow: "hidden", textOverflow: "ellipsis" }}>{entry.label}</Box>
           </MenuItem>
         ))}

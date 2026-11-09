@@ -110,7 +110,9 @@ describe("cloud default path integration", () => {
     fireEvent.click(screen.getByRole("button", { name: "刷新预览" }));
     await waitFor(() => expect(screen.getByRole("button", { name: "开始修改" })).toBeEnabled());
     fireEvent.click(screen.getByRole("button", { name: "文档" }));
-    await waitFor(() => expect(api.fetchStorageFiles).toHaveBeenCalledWith("user-onedrive", { kind: "id", value: "document-id" }));
+    await waitFor(() => expect(api.fetchStorageFiles).toHaveBeenCalledWith(
+      "user-onedrive", { kind: "id", value: "document-id" }, false, photos,
+    ));
     expect(api.releaseStoragePreview).toHaveBeenCalledWith("user-onedrive", "task-preview");
     expect(useRenameStore.getState().selectedIds).toEqual([]);
     await waitFor(() => expect(screen.getByRole("button", { name: "设为默认" })).toBeEnabled());
@@ -183,7 +185,7 @@ describe("workspace path navigation", () => {
     fireEvent.click(nav.getByRole("button", { name: "A" }));
     await waitFor(() => expect(nav.getByRole("button", { name: "A" })).toHaveAttribute("aria-current", "page"));
     expect(vi.mocked(api.fetchStorageFiles).mock.calls.filter(([storageId]) => storageId === "user-onedrive"))
-      .toEqual([["user-onedrive", deep], ["user-onedrive", ancestor]]);
+      .toEqual([["user-onedrive", deep], ["user-onedrive", ancestor, false, { kind: "root" }]]);
   });
 
   it("keeps the current directory through both settings return actions", async () => {

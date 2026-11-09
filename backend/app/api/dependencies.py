@@ -11,7 +11,6 @@ from app.rules.registry import RuleRegistry
 from app.rules.serialize import SerializeRule
 from app.rules.text_operations import RemoveRule, ReplaceRule
 from app.services.directory_cache import DirectoryCache
-from app.services.directory_metadata_index import DirectoryMetadataIndex
 from app.services.execute_service import ExecuteService
 from app.services.single_rename_service import SingleRenameService
 from app.services.preview_service import PreviewService
@@ -33,8 +32,7 @@ def get_storage_manager() -> StorageManager:
     state = repository.load_or_initialize(settings.local_storage_root, registry.validate_config)
     return StorageManager(
         registry, repository, state,
-        directory_cache=DirectoryCache(settings.directory_caches.directory_listings),
-        directory_metadata=DirectoryMetadataIndex(settings.directory_caches.directory_metadata),
+        directory_cache=DirectoryCache(settings.directory_cache.directory_listings),
     )
 
 

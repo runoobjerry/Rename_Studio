@@ -21,6 +21,7 @@
 | 本体外部导航：按 Provider 声明的适配器接入，非内置类型同样可导航，缺失/禁用/未知适配器或不满足授权/位置能力时拒绝；Google 按邮箱唯一匹配并沿用稳定账号 ID，OneDrive 按 CID 唯一匹配，复用已有连接/授权状态且不主动二次刷新，授权及忙碌保护，外部目标优先于恢复位置并强制读取目录；释放旧预览、保留规则及未知写入记录；手动切换/连接 revision 变化取消迟到结果，重复业务请求在 accepted 前拒绝；目录不匹配、根 ID 规范化、权限或授权失效及手动重试仍检查云盘范围 | [能力匹配](../frontend/src/integrations/browser/navigation.test.ts)、[外部导航集成](../frontend/src/WorkspaceApp.externalNavigation.test.tsx) |
 | 不同账号连接的目录隔离，换号后的旧目录与旧预览不能污染新工作区 | [工作台存储集成](../frontend/src/WorkspaceApp.storage.test.tsx)、[默认云目录](../frontend/src/features/files/defaultCloudLocation.test.ts) |
 | 工作区按 browser_auth 判定授权；元数据 pending/error 不读取授权或文件，恢复后使用原目录；元数据刷新失败保留账号身份与选择 | [存储 Hook](../frontend/src/workspace/hooks/useWorkspaceStorage.test.ts) |
+| 子目录点击和面包屑跳转按不透明 ID 导航并携带已知父位置，强制读取忽略提示 | [工作区](../frontend/src/WorkspaceApp.storage.test.tsx) · [面包屑](../frontend/src/features/files/LocationBreadcrumbs.test.tsx) · [API 客户端](../frontend/src/api/client.test.ts) |
 | 手动目录刷新发送 `refresh: true`，可越过正在进行的普通读取并丢弃迟到结果；普通导航沿用默认读取模式。外部导航和重试同样强制刷新。通过真实根 ID 进入 OneDrive 时，预览使用返回的规范根位置 | [API 请求体](../frontend/src/api/client.test.ts)、[存储 Hook](../frontend/src/workspace/hooks/useWorkspaceStorage.test.ts)、[外部导航集成](../frontend/src/WorkspaceApp.externalNavigation.test.tsx)、[预览工作流](../frontend/src/features/rename/useRenameWorkflow.test.ts) |
 | 非 Local 且无需浏览器授权的服务恢复 ID 位置，不发授权请求；未知 OAuth 服务等待授权，不支持的位置类型不请求 | 存储 Hook |
 | 无浏览器授权服务的选择随成功列表同步 | 工作流 Hook |

@@ -8,12 +8,11 @@ from typing import TYPE_CHECKING, Literal
 from app.core.errors import NotFoundError, PermissionDeniedError, StorageBusyError, StorageConnectionChangedError, ValidationError
 from app.core.log_context import request_id_context
 from app.providers.base import StorageProvider
-from app.providers.directory_metadata import DirectoryMetadataConflict, DirectoryMetadataRead
+from app.providers.directory_metadata import DirectoryHint, DirectoryMetadataConflict
 from app.schemas.files import DirectoryListing, FileItem
 from app.schemas.rename import SingleRenameExecuteRequest
-from app.schemas.storage import IdLocation, PathLocation, StorageLocation
+from app.schemas.storage import IdLocation, RootLocation, StorageLocation
 from app.services.directory_cache import DirectoryCache, DirectoryKey, RenameCacheScope
-from app.services.directory_metadata_index import DirectoryMetadataIndex
 
 if TYPE_CHECKING:
     from app.services.storage_manager import StorageManager
@@ -21,6 +20,7 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger("rename_studio.directory")
 type DirectoryReadMode = Literal["cached", "refresh", "fresh"]
+_DIRECTORY_FAILURES = (DirectoryMetadataConflict, NotFoundError, PermissionDeniedError, ValidationError)
 
 
 @dataclass(eq=False, slots=True)
@@ -29,31 +29,23 @@ class _Read:
     task: asyncio.Task[tuple[DirectoryListing, bytes]] | None = None
     publish: bool = True
     invalidated: bool = False
-    metadata_publish: bool = True
     refreshed_locations: set[StorageLocation] = field(default_factory=set)
 
 
 class DirectoryService:
-    def __init__(
-        self, manager: "StorageManager", cache: DirectoryCache, *, metadata: DirectoryMetadataIndex | None = None,
-    ) -> None:
+    def __init__(self, manager: "StorageManager", cache: DirectoryCache) -> None:
         self._manager = manager
         self._cache = cache
-        self._metadata = metadata if metadata is not None else DirectoryMetadataIndex()
         self._reads: dict[_Read, None] = {}
         self._writing: set[str] = set()
 
     def invalidate(self, storage_id: str | None = None) -> None:
         self._cache.invalidate(storage_id)
-        self._metadata.invalidate(storage_id)
         self._fence_reads(storage_id)
         logger.debug("directory cache invalidated storage_id=%s", storage_id)
 
     def invalidate_rename(self, storage_id: str, scope: RenameCacheScope) -> None:
         self._cache.invalidate_rename(storage_id, scope)
-        # Rename responses can reveal a different parent only after the write.
-        # Clear this connection's hints while preserving unrelated listing hits.
-        self._metadata.invalidate(storage_id)
         self._fence_reads(storage_id)
         logger.debug("rename directories invalidated storage_id=%s", storage_id)
 
@@ -93,31 +85,24 @@ class DirectoryService:
 
     async def list_directory(
         self, storage_id: str, location: StorageLocation, *, mode: DirectoryReadMode = "cached",
+        parent_location: StorageLocation | None = None,
     ) -> DirectoryListing:
         record = self._manager.record(storage_id)
         key = (storage_id, record.revision, location)
-        if mode == "fresh":
-            # Track failures for invalidation even though fresh reads never publish a listing.
-            read = _Read(key)
-            self._reads[read] = None
-            try:
-                return await self._fetch(key, mode, read=read)
-            finally:
-                del self._reads[read]
         cache_enabled = self._manager.registry.definition(record.provider_type).cache_directories
         if cache_enabled:
             auth = self._manager.auth(storage_id, required=False)
             cache_enabled = auth is None or auth.status().connected
-        if mode == "refresh":
-            return await self._refresh(key, cache_enabled)
+        if mode != "cached":
+            return await self._read_live(key, mode, cache_enabled, parent_location)
         if not cache_enabled:
             return await self._fetch(key, mode)
 
         # Only the Provider's canonical location is cached. Aliases are resolved on each read.
-        payload = self._cache.get(key)
-        if payload is not None:
+        listing = self._cache.get(key)
+        if listing is not None:
             logger.debug("directory cache hit storage_id=%s", storage_id)
-            return DirectoryListing.model_validate_json(payload)
+            return listing
         # The real parent may be discovered only in the write response. Keep existing
         # unrelated hits, but fence new fills until the write has finished.
         if storage_id in self._writing:
@@ -132,7 +117,7 @@ class DirectoryService:
         logger.debug("directory cache miss storage_id=%s", storage_id)
         read = _Read(key)
         self._reads[read] = None
-        read.task = asyncio.create_task(self._fill(read))
+        read.task = asyncio.create_task(self._fill(read, parent_location))
         read.task.add_done_callback(self._finish_fill)
         listing, _ = await asyncio.shield(read.task)
         # Authorization can change between the shared task finishing and this waiter resuming.
@@ -140,32 +125,14 @@ class DirectoryService:
         return listing
 
     async def _fetch(
-        self, key: DirectoryKey, mode: DirectoryReadMode, *,
-        metadata: DirectoryMetadataRead | None = None, read: _Read | None = None,
+        self, key: DirectoryKey, mode: DirectoryReadMode, *, hint: DirectoryHint | None = None,
     ) -> DirectoryListing:
         storage_id, revision, location = key
         logger.info("directory provider read storage_id=%s mode=%s request_id=%s",
                     storage_id, mode, request_id_context.get())
-        # Execution revalidation needs fresh siblings, without browsing their ancestors.
-        try:
-            listing = await self._manager.provider(storage_id).read_directory(
-                location, metadata=metadata, include_breadcrumbs=mode != "fresh",
-            )
-        except (DirectoryMetadataConflict, NotFoundError, PermissionDeniedError, ValidationError) as exc:
-            self._check_revision(key)
-            # A late failure must not evict cache entries published by a newer refresh.
-            if (read is not None and read.publish and not read.invalidated and read.metadata_publish
-                    and not isinstance(location, PathLocation) and storage_id not in self._writing
-                    and self._manager.registry.definition(self._manager.record(storage_id).provider_type).cache_directories):
-                target_id = metadata.failure_id if metadata is not None else None
-                if target_id is not None and not isinstance(exc, DirectoryMetadataConflict):
-                    parent_id = self._metadata.invalidate_subtree((storage_id, revision), target_id)
-                    parents = {IdLocation(value=parent_id)} if parent_id is not None else set()
-                    self._cache.invalidate_rename(storage_id, RenameCacheScope(parents, {target_id}))
-                    self._fence_reads(storage_id)
-                else:
-                    self.invalidate(storage_id)
-            raise
+        listing = await self._manager.provider(storage_id).read_directory(
+            location, hint=hint, include_breadcrumbs=mode != "fresh",
+        )
         self._check_revision(key)
         return listing.model_copy(update={"storage_id": storage_id, "revision": revision})
 
@@ -173,12 +140,46 @@ class DirectoryService:
         if self._manager.record(key[0]).revision != key[1]:
             raise StorageConnectionChangedError("Storage changed while reading the directory")
 
-    async def _fill(self, read: _Read) -> tuple[DirectoryListing, bytes]:
+    def _hint(self, key: DirectoryKey, parent_location: StorageLocation | None) -> DirectoryHint | None:
+        location = key[2]
+        if not isinstance(location, IdLocation) or parent_location is None or parent_location == location:
+            return None
+        parent = self._cache.get((key[0], key[1], parent_location))
+        if parent is None or parent.directory_id is None or parent.location is None:
+            return None
+        folder = self._cache.find_child_folder(parent, location.value)
+        breadcrumbs = self._cache.get_breadcrumbs(parent)
+        if folder is None or breadcrumbs is None or folder.parent_location not in (
+            parent.location, IdLocation(value=parent.directory_id),
+        ):
+            return None
+        return DirectoryHint(folder, parent.directory_id, parent.location, parent.path, breadcrumbs, parent.drive_id)
+
+    def _invalidate_failed_read(
+        self, read: _Read, *, hint: DirectoryHint | None = None, parent_location: StorageLocation | None = None,
+    ) -> None:
+        self._check_revision(read.key)
+        # A stale failure must not evict a newer refresh or a post-write listing.
+        storage_id, _, location = read.key
+        if (read.publish and not read.invalidated and not read.refreshed_locations
+                and storage_id not in self._writing and isinstance(location, (IdLocation, RootLocation))):
+            if hint is None and parent_location is not None:
+                hint = self._hint(read.key, parent_location)
+            self._cache.invalidate_directory(read.key, hint.parent_location if hint is not None else None)
+            self._fence_reads(storage_id, except_read=read)
+
+    async def _fill(self, read: _Read, parent_location: StorageLocation | None) -> tuple[DirectoryListing, bytes]:
         try:
-            metadata = self._metadata.reader(read.key[:2], use_cache=True)
-            listing = await self._fetch(read.key, "cached", metadata=metadata, read=read)
+            hint = self._hint(read.key, parent_location) if not read.invalidated else None
+            try:
+                listing = await self._fetch(read.key, "cached", hint=hint)
+            except _DIRECTORY_FAILURES:
+                self._invalidate_failed_read(read, hint=hint)
+                if hint is None:
+                    raise
+                listing = await self._fetch(read.key, "cached")
             payload = listing.model_dump_json().encode("utf-8")
-            self._remember(read, listing, payload, metadata)
+            self._remember(read, listing, payload)
             return listing, payload
         finally:
             del self._reads[read]
@@ -189,23 +190,31 @@ class DirectoryService:
         if not task.cancelled():
             task.exception()
 
-    async def _refresh(self, key: DirectoryKey, cache_enabled: bool) -> DirectoryListing:
+    async def _read_live(
+        self, key: DirectoryKey, mode: Literal["refresh", "fresh"], cache_enabled: bool,
+        parent_location: StorageLocation | None,
+    ) -> DirectoryListing:
         storage_id = key[0]
-        self._manager.ensure_mutable(storage_id)
+        if mode == "refresh":
+            self._manager.ensure_mutable(storage_id)
         read = _Read(key)
         self._reads[read] = None
         try:
-            metadata = self._metadata.reader(key[:2], use_cache=False) if cache_enabled else None
-            listing = await self._fetch(key, "refresh", metadata=metadata, read=read)
+            try:
+                listing = await self._fetch(key, mode)
+            except _DIRECTORY_FAILURES:
+                if cache_enabled:
+                    self._invalidate_failed_read(read, parent_location=parent_location if mode == "refresh" else None)
+                raise
+            if mode == "fresh":
+                return listing
             if read.invalidated:
                 raise StorageBusyError("Directory changed during refresh; refresh again")
-            canonical = self._remember(read, listing, None, metadata) if cache_enabled else None
+            canonical = self._remember(read, listing) if cache_enabled else None
             if canonical is not None:
-                # An overlapping cached read may have captured an older listing through an alias.
                 aliases = {key[2], canonical}
                 if listing.directory_id:
                     aliases.add(IdLocation(value=listing.directory_id))
-                self._metadata.fence(storage_id)
                 earlier = True
                 for previous in self._reads:
                     if previous is read:
@@ -213,19 +222,18 @@ class DirectoryService:
                         continue
                     if previous.key[:2] != key[:2] or (not earlier and previous.task is None):
                         continue
-                    # Different listings can still observe the same folder or ancestor.
-                    previous.metadata_publish = False
-                    if previous.key[2] in aliases:
+                    # Cached fills may already have captured a parent listing from before this refresh.
+                    if previous.task is not None or previous.key[2] in aliases:
                         previous.publish = False
-                    elif isinstance(previous.key[2], PathLocation):
-                        # Only the Provider knows which ID an in-flight path read will resolve to.
+                    else:
+                        # An earlier refresh can resolve to the same canonical directory through an alias.
                         previous.refreshed_locations.add(canonical)
             return listing
         finally:
             del self._reads[read]
 
     def _remember(
-        self, read: _Read, listing: DirectoryListing, payload: bytes | None, metadata: DirectoryMetadataRead | None,
+        self, read: _Read, listing: DirectoryListing, payload: bytes | None = None,
     ) -> StorageLocation | None:
         storage_id, revision, requested = read.key
         location = listing.location or requested
@@ -233,15 +241,5 @@ class DirectoryService:
             return None
         if payload is None:
             payload = listing.model_dump_json().encode("utf-8")
-        if read.metadata_publish and metadata is not None and metadata.listed:
-            changed, parents, root_changed = self._metadata.store((storage_id, revision), metadata)
-            if changed:
-                if root_changed:
-                    self._cache.invalidate(storage_id)
-                else:
-                    self._cache.invalidate_rename(
-                        storage_id, RenameCacheScope({IdLocation(value=parent) for parent in parents}, changed),
-                    )
-                self._fence_reads(storage_id, except_read=read)
         self._cache.put((storage_id, revision, location), listing, payload)
         return location

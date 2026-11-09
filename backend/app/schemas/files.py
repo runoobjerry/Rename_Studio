@@ -22,6 +22,7 @@ class RenameFile(BaseModel):
 class FileItem(RenameFile):
     path: str
     parent_path: str
+    can_list_children: bool | None = None
 
 
 class DirectoryBreadcrumb(BaseModel):

@@ -58,7 +58,7 @@ interface FileBrowserProps {
   isRefreshing?: boolean;
   refreshError?: string;
   onNavigate: (path: string) => void;
-  onNavigateLocation?: (location: StorageLocation) => void;
+  onNavigateLocation?: (location: StorageLocation, parent?: StorageLocation) => void;
   onRefresh?: () => void;
   onToggle: (fileId: string) => void;
   onSelectAll: (visibleIds: string[]) => void;
@@ -263,7 +263,7 @@ export const FileBrowser = memo(function FileBrowser({
                 showRename={selectedIds.length === 1 && selectedSet.has(item.id)}
                 renameDisabled={renameDisabled} onRename={onRename}
                 navigationDisabled={disabled} onToggle={onToggle} onSelectRow={selectRow}
-                onNavigate={onNavigate} onNavigateLocation={onNavigateLocation} />
+                onNavigate={onNavigate} onNavigateLocation={onNavigateLocation} parentLocation={listing.location} />
             ))}
             <VirtualTableSpacer height={virtual.bottom} columns={4} />
             {visibleItems.length === 0 && (
@@ -294,10 +294,11 @@ interface FileBrowserRowProps {
   onSelectRow: (fileId: string, shiftKey: boolean) => void;
   onNavigate: FileBrowserProps["onNavigate"];
   onNavigateLocation: FileBrowserProps["onNavigateLocation"];
+  parentLocation?: StorageLocation;
 }
 
 const FileBrowserRow = memo(function FileBrowserRow({ item, rowIndex, selected, disabled, navigationDisabled, modifiedAtFormatter,
-  showRename, renameDisabled, onRename, onToggle, onSelectRow, onNavigate, onNavigateLocation }: FileBrowserRowProps) {
+  showRename, renameDisabled, onRename, onToggle, onSelectRow, onNavigate, onNavigateLocation, parentLocation }: FileBrowserRowProps) {
   const { t } = useTranslation();
   const modifiedAt = formatModifiedAt(item.modified_at, modifiedAtFormatter);
   return <TableRow hover selected={selected} data-row-index={rowIndex} aria-rowindex={rowIndex + 2} tabIndex={-1}
@@ -315,7 +316,7 @@ const FileBrowserRow = memo(function FileBrowserRow({ item, rowIndex, selected, 
           {item.is_directory ? <ButtonBase className="directory-name" disabled={navigationDisabled}
             onClick={(event) => {
               event.stopPropagation();
-              if (item.location && onNavigateLocation) onNavigateLocation(item.location);
+              if (item.location && onNavigateLocation) onNavigateLocation(item.location, parentLocation);
               else onNavigate(item.path);
             }}>
             <FolderRoundedIcon className="file-icon" fontSize="small" />

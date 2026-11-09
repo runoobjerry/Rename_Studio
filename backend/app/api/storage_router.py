@@ -68,6 +68,7 @@ async def delete_storage(storage_id: str, manager: Manager) -> Response:
 async def list_files(storage_id: str, request: StorageListRequest, manager: Manager) -> DirectoryListing:
     return await manager.directories.list_directory(
         storage_id, request.location, mode="refresh" if request.refresh else "cached",
+        parent_location=request.parent_location,
     )
 
 

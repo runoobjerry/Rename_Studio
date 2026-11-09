@@ -16,11 +16,3 @@
 
 # 单个列表的序列化字节上限
 # max_entry_bytes =
-
-
-[directory_metadata]
-# 文件夹元数据有效期，单位为秒
-# ttl =
-
-# 文件夹元数据条目上限
-# max_entries =

@@ -2,7 +2,6 @@ import asyncio
 import json
 import logging
 import random
-from contextlib import nullcontext
 from datetime import datetime
 from email import policy
 from email.parser import BytesParser
@@ -19,7 +18,7 @@ from app.core.log_context import request_id_context
 from app.providers.errors import http_error_details, read_error_payload
 from app.providers.retry import RetryBudget
 from app.providers.base import RenameRequest, StorageProvider
-from app.providers.directory_metadata import DirectoryMetadata, DirectoryMetadataConflict, DirectoryMetadataRead
+from app.providers.directory_metadata import DirectoryHint, DirectoryMetadataConflict
 from app.providers.cooldown import ConnectionCooldown, retry_after_delay
 from app.providers.name_validation import NameValidationIssue
 from app.schemas.files import DirectoryBreadcrumb, DirectoryListing, FileItem, RenameFile
@@ -46,7 +45,7 @@ class _DriveFile(BaseModel):
     id: str = Field(min_length=1)
     name: str
     mimeType: str = Field(min_length=1)
-    parents: list[str] = Field(default_factory=list)
+    parents: list[str] | None = None
     trashed: bool
     driveId: str | None = None
     size: int | None = Field(default=None, ge=0)
@@ -104,43 +103,82 @@ class GoogleDriveProvider(StorageProvider):
 
     async def read_directory(
         self, location: StorageLocation, *,
-        metadata: DirectoryMetadataRead | None = None, include_breadcrumbs: bool = True,
+        hint: DirectoryHint | None = None, include_breadcrumbs: bool = True,
     ) -> DirectoryListing:
         if isinstance(location, PathLocation):
             raise ValidationError("Google Drive directories must be addressed by ID")
-        try:
-            return await self._read_directory(location, metadata)
-        except (DirectoryMetadataConflict, NotFoundError, PermissionDeniedError, ValidationError) as exc:
-            if (metadata is None or not metadata.used_cache
-                    or (metadata.failure_id is not None and not isinstance(exc, DirectoryMetadataConflict))):
-                raise
-            metadata.retry_live()
-            return await self._read_directory(location, metadata)
+        if hint is not None:
+            return await self._read_hinted_directory(hint)
 
-    async def _read_directory(
-        self, location: RootLocation | IdLocation, metadata: DirectoryMetadataRead | None,
-    ) -> DirectoryListing:
-        root, cache = await self._root_context(metadata)
+        root, cache = await self._root_context()
         directory_id = root.id if isinstance(location, RootLocation) else location.value
-        target_id = None if directory_id in {root.id, "root"} else directory_id
-        with metadata.reading_target(target_id) if metadata is not None else nullcontext():
-            await self._load_files([directory_id], cache, metadata)
-            directory = cache[directory_id]
-            self._require_folder(directory)
-        await self._load_ancestors([directory], root, cache, metadata)
+        await self._load_files([directory_id], cache)
+        directory = cache[directory_id]
+        self._require_folder(directory)
+        await self._load_ancestors([directory], root, cache)
         chain = self._chain(directory, root, cache)
-        ancestor_ids = {folder.id for folder in chain}
-        if directory.capabilities.canListChildren is False:
-            # A cached denial may outlive a permissions grant on this folder.
-            if metadata is not None and directory.id in metadata.cached_ids:
-                raise DirectoryMetadataConflict("Google Drive cached folder permissions need verification")
-            with metadata.reading_target(target_id) if metadata is not None else nullcontext():
-                raise PermissionDeniedError("Google Drive does not permit listing this folder")
+        path = self._display_path(chain)
+        canonical = self._location(directory, root)
+        can_list = directory.capabilities.canListChildren
+        self._require_listing_permission(can_list)
+        items = await self._list_children(directory.id, canonical, path, {folder.id for folder in chain})
+        self._require_listing_permission(can_list, empty=not items)
+        return DirectoryListing(
+            provider=self.id, path=path,
+            parent_path=self._display_path(chain[:-1]) if len(chain) > 1 else None,
+            location=canonical, directory_id=directory.id,
+            parent_location=self._location(chain[-2], root) if len(chain) > 1 else None,
+            breadcrumbs=[DirectoryBreadcrumb(name=item.name, location=self._location(item, root)) for item in chain]
+            if include_breadcrumbs else None,
+            items=items,
+        )
 
+    async def _read_hinted_directory(self, hint: DirectoryHint) -> DirectoryListing:
+        folder = hint.folder
+        can_list = folder.can_list_children
+        directory = None
+        if can_list is not True:
+            directory = await self._verify_folder_hint(hint)
+            can_list = directory.capabilities.canListChildren
+            self._require_listing_permission(can_list)
+        name = directory.name if directory is not None else folder.name
+        path = "/".join(filter(None, (hint.parent_path, name)))
+        location = IdLocation(value=folder.id)
+        ancestor_ids = {crumb.location.value for crumb in hint.parent_breadcrumbs if isinstance(crumb.location, IdLocation)}
+        items = await self._list_children(folder.id, location, path, ancestor_ids | {hint.parent_id, folder.id})
+        # files.list may return a successful empty page after access to the folder is revoked.
+        if not items and directory is None:
+            directory = await self._verify_folder_hint(hint)
+            can_list = directory.capabilities.canListChildren
+            name = directory.name
+            path = "/".join(filter(None, (hint.parent_path, name)))
+        self._require_listing_permission(can_list, empty=not items)
+        return DirectoryListing(
+            provider=self.id, path=path, parent_path=hint.parent_path, location=location,
+            directory_id=folder.id, parent_location=hint.parent_location,
+            breadcrumbs=hint.breadcrumbs(name), items=items,
+        )
+
+    async def _verify_folder_hint(self, hint: DirectoryHint) -> _DriveFile:
+        directory = await self._get_file(hint.folder.id)
+        self._require_available(directory)
+        self._require_folder(directory)
+        if directory.parents != [hint.parent_id]:
+            raise DirectoryMetadataConflict("Google Drive returned a different folder parent")
+        return directory
+
+    @staticmethod
+    def _require_listing_permission(can_list: bool | None, *, empty: bool = False) -> None:
+        if can_list is False or (empty and can_list is None):
+            raise PermissionDeniedError("Google Drive does not permit listing this folder")
+
+    async def _list_children(
+        self, directory_id: str, location: StorageLocation, path: str, ancestor_ids: set[str],
+    ) -> list[FileItem]:
         items: list[FileItem] = []
         seen_ids: set[str] = set()
         seen_tokens: set[str] = set()
-        escaped_id = directory.id.replace("\\", "\\\\").replace("'", "\\'")
+        escaped_id = directory_id.replace("\\", "\\\\").replace("'", "\\'")
         params = {
             "q": f"'{escaped_id}' in parents and trashed = false",
             "spaces": "drive", "corpora": "user", "pageSize": "1000",
@@ -148,49 +186,31 @@ class GoogleDriveProvider(StorageProvider):
             "fields": f"kind,nextPageToken,incompleteSearch,files({FILE_FIELDS})",
         }
         while True:
-            with metadata.reading_target(target_id) if metadata is not None else nullcontext():
-                response = await self._request("GET", f"{DRIVE_ROOT}/files", params=params)
+            response = await self._request("GET", f"{DRIVE_ROOT}/files", params=params)
             try:
                 page = _FilePage.model_validate_json(response.content)
             except ModelValidationError:
-                raise ProviderError("Google Drive returned an invalid directory listing") from None
+                raise DirectoryMetadataConflict("Google Drive returned an invalid directory listing") from None
             if page.incompleteSearch:
-                raise ProviderError("Google Drive returned an incomplete directory; refresh before continuing")
+                raise DirectoryMetadataConflict("Google Drive returned an incomplete directory; refresh before continuing")
             for item in page.files:
                 self._require_available(item)
-                if item.parents != [directory.id] or item.id in seen_ids:
-                    raise ProviderError("Google Drive directory changed or contains invalid items; refresh it")
+                if item.parents != [directory_id] or item.id in seen_ids:
+                    raise DirectoryMetadataConflict("Google Drive directory changed or contains invalid items; refresh it")
                 if item.id in ancestor_ids:
                     raise DirectoryMetadataConflict("Google Drive folder ancestry changed; refresh before continuing")
                 seen_ids.add(item.id)
-                items.append(self._to_item([*chain, item]))
-                if metadata is not None and item.mimeType == FOLDER_MIME:
-                    metadata.observe(DirectoryMetadata(
-                        item.id, item.name, directory.id, can_list_children=item.capabilities.canListChildren,
-                    ))
+                items.append(self._file_item(item, IdLocation(value=item.id), location, path))
             token = page.nextPageToken
             if token is None:
                 break
             if token in seen_tokens:
-                raise ProviderError("Google Drive returned a repeated page token")
+                raise DirectoryMetadataConflict("Google Drive returned a repeated page token")
             seen_tokens.add(token)
             # Tokens remain opaque query values; never follow them as URLs or stop at an empty page.
             params["pageToken"] = token
 
-        # files.list can return an empty result after a folder becomes inaccessible.
-        if not items and metadata is not None and metadata.used_cache:
-            raise DirectoryMetadataConflict("Google Drive empty listing requires current folder metadata")
-        if metadata is not None:
-            metadata.listed[directory_id] = {item.id for item in items if item.is_directory}
-        return DirectoryListing(
-            provider=self.id, path=self._display_path(chain),
-            parent_path=self._display_path(chain[:-1]) if len(chain) > 1 else None,
-            location=self._location(directory, root),
-            directory_id=directory.id,
-            parent_location=self._location(chain[-2], root) if len(chain) > 1 else None,
-            breadcrumbs=[DirectoryBreadcrumb(name=item.name, location=self._location(item, root)) for item in chain],
-            items=sorted(items, key=lambda item: (not item.is_directory, item.name.casefold(), item.name, item.id)),
-        )
+        return sorted(items, key=lambda item: (not item.is_directory, item.name.casefold(), item.name, item.id))
 
     async def list_files(self, path: str) -> list[FileItem]:
         if path:
@@ -209,49 +229,27 @@ class GoogleDriveProvider(StorageProvider):
         await self._load_ancestors(sources, root, cache)
         return [self._to_item(self._chain(item, root, cache)) for item in sources]
 
-    async def _root_context(self, metadata: DirectoryMetadataRead | None = None) -> tuple[_DriveFile, dict[str, _DriveFile]]:
-        if metadata is None:
-            root = await self._get_file("root")
-            self._folder_metadata(root, root=True)
-        else:
-            async def fetch() -> DirectoryMetadata:
-                return self._folder_metadata(await self._get_file("root"), root=True)
-
-            root = self._from_folder_metadata(await metadata.load(None, fetch))
+    async def _root_context(self) -> tuple[_DriveFile, dict[str, _DriveFile]]:
+        root = await self._get_file("root")
+        self._require_available(root)
+        self._require_folder(root)
+        if root.parents:
+            raise DirectoryMetadataConflict("Google Drive returned an invalid My Drive root")
         return root, {"root": root, root.id: root}
 
-    @classmethod
-    def _folder_metadata(cls, item: _DriveFile, *, root: bool = False) -> DirectoryMetadata:
-        cls._require_available(item)
-        cls._require_folder(item)
-        if root:
-            if item.parents:
-                raise ProviderError("Google Drive returned an invalid My Drive root")
-        elif len(item.parents) != 1 or not item.parents[0]:
-            raise ValidationError("The item is outside My Drive")
-        return DirectoryMetadata(item.id, item.name, None if root else item.parents[0],
-                                 can_list_children=item.capabilities.canListChildren)
-
     @staticmethod
-    def _from_folder_metadata(item: DirectoryMetadata) -> _DriveFile:
-        # Only verified My Drive folders enter the index.
-        return _DriveFile(id=item.id, name=item.name, mimeType=FOLDER_MIME, trashed=False,
-                          parents=[] if item.parent_id is None else [item.parent_id],
-                          capabilities=_Capabilities(canListChildren=item.can_list_children))
+    def _parent_id(item: _DriveFile) -> str:
+        if not item.parents or len(item.parents) != 1 or not item.parents[0]:
+            raise ValidationError("The item is outside My Drive")
+        return item.parents[0]
 
     async def _load_files(
-        self, file_ids: list[str], cache: dict[str, _DriveFile], metadata: DirectoryMetadataRead | None = None,
+        self, file_ids: list[str], cache: dict[str, _DriveFile],
     ) -> None:
         missing = list(dict.fromkeys(file_id for file_id in file_ids if file_id not in cache))
         if len(missing) == 1:
             file_id = missing[0]
-            if metadata is None:
-                cache[file_id] = await self._get_file(file_id)
-            else:
-                async def fetch() -> DirectoryMetadata:
-                    return self._folder_metadata(await self._get_file(file_id))
-
-                cache[file_id] = self._from_folder_metadata(await metadata.load(file_id, fetch))
+            cache[file_id] = await self._get_file(file_id)
             return
         # One batch at a time bounds both HTTP requests and Google's inner metadata calls.
         for offset in range(0, len(missing), READ_BATCH_SIZE):
@@ -259,7 +257,6 @@ class GoogleDriveProvider(StorageProvider):
 
     async def _load_ancestors(
         self, items: list[_DriveFile], root: _DriveFile, cache: dict[str, _DriveFile],
-        metadata: DirectoryMetadataRead | None = None,
     ) -> None:
         pending = items
         visited: set[str] = set()
@@ -269,20 +266,18 @@ class GoogleDriveProvider(StorageProvider):
                 self._require_available(item)
                 visited.add(item.id)
                 if item.id != root.id:
-                    if len(item.parents) != 1 or not item.parents[0]:
-                        raise ValidationError("The item is outside My Drive")
-                    parents.append(item.parents[0])
-            await self._load_files(parents, cache, metadata)
+                    parents.append(self._parent_id(item))
+            await self._load_files(parents, cache)
             for parent_id in dict.fromkeys(parents):
                 self._require_folder(cache[parent_id])
             pending = [cache[parent_id] for parent_id in dict.fromkeys(parents) if parent_id not in visited]
 
-    @staticmethod
-    def _chain(item: _DriveFile, root: _DriveFile, cache: dict[str, _DriveFile]) -> list[_DriveFile]:
+    @classmethod
+    def _chain(cls, item: _DriveFile, root: _DriveFile, cache: dict[str, _DriveFile]) -> list[_DriveFile]:
         chain = [item]
         seen = {item.id}
         while chain[-1].id != root.id:
-            parent = cache[chain[-1].parents[0]]
+            parent = cache[cls._parent_id(chain[-1])]
             if parent.id in seen:
                 raise DirectoryMetadataConflict("Google Drive folder ancestry changed; refresh before continuing")
             seen.add(parent.id)
@@ -312,14 +307,22 @@ class GoogleDriveProvider(StorageProvider):
     @classmethod
     def _to_item(cls, chain: list[_DriveFile]) -> FileItem:
         item, root = chain[-1], chain[0]
+        return cls._file_item(item, cls._location(item, root),
+                              cls._location(chain[-2], root) if len(chain) > 1 else None,
+                              cls._display_path(chain[:-1]))
+
+    @staticmethod
+    def _file_item(
+        item: _DriveFile, location: StorageLocation, parent: StorageLocation | None, parent_path: str,
+    ) -> FileItem:
         is_directory = item.mimeType == FOLDER_MIME
         return FileItem(
-            id=item.id, name=item.name, path=cls._display_path(chain),
-            parent_path=cls._display_path(chain[:-1]), is_directory=is_directory,
+            id=item.id, name=item.name, path="/".join(filter(None, (parent_path, item.name))) if parent is not None else "",
+            parent_path=parent_path, is_directory=is_directory,
             size=None if is_directory else item.size, modified_at=item.modifiedTime,
-            location=cls._location(item, root),
-            parent_location=cls._location(chain[-2], root) if len(chain) > 1 else None,
-            can_rename=False if len(chain) == 1 or item.mimeType == SHORTCUT_MIME else item.capabilities.canRename,
+            location=location, parent_location=parent,
+            can_rename=False if parent is None or item.mimeType == SHORTCUT_MIME else item.capabilities.canRename,
+            can_list_children=item.capabilities.canListChildren if is_directory else None,
             mime_type=item.mimeType,
         )
 
@@ -332,9 +335,9 @@ class GoogleDriveProvider(StorageProvider):
         try:
             item = _DriveFile.model_validate_json(response.content)
         except ModelValidationError:
-            raise ProviderError("Google Drive returned invalid file metadata") from None
+            raise DirectoryMetadataConflict("Google Drive returned invalid file metadata") from None
         if expected_id != "root" and item.id != expected_id:
-            raise ProviderError("Google Drive returned metadata for a different file")
+            raise DirectoryMetadataConflict("Google Drive returned metadata for a different file")
         return item
 
     async def _metadata_batch(self, file_ids: list[str]) -> dict[str, _DriveFile]:

@@ -145,6 +145,21 @@ async def test_provider_without_cache_capability_reads_live() -> None:
 
 
 @pytest.mark.asyncio
+async def test_fresh_read_leaves_cached_listing_until_refresh() -> None:
+    provider = DirectoryProvider()
+    directories = registry_for([provider], cache_directories=True).manager.directories
+    root = RootLocation()
+    cached = await directories.list_directory("cloud", root)
+    provider.name = "new"
+    fresh = await directories.list_directory("cloud", root, mode="fresh")
+    assert fresh.items[0].name == "new"
+    assert await directories.list_directory("cloud", root) == cached
+    refreshed = await directories.list_directory("cloud", root, mode="refresh")
+    assert await directories.list_directory("cloud", root) == refreshed == fresh
+    assert provider.calls == 3
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize("interruption", ["refresh", "write"])
 async def test_concurrent_misses_share_a_read_without_repopulating_after_refresh_or_write(interruption: str) -> None:
     provider = DirectoryProvider()

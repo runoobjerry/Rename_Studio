@@ -32,7 +32,10 @@ export function useWorkspaceStorage({ pauseFileQueries, onLocalRootSelected, dir
   const session = useRef(initialSession.session);
   const sessionWarningShown = useRef(false);
   const [storageId, setStorageId] = useState(initialSession.session.activeStorageId);
-  const [location, updateLocation] = useState<StorageLocation>({ kind: "root" });
+  const [{ location, parentLocation }, updateLocation] = useState<{
+    location: StorageLocation;
+    parentLocation?: StorageLocation;
+  }>({ location: { kind: "root" } });
   const external = useRef<ExternalNavigation | null>(null);
   const externalTarget = useRef<ExternalNavigationTarget | null>(null);
   const [externalPending, setExternalPending] = useState(false);
@@ -45,11 +48,11 @@ export function useWorkspaceStorage({ pauseFileQueries, onLocalRootSelected, dir
     setExternalPending(false);
     if (operation) operation.reject(new NavigationError("cancelled"));
   }, []);
-  const setLocation = useCallback((next: StorageLocation) => {
+  const setLocation = useCallback((next: StorageLocation, parent?: StorageLocation) => {
     cancelExternalNavigation();
-    updateLocation(next);
+    updateLocation({ location: next, parentLocation: next.kind === "id" ? parent : undefined });
   }, [cancelExternalNavigation]);
-  const setPath = useCallback((value: string) => setLocation(value ? { kind: "path", value } : { kind: "root" }), []);
+  const setPath = useCallback((value: string) => setLocation(value ? { kind: "path", value } : { kind: "root" }), [setLocation]);
   const [restoredCloudSession, setRestoredCloudSession] = useState<string | null>(null);
   const [restoredDirectSession, setRestoredDirectSession] = useState<string | null>(null);
 
@@ -159,7 +162,9 @@ export function useWorkspaceStorage({ pauseFileQueries, onLocalRootSelected, dir
       const refresh = externalFilesKey !== null || verify || manualRefresh.current?.key === JSON.stringify(context.queryKey);
       // Only the dedicated external read belongs to this target; ordinary queries may still finish for the old connection.
       const target = externalFilesKey ? externalTarget.current : null;
-      const result = refresh ? await fetchStorageFiles(storageId, location, true) : await fetchStorageFiles(storageId, location);
+      const result = refresh ? await fetchStorageFiles(storageId, location, true)
+        : parentLocation ? await fetchStorageFiles(storageId, location, false, parentLocation)
+        : await fetchStorageFiles(storageId, location);
       if (target) {
         const { storage } = target;
         if (result.storage_id !== storage.storage_id || result.revision !== storage.revision ||
@@ -205,7 +210,7 @@ export function useWorkspaceStorage({ pauseFileQueries, onLocalRootSelected, dir
       setExternalPending(true);
       // Ordinary auth query initializes status only when this connection has no cached status.
       setStorageId(storage.storage_id);
-      updateLocation(target.location);
+      updateLocation({ location: target.location });
       setRestoredCloudSession(JSON.stringify([storage.storage_id, storage.revision, auth?.account_id ?? storage.account_id]));
       setRestoredDirectSession(null);
       setExternalFilesKey(crypto.randomUUID());
@@ -256,7 +261,7 @@ export function useWorkspaceStorage({ pauseFileQueries, onLocalRootSelected, dir
     if (externalFilesKey) {
       const canonical = files.data.location!;
       queryClient.setQueryData(["files", storageId, current.revision, canonical], files.data);
-      updateLocation(canonical);
+      updateLocation({ location: canonical });
       setExternalFilesKey(null);
       operation.phase = "displaying";
       return;
@@ -273,7 +278,7 @@ export function useWorkspaceStorage({ pauseFileQueries, onLocalRootSelected, dir
   useEffect(() => {
     if (external.current || !externalFilesKey || !files.isSuccess || files.isFetching || !files.data.location) return;
     queryClient.setQueryData(["files", storageId, activeStorage?.revision, files.data.location], files.data);
-    updateLocation(files.data.location);
+    updateLocation({ location: files.data.location });
     setExternalFilesKey(null);
   }, [externalFilesKey, files.isSuccess, files.isFetching, files.data, storageId, activeStorage?.revision, queryClient]);
 

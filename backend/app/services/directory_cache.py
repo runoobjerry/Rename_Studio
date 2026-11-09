@@ -4,7 +4,7 @@ from time import monotonic
 
 from app.core.config import DirectoryListingCacheSettings
 from app.core.errors import RenameOutcomeUnknownError
-from app.schemas.files import DirectoryListing, RenameFile
+from app.schemas.files import DirectoryBreadcrumb, DirectoryListing, FileItem, RenameFile
 from app.schemas.storage import IdLocation, PathLocation, RootLocation, StorageLocation
 
 
@@ -68,12 +68,31 @@ class DirectoryCache:
             entry = None
         return key, entry
 
-    def get(self, key: DirectoryKey) -> bytes | None:
+    def get(self, key: DirectoryKey) -> DirectoryListing | None:
         key, entry = self._find(key)
         if entry is None:
             return None
         self._entries.move_to_end(key)
-        return entry.payload
+        return DirectoryListing.model_validate_json(entry.payload)
+
+    @staticmethod
+    def find_child_folder(parent: DirectoryListing, child_id: str) -> FileItem | None:
+        return next((item for item in parent.items if item.id == child_id and item.is_directory), None)
+
+    @staticmethod
+    def get_breadcrumbs(listing: DirectoryListing) -> list[DirectoryBreadcrumb] | None:
+        chain = listing.breadcrumbs
+        if chain and isinstance(chain[0].location, RootLocation) and chain[-1].location == listing.location:
+            return chain
+        return None
+
+    def invalidate_directory(self, key: DirectoryKey, parent: StorageLocation | None = None) -> None:
+        key, entry = self._find(key)
+        if isinstance(key[2], RootLocation):
+            self.invalidate(key[0])
+        elif isinstance(key[2], IdLocation):
+            parent = parent if parent is not None else entry.parent if entry is not None else None
+            self.invalidate_rename(key[0], RenameCacheScope({parent} if parent is not None else set(), {key[2].value}))
 
     def path_for(self, key: DirectoryKey) -> str | None:
         _, _, location = key

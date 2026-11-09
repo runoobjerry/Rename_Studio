@@ -626,3 +626,38 @@ async def test_directory_api_shares_previews_and_refreshes_then_disconnects(
             assert sum(request.url.path == "/drive/v3/files" for request in server.requests) == 3
     finally:
         await manager.aclose()
+
+
+@pytest.mark.asyncio
+async def test_directory_api_passes_a_parent_hint_only_for_cached_reads(
+    manager: StorageManager, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from test_google_drive_provider import FOLDER_MIME, WritableDriveServer, drive_file
+
+    storage_id, auth = google_connection(manager)
+    mock_google(monkeypatch, google_response)
+    await authorize(auth)
+    server = WritableDriveServer([
+        drive_file("folder", "Folder", mime=FOLDER_MIME), drive_file("file", "File", "folder"),
+    ])
+    mock_google(monkeypatch, server)
+    request = {"location": {"kind": "id", "value": "folder"}, "parent_location": {"kind": "root"}}
+    url = f"/storages/{storage_id}/files/list"
+    try:
+        async with ASYNC_CLIENT(transport=httpx.ASGITransport(app=api(manager).app), base_url="http://test") as client:
+            assert (await client.post(url, json={})).status_code == 200
+            server.requests.clear()
+            opened = await client.post(url, json=request)
+            assert opened.status_code == 200
+            assert opened.json()["parent_location"] == {"kind": "root"}
+            assert [entry.url.path for entry in server.requests] == ["/drive/v3/files"]
+
+            server.files["folder"]["name"] = "Updated"
+            server.requests.clear()
+            refreshed = await client.post(url, json={**request, "refresh": True})
+            assert refreshed.status_code == 200 and refreshed.json()["path"] == "Updated"
+            assert [entry.url.path for entry in server.requests] == [
+                "/drive/v3/files/root", "/drive/v3/files/folder", "/drive/v3/files",
+            ]
+    finally:
+        await manager.aclose()

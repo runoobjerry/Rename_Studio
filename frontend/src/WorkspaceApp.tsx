@@ -165,9 +165,9 @@ function Workspace({ preference, setPreference, settingsError, hasSettings }: {
     setPath(nextPath);
   }, [locationReady, supportsLocation, isExecuting, pickLocalRoot.isPending, activeStorage?.busy, setPath]);
 
-  const navigateLocation = useCallback((next: StorageLocation) => {
+  const navigateLocation = useCallback((next: StorageLocation, parent?: StorageLocation) => {
     if (!locationReady || !supportsLocation(next) || isExecuting || pickLocalRoot.isPending || activeStorage?.busy) return;
-    setLocation(next);
+    setLocation(next, parent);
   }, [locationReady, supportsLocation, isExecuting, pickLocalRoot.isPending, activeStorage?.busy, setLocation]);
 
   const renameBlocked = externalPending || !locationReady || pickLocalRoot.isPending || !activeStorage || activeStorage.busy || files.isFetching || Boolean(files.error);

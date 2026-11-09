@@ -19,6 +19,7 @@
 | `location` | StorageLocation | 是 | 当前位置，进入文件夹时使用。 |
 | `parent_location` | StorageLocation | 是 | 父目录位置。 |
 | `can_rename` | boolean | 是 | `false` 表示不能重命名；`null` 表示未知，不能保证写入成功。 |
+| `can_list_children` | boolean | 是 | 仅 `FileItem`。Google Drive 文件夹的列举权限提示。缺失权限和其他项目均为 `null`。 |
 | `mime_type` | string | 是 | Google MIME type；其他内置 Provider 为 `null`。 |
 
 单项结果可能不含可用显示路径。前端可结合浏览上下文生成路径；身份和成功判断以确认元数据及执行状态为准。

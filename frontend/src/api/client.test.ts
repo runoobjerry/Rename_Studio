@@ -5,15 +5,19 @@ import { ApiError, createStoragePreview, executeStorageSingleRename, executePrev
 afterEach(() => vi.unstubAllGlobals());
 
 describe("API client", () => {
-  it("only sends the refresh flag for forced directory reads", async () => {
+  it("sends the parent hint only for ordinary directory reads", async () => {
     const fetchMock = vi.fn().mockImplementation(async () => new Response("{}"));
     vi.stubGlobal("fetch", fetchMock);
     const location = { kind: "id", value: "folder" } as const;
+    const parent = { kind: "root" } as const;
     await fetchStorageFiles("connection", location);
-    await fetchStorageFiles("connection", location, true);
+    await fetchStorageFiles("connection", location, false, parent);
+    await fetchStorageFiles("connection", location, true, parent);
     expect(fetchMock).toHaveBeenNthCalledWith(1, "/api/storages/connection/files/list",
       expect.objectContaining({ method: "POST", body: JSON.stringify({ location }) }));
     expect(fetchMock).toHaveBeenNthCalledWith(2, "/api/storages/connection/files/list",
+      expect.objectContaining({ method: "POST", body: JSON.stringify({ location, parent_location: parent }) }));
+    expect(fetchMock).toHaveBeenNthCalledWith(3, "/api/storages/connection/files/list",
       expect.objectContaining({ method: "POST", body: JSON.stringify({ location, refresh: true }) }));
   });
 
