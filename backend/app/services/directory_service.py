@@ -63,21 +63,20 @@ class DirectoryService:
         return scope
 
     @contextmanager
-    def writing(self, storage_id: str, scope: RenameCacheScope) -> Iterator[None]:
+    def writing(self, storage_id: str, revision: int, scope: RenameCacheScope) -> Iterator[None]:
         # The caller holds the connection's execution lock through any write reconciliation.
-        self.invalidate_rename(storage_id, scope)
+        self._fence_reads(storage_id)
         self._writing.add(storage_id)
         try:
             yield
+        except BaseException:
+            # An interrupted execution may have submitted writes without collecting all outcomes.
+            self._cache.invalidate(storage_id)
+            raise
+        else:
+            self._cache.finish_rename(storage_id, revision, scope)
         finally:
-            # Reads started during the write cannot populate the cache.
-            if scope.unknown_parent:
-                self._cache.invalidate(storage_id)
-            else:
-                self._cache.invalidate_rename(storage_id, scope)
             self._writing.remove(storage_id)
-            logger.debug("rename directories invalidated after write storage_id=%s whole_connection=%s",
-                         storage_id, scope.unknown_parent)
 
     async def list_siblings(self, storage_id: str, item: FileItem) -> list[FileItem]:
         location = StorageProvider.parent_directory(item)
@@ -93,6 +92,9 @@ class DirectoryService:
         if cache_enabled:
             auth = self._manager.auth(storage_id, required=False)
             cache_enabled = auth is None or auth.status().connected
+        # Leave old listings in place for reconciliation, hidden from reads during the write.
+        if storage_id in self._writing and mode != "refresh":
+            return await self._fetch(key, mode)
         if mode != "cached":
             return await self._read_live(key, mode, cache_enabled, parent_location)
         if not cache_enabled:
@@ -103,10 +105,6 @@ class DirectoryService:
         if listing is not None:
             logger.debug("directory cache hit storage_id=%s", storage_id)
             return listing
-        # The real parent may be discovered only in the write response. Keep existing
-        # unrelated hits, but fence new fills until the write has finished.
-        if storage_id in self._writing:
-            return await self._fetch(key, mode)
         for read in self._reads:
             if read.key == key and read.task is not None and read.publish and not read.invalidated:
                 logger.debug("directory read joined storage_id=%s", storage_id)

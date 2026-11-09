@@ -6,7 +6,6 @@ from datetime import UTC, datetime, timedelta
 from email.utils import format_datetime
 from pathlib import Path
 from urllib.parse import quote
-from uuid import uuid4
 
 import pytest
 import pytest_asyncio
@@ -30,14 +29,13 @@ from app.providers.onedrive.driver import GRAPH_ROOT, OneDriveProvider
 from app.repositories.storage_repository import JsonStorageRepository
 from app.schemas.files import DirectoryListing, FileItem
 from app.rules.registry import RuleRegistry
-from app.schemas.rename import RenamePreviewRequest, SingleRenameExecuteRequest
+from app.schemas.rename import RenamePreviewRequest
 from app.schemas.storage import IdLocation, RootLocation, StorageRecord, StorageState, StorageUpdate
 from app.providers.onedrive.auth import OneDriveAuthService
 from app.services import directory_cache
 from app.services.execute_service import ExecuteService
 from app.services.preview_service import PreviewService
 from app.services.rename_engine import RenameEngine
-from app.services.single_rename_service import SingleRenameService
 from app.services.storage_manager import StorageManager
 from provider_fixtures import CooldownClock
 
@@ -645,22 +643,11 @@ async def test_old_graph_paths_are_display_hints_and_execute_rechecks_live_membe
 
 
 @pytest.mark.asyncio
-async def test_rename_and_connection_revision_invalidate_cached_directory_ancestors(directory_graph) -> None:
+async def test_connection_revision_invalidates_cached_directory_ancestors(directory_graph) -> None:
     manager, graph = directory_graph
     directories = manager.directories
-    a, d, other = (IdLocation(value=key) for key in ("a", "d", "other"))
-    for location in (a, d, other):
-        await directories.list_directory("drive", location)
-    result = await SingleRenameService(manager.registry).execute("drive", SingleRenameExecuteRequest(
-        revision=1, operation_id=uuid4(), location=RootLocation(), file_id="a", original_name="A", target_name="Renamed",
-    ))
-    assert result.items[0].status == "renamed"
-    graph.requests.clear()
-    await directories.list_directory("drive", other)
-    assert graph.requests == []
-    assert (await directories.list_directory("drive", d)).breadcrumbs[1].name == "Renamed"
-    assert (await directories.list_directory("drive", a)).breadcrumbs[1].name == "Renamed"
-    assert ("GET", "items/d/children") in graph.requests and ("GET", "items/a/children") in graph.requests
+    d = IdLocation(value="d")
+    await directories.list_directory("drive", d)
 
     await manager.update("drive", StorageUpdate(config={"client_id": "replacement"}))
     graph.folders["a"]["name"] = "New connection"

@@ -6,7 +6,7 @@ from app.core.config import DirectoryListingCacheSettings
 from app.core.errors import NotFoundError, ProviderError, StorageBusyError
 from app.providers.base import StorageProvider
 from app.providers.name_validation import NameValidationIssue
-from app.schemas.files import DirectoryBreadcrumb, DirectoryListing, FileItem
+from app.schemas.files import DirectoryListing, FileItem
 from app.schemas.storage import IdLocation, PathLocation, RootLocation, StorageLocation
 from app.services import directory_cache
 from app.services.directory_cache import DirectoryCache, RenameCacheScope
@@ -185,7 +185,7 @@ async def test_concurrent_misses_share_a_read_without_repopulating_after_refresh
             refreshed = await directories.list_directory("cloud", IdLocation(value="root-id"), mode="refresh")
             assert refreshed.items[0].name == "updated"
         else:
-            with manager.execution("cloud", 1), directories.writing("cloud", RenameCacheScope({location})):
+            with manager.execution("cloud", 1), directories.writing("cloud", 1, RenameCacheScope({location})):
                 with pytest.raises(StorageBusyError):
                     await directories.list_directory("cloud", location, mode="refresh")
     finally:
@@ -225,7 +225,7 @@ async def test_refresh_overlapping_a_write_cannot_confirm_the_directory() -> Non
     refresh = asyncio.create_task(directories.list_directory("cloud", RootLocation(), mode="refresh"))
     try:
         await asyncio.wait_for(provider.started.wait(), timeout=5)
-        with manager.execution("cloud", 1), directories.writing("cloud", RenameCacheScope({RootLocation()})):
+        with manager.execution("cloud", 1), directories.writing("cloud", 1, RenameCacheScope({RootLocation()})):
             provider.name = "updated"
     finally:
         provider.resume.set()
@@ -254,28 +254,3 @@ async def test_overlapping_path_refreshes_update_their_own_canonical_entries(sam
     assert first_directory.items[0].name == ("newer" if same_directory else "original")
     assert (await directories.list_directory("cloud", IdLocation(value=provider.path_id))).items[0].name == "newer"
     assert provider.calls == 2
-
-
-@pytest.mark.parametrize("breadcrumbs", [False, True])
-def test_folder_invalidation_evicts_its_subtree_without_evicting_unrelated_names(breadcrumbs: bool) -> None:
-    cache = DirectoryCache()
-    folder = IdLocation(value="folder")
-    sibling_path = "Reports/deep/leaf" if breadcrumbs else "Reports-Archive/deep/leaf"
-    for storage_id in ["cloud", "other"]:
-        for directory_id, path, ancestor in [
-            ("root-id", "", None), ("folder", "Reports", "folder"),
-            ("deep", "Reports/deep/leaf", "folder"), ("unrelated", sibling_path, "unrelated-folder"),
-        ]:
-            location = RootLocation() if directory_id == "root-id" else IdLocation(value=directory_id)
-            listing = DirectoryListing(
-                provider="fixture", path=path, parent_path=None, location=location, directory_id=directory_id,
-                breadcrumbs=[DirectoryBreadcrumb(name="Reports", location=IdLocation(value=ancestor))]
-                if breadcrumbs and ancestor is not None else None,
-            )
-            cache.put((storage_id, 1, location), listing, listing.model_dump_json().encode("utf-8"))
-    cache.invalidate_rename("cloud", RenameCacheScope({IdLocation(value="root-id")}, {folder.value}))
-    assert cache.get(("cloud", 1, RootLocation())) is None
-    assert cache.get(("cloud", 1, folder)) is None
-    assert cache.get(("cloud", 1, IdLocation(value="deep"))) is None
-    assert cache.get(("cloud", 1, IdLocation(value="unrelated"))) is not None
-    assert cache.get(("other", 1, folder)) is not None

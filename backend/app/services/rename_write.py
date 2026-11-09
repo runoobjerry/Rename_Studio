@@ -8,6 +8,7 @@ from app.schemas.files import RenameFile
 
 
 T = TypeVar("T")
+type RenameObserver[FileT: RenameFile] = Callable[[str, FileT | AppError, bool], None]
 
 
 def rename_failure_status(error: AppError) -> Literal["failed", "unknown", "not_attempted"]:
@@ -18,33 +19,32 @@ def rename_failure_status(error: AppError) -> Literal["failed", "unknown", "not_
     return "failed"
 
 
-async def reconcile_unknown_rename[FileT: RenameFile](
+async def resolve_rename_outcome[FileT: RenameFile](
     read_metadata: Callable[[str], Awaitable[FileT]], request: RenameRequest, outcome: FileT | AppError,
-    *, observe: Callable[[str, FileT | RenameOutcomeUnknownError], None] | None = None,
+    *, observe: RenameObserver[FileT] | None = None, require_direct_target: bool = False,
 ) -> FileT | AppError:
-    if not isinstance(outcome, AppError):
-        if observe is not None:
-            observe(request.file_id, outcome)
-        return outcome
-    if not isinstance(outcome, RenameOutcomeUnknownError):
-        return outcome
-    # A lost response must be checked by ID, never replayed.
-    try:
-        current = await read_metadata(request.file_id)
-    except AppError:
-        if observe is not None:
-            observe(request.file_id, outcome)
-        return outcome
+    unknown = outcome if isinstance(outcome, RenameOutcomeUnknownError) else None
+    if unknown is not None:
+        # A lost response must be checked by ID, never replayed.
+        try:
+            outcome = await read_metadata(request.file_id)
+        except AppError:
+            outcome = unknown
+
+    target_confirmed = not isinstance(outcome, AppError) and outcome.name == request.new_name
     if observe is not None:
-        observe(request.file_id, current)
-    if current.name == request.new_name:
-        return current
-    # This confirms the current target was not reached, not that the write never ran.
+        observe(request.file_id, outcome, target_confirmed)
+    # Direct batch responses keep the Provider's outcome, while cache updates require a confirmed name.
+    if isinstance(outcome, AppError) or target_confirmed or (unknown is None and not require_direct_target):
+        return outcome
+
+    details = dict(unknown.details) if unknown is not None else {}
+    details["actual_name"] = outcome.name
     error = ProviderError(
         "Rename target was not reached; current name was verified",
-        details={**outcome.details, "actual_name": current.name},
+        details=details,
     )
-    error.__cause__ = outcome
+    error.__cause__ = unknown
     return error
 
 
