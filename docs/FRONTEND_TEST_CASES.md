@@ -79,6 +79,8 @@
 | 虚拟列表先对完整数据排序再截取渲染行；切换排序重置滚动位置，全选使用完整排序结果 | [虚拟列表](../frontend/src/features/files/FileBrowser.virtual.test.tsx) |
 | 规则添加、编辑、移动、复制、删除及数字草稿归属；加载时禁止添加，溢出菜单仍可访问；公共数字字段的草稿、边界提交及规则字段接线 | [RuleEditor](../frontend/src/features/rules/RuleEditor.test.tsx)、[RuleFields](../frontend/src/features/rules/RuleFields.test.tsx)、[NumberField](../frontend/src/components/NumberField.test.tsx) |
 | 未知规则显示稳定 ID，切换启用状态保留原始 type/config | RuleEditor |
+| 添加序列编号提交 API 默认值；用开关显示或隐藏分组及十进制补零的数字输入；切到英文字母时限制起始值、清除补零并隐藏提示，切到罗马数字时将范围提示关联到编号方式选框；按需显示字符位置并提交方向、扩展名选项 | [RuleEditor](../frontend/src/features/rules/RuleEditor.test.tsx)、[RuleFields](../frontend/src/features/rules/RuleFields.test.tsx) |
+| 序列编号越界时使用 API 结构化原因和参数展示请求项位置与允许范围 | [错误文案映射](../frontend/src/i18n/errorPresentation.test.ts) |
 | Local/OneDrive 双语编辑字段保留原始连接名称和配置；Google Drive 双语编辑与已保存密钥帮助、未授权状态及账号缺省文案；元数据定义的新建流程验证顶层密钥提交 | StorageSettingsPanel |
 | 扩展 Provider 回退英文词典，未翻译字段显示 ID，不使用 Schema title；未知类型仍按能力渲染并提交原配置 | StorageSettingsPanel |
 | API 偏好 PATCH / 恢复接口 / 进度 ID 编码；结构化错误、HTML 网关错误和代表性非法 JSON；成功、204、网络失败 | API client |

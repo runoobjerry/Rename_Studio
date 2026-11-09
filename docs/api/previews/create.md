@@ -89,6 +89,6 @@ Content-Type: application/json
 #### Errors
 
 - 422 `REQUEST_VALIDATION_ERROR`：空选择、规则超过 20 条，或 `target_name` 与选择、规则不兼容。
-- 422 `RULE_CONFIGURATION_ERROR`：已启用规则类型或配置无效。
+- 422 `RULE_CONFIGURATION_ERROR`：已启用规则类型或配置无效，或序列编号超出所选编号方式的范围。见[序列编号配置](../rules/index.md#serialize)。
 - 422 `VALIDATION_ERROR`：位置不支持、连接不支持预览或选择无效。重复 ID 的原因为 `PREVIEW_DUPLICATE_FILE_IDS`，目录缺失项为 `PREVIEW_ITEMS_NOT_IN_DIRECTORY`，均附 `details.file_ids`。
 - 409 `STORAGE_CONNECTION_CHANGED`：创建期间连接变化。读取连接和目录后重新预览。

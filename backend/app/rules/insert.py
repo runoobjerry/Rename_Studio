@@ -2,7 +2,7 @@ from enum import StrEnum
 from pydantic import BaseModel, Field
 
 from app.rules.base import RenameRule, RuleContext
-from app.rules.filename import split_extension
+from app.rules.filename import character_gap, split_extension
 
 
 class InsertPosition(StrEnum):
@@ -48,10 +48,7 @@ class InsertRule(RenameRule[InsertConfig]):
         if config.position == InsertPosition.SUFFIX:
             return len(stem)
         if config.position == InsertPosition.INDEX:
-            # 位置按字符间隙计算；越界时安全收敛到主文件名两端。
-            if config.from_right:
-                return max(len(stem) - config.index, 0)
-            return min(config.index, len(stem))
+            return character_gap(stem, config.index, config.from_right)
 
         # 文本相对插入只采用首个字面量匹配，避免一次规则产生多次插入。
         anchor_at = stem.find(config.anchor)

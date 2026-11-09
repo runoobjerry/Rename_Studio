@@ -51,6 +51,7 @@ const reasonPresentations = new Map<string, ReasonPresentation>([
   ["DEFAULT_CONNECTION_DELETE_FORBIDDEN", { code: "VALIDATION_ERROR", key: "errors:defaultConnection" }],
   ["PREVIEW_DUPLICATE_FILE_IDS", { code: "VALIDATION_ERROR", key: "errors:selectionDuplicated" }],
   ["PREVIEW_ITEMS_NOT_IN_DIRECTORY", { code: "VALIDATION_ERROR", key: "errors:selectionOutsideDirectory" }],
+  ["SERIALIZE_NUMBER_OUT_OF_RANGE", { code: "RULE_CONFIGURATION_ERROR", key: "errors:serializeNumberOutOfRange", params: ["item", "min", "max"] }],
   ["NAME_EMPTY", { code: "VALIDATION_ERROR", key: "errors:nameEmpty" }],
   ["NAME_NULL_CHARACTER", { code: "VALIDATION_ERROR", key: "errors:nameNull" }],
   ["NAME_DOT_SEGMENT", { code: "VALIDATION_ERROR", key: "errors:nameDots" }],

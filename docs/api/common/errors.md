@@ -30,7 +30,7 @@
 | 409 | `RENAME_CONFLICT` | 目标名称冲突。修改名称或重新预览。 |
 | 422 | `REQUEST_VALIDATION_ERROR` | 请求结构、类型或取值无效。根据 `details.errors` 修正请求。 |
 | 422 | `VALIDATION_ERROR` | 配置、位置、选择或名称无效。根据 `details.reason` 提示或修正输入。 |
-| 422 | `RULE_CONFIGURATION_ERROR` | 已启用规则的类型或配置无效。根据 `details.rule_type` 修正规则。 |
+| 422 | `RULE_CONFIGURATION_ERROR` | 已启用规则的类型或配置无效，或序列编号超出范围。根据 `details.rule_type` 修正规则。 |
 | 429 | `RATE_LIMIT_ERROR` | Provider 限流。稍后操作；写入不能据此盲目重发。 |
 | 502 | `PROVIDER_ERROR` | Provider、文件系统、身份服务或状态保存失败。显示错误；写入失败先核对结果。 |
 | 502 | `RENAME_OUTCOME_UNKNOWN` | 无法确认是否已写入。核对真实文件，不自动重放。执行接口通常在结果项中返回此码。 |

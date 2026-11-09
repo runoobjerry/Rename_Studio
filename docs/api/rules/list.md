@@ -94,8 +94,30 @@ GET /rules
       "title":"InsertConfig",
       "type":"object"
     }
+  },
+  {
+    "type":"serialize",
+    "config_schema":{
+      "additionalProperties":false,
+      "properties":{
+        "numbering_system":{"default":"decimal","enum":["decimal","alphabetic","roman","music","chinese"],"title":"Numbering System","type":"string"},
+        "start":{"default":1,"maximum":99999999,"minimum":-99999999,"title":"Start","type":"integer"},
+        "repeat":{"default":1,"maximum":99999999,"minimum":1,"title":"Repeat","type":"integer"},
+        "step":{"default":1,"maximum":99999999,"minimum":-99999999,"title":"Step","type":"integer"},
+        "reset_every":{"anyOf":[{"maximum":99999999,"minimum":1,"type":"integer"},{"type":"null"}],"default":null,"title":"Reset Every"},
+        "pad_length":{"anyOf":[{"maximum":255,"minimum":1,"type":"integer"},{"type":"null"}],"default":null,"title":"Pad Length"},
+        "position":{"default":"prefix","enum":["prefix","suffix","index","replace"],"title":"Position","type":"string"},
+        "index":{"default":1,"maximum":255,"minimum":1,"title":"Index","type":"integer"},
+        "from_right":{"default":false,"title":"From Right","type":"boolean"},
+        "ignore_extension":{"default":true,"title":"Ignore Extension","type":"boolean"}
+      },
+      "title":"SerializeConfig",
+      "type":"object"
+    }
   }
 ]
 ```
 
 </details>
+
+各编号方式的取值范围和补齐限制见[序列编号配置](index.md#serialize)。

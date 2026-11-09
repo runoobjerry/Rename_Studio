@@ -10,6 +10,7 @@
   "operationInputInvalid": "无法使用当前输入完成操作，请检查名称和设置后重试。",
   "inputInvalid": "填写的信息不完整或不符合要求，请检查后重试。",
   "ruleSettingsInvalid": "规则设置无效，请检查规则中的填写内容。",
+  "serializeNumberOutOfRange": "第 {{item}} 项的编号超出范围（{{min}} ~ {{max}}）。请调整起始序号、步长或分组。",
   "nameOccupied": "此目录中已存在同名项目，请修改新名称后重试。",
   "previewExpired": "当前预览过期或文件状态发生变化。",
   "previewMissing": "预览不存在，请刷新预览。",

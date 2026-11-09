@@ -141,6 +141,22 @@ describe("RuleEditor", () => {
     }
   });
 
+  it("adds sequence numbering with the API defaults", () => {
+    const onChange = vi.fn();
+    render(<RuleEditor definitions={[{ type: "serialize", config_schema: {} }]} rules={[]} onChange={onChange} />);
+    fireEvent.click(screen.getByRole("button", { name: "添加规则" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "序列编号" }));
+    expect(onChange).toHaveBeenCalledWith([{
+      type: "serialize",
+      enabled: true,
+      config: {
+        numbering_system: "decimal", start: 1, repeat: 1, step: 1,
+        reset_every: null, pad_length: null, position: "prefix", index: 1,
+        from_right: false, ignore_extension: true,
+      },
+    }]);
+  });
+
   it("disables adding while loading and does not expose unimplemented rule types", () => {
     const { rerender } = render(<RuleEditor definitions={[definition]} rules={[]} onChange={vi.fn()} isLoading />);
     expect(screen.getByRole("button", { name: "添加规则" })).toBeDisabled();

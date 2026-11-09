@@ -31,7 +31,7 @@ class RenameEngine:
             except PydanticValidationError as exc:
                 raise RuleConfigurationError(
                     "Invalid rule configuration",
-                    details={"rule_type": spec.type, "errors": exc.errors()},
+                    details={"rule_type": spec.type, "errors": exc.errors(include_input=False)},
                 ) from exc
             prepared.append((rule, config))
         return prepared

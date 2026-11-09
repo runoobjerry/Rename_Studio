@@ -72,6 +72,22 @@ export const DEFAULT_RULES: Record<string, RuleSpec> = {
       anchor: "",
     },
   },
+  serialize: {
+    type: "serialize",
+    enabled: true,
+    config: {
+      numbering_system: "decimal",
+      start: 1,
+      repeat: 1,
+      step: 1,
+      reset_every: null,
+      pad_length: null,
+      position: "prefix",
+      index: 1,
+      from_right: false,
+      ignore_extension: true,
+    },
+  },
 };
 
 export function cloneRule(rule: RuleSpec): RuleSpec {

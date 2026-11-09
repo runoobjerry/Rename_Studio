@@ -8,6 +8,7 @@ from app.services.storage_manager import StorageManager
 from app.rules.insert import InsertRule
 from app.rules.padding import PaddingRule
 from app.rules.registry import RuleRegistry
+from app.rules.serialize import SerializeRule
 from app.rules.text_operations import RemoveRule, ReplaceRule
 from app.services.directory_cache import DirectoryCache
 from app.services.directory_metadata_index import DirectoryMetadataIndex
@@ -44,6 +45,7 @@ def get_rule_registry() -> RuleRegistry:
     registry.register(ReplaceRule())
     registry.register(RemoveRule())
     registry.register(InsertRule())
+    registry.register(SerializeRule())
     return registry
 
 

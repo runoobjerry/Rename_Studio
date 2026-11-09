@@ -1,9 +1,11 @@
 import { useTranslation } from "react-i18next";
-import { useId } from "react";
+import { useId, type ComponentProps } from "react";
 import Alert from "@mui/material/Alert";
 import Box from "@mui/material/Box";
 import Checkbox from "@mui/material/Checkbox";
+import FormControlLabel from "@mui/material/FormControlLabel";
 import MenuItem from "@mui/material/MenuItem";
+import Switch from "@mui/material/Switch";
 import TextField from "@mui/material/TextField";
 
 import { NumberField } from "../../components/NumberField";
@@ -251,6 +253,146 @@ function InsertFields({ rule, onChange }: RuleFieldsProps) {
   );
 }
 
+const maxSequenceInput = 99_999_999;
+const numberingSystems = {
+  decimal: { labelKey: "rules:serialize.systems.decimal", min: -maxSequenceInput, max: maxSequenceInput },
+  alphabetic: { labelKey: "rules:serialize.systems.alphabetic", min: 1, max: maxSequenceInput },
+  roman: { labelKey: "rules:serialize.systems.roman", min: 1, max: 3999 },
+  music: { labelKey: "rules:serialize.systems.music", min: 1, max: 120 },
+  chinese: { labelKey: "rules:serialize.systems.chinese", min: 1, max: 9999 },
+} as const;
+
+const serializePositions = {
+  prefix: "rules:fields.prefix",
+  suffix: "rules:fields.suffix",
+  index: "rules:fields.indexPosition",
+  replace: "rules:serialize.replaceName",
+} as const;
+
+function SerializeNumberField(props: Omit<ComponentProps<typeof NumberField>, "id">) {
+  const id = useId();
+  return (
+    <Box sx={{ display: "grid", gap: "6px", minWidth: 0 }}>
+      <label htmlFor={id}>{props.label}</label>
+      <NumberField id={id} {...props} />
+    </Box>
+  );
+}
+
+function SerializeFields({ rule, onChange }: RuleFieldsProps) {
+  const { t } = useTranslation();
+  const systemId = useId();
+  const system = (rule.config.numbering_system ?? "decimal") as keyof typeof numberingSystems;
+  const { min, max } = numberingSystems[system];
+  const showRange = system !== "decimal" && system !== "alphabetic";
+  const start = Number(rule.config.start ?? 1);
+  const position = valueAsString(rule, "position", "prefix");
+  const numberFields = [
+    { key: "start", label: t("rules:serialize.start"), min, max, value: start },
+    { key: "repeat", label: t("rules:serialize.repeat"), min: 1, max: maxSequenceInput, value: Number(rule.config.repeat ?? 1) },
+    { key: "step", label: t("rules:serialize.step"), min: -maxSequenceInput, max: maxSequenceInput, value: Number(rule.config.step ?? 1) },
+  ];
+  const optionalFields = [
+    {
+      key: "reset_every", toggle: t("rules:serialize.reset"), label: t("rules:serialize.resetEvery"),
+      initial: 10, max: maxSequenceInput, available: true,
+    },
+    {
+      key: "pad_length", toggle: t("rules:serialize.pad"), label: t("rules:serialize.padLength"),
+      initial: 3, max: 255, available: system === "decimal",
+    },
+  ];
+
+  function changeSystem(nextSystem: keyof typeof numberingSystems) {
+    const next = numberingSystems[nextSystem];
+    onChange({
+      numbering_system: nextSystem,
+      start: Math.min(next.max, Math.max(next.min, start)),
+      ...(nextSystem !== "decimal" && { pad_length: null }),
+    });
+  }
+
+  return (
+    <Box sx={{ display: "grid", gap: "12px" }}>
+      <Box className="rule-fields" sx={ruleFieldsSx}>
+        <label>
+          {t("rules:serialize.numberingSystem")}
+          <TextField
+            id={systemId}
+            select fullWidth size="small" value={system}
+            helperText={showRange ? t("rules:serialize.range", { min, max }) : undefined}
+            onChange={(event) => changeSystem(event.target.value as keyof typeof numberingSystems)}
+            slotProps={{ select: { inputProps: { "aria-label": t("rules:serialize.numberingSystem") } } }}
+          >
+            {Object.entries(numberingSystems).map(([value, { labelKey }]) => (
+              <MenuItem key={value} value={value}>{t(labelKey)}</MenuItem>
+            ))}
+          </TextField>
+        </label>
+      </Box>
+      <Box className="rule-fields" sx={ruleFieldsSx}>
+        {numberFields.map(({ key, ...field }) => (
+          <SerializeNumberField key={key} {...field} onChange={(value) => onChange({ [key]: value })} />
+        ))}
+      </Box>
+      <Box className="rule-fields" sx={{ "& .MuiFormControlLabel-root": { display: "inline-flex", m: 0, gap: 0.5 } }}>
+        {optionalFields.filter((field) => field.available).map(({ key, toggle, label, initial, max }) => {
+          const value = rule.config[key] as number | null | undefined;
+          return (
+            <Box key={key}>
+              <FormControlLabel
+                label={toggle}
+                slotProps={{ typography: { variant: "caption", sx: { fontWeight: 700 } } }}
+                control={
+                  <Switch
+                    size="small"
+                    checked={value != null}
+                    onChange={(event) => onChange({ [key]: event.target.checked ? initial : null })}
+                  />
+                }
+              />
+              {value != null && <NumberField label={label} min={1} max={max} value={value}
+                onChange={(next) => onChange({ [key]: next })} />}
+            </Box>
+          );
+        })}
+      </Box>
+      <Box className="rule-fields" sx={ruleFieldsSx}>
+        <label>
+          {t("rules:fields.position")}
+          <TextField
+            select fullWidth size="small" value={position}
+            onChange={(event) => onChange({ position: event.target.value })}
+            slotProps={{ select: { inputProps: { "aria-label": t("rules:fields.position") } } }}
+          >
+            {Object.entries(serializePositions).map(([value, labelKey]) => (
+              <MenuItem key={value} value={value}>{t(labelKey)}</MenuItem>
+            ))}
+          </TextField>
+        </label>
+        {position === "index" && (
+          <SerializeNumberField label={t("rules:fields.index")} min={1} max={255}
+            value={Number(rule.config.index ?? 1)} onChange={(index) => onChange({ index })} />
+        )}
+      </Box>
+      <Box className="rule-options" sx={{ mt: 0 }}>
+        {position === "index" && (
+          <label className="option-toggle">
+            <Checkbox size="small" checked={Boolean(rule.config.from_right ?? false)}
+              onChange={(event) => onChange({ from_right: event.target.checked })} />
+            {t("rules:fields.fromRight")}
+          </label>
+        )}
+        <label className="option-toggle">
+          <Checkbox size="small" checked={Boolean(rule.config.ignore_extension ?? true)}
+            onChange={(event) => onChange({ ignore_extension: event.target.checked })} />
+          {t("rules:fields.ignoreExtension")}
+        </label>
+      </Box>
+    </Box>
+  );
+}
+
 export function RuleFields(props: RuleFieldsProps) {
   const { t } = useTranslation();
   if (props.rule.type === "padding") return <PaddingFields {...props} />;
@@ -258,5 +400,6 @@ export function RuleFields(props: RuleFieldsProps) {
     return <TextOperationFields {...props} />;
   }
   if (props.rule.type === "insert") return <InsertFields {...props} />;
+  if (props.rule.type === "serialize") return <SerializeFields {...props} />;
   return <Alert severity="error">{t("rules:unsupported", { type: props.rule.type })}</Alert>;
 }

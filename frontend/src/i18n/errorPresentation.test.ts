@@ -74,6 +74,12 @@ describe("error presentation without translation or UI", () => {
       details: { errors: [{ loc: ["body", field], type }] } }), "settings")).toEqual({ key });
   });
 
+  it("shows the affected item and allowed range when sequence numbering overflows", () => {
+    expect(resolveErrorPresentation(error({ code: "RULE_CONFIGURATION_ERROR", status: 422,
+      details: { reason: "SERIALIZE_NUMBER_OUT_OF_RANGE", params: { item: 2, min: 1, max: 3999 } },
+    }))).toEqual({ key: "errors:serializeNumberOutOfRange", values: { item: 2, min: 1, max: 3999 } });
+  });
+
   it("passes only display values, never backend-controlled translation options or objects", () => {
     expect(resolveErrorPresentation(error({ code: "VALIDATION_ERROR", details: { reason: "NAME_TOO_LONG",
       params: { max_length: 255, lng: "zh-CN", defaultValue: "Raw diagnostic", interpolation: { escapeValue: false } } } })))

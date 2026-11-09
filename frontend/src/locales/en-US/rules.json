@@ -43,6 +43,25 @@
     "anchor": "Specified text",
     "fromRight": "Right to left"
   },
+  "serialize": {
+    "numberingSystem": "Numbering system",
+    "systems": {
+      "decimal": "Decimal digits",
+      "alphabetic": "English letters",
+      "roman": "Roman numerals",
+      "music": "Music notes",
+      "chinese": "Simplified Chinese numerals"
+    },
+    "start": "Start at",
+    "repeat": "Repeat",
+    "step": "Step",
+    "reset": "Reset interval",
+    "resetEvery": "Files per group",
+    "pad": "Pad with zeros",
+    "padLength": "Padding length",
+    "replaceName": "Replace current name",
+    "range": "This numbering system supports {{min}}–{{max}}."
+  },
   "unsupported": "Unsupported rule type: {{type}}",
   "types": {
     "padding": {
@@ -60,6 +79,10 @@
     "insert": {
       "name": "Insert",
       "description": "Insert text at the start, end, a character position, or next to specified text"
+    },
+    "serialize": {
+      "name": "Serialize",
+      "description": "Add sequential numbers in file order"
     }
   }
 }

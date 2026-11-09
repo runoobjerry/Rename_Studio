@@ -10,6 +10,7 @@
   "operationInputInvalid": "The operation could not be completed with the current input. Check the name and settings, then try again.",
   "inputInvalid": "Some information is missing or invalid. Check the entered information and try again.",
   "ruleSettingsInvalid": "The rule settings are invalid. Check the values entered in the rules.",
+  "serializeNumberOutOfRange": "The sequence number for item {{item}} is outside {{min}} to {{max}}. Adjust the start, step, or grouping.",
   "nameOccupied": "An item with this name already exists in this directory. Change the new name and try again.",
   "previewExpired": "The current preview has expired or the file status has changed.",
   "previewMissing": "The preview was not found. Refresh the preview.",
