@@ -33,7 +33,7 @@ interface PreviewPanelProps {
   execution?: ExecuteResponse;
   unknownExecution?: UnknownExecution | null;
   verificationPending?: boolean;
-  providerName?: string;
+  storageName?: string;
   error?: string;
   executeError?: string;
 }
@@ -43,7 +43,7 @@ export const PreviewPanel = memo(function PreviewPanel({
   execution,
   unknownExecution,
   verificationPending = Boolean(unknownExecution),
-  providerName,
+  storageName,
   error,
   executeError,
 }: PreviewPanelProps) {
@@ -100,7 +100,7 @@ export const PreviewPanel = memo(function PreviewPanel({
 
       {error && <Alert severity="error" sx={{ m: 2, whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{error}</Alert>}
       {!preview && !unknownExecution && !error && (
-        <p className="empty-state">{t("files:preview.empty", { storageName: providerName ?? t("files:preview.currentStorage") })}</p>
+        <p className="empty-state">{t("files:preview.empty", { storageName: storageName ?? t("files:preview.currentStorage") })}</p>
       )}
       {(preview || unknownExecution) && (
         <TableContainer ref={virtual.containerRef} onScroll={virtual.onScroll} onKeyDown={virtual.onKeyDown} tabIndex={0} className="preview-table-wrap" sx={{ minWidth: 0, maxWidth: "100%" }}>

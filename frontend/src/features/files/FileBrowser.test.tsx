@@ -40,7 +40,7 @@ describe("FileBrowser", () => {
     render(<FileBrowser listing={{ ...listing, location: { kind: "id", value: "current-id" }, parent_location: { kind: "id", value: "parent-id" }, items: [
       { ...listing.items[0], id: "first", name: "same", location: { kind: "id", value: "first" } },
       { ...listing.items[0], id: "second", name: "same", location: { kind: "id", value: "second" } },
-    ] }} providerName="Cloud" selectedIds={[]} onNavigate={navigate} onNavigateLocation={navigateLocation} onToggle={vi.fn()} onSelectAll={vi.fn()} onInvertSelection={vi.fn()} />);
+    ] }} storageName="Cloud" selectedIds={[]} onNavigate={navigate} onNavigateLocation={navigateLocation} onToggle={vi.fn()} onSelectAll={vi.fn()} onInvertSelection={vi.fn()} />);
     fireEvent.click(screen.getAllByRole("button", { name: "same" })[1]);
     expect(navigateLocation).toHaveBeenCalledWith({ kind: "id", value: "second" }, { kind: "id", value: "current-id" });
     fireEvent.click(screen.getByRole("button", { name: "返回上级" }));
@@ -51,7 +51,7 @@ describe("FileBrowser", () => {
     const onSelectAll = vi.fn();
     const onInvertSelection = vi.fn();
     const onClearSelection = vi.fn();
-    const props = { listing, providerName: "本地文件", selectedIds: ["folder"],
+    const props = { listing, storageName: "本地文件", selectedIds: ["folder"],
       onNavigate: vi.fn(), onToggle: vi.fn(), onSelectAll, onInvertSelection, onClearSelection };
     const { rerender } = render(<FileBrowser {...props} selectedIds={[]} />);
     fireEvent.click(screen.getByRole("checkbox", { name: "选择当前显示且可修改名称的全部项目" }));
@@ -95,7 +95,7 @@ describe("FileBrowser", () => {
   it("clears hidden selections when the file filter changes", () => {
     const onSelectAll = vi.fn();
     const onToggle = vi.fn();
-    render(<FileBrowser listing={listing} providerName="本地文件" selectedIds={["folder"]}
+    render(<FileBrowser listing={listing} storageName="本地文件" selectedIds={["folder"]}
       onNavigate={vi.fn()} onToggle={onToggle} onSelectAll={onSelectAll} onInvertSelection={vi.fn()} />);
     fireEvent.click(screen.getByRole("button", { name: "筛选项目" }));
     const files = screen.getByRole("menuitemcheckbox", { name: "文件" });
@@ -113,7 +113,7 @@ describe("FileBrowser", () => {
     expect(screen.getByText("file.txt")).toBeInTheDocument();
   });
   it("disables bulk actions when an active filter has no matching rows", async () => {
-    render(<FileBrowser listing={{ ...listing, items: [listing.items[0]] }} providerName="本地文件" selectedIds={[]}
+    render(<FileBrowser listing={{ ...listing, items: [listing.items[0]] }} storageName="本地文件" selectedIds={[]}
       onNavigate={vi.fn()} onToggle={vi.fn()} onSelectAll={vi.fn()} onInvertSelection={vi.fn()} />);
     fireEvent.click(screen.getByRole("button", { name: "筛选项目" }));
     fireEvent.click(screen.getByRole("menuitemcheckbox", { name: "文件" }));
@@ -130,7 +130,7 @@ describe("FileBrowser", () => {
     render(
       <FileBrowser
         listing={listing}
-        providerName="本地文件"
+        storageName="本地文件"
         selectedIds={[]}
         onNavigate={onNavigate}
         onToggle={onToggle}
@@ -150,7 +150,7 @@ describe("FileBrowser", () => {
     render(
       <FileBrowser
         listing={listing}
-        providerName="本地文件"
+        storageName="本地文件"
         selectedIds={[]}
         onNavigate={onNavigate}
         onToggle={vi.fn()}

@@ -147,11 +147,11 @@ describe("API client", () => {
   });
 
   it("keeps successful JSON responses unchanged", async () => {
-    const providers = [{ storage_id: "default-local", provider_type: "local", name: "Local Files" }];
-    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify(providers)));
+    const storages = [{ storage_id: "default-local", provider_type: "local", name: "Local Files" }];
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify(storages)));
     vi.stubGlobal("fetch", fetchMock);
 
-    await expect(fetchStorages()).resolves.toEqual(providers);
+    await expect(fetchStorages()).resolves.toEqual(storages);
     expect(fetchMock).toHaveBeenCalledWith("/api/storages", undefined);
   });
 

@@ -178,7 +178,7 @@ describe("workspace workflow wiring", () => {
     expect(screen.getByRole("button", { name: "重命名 file-0.txt" })).toBeEnabled();
   });
 
-  it("releases a late preview to its original storage after switching connections", async () => {
+  it("releases a late preview to its original storage after switching file sources", async () => {
     await setup(2);
     const resolvePreview = deferred<Awaited<ReturnType<typeof api.createStoragePreview>>>();
     vi.mocked(api.createStoragePreview).mockImplementationOnce(() => resolvePreview.promise);

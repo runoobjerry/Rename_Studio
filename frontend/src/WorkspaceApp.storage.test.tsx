@@ -6,7 +6,7 @@ import { useRenameStore } from "./stores/useRenameStore";
 import { readWorkspaceSession, workspaceSessionKey } from "./workspace/workspaceSession";
 import { client, serverSettings } from "./test/workspaceHarness";
 import { installWorkspaceAppTestHooks, renderWorkspace, savedCloud, seedCloud } from "./test/workspaceAppHarness";
-import { listing as localListing, status } from "./test/fixtures";
+import { listing as localListing, status, storages } from "./test/fixtures";
 import type { DirectoryBreadcrumb, StorageInfo } from "./types";
 
 vi.mock("./api/client", async (importOriginal) => {
@@ -22,7 +22,7 @@ async function openCloud() {
 }
 
 describe("directory refresh selection", () => {
-  it("does not display a previous connection's late directory response", async () => {
+  it("does not display a previous file source's late directory response", async () => {
     const oldDirectory = deferred<Awaited<ReturnType<typeof api.fetchStorageFiles>>>();
     vi.mocked(api.fetchStorageFiles).mockImplementation((id) => id === "default-local" ? oldDirectory.promise : Promise.resolve({ provider: "onedrive", path: "", parent_path: null, location: { kind: "root" }, items: [] }));
     renderWorkspace();
@@ -41,7 +41,7 @@ describe("directory refresh selection", () => {
     })),
   });
 
-  it("isolates a new connection revision and clears its previous selection and preview", async () => {
+  it("isolates a new storage revision and clears its previous selection and preview", async () => {
     vi.mocked(api.fetchStorageFiles).mockResolvedValue(listing(["A"]));
     vi.mocked(api.createStoragePreview).mockResolvedValue({
       preview_id: "revision-preview", expires_at: "2099-01-01T00:00:00Z", valid: true,
@@ -88,8 +88,10 @@ describe("directory refresh selection", () => {
 describe("cloud default path integration", () => {
   it("restores on entry and re-entry and saves the directory opened through folder navigation", async () => {
     const photos = { kind: "id", value: "photos-id" } as const;
-    vi.mocked(api.fetchStorageFiles).mockImplementation(async (provider, location) => ({
-      provider, location, path: location.kind === "root" ? "" : location.value === "document-id" ? "照片/文档" : "照片",
+    vi.mocked(api.fetchStorageFiles).mockImplementation(async (storageId, location) => ({
+      storage_id: storageId,
+      provider: storages().find((storage) => storage.storage_id === storageId)!.provider_type,
+      location, path: location.kind === "root" ? "" : location.value === "document-id" ? "照片/文档" : "照片",
       parent_path: location.kind === "root" ? null : "", items: [{
         id: "document-id", name: "文档", path: "照片/文档", parent_path: "照片",
         location: { kind: "id", value: "document-id" }, is_directory: true, size: null, modified_at: null,

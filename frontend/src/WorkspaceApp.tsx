@@ -98,7 +98,7 @@ function Workspace({ preference, setPreference, settingsError, hasSettings }: {
   const [fileSort, setFileSort] = useState<FileSort>(defaultFileSort);
   const isWritePending = useRenameStore((state) => Boolean(state.pendingRenameRecord));
   const unknownExecution = useRenameStore((state) => state.unknownExecution);
-  const storage = useWorkspaceStorage({
+  const workspaceStorage = useWorkspaceStorage({
     pauseFileQueries: isWritePending,
     onLocalRootSelected: () => resetForStorageChange(),
     directoryVerification: unknownExecution ? {
@@ -109,12 +109,12 @@ function Workspace({ preference, setPreference, settingsError, hasSettings }: {
   });
   const {
     storageId, location, setLocation, setPath, selectStorage, resetWorkspaceSession, locationReady,
-    providers, activeStorage, providerId, providerName, cloudStatus,
-    providerDefinitions, providerDefinition, providerError, metadataReady, requiresAuth, supportsLocalPicker, supportsLocation,
-    cloudAccountId, cloudConnected, cloudSession, cloudReady, restoredCloudSession, appSettingsReady,
+    storages, activeStorage, providerType, storageName, cloudStatus,
+    providerDefinitions, providerDefinition, providerDefinitionError, metadataReady, requiresAuth, supportsLocalPicker, supportsLocation,
+    cloudAccountId, cloudSession, cloudReady, restoredCloudSession, appSettingsReady,
     files, workspaceKey, settingsLoading, pickLocalRoot,
     restoreDefaultCloudPath, setDefaultCloudPath, refreshFiles, externalPending,
-  } = storage;
+  } = workspaceStorage;
   const definitions = useQuery({ queryKey: ["rules"], queryFn: fetchRules });
   const {
     selectedIds, rules, browserItems, changeSort, selectedCount,
@@ -141,15 +141,15 @@ function Workspace({ preference, setPreference, settingsError, hasSettings }: {
     resetForStorageChange();
   }, [externalPending, isExecuting, metadataReady, requiresAuth, cloudSession, restoredCloudSession, appSettingsReady]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const loadError = providers.error ?? providerError ?? definitions.error ?? (requiresAuth ? cloudStatus.error : null);
+  const loadError = storages.error ?? providerDefinitionError ?? definitions.error ?? (requiresAuth ? cloudStatus.error : null);
   const { factoryReset, resetDisabledReason, resetPending, resetEpoch } = useFactoryReset({
     hasUnknownOutcome: Boolean(unknownExecution), isExecuting, isPreviewing,
-    storageBusy: providers.data?.some((storage) => storage.busy) ?? false,
+    storageBusy: storages.data?.some((storage) => storage.busy) ?? false,
     resetOperation, resetWorkspaceSession,
   });
 
   useBrowserNavigation({
-    storage,
+    workspaceStorage,
     busy: isPreviewing || isExecuting || pickLocalRoot.isPending || resetPending,
     context: String(resetEpoch),
     beforeSwitch: () => {
@@ -171,9 +171,9 @@ function Workspace({ preference, setPreference, settingsError, hasSettings }: {
   }, [locationReady, supportsLocation, isExecuting, pickLocalRoot.isPending, activeStorage?.busy, setLocation]);
 
   const renameBlocked = externalPending || !locationReady || pickLocalRoot.isPending || !activeStorage || activeStorage.busy || files.isFetching || Boolean(files.error);
-  const selectProvider = (nextProviderId: string) => {
+  const handleSelectStorage = (nextStorageId: string) => {
     if (isExecuting || pickLocalRoot.isPending) return;
-    selectStorage(nextProviderId);
+    selectStorage(nextStorageId);
     setView("workspace");
     setMobileNavOpen(false);
   };
@@ -203,15 +203,15 @@ function Workspace({ preference, setPreference, settingsError, hasSettings }: {
           }}
         >
           <StorageSidebar
-            storages={providers.data ?? []}
+            storages={storages.data ?? []}
             providerDefinitions={providerDefinitions.data ?? []}
-            isLoading={providers.isPending}
+            isLoading={storages.isPending}
             disabled={isExecuting || pickLocalRoot.isPending}
             view={view}
             storageId={storageId}
-            onSelectStorage={selectProvider}
+            onSelectStorage={handleSelectStorage}
             onOpenSettings={() => {
-              storage.cancelExternalNavigation();
+              workspaceStorage.cancelExternalNavigation();
               setView("settings");
               setMobileNavOpen(false);
             }}
@@ -228,7 +228,7 @@ function Workspace({ preference, setPreference, settingsError, hasSettings }: {
             sx={{ width: "100%", maxWidth: 1680, mx: "auto", p: 1.5 }}
           >
             {loadError && <Alert severity="error" sx={{ mb: 2 }}>{t("files:workspace.loadFailed")}</Alert>}
-            {(providers.isPending || providerDefinitions.isPending || definitions.isPending) && (
+            {(storages.isPending || providerDefinitions.isPending || definitions.isPending) && (
               <LinearProgress aria-label={t("files:workspace.loading")} sx={{ flexShrink: 0, mb: 1 }} />
             )}
 
@@ -236,7 +236,7 @@ function Workspace({ preference, setPreference, settingsError, hasSettings }: {
               <Suspense fallback={<SecondaryPageFallback />}>
                 <SettingsPage executingStorageId={isExecuting ? storageId : undefined} preference={preference}
                   onPreferenceChange={changeTheme} onBack={() => {
-                    storage.cancelExternalNavigation();
+                    workspaceStorage.cancelExternalNavigation();
                     setView("workspace");
                   }}
                   onFactoryReset={factoryReset} resetDisabledReason={resetDisabledReason} resetPending={resetPending}
@@ -249,7 +249,7 @@ function Workspace({ preference, setPreference, settingsError, hasSettings }: {
                 <StorageLocationPanel
                   compactNavigation={compactNavigation}
                   listing={locationReady ? files.data : undefined}
-                  rootLabel={providerName}
+                  rootLabel={storageName}
                   requiresAuth={metadataReady && requiresAuth}
                   supportsLocalPicker={supportsLocalPicker}
                   navigationDisabled={!locationReady || !activeStorage || isExecuting || pickLocalRoot.isPending || activeStorage.busy}
@@ -273,8 +273,8 @@ function Workspace({ preference, setPreference, settingsError, hasSettings }: {
                         onRename={openSingleRename}
                         renameDisabled={!canSingleRename}
                         sort={fileSort}
-                        onSortChange={(next) => { storage.cancelExternalNavigation(); changeSort(next); }}
-                        providerName={providerName}
+                        onSortChange={(next) => { workspaceStorage.cancelExternalNavigation(); changeSort(next); }}
+                        storageName={storageName}
                         selectedIds={selectedIds}
                         disabled={externalPending || isExecuting || files.isFetching || Boolean(activeStorage?.busy)}
                         isRefreshing={files.isFetching}
@@ -307,7 +307,7 @@ function Workspace({ preference, setPreference, settingsError, hasSettings }: {
                           ) : (
                             <p className="empty-state">
                               {metadataReady && requiresAuth && cloudStatus.isSuccess && !cloudStatus.data.connected
-                                ? t("files:workspace.authorizeToBrowse", { service: t(`providers:${providerId}.name`, { defaultValue: providerId }) })
+                                ? t("files:workspace.authorizeToBrowse", { service: t(`providers:${providerType}.name`, { defaultValue: providerType }) })
                                 : t("files:workspace.unavailable")}
                             </p>
                           )
@@ -319,7 +319,7 @@ function Workspace({ preference, setPreference, settingsError, hasSettings }: {
                       execution={executionData}
                       unknownExecution={displayedUnknownOutcome}
                       verificationPending={Boolean(unknownExecution)}
-                      providerName={providerName}
+                      storageName={storageName}
                       error={previewError}
                       executeError={revalidationError ? undefined : executeError}
                     />
@@ -329,11 +329,11 @@ function Workspace({ preference, setPreference, settingsError, hasSettings }: {
                       definitions={definitions.data ?? []}
                       isLoading={definitions.isPending}
                       rules={rules}
-                      onChange={(next) => { storage.cancelExternalNavigation(); onRulesChange(next); }}
+                      onChange={(next) => { workspaceStorage.cancelExternalNavigation(); onRulesChange(next); }}
                     />
                     <RenameActionsWithProgress
                       preview={previewData}
-                      connectionName={activeStorage?.name ?? ""}
+                      storageName={activeStorage?.name ?? ""}
                       selectedCount={selectedCount}
                       isPreviewing={isPreviewing}
                       isExecuting={isExecuting}

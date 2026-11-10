@@ -15,7 +15,7 @@ interface NavigationAdapter<Request> {
   validateListing(request: Request, listing: DirectoryListing): void;
 }
 
-// Shared navigation dispatches by registered request type, never by provider name.
+// Shared navigation dispatches by registered request type.
 export const navigationAdapters: { [K in keyof BrowserRequests]: NavigationAdapter<BrowserRequests[K]> } = {
   "open-onedrive-folder": oneDriveNavigationAdapter,
   "open-google-drive-folder": googleDriveNavigationAdapter,

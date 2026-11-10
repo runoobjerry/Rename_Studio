@@ -301,7 +301,7 @@ describe("rename workflow", () => {
     expect(api.fetchStorageFiles).toHaveBeenCalledTimes(1);
   });
 
-  it.each(["single", "batch"] as const)("records a late %s response against its original connection without updating the new workspace", async (kind) => {
+  it.each(["single", "batch"] as const)("records a late %s response against its original file source without updating the new workspace", async (kind) => {
     const hook = await setupWorkspace(1);
     const source = listing(1).items[0];
     const confirmed = fileItem("renamed-file-0.txt");

@@ -6,7 +6,7 @@ export interface PresentationError {
   status?: number;
 }
 
-export type ErrorPresentationContext = "directory" | "settings" | "connection" | "singleRename" | "renameStatus";
+export type ErrorPresentationContext = "directory" | "settings" | "storage" | "singleRename" | "renameStatus";
 type ErrorKey = `errors:${string}` | "files:verification.required" | "files:preview.unknown";
 
 export interface ErrorPresentation {
@@ -81,7 +81,7 @@ const contextKeys: Record<Exclude<ErrorPresentationContext, "renameStatus">, Rea
     ["VALIDATION_ERROR", "errors:inputInvalid"],
     ["PERMISSION_DENIED", "errors:accessDenied"],
   ]),
-  connection: new Map([
+  storage: new Map([
     ["NOT_FOUND", "errors:storageMissing"],
     ["PROVIDER_ERROR", "errors:storageUnavailable"],
     ["VALIDATION_ERROR", "errors:inputInvalid"],

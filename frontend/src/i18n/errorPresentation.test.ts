@@ -13,9 +13,9 @@ describe("error presentation without translation or UI", () => {
   it.each([
     ["NOT_FOUND", undefined, "errors:itemMissing"],
     ["NOT_FOUND", "directory", "errors:directoryMissing"],
-    ["NOT_FOUND", "connection", "errors:storageMissing"],
+    ["NOT_FOUND", "storage", "errors:storageMissing"],
     ["PROVIDER_ERROR", "settings", "errors:settingsUnavailable"],
-    ["PROVIDER_ERROR", "connection", "errors:storageUnavailable"],
+    ["PROVIDER_ERROR", "storage", "errors:storageUnavailable"],
     ["VALIDATION_ERROR", "directory", "errors:locationInvalid"],
     ["VALIDATION_ERROR", "settings", "errors:inputInvalid"],
     ["PERMISSION_DENIED", "directory", "errors:accessDenied"],
@@ -34,7 +34,7 @@ describe("error presentation without translation or UI", () => {
       .toEqual({ key: "errors:locationInvalid" });
   });
 
-  it.each(["directory", "settings", "connection", "singleRename"] as const)("keeps unknown writes ahead of %s overrides and reasons", (context) => {
+  it.each(["directory", "settings", "storage", "singleRename"] as const)("keeps unknown writes ahead of %s overrides and reasons", (context) => {
     expect(resolveErrorPresentation(error({ code: "RENAME_OUTCOME_UNKNOWN", status: 502,
       operation: "write", details: { execution_started: false } }), context)).toEqual({ key: "files:verification.required" });
     for (const status of [0, 502]) {

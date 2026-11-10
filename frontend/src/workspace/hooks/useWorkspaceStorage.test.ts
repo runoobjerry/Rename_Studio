@@ -5,6 +5,7 @@ import { act, renderHook, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import * as api from "../../api/client";
 import { useRenameStore } from "../../stores/useRenameStore";
+import { storages } from "../../test/fixtures";
 import { installWorkspaceTestHooks, client, listing, notify, openCloud, preview, serverSettings, setupWorkspace, status } from "../../test/workspaceHarness";
 import type { DirectoryListing, StorageInfo, StorageProviderDefinition } from "../../types";
 import { useWorkspaceStorage } from "./useWorkspaceStorage";
@@ -33,7 +34,7 @@ describe("workspace provider capabilities", () => {
       } },
     }));
     const hook = mountStorage();
-    await waitFor(() => expect(hook.result.current.providers.isSuccess).toBe(true));
+    await waitFor(() => expect(hook.result.current.storages.isSuccess).toBe(true));
     if (state !== "pending") await waitFor(() => expect(hook.result.current.providerDefinitions.isPending).toBe(false));
     expect(hook.result.current.locationReady).toBe(false);
     act(() => hook.result.current.refreshFiles());
@@ -43,7 +44,7 @@ describe("workspace provider capabilities", () => {
       .toEqual({ kind: "id", value: "remembered-directory" });
     if (state === "pending") await act(async () => { finish.resolve(definitions); });
     else await act(async () => { await client.invalidateQueries({ queryKey: ["storage-providers"] }); });
-    await waitFor(() => expect(hook.result.current.cloudConnected).toBe(true));
+    await waitFor(() => expect(hook.result.current.cloudAuthorized).toBe(true));
     await waitFor(() => expect(hook.result.current.appSettingsReady).toBe(true));
     act(() => hook.result.current.restoreDefaultCloudPath());
     await waitFor(() => expect(hook.result.current.files.isSuccess).toBe(true));
@@ -106,7 +107,7 @@ describe("workspace provider capabilities", () => {
     expect(hook.result.current.locationReady).toBe(false);
     expect(api.fetchStorageFiles).not.toHaveBeenCalled();
     act(() => client.setQueryData(["storage-auth", "oauth", 1], status("account-a")));
-    await waitFor(() => expect(hook.result.current.cloudConnected).toBe(true));
+    await waitFor(() => expect(hook.result.current.cloudAuthorized).toBe(true));
     await waitFor(() => expect(hook.result.current.appSettingsReady).toBe(true));
     act(() => hook.result.current.restoreDefaultCloudPath());
     await waitFor(() => expect(hook.result.current.files.isSuccess).toBe(true));
@@ -136,7 +137,7 @@ describe("workspace provider capabilities", () => {
 
 describe("workspace storage", () => {
 
-  it("keeps pending navigation and then selection and preview when clicking the current connection", async () => {
+  it("keeps pending navigation and then selection and preview when clicking the current file source", async () => {
     const hook = await setupWorkspace(1);
     const resolveDirectory = deferred<DirectoryListing>();
     vi.mocked(api.fetchStorageFiles).mockImplementationOnce(() => resolveDirectory.promise);
@@ -206,16 +207,16 @@ it("forces a manual refresh past an older read and keeps later navigation in cac
 });
 
 describe("workspace session locations", () => {
-  it("clears a deleted connection's memory and returns to the default Local connection", async () => {
+  it("clears a deleted file source's memory and returns to the default local file source", async () => {
     const storages = await api.fetchStorages();
     vi.mocked(api.fetchStorages).mockResolvedValue([...storages, { ...storages[0], storage_id: "second-local" }]);
     const hook = mountStorage();
     await waitFor(() => expect(hook.result.current.files.isSuccess).toBe(true));
     act(() => hook.result.current.selectStorage("second-local"));
     await waitFor(() => expect(readWorkspaceSession().session.locations["second-local"]).toBeDefined());
-    act(() => hook.result.current.setPath("即将删除连接的位置"));
+    act(() => hook.result.current.setPath("即将删除的文件来源的位置"));
     await waitFor(() => expect(readWorkspaceSession().session.locations["second-local"].location)
-      .toEqual({ kind: "path", value: "即将删除连接的位置" }));
+      .toEqual({ kind: "path", value: "即将删除的文件来源的位置" }));
     vi.mocked(api.fetchStorages).mockResolvedValue(storages);
     act(() => client.setQueryData(["storages"], storages));
     await waitFor(() => expect(hook.result.current.storageId).toBe("default-local"));
@@ -225,7 +226,7 @@ describe("workspace session locations", () => {
     expect(readWorkspaceSession().session.activeStorageId).toBe("default-local");
   });
 
-  it("prunes inactive connection memories after configuration changes", async () => {
+  it("prunes remembered locations for inactive file sources after configuration changes", async () => {
     const storages = await api.fetchStorages();
     window.sessionStorage.setItem(workspaceSessionKey, JSON.stringify({
       version: 1, activeStorageId: "default-local", locations: {
@@ -250,7 +251,7 @@ describe("workspace session locations", () => {
     const hook = mountStorage();
     await waitFor(() => expect(hook.result.current.files.isSuccess).toBe(true));
     act(() => hook.result.current.selectStorage("user-onedrive"));
-    await waitFor(() => expect(hook.result.current.cloudConnected).toBe(true));
+    await waitFor(() => expect(hook.result.current.cloudAuthorized).toBe(true));
     act(() => hook.result.current.restoreDefaultCloudPath());
     await waitFor(() => expect(hook.result.current.files.isSuccess).toBe(true));
     act(() => hook.result.current.setLocation({ kind: "id", value: "directory-before-disconnect" }));
@@ -261,22 +262,22 @@ describe("workspace session locations", () => {
     expect(hook.result.current.locationReady).toBe(false);
     act(() => hook.result.current.restoreDefaultCloudPath());
     act(() => client.setQueryData(["storage-auth", "user-onedrive", 1], status("account-a")));
-    await waitFor(() => expect(hook.result.current.cloudConnected).toBe(true));
+    await waitFor(() => expect(hook.result.current.cloudAuthorized).toBe(true));
     act(() => hook.result.current.restoreDefaultCloudPath());
     await waitFor(() => expect(hook.result.current.locationReady).toBe(true));
     expect(hook.result.current.location).toEqual({ kind: "root" });
   });
 
-  it.each(["connection", "revision"] as const)("does not remember a late directory response after changing the %s", async (change) => {
+  it.each(["storage", "revision"] as const)("does not remember a late directory response after changing the %s", async (change) => {
     const hook = mountStorage();
     await waitFor(() => expect(hook.result.current.files.isSuccess).toBe(true));
     const resolveDirectory = deferred<DirectoryListing>();
     vi.mocked(api.fetchStorageFiles).mockImplementationOnce(() => resolveDirectory.promise);
     act(() => hook.result.current.setPath("迟到目录"));
     await waitFor(() => expect(hook.result.current.files.isFetching).toBe(true));
-    if (change === "connection") {
+    if (change === "storage") {
       act(() => hook.result.current.selectStorage("user-onedrive"));
-      await waitFor(() => expect(hook.result.current.cloudConnected).toBe(true));
+      await waitFor(() => expect(hook.result.current.cloudAuthorized).toBe(true));
       act(() => hook.result.current.restoreDefaultCloudPath());
       await waitFor(() => expect(readWorkspaceSession().session.locations["user-onedrive"]).toBeDefined());
     } else {
@@ -289,26 +290,28 @@ describe("workspace session locations", () => {
     await act(async () => { resolveDirectory.resolve({ ...listing(), location: { kind: "path", value: "迟到目录" } }); });
     await waitFor(() => expect(client.getQueryData(["files", "default-local", 1, { kind: "path", value: "迟到目录" }])).toBeDefined());
     expect(readWorkspaceSession().session.locations["default-local"])
-      .toEqual({ revision: change === "connection" ? 1 : 2, accountId: null, location: { kind: "root" } });
-    const activeId = change === "connection" ? "user-onedrive" : "default-local";
+      .toEqual({ revision: change === "storage" ? 1 : 2, accountId: null, location: { kind: "root" } });
+    const activeId = change === "storage" ? "user-onedrive" : "default-local";
     expect(readWorkspaceSession().session.activeStorageId).toBe(activeId);
     expect(hook.result.current.storageId).toBe(activeId);
-    expect(hook.result.current.files.data?.provider).toBe(activeId);
-    if (change === "connection") expect(readWorkspaceSession().session.locations[activeId].location).toEqual({ kind: "root" });
+    expect(hook.result.current.files.data?.storage_id).toBe(activeId);
+    if (change === "storage") expect(readWorkspaceSession().session.locations[activeId].location).toEqual({ kind: "root" });
     expect(hook.result.current.location).toEqual({ kind: "root" });
   });
 
-  it("restores the active cloud connection and canonical location after remount without reading root or the default", async () => {
+  it("restores the active cloud file source and canonical location after remount without reading root or the default", async () => {
     serverSettings.preferences.cloud_default_locations["user-onedrive"] = {
       account_id: "account-a", location: { kind: "id", value: "default-directory-id" },
     };
-    vi.mocked(api.fetchStorageFiles).mockImplementation(async (provider, location) => ({
-      ...listing(), provider, location,
+    vi.mocked(api.fetchStorageFiles).mockImplementation(async (storageId, location) => ({
+      ...listing(), storage_id: storageId,
+      provider: storages().find((storage) => storage.storage_id === storageId)!.provider_type,
+      location,
     }));
     const hook = mountStorage();
     await waitFor(() => expect(hook.result.current.files.isSuccess).toBe(true));
     act(() => hook.result.current.selectStorage("user-onedrive"));
-    await waitFor(() => expect(hook.result.current.cloudConnected).toBe(true));
+    await waitFor(() => expect(hook.result.current.cloudAuthorized).toBe(true));
     await waitFor(() => expect(hook.result.current.appSettingsReady).toBe(true));
     act(() => hook.result.current.restoreDefaultCloudPath());
     await waitFor(() => expect(hook.result.current.files.isSuccess).toBe(true));
@@ -320,7 +323,7 @@ describe("workspace session locations", () => {
     vi.mocked(api.fetchStorageFiles).mockClear();
 
     const refreshed = mountStorage();
-    await waitFor(() => expect(refreshed.result.current.cloudConnected).toBe(true));
+    await waitFor(() => expect(refreshed.result.current.cloudAuthorized).toBe(true));
     await waitFor(() => expect(refreshed.result.current.appSettingsReady).toBe(true));
     act(() => refreshed.result.current.refreshFiles());
     expect(api.fetchStorageFiles).not.toHaveBeenCalled();
@@ -365,7 +368,7 @@ describe("workspace session locations", () => {
     expect(hook.result.current.location).toEqual({ kind: "root" });
   });
 
-  it("does not reuse a location from an older connection revision", async () => {
+  it("does not reuse a location from an older storage revision", async () => {
     window.sessionStorage.setItem(workspaceSessionKey, JSON.stringify({
       version: 1, activeStorageId: "default-local", locations: { "default-local": {
         revision: 0, accountId: null, location: { kind: "path", value: "旧根目录下的位置" },
@@ -387,7 +390,7 @@ describe("workspace session locations", () => {
       account_id: "account-a", location: { kind: "id", value: "current-account-directory" },
     };
     const hook = mountStorage();
-    await waitFor(() => expect(hook.result.current.cloudConnected).toBe(true));
+    await waitFor(() => expect(hook.result.current.cloudAuthorized).toBe(true));
     await waitFor(() => expect(hook.result.current.appSettingsReady).toBe(true));
     act(() => hook.result.current.restoreDefaultCloudPath());
     await waitFor(() => expect(hook.result.current.files.isSuccess).toBe(true));

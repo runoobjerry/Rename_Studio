@@ -29,12 +29,12 @@ function renamed(file: FileItem, current: FileItem, operationId = "single-operat
 
 describe("single rename workflow", () => {
   it.each(["google_drive", "onedrive", "custom-cloud"])(
-    "uses the real root identity for %s without refreshing the directory", async (provider) => {
+    "uses the real root identity for %s without refreshing the directory", async (providerType) => {
       const hook = await setupWorkspace(1);
       const source = fileItem("file-0.txt");
       const current = fileItem("confirmed-id", { name: "new.txt", path: "new.txt",
         parent_location: { kind: "id", value: "real-root-id" } });
-      act(() => client.setQueryData(directoryKey, { ...listing(1), provider, directory_id: "real-root-id" }));
+      act(() => client.setQueryData(directoryKey, { ...listing(1), provider: providerType, directory_id: "real-root-id" }));
       await waitFor(() => expect(hook.result.current.storage.files.data?.directory_id).toBe("real-root-id"));
       vi.mocked(api.executeStorageSingleRename).mockResolvedValueOnce(renamed(source, current));
       const reads = vi.mocked(api.fetchStorageFiles).mock.calls.length;

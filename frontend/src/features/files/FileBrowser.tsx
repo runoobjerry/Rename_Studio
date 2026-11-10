@@ -53,7 +53,7 @@ interface FileBrowserProps {
   onRename?: (fileId: string) => void;
   renameDisabled?: boolean;
   disabled?: boolean;
-  providerName: string;
+  storageName: string;
   selectedIds: string[];
   isRefreshing?: boolean;
   refreshError?: string;
@@ -82,7 +82,7 @@ function formatModifiedAt(value: string | null, formatter: Intl.DateTimeFormat):
 export const FileBrowser = memo(function FileBrowser({
   listing, items: panelItems, sort, onSortChange,
   onRename, renameDisabled = false, disabled = false,
-  providerName,
+  storageName,
   selectedIds,
   isRefreshing = false,
   refreshError,
@@ -215,7 +215,7 @@ export const FileBrowser = memo(function FileBrowser({
           stickyHeader
           aria-rowcount={visibleItems.length + 1}
           size="small"
-          aria-label={t("files:listLabel", { storageName: providerName })}
+          aria-label={t("files:listLabel", { storageName })}
           sx={{
             "& .MuiTableCell-paddingCheckbox": { width: fixedColumnWidths[0], px: 1 },
           }}

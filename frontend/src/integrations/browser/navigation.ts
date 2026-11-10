@@ -5,15 +5,15 @@ export { NavigationError } from "./types";
 export type { BrowserNavigationRequest, ExternalNavigationTarget, NavigationReply } from "./types";
 
 export function matchBrowserTarget<K extends keyof BrowserRequests>(request: BrowserRequests[K] & { type: K },
-  storages: StorageInfo[], definitions: StorageProviderDefinition[]): ExternalNavigationTarget {
+  storages: StorageInfo[], providerDefinitions: StorageProviderDefinition[]): ExternalNavigationTarget {
   // The boundary parser already accepted a registered request type.
   const requestType: K = request.type;
   const adapter = navigationAdapters[requestType];
   const location = adapter.location(request);
-  const supported = definitions.filter((definition) => definition.browser_navigation === adapter.id &&
-    definition.browser_auth && definition.locations.includes(location.kind));
-  if (supported.length === 0) throw new NavigationError("unsupported_scope");
-  const matches = storages.filter((storage) => supported.some((definition) => definition.provider_type === storage.provider_type) &&
+  const supportedProviderDefinitions = providerDefinitions.filter((providerDefinition) => providerDefinition.browser_navigation === adapter.id &&
+    providerDefinition.browser_auth && providerDefinition.locations.includes(location.kind));
+  if (supportedProviderDefinitions.length === 0) throw new NavigationError("unsupported_scope");
+  const matches = storages.filter((storage) => supportedProviderDefinitions.some((providerDefinition) => providerDefinition.provider_type === storage.provider_type) &&
     adapter.matchesStorage(request, storage));
   if (matches.length !== 1) throw new NavigationError("connection_not_found");
   const storage = matches[0];

@@ -61,13 +61,13 @@ export function useRenameExecution(isCurrentSession: (session: string) => boolea
       setSelectedIds(useRenameStore.getState().selectedIds.filter((id) => failed.has(id)).map((id) => confirmed.get(id)?.id ?? id));
     },
     onError: (error, input) => {
-      // 服务端确认复核未写入，或在读取预览/获取连接执行权时拒绝了请求。
+      // 服务端确认复核未写入，或在读取预览、获取文件来源执行权时拒绝了请求。
       if (error instanceof ApiError && (error.details.execution_started === false ||
         ["PREVIEW_EXPIRED", "PREVIEW_NOT_FOUND", "STORAGE_CONNECTION_CHANGED", "STORAGE_BUSY"].includes(error.code ?? ""))) {
         useRenameStore.getState().settleRenameRecord(input.record, null);
         return;
       }
-      // 丢失响应不代表未写入；核对信息绑定原连接，不依赖当前预览展示。
+      // 丢失响应不代表未写入；核对信息绑定原文件来源，不依赖当前预览展示。
       useRenameStore.getState().setUnknownExecution({
         storageId: input.record.storageId, location: input.record.location, previewId: input.record.operationId, items: input.previewItems,
       });

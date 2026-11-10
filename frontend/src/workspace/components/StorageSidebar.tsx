@@ -21,7 +21,7 @@ interface StorageSidebarProps {
 
 const providerIcons = { computer: ComputerRoundedIcon, cloud: CloudQueueRoundedIcon };
 
-function StorageName({ name, service, email }: { name: string; service: string; email: string | null }) {
+function StorageName({ storageName, service, email }: { storageName: string; service: string; email: string | null }) {
   const nameRef = useRef<HTMLSpanElement>(null);
   const [isOverflowing, setIsOverflowing] = useState(false);
 
@@ -32,18 +32,18 @@ function StorageName({ name, service, email }: { name: string; service: string; 
     const observer = new ResizeObserver(updateOverflow);
     observer.observe(element);
     return () => observer.disconnect();
-  }, [name]);
+  }, [storageName]);
 
   return (
     <Tooltip placement="right" title={
       <Box sx={{ overflowWrap: "anywhere" }}>
-        {isOverflowing && <Typography component="div" variant="caption">{name}</Typography>}
+        {isOverflowing && <Typography component="div" variant="caption">{storageName}</Typography>}
         <Typography component="div" variant="caption">{email ? `${service} · ${email}` : service}</Typography>
       </Box>
     }>
       <ListItemText
         sx={{ minWidth: 0 }}
-        primary={<Typography ref={nameRef} component="span" noWrap sx={{ display: "block" }}>{name}</Typography>}
+        primary={<Typography ref={nameRef} component="span" noWrap sx={{ display: "block" }}>{storageName}</Typography>}
       />
     </Tooltip>
   );
@@ -84,8 +84,8 @@ export function StorageSidebar({ storages, providerDefinitions, isLoading, disab
       <List disablePadding>
         {isLoading && <Skeleton variant="rounded" height={80} aria-label={t("storage:loading")} />}
         {storages.map((storage) => {
-          const definition = providerDefinitions.find((entry) => entry.provider_type === storage.provider_type);
-          const Icon = definition ? providerIcons[definition.icon] : StorageRoundedIcon;
+          const providerDefinition = providerDefinitions.find((entry) => entry.provider_type === storage.provider_type);
+          const Icon = providerDefinition ? providerIcons[providerDefinition.icon] : StorageRoundedIcon;
           return (
             <ListItemButton
               disabled={disabled}
@@ -97,7 +97,7 @@ export function StorageSidebar({ storages, providerDefinitions, isLoading, disab
                 <Icon />
               </ListItemIcon>
               <StorageName
-                name={storage.name}
+                storageName={storage.name}
                 service={t(`providers:${storage.provider_type}.name`)}
                 email={storage.account_email}
               />

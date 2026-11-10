@@ -1,6 +1,6 @@
 import { translateMessage, type LocalizedMessage, type NotificationMessage } from "../../i18n/messages";
 import { useTranslation } from "react-i18next";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import EditIcon from "@mui/icons-material/Edit";
 import AddIcon from "@mui/icons-material/Add";
 import FolderOpenIcon from "@mui/icons-material/FolderOpen";
@@ -30,7 +30,7 @@ const authorizationIcons = new Map([
   ["onedrive", MicrosoftIcon],
 ]);
 
-const connectionBodySx = {
+const storageSettingsBodySx = {
   "& .MuiInputBase-root, & .MuiInputLabel-root, & .MuiButton-root": {
     fontSize: "body2.fontSize",
   },
@@ -65,9 +65,9 @@ function secretPayload(fields: StorageConfigField[], secret: string): { client_s
     ? { client_secret: secret.trim() } : {};
 }
 
-function ConfigFields({ definition, draft, clientSecret, disabled, creating = false, hasClientSecret = false,
+function ConfigFields({ providerDefinition, draft, clientSecret, disabled, creating = false, hasClientSecret = false,
   onChange, onSecretChange, onPick }: {
-  definition: StorageProviderDefinition;
+  providerDefinition: StorageProviderDefinition;
   draft: ConfigDraft;
   clientSecret: string;
   disabled: boolean;
@@ -78,10 +78,10 @@ function ConfigFields({ definition, draft, clientSecret, disabled, creating = fa
   onPick: (key: string) => void;
 }) {
   const { t } = useTranslation();
-  return <>{definition.config_fields.map((field) => {
+  return <>{providerDefinition.config_fields.map((field) => {
     const secret = field.target === "client_secret";
-    const pickable = definition.local_picker && field.input_type === "directory";
-    const key = `providers:${definition.provider_type}.fields.${field.key}`;
+    const pickable = providerDefinition.local_picker && field.input_type === "directory";
+    const key = `providers:${providerDefinition.provider_type}.fields.${field.key}`;
     const label = t(creating ? [`${key}.createLabel`, `${key}.label`] : `${key}.label`, { defaultValue: field.key });
     const helpKeys = [`${key}.help`];
     if (creating) helpKeys.unshift(`${key}.createHelp`);
@@ -113,39 +113,41 @@ function ConfigFields({ definition, draft, clientSecret, disabled, creating = fa
   })}</>;
 }
 
-function ConnectionRow({ storage, executing, definition }: {
+function StorageRow({ storage, executing, providerDefinition }: {
   storage: StorageInfo;
   executing: boolean;
-  definition: StorageProviderDefinition;
+  providerDefinition: StorageProviderDefinition;
 }) {
   const { t } = useTranslation();
   const notify = useNotification();
   const queryClient = useQueryClient();
-  const [name, setName] = useState(storage.name);
-  const [draft, setDraft] = useState(() => readConfigDraft(definition.config_fields, storage.config));
+  const [storageName, setStorageName] = useState(storage.name);
+  const [draft, setDraft] = useState(() => readConfigDraft(providerDefinition.config_fields, storage.config));
   const [clientSecret, setClientSecret] = useState("");
   const [editing, setEditing] = useState(false);
   const [awaitingAuth, setAwaitingAuth] = useState(false);
   const [authError, setAuthError] = useState<NotificationMessage>();
   const popup = useRef<Window | null>(null);
   const callbackOrigin = useRef<string>();
-  const requiresAuth = definition.browser_auth;
+  const requiresAuth = providerDefinition.browser_auth;
   const status = useQuery({
     queryKey: ["storage-auth", storage.storage_id, storage.revision],
     queryFn: () => fetchStorageAuthStatus(storage.storage_id),
     enabled: requiresAuth,
+    refetchInterval: awaitingAuth ? 2_000 : false,
+    refetchIntervalInBackground: true,
   });
   useEffect(() => {
-    setName(storage.name);
-    setDraft(readConfigDraft(definition.config_fields, storage.config));
+    setStorageName(storage.name);
+    setDraft(readConfigDraft(providerDefinition.config_fields, storage.config));
     setClientSecret("");
-  }, [storage.name, storage.config, storage.revision, definition]);
-  const refresh = () => {
+  }, [storage.name, storage.config, storage.revision, providerDefinition]);
+  const refresh = useCallback(() => {
     void queryClient.invalidateQueries({ queryKey: ["app-settings"] });
     void queryClient.invalidateQueries({ queryKey: ["storages"] });
     void queryClient.invalidateQueries({ queryKey: ["storage-auth", storage.storage_id] });
     void queryClient.invalidateQueries({ queryKey: ["files", storage.storage_id] });
-  };
+  }, [queryClient, storage.storage_id]);
   const operation = useMutation({
     gcTime: 0,
     mutationFn: (action: { run: () => Promise<unknown>; message: LocalizedMessage; severity?: "success" | "warning" }) => action.run(),
@@ -154,7 +156,7 @@ function ConnectionRow({ storage, executing, definition }: {
       refresh();
       notify(action.message, action.severity);
     },
-    onError: (error) => notify({ error, errorContext: "connection" }, "error"),
+    onError: (error) => notify({ error, errorContext: "storage" }, "error"),
   });
   const pick = useMutation({
     mutationFn: (_fieldKey: string) => pickStorageFolder(storage.storage_id),
@@ -164,7 +166,7 @@ function ConnectionRow({ storage, executing, definition }: {
       refresh();
       notify({ key: "files:notifications.rootSelected" });
     },
-    onError: (error) => notify({ error, errorContext: "connection" }, "error"),
+    onError: (error) => notify({ error, errorContext: "storage" }, "error"),
   });
   const connect = useMutation({
     mutationFn: () => startStorageAuth(storage.storage_id),
@@ -176,7 +178,8 @@ function ConnectionRow({ storage, executing, definition }: {
     },
     onError: (error) => {
       popup.current?.close();
-      setAuthError({ error, errorContext: "connection" });
+      popup.current = null;
+      setAuthError({ error, errorContext: "storage" });
     },
   });
   useEffect(() => {
@@ -203,40 +206,37 @@ function ConnectionRow({ storage, executing, definition }: {
     };
     window.addEventListener("message", receive);
     return () => window.removeEventListener("message", receive);
-  }, [storage.storage_id, notify, queryClient]);
+  }, [storage.storage_id, notify, refresh]);
+  const authorized = status.isSuccess && status.data.connected;
   useEffect(() => {
-    if (!awaitingAuth) return;
-    const timer = window.setInterval(() => {
-      if (popup.current?.closed) {
-        setAwaitingAuth(false);
-        popup.current = null;
-        setAuthError({ key: "storage:authClosed" });
-        refresh();
-      }
-    }, 500);
-    return () => window.clearInterval(timer);
-  }, [awaitingAuth]);
+    // Cross-origin isolation can sever the popup reference and prevent the callback message.
+    if (!awaitingAuth || !popup.current || !authorized) return;
+    popup.current = null;
+    setAwaitingAuth(false);
+    notify({ key: "storage:authorizedNotice" });
+    refresh();
+  }, [awaitingAuth, authorized, notify, refresh]);
   const renaming = executing || storage.busy;
   const busy = renaming || operation.isPending || pick.isPending || connect.isPending || awaitingAuth;
   const isDefault = storage.storage_id === "default-local";
   const requestError = operation.error ?? pick.error ?? connect.error ?? status.error;
-  const nameTooLong = Array.from(name.trim()).length > 20;
-  const saveDisabled = busy || !name.trim() || nameTooLong || missingRequiredConfig(definition.config_fields, draft);
-  const requestErrorMessage = authError !== undefined ? translateMessage(authError, t) : requestError ? errorMessage(requestError, t, "connection") : "";
+  const nameTooLong = Array.from(storageName.trim()).length > 20;
+  const saveDisabled = busy || !storageName.trim() || nameTooLong || missingRequiredConfig(providerDefinition.config_fields, draft);
+  const requestErrorMessage = authError !== undefined ? translateMessage(authError, t) : requestError ? errorMessage(requestError, t, "storage") : "";
   const save = () => {
     if (nameTooLong) return;
     operation.mutate({
       run: () => updateStorage(storage.storage_id, {
-        name: name.trim(),
-        config: buildConfig(definition.config_fields, draft),
-        ...secretPayload(definition.config_fields, clientSecret),
+        name: storageName.trim(),
+        config: buildConfig(providerDefinition.config_fields, draft),
+        ...secretPayload(providerDefinition.config_fields, clientSecret),
       }),
       message: { key: "storage:updated" },
     });
   };
   const openEditor = () => {
-    setName(storage.name);
-    setDraft(readConfigDraft(definition.config_fields, storage.config));
+    setStorageName(storage.name);
+    setDraft(readConfigDraft(providerDefinition.config_fields, storage.config));
     setClientSecret("");
     operation.reset();
     pick.reset();
@@ -251,6 +251,13 @@ function ConnectionRow({ storage, executing, definition }: {
     setAuthError(undefined);
     connect.mutate();
   };
+  const stopWaitingForAuth = () => {
+    const authWindow = popup.current;
+    popup.current = null;
+    authWindow?.close();
+    setAwaitingAuth(false);
+    refresh();
+  };
   const closeEditor = () => {
     if (!busy) {
       setClientSecret("");
@@ -264,7 +271,7 @@ function ConnectionRow({ storage, executing, definition }: {
       message: { key: "storage:signedOut" },
     });
   };
-  const deleteConnection = () => {
+  const removeStorage = () => {
     operation.mutate({
       run: () => deleteStorage(storage.storage_id),
       message: { key: "storage:deleted", values: { storageName: storage.name } },
@@ -276,7 +283,7 @@ function ConnectionRow({ storage, executing, definition }: {
   let statusColor: ChipProps["color"];
   let statusIcon: ChipProps["icon"];
   if (!requiresAuth) {
-    statusLabel = t(`providers:${definition.provider_type}.name`, { defaultValue: definition.provider_type });
+    statusLabel = t(`providers:${providerDefinition.provider_type}.name`, { defaultValue: providerDefinition.provider_type });
     statusColor = "success";
     statusIcon = <Verified />;
   } else if (status.isPending) {
@@ -306,18 +313,18 @@ function ConnectionRow({ storage, executing, definition }: {
     authTitle = t("storage:authReadFailed");
     authDescription = t("storage:authReadHelp");
   } else if (status.data?.connected) {
-    authTitle = status.data.account_display_name ?? t(`providers:${definition.provider_type}.accountLabel`, { defaultValue: definition.provider_type });
+    authTitle = status.data.account_display_name ?? t(`providers:${providerDefinition.provider_type}.accountLabel`, { defaultValue: providerDefinition.provider_type });
     authDescription = status.data.account_email ?? t("storage:noEmail");
   } else {
     authTitle = t("storage:unauthorized");
     authDescription = t("storage:signInHelp");
   }
-  const AuthorizationIcon = authorizationIcons.get(definition.provider_type) ?? AccountCircleIcon;
-  const authorizationIconColor = status.isSuccess && status.data.connected ? "text.primary" : "text.disabled";
+  const AuthorizationIcon = authorizationIcons.get(providerDefinition.provider_type) ?? AccountCircleIcon;
+  const authorizationIconColor = authorized ? "text.primary" : "text.disabled";
   return <>
     <TableRow hover>
       <TableCell sx={{ maxWidth: 240, overflowWrap: "anywhere", color: "text.primary" }}>{storage.name}</TableCell>
-      <TableCell>{t(`providers:${definition.provider_type}.name`, { defaultValue: definition.provider_type })}</TableCell>
+      <TableCell>{t(`providers:${providerDefinition.provider_type}.name`, { defaultValue: providerDefinition.provider_type })}</TableCell>
       <TableCell>
         <Chip size="small" variant="outlined" color={statusColor} icon={statusIcon} label={statusLabel} />
         {renaming && (
@@ -337,15 +344,15 @@ function ConnectionRow({ storage, executing, definition }: {
         </Tooltip>
       </TableCell>
     </TableRow>
-    <Dialog open={editing} fullWidth maxWidth="sm" sx={connectionBodySx}
-      aria-labelledby={`edit-${storage.storage_id}-title`} onClose={closeEditor}>
-      <DialogTitle id={`edit-${storage.storage_id}-title`}>{t("storage:dialogTitle", { storageName: storage.name })}</DialogTitle>
+    <Dialog open={editing} fullWidth maxWidth="sm" sx={storageSettingsBodySx}
+      aria-labelledby={`edit-storage-${storage.storage_id}-title`} onClose={closeEditor}>
+      <DialogTitle id={`edit-storage-${storage.storage_id}-title`}>{t("storage:dialogTitle", { storageName: storage.name })}</DialogTitle>
       <DialogContent dividers>
         <Stack spacing={2}>
-          <TextField variant="standard" label={t("storage:name")} size="small" value={name} disabled={busy}
+          <TextField variant="standard" label={t("storage:name")} size="small" value={storageName} disabled={busy}
             error={nameTooLong} helperText={nameTooLong ? t("errors:storageNameLength") : undefined}
-            onChange={(event) => setName(event.target.value)} />
-          <ConfigFields definition={definition} draft={draft} clientSecret={clientSecret}
+            onChange={(event) => setStorageName(event.target.value)} />
+          <ConfigFields providerDefinition={providerDefinition} draft={draft} clientSecret={clientSecret}
             disabled={busy} hasClientSecret={storage.has_client_secret}
             onChange={(key, value) => setDraft((current) => ({ ...current, [key]: value }))}
             onSecretChange={setClientSecret} onPick={(key) => pick.mutate(key)} />
@@ -362,7 +369,7 @@ function ConnectionRow({ storage, executing, definition }: {
                     {authTitle}
                   </Typography>
                   <Typography variant="caption" component="div" color="text.secondary" sx={{ lineHeight: 1.3 }}>
-                    {authDescription}
+                    {awaitingAuth && !status.error ? t("storage:completeAuthInPopup") : authDescription}
                   </Typography>
                 </Box>
                 {status.data?.connected ? (
@@ -391,11 +398,13 @@ function ConnectionRow({ storage, executing, definition }: {
         <Tooltip title={isDefault ? t("storage:defaultCannotDelete") : t("storage:deleteHelp")}
           slotProps={{ tooltip: { sx: { fontSize: "caption.fontSize" } } }}>
           <span>
-            <Button color="error" disabled={busy || isDefault} onClick={deleteConnection}>{t("common:delete")}</Button>
+            <Button color="error" disabled={busy || isDefault} onClick={removeStorage}>{t("common:delete")}</Button>
           </span>
         </Tooltip>
         <Box sx={{ flex: 1 }} />
-        <Button disabled={busy} onClick={closeEditor}>{t("common:close")}</Button>
+        {awaitingAuth
+          ? <Button onClick={stopWaitingForAuth}>{t("storage:stopWaitingForAuth")}</Button>
+          : <Button disabled={busy} onClick={closeEditor}>{t("common:close")}</Button>}
       </DialogActions>
     </Dialog>
   </>;
@@ -406,46 +415,46 @@ export function StorageSettingsPanel({ executingStorageId }: { executingStorageI
   const notify = useNotification();
   const queryClient = useQueryClient();
   const storages = useQuery({ queryKey: ["storages"], queryFn: fetchStorages });
-  const providers = useQuery({ queryKey: ["storage-providers"], queryFn: fetchStorageProviders });
-  const [provider, setProvider] = useState("");
-  const [name, setName] = useState("");
+  const providerDefinitions = useQuery({ queryKey: ["storage-providers"], queryFn: fetchStorageProviders });
+  const [providerType, setProviderType] = useState("");
+  const [storageName, setStorageName] = useState("");
   const [draft, setDraft] = useState<ConfigDraft>({});
   const [clientSecret, setClientSecret] = useState("");
   const [adding, setAdding] = useState(false);
   const create = useMutation({
     gcTime: 0,
-    mutationFn: (definition: StorageProviderDefinition) => createStorage({
-      provider_type: definition.provider_type, name: name.trim(),
-      config: buildConfig(definition.config_fields, draft),
-      ...secretPayload(definition.config_fields, clientSecret),
+    mutationFn: (providerDefinition: StorageProviderDefinition) => createStorage({
+      provider_type: providerDefinition.provider_type, name: storageName.trim(),
+      config: buildConfig(providerDefinition.config_fields, draft),
+      ...secretPayload(providerDefinition.config_fields, clientSecret),
     }),
     onSuccess: () => {
-      setName("");
+      setStorageName("");
       setDraft({});
       setClientSecret("");
       setAdding(false);
       void queryClient.invalidateQueries({ queryKey: ["storages"] });
       notify({ key: "storage:created" });
     },
-    onError: (error) => notify({ error, errorContext: "connection" }, "error"),
+    onError: (error) => notify({ error, errorContext: "storage" }, "error"),
   });
   const pickDraft = useMutation({
     mutationFn: (_fieldKey: string) => pickLocalFolderDraft(),
     onSuccess: (result, fieldKey) => {
       if (result.selected) setDraft((current) => ({ ...current, [fieldKey]: result.root_path }));
     },
-    onError: (error) => notify({ error, errorContext: "connection" }, "error"),
+    onError: (error) => notify({ error, errorContext: "storage" }, "error"),
   });
   const addingBusy = create.isPending || pickDraft.isPending;
-  const createError = create.error ?? pickDraft.error ?? providers.error;
-  const activeProvider = providers.data?.find((definition) => definition.provider_type === provider);
-  const nameTooLong = Array.from(name.trim()).length > 20;
-  const createDisabled = addingBusy || !activeProvider || providers.isError || !name.trim() || nameTooLong ||
-    missingRequiredConfig(activeProvider.config_fields, draft);
-  const selectedProvider = activeProvider?.provider_type ?? "";
+  const createError = create.error ?? pickDraft.error ?? providerDefinitions.error;
+  const selectedProviderDefinition = providerDefinitions.data?.find((entry) => entry.provider_type === providerType);
+  const nameTooLong = Array.from(storageName.trim()).length > 20;
+  const createDisabled = addingBusy || !selectedProviderDefinition || providerDefinitions.isError || !storageName.trim() || nameTooLong ||
+    missingRequiredConfig(selectedProviderDefinition.config_fields, draft);
+  const selectedProviderType = selectedProviderDefinition?.provider_type ?? "";
   const openAddDialog = () => {
-    setProvider(providers.data?.[0]?.provider_type ?? "");
-    setName("");
+    setProviderType(providerDefinitions.data?.[0]?.provider_type ?? "");
+    setStorageName("");
     setDraft({});
     setClientSecret("");
     create.reset();
@@ -458,19 +467,19 @@ export function StorageSettingsPanel({ executingStorageId }: { executingStorageI
       setAdding(false);
     }
   };
-  const changeProvider = (providerType: string) => {
-    setProvider(providerType);
+  const changeProviderType = (nextProviderType: string) => {
+    setProviderType(nextProviderType);
     setDraft({});
     setClientSecret("");
     pickDraft.reset();
   };
-  const saveConnection = () => {
-    if (!activeProvider) return;
+  const addStorage = () => {
+    if (!selectedProviderDefinition) return;
     if (nameTooLong) return;
-    create.mutate(activeProvider);
+    create.mutate(selectedProviderDefinition);
   };
   return <>
-    <Card variant="outlined" sx={connectionBodySx}>
+    <Card variant="outlined" sx={storageSettingsBodySx}>
       <Stack direction="row" sx={{ alignItems: "center", justifyContent: "space-between", gap: 2, p: { xs: 2, sm: 2.5 } }}>
         <Typography component="h3" variant="body2" sx={{ fontWeight: 500 }}>{t("storage:saved")}</Typography>
         <Button variant="outlined" size="small" startIcon={<AddIcon />} onClick={openAddDialog}>
@@ -506,10 +515,10 @@ export function StorageSettingsPanel({ executingStorageId }: { executingStorageI
             </TableHead>
             <TableBody>
               {(storages.data ?? []).map((storage) => {
-                const definition = providers.data?.find(
+                const providerDefinition = providerDefinitions.data?.find(
                   (entry) => entry.provider_type === storage.provider_type,
                 );
-                if (!definition) return (
+                if (!providerDefinition) return (
                   <TableRow key={storage.storage_id}>
                     <TableCell>{storage.name}</TableCell>
                     <TableCell>{storage.provider_type}</TableCell>
@@ -519,8 +528,8 @@ export function StorageSettingsPanel({ executingStorageId }: { executingStorageI
                   </TableRow>
                 );
                 return (
-                  <ConnectionRow key={storage.storage_id} storage={storage}
-                    executing={storage.storage_id === executingStorageId} definition={definition} />
+                  <StorageRow key={storage.storage_id} storage={storage}
+                    executing={storage.storage_id === executingStorageId} providerDefinition={providerDefinition} />
                 );
               })}
               {storages.isSuccess && storages.data.length === 0 && (
@@ -533,36 +542,36 @@ export function StorageSettingsPanel({ executingStorageId }: { executingStorageI
         </TableContainer>
       )}
     </Card>
-    <Dialog open={adding} fullWidth maxWidth="sm" sx={connectionBodySx} aria-labelledby="add-connection-title"
+    <Dialog open={adding} fullWidth maxWidth="sm" sx={storageSettingsBodySx} aria-labelledby="add-storage-title"
       onClose={closeAddDialog}>
-      <DialogTitle id="add-connection-title">{t("storage:add")}</DialogTitle>
+      <DialogTitle id="add-storage-title">{t("storage:add")}</DialogTitle>
       <DialogContent dividers>
         <Stack spacing={2}>
-          <TextField variant="standard" select label={t("storage:service")} size="small" value={selectedProvider}
-            disabled={addingBusy} onChange={(event) => changeProvider(event.target.value)}
+          <TextField variant="standard" select label={t("storage:service")} size="small" value={selectedProviderType}
+            disabled={addingBusy} onChange={(event) => changeProviderType(event.target.value)}
             sx={{ width: { xs: 156, sm: 180 }, flexShrink: 0 }}>
-            {(providers.data ?? []).map((definition) => (
-              <MenuItem key={definition.provider_type} value={definition.provider_type}
+            {(providerDefinitions.data ?? []).map((providerDefinition) => (
+              <MenuItem key={providerDefinition.provider_type} value={providerDefinition.provider_type}
                 sx={{ fontSize: "body2.fontSize" }}>
-                {t(`providers:${definition.provider_type}.name`, { defaultValue: definition.provider_type })}
+                {t(`providers:${providerDefinition.provider_type}.name`, { defaultValue: providerDefinition.provider_type })}
               </MenuItem>
             ))}
           </TextField>
-          <TextField variant="standard" label={t("storage:name")} size="small" value={name} disabled={addingBusy}
+          <TextField variant="standard" label={t("storage:name")} size="small" value={storageName} disabled={addingBusy}
             error={nameTooLong} helperText={nameTooLong ? t("errors:storageNameLength") : undefined}
-            onChange={(event) => setName(event.target.value)} />
-          {activeProvider && (
-            <ConfigFields definition={activeProvider} draft={draft} clientSecret={clientSecret}
+            onChange={(event) => setStorageName(event.target.value)} />
+          {selectedProviderDefinition && (
+            <ConfigFields providerDefinition={selectedProviderDefinition} draft={draft} clientSecret={clientSecret}
               disabled={addingBusy} creating
               onChange={(key, value) => setDraft((current) => ({ ...current, [key]: value }))}
               onSecretChange={setClientSecret} onPick={(key) => pickDraft.mutate(key)} />
           )}
-          {createError && <Alert severity="error">{errorMessage(createError, t, "connection")}</Alert>}
+          {createError && <Alert severity="error">{errorMessage(createError, t, "storage")}</Alert>}
         </Stack>
       </DialogContent>
       <DialogActions sx={{ px: 3, py: 2 }}>
         <Button disabled={addingBusy} onClick={closeAddDialog}>{t("common:cancel")}</Button>
-        <Button variant="text" disabled={createDisabled} onClick={saveConnection}>{t("common:save")}</Button>
+        <Button variant="text" disabled={createDisabled} onClick={addStorage}>{t("common:save")}</Button>
       </DialogActions>
     </Dialog>
   </>;

@@ -5,14 +5,17 @@ import * as api from "../api/client";
 import WorkspaceApp from "../WorkspaceApp";
 import { readDefaultCloudLocation } from "../features/files/defaultCloudLocation";
 import type { AppSettings, StorageLocation } from "../types";
+import { storages } from "./fixtures";
 import { client, installWorkspaceTestHooks, serverSettings } from "./workspaceHarness";
 
 export function installWorkspaceAppTestHooks() {
   installWorkspaceTestHooks();
   beforeEach(() => {
     // 页面测试显式使用空目录；需要文件的场景自行提供。
-    vi.mocked(api.fetchStorageFiles).mockImplementation(async (provider, location) => ({
-      provider, location, path: location.kind === "root" ? "" : location.value,
+    vi.mocked(api.fetchStorageFiles).mockImplementation(async (storageId, location) => ({
+      storage_id: storageId,
+      provider: storages().find((storage) => storage.storage_id === storageId)?.provider_type ?? "local",
+      location, path: location.kind === "root" ? "" : location.value,
       parent_path: location.kind === "root" ? null : "", items: [],
     }));
     vi.stubGlobal("matchMedia", vi.fn((query: string) => ({

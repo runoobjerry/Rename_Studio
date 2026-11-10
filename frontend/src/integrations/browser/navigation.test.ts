@@ -8,15 +8,15 @@ const request: BrowserNavigationRequest = { version: 1, type: "open-onedrive-fol
 describe("browser navigation capabilities", () => {
   it.each(["missing", "disabled", "unknown", "no-auth", "no-id"])(
     "rejects %s capability metadata instead of inferring support from the OneDrive name", (kind) => {
-      const definitions = providerDefinitions();
-      const definition = definitions[1];
+      const availableProviderDefinitions = providerDefinitions();
+      const definition = availableProviderDefinitions[1];
       if (kind === "missing") Reflect.deleteProperty(definition, "browser_navigation");
       else if (kind === "disabled") definition.browser_navigation = null;
       else if (kind === "unknown") definition.browser_navigation = "unregistered_adapter";
       else if (kind === "no-auth") definition.browser_auth = false;
       else definition.locations = ["root"];
-      const connections = storages().map((entry) => ({ ...entry, account_id: request.account_cid }));
-      expect(() => matchBrowserTarget(request, connections, definitions))
+      const availableStorages = storages().map((entry) => ({ ...entry, account_id: request.account_cid }));
+      expect(() => matchBrowserTarget(request, availableStorages, availableProviderDefinitions))
         .toThrowError(new NavigationError("unsupported_scope"));
     });
 });

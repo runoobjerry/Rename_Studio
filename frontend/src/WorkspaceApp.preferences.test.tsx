@@ -95,7 +95,7 @@ describe("language settings", () => {
     vi.spyOn(navigator, "languages", "get").mockReturnValue(["en-GB"]);
     vi.mocked(api.fetchAppSettings).mockRejectedValue(new Error("Offline"));
     renderWorkspace();
-    expect(await screen.findByText("Could not load app settings. Using default settings for now. Check the connection and refresh the page to try again.")).toBeInTheDocument();
+    expect(await screen.findByText("Could not load app settings. Using default settings for now. Check your network connection and refresh the page to try again.")).toBeInTheDocument();
     expect(document.documentElement.lang).toBe("en-US");
     expect(api.patchAppSettings).not.toHaveBeenCalled();
   });

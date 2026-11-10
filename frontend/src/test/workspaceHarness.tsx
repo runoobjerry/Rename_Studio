@@ -41,8 +41,10 @@ export function installWorkspaceTestHooks() {
     vi.mocked(api.fetchStorages).mockResolvedValue(storages());
     vi.mocked(api.fetchStorageProviders).mockResolvedValue(providerDefinitions());
     vi.mocked(api.fetchStorageAuthStatus).mockResolvedValue(status("account-a"));
-    vi.mocked(api.fetchStorageFiles).mockImplementation(async (provider, location) => ({
-      ...listing(), provider, location, path: location.kind === "root" ? "" : location.value,
+    vi.mocked(api.fetchStorageFiles).mockImplementation(async (storageId, location) => ({
+      ...listing(), storage_id: storageId,
+      provider: storages().find((storage) => storage.storage_id === storageId)?.provider_type ?? "local",
+      location, path: location.kind === "root" ? "" : location.value,
       parent_path: location.kind === "root" ? null : "",
     }));
     vi.mocked(api.releaseStoragePreview).mockResolvedValue(undefined);
@@ -77,7 +79,7 @@ export async function setupWorkspace(count = 2) {
 
 export async function openCloud(hook: Awaited<ReturnType<typeof setupWorkspace>>) {
   act(() => hook.result.current.storage.selectStorage("user-onedrive"));
-  await waitFor(() => expect(hook.result.current.storage.cloudConnected).toBe(true));
+  await waitFor(() => expect(hook.result.current.storage.cloudAuthorized).toBe(true));
   act(() => hook.result.current.storage.restoreDefaultCloudPath());
   await waitFor(() => expect(hook.result.current.storage.cloudReady).toBe(true));
   await waitFor(() => expect(hook.result.current.storage.files.isSuccess).toBe(true));

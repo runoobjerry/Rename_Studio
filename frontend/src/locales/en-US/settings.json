@@ -22,7 +22,7 @@
   "license": "This software is licensed under the GNU Affero General Public License v3.0 (AGPL-3.0). See the project LICENSE file for the full terms.",
   "confirmReset": "Confirm app reset",
   "resetDescription": "This will:\n\n- Remove added file sources and locally saved authorization credentials\n- Restore language, appearance, hints, and default cloud locations\n- Clear the current rule chain\n\nIt will not delete real files or undo completed renames.",
-  "readFailed": "Could not load app settings. Using default settings for now. Check the connection and refresh the page to try again.",
+  "readFailed": "Could not load app settings. Using default settings for now. Check your network connection and refresh the page to try again.",
   "languageSaveFailed": "Could not save the language. The interface has returned to the previous settings: {{message}}",
   "themeSaveFailed": "Could not save the appearance. The interface has returned to the previous settings: {{message}}",
   "resetFailed": "Could not reset the app: {{message}}",

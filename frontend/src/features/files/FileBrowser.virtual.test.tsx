@@ -8,7 +8,7 @@ const items = Array.from({ length: 1000 }, (_, index) => ({
   is_directory: index % 100 === 0, size: 1, modified_at: null,
 }));
 const listing = { provider: "local", path: "", parent_path: null, items };
-const props = () => ({ listing, providerName: "test", selectedIds: [] as string[],
+const props = () => ({ listing, storageName: "test", selectedIds: [] as string[],
   onNavigate: vi.fn(), onToggle: vi.fn(), onSelectAll: vi.fn(), onInvertSelection: vi.fn() });
 
 beforeEach(() => {

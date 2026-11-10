@@ -59,8 +59,8 @@ describe("external Google Drive navigation", () => {
     const definitions = providerDefinitions();
     vi.mocked(api.fetchStorageProviders).mockResolvedValue([...definitions, { ...definitions[1],
       provider_type: "google_drive", browser_navigation: "google_drive_my_drive", locations: ["root", "id"] }]);
-    const connections = storages();
-    vi.mocked(api.fetchStorages).mockResolvedValue([...connections, { ...connections[1], storage_id: storageId,
+    const availableStorages = storages();
+    vi.mocked(api.fetchStorages).mockResolvedValue([...availableStorages, { ...availableStorages[1], storage_id: storageId,
       provider_type: "google_drive", account_id: accountId, account_email: "me@example.test", name: "Google Drive" }]);
     vi.mocked(api.fetchStorageAuthStatus).mockResolvedValue(status(accountId));
     vi.mocked(api.fetchStorageFiles).mockImplementation(async (id, location) => id === storageId
@@ -68,7 +68,7 @@ describe("external Google Drive navigation", () => {
       : { ...listing(1), location });
   });
 
-  it("opens the email-matched folder using the connection's stable account identity", async () => {
+  it("opens the email-matched folder using the file source's stable account identity", async () => {
     await mount();
     expect(await start(request).reply()).toMatchObject({ status: "opened", storage_id: storageId });
     expect(api.fetchStorageFiles).toHaveBeenCalledWith(storageId, request.location, true);
@@ -112,9 +112,9 @@ describe("external OneDrive navigation", () => {
       config: { ...DEFAULT_RULES.insert.config, text: "kept-" } }]);
     await mount();
     const rules = useRenameStore.getState().rules;
-    // A known authorized connection needs no extra status/connection confirmation on navigation.
+    // Navigation reuses the authorization status and storage list for an already authorized file source.
     client.setQueryData(["storage-auth", "user-onedrive", 1], status(cid));
-    const connectionReads = vi.mocked(api.fetchStorages).mock.calls.length;
+    const storageReads = vi.mocked(api.fetchStorages).mock.calls.length;
     const authReads = vi.mocked(api.fetchStorageAuthStatus).mock.calls.length;
     client.setQueryData(["files", "user-onedrive", 1, { kind: "id", value: "target-id" }],
       { ...directory(), path: "Stale", items: [] });
@@ -127,7 +127,7 @@ describe("external OneDrive navigation", () => {
     await waitFor(() => expect(readWorkspaceSession().session.locations["user-onedrive"].location)
       .toEqual({ kind: "id", value: "target-id" }));
     expect(api.patchAppSettings).not.toHaveBeenCalled();
-    expect(api.fetchStorages).toHaveBeenCalledTimes(connectionReads);
+    expect(api.fetchStorages).toHaveBeenCalledTimes(storageReads);
     expect(api.fetchStorageAuthStatus).toHaveBeenCalledTimes(authReads);
     expect(useRenameStore.getState().rules).toEqual(rules);
     expect(useRenameStore.getState().selectedIds).toEqual([]);
@@ -135,8 +135,8 @@ describe("external OneDrive navigation", () => {
 
   it.each(["missing", "ambiguous", "unauthorized"])("does not change workspace when the account is %s", async (kind) => {
     if (kind === "ambiguous") {
-      const connections = await api.fetchStorages();
-      vi.mocked(api.fetchStorages).mockResolvedValue([...connections, { ...connections[1], storage_id: "duplicate" }]);
+      const availableStorages = await api.fetchStorages();
+      vi.mocked(api.fetchStorages).mockResolvedValue([...availableStorages, { ...availableStorages[1], storage_id: "duplicate" }]);
     }
     if (kind === "unauthorized") vi.mocked(api.fetchStorageAuthStatus).mockResolvedValue(status(cid, false));
     await mount();
@@ -150,9 +150,9 @@ describe("external OneDrive navigation", () => {
 
   it("lets an external target win over account A restoration while switching to account B", async () => {
     const accountA = "111111111111AAAA";
-    const connections = await api.fetchStorages();
-    vi.mocked(api.fetchStorages).mockResolvedValue([...connections,
-      { ...connections[1], storage_id: "account-a-connection", name: "Account A", account_id: accountA }]);
+    const availableStorages = await api.fetchStorages();
+    vi.mocked(api.fetchStorages).mockResolvedValue([...availableStorages,
+      { ...availableStorages[1], storage_id: "account-a-connection", name: "Account A", account_id: accountA }]);
     vi.mocked(api.fetchStorageAuthStatus).mockImplementation(async (id) => status(id === "account-a-connection" ? accountA : cid));
     serverSettings.preferences.cloud_default_locations["account-a-connection"] = {
       account_id: accountA, location: { kind: "id", value: "account-a-default" },
@@ -166,9 +166,9 @@ describe("external OneDrive navigation", () => {
     expect(oneDriveLocations()).not.toContainEqual({ kind: "root" });
   });
 
-  it.each(["default-local", "user-onedrive"])("rejects a busy connection %s before changing workspace", async (id) => {
-    const connections = await api.fetchStorages();
-    vi.mocked(api.fetchStorages).mockResolvedValue(connections.map((entry) =>
+  it.each(["default-local", "user-onedrive"])("rejects a busy file source %s before changing workspace", async (id) => {
+    const availableStorages = await api.fetchStorages();
+    vi.mocked(api.fetchStorages).mockResolvedValue(availableStorages.map((entry) =>
       entry.storage_id === id ? { ...entry, busy: true } : entry));
     await mount();
     expect(await start().reply()).toMatchObject({ status: "rejected", code: "busy" });

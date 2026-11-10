@@ -24,7 +24,7 @@ describe("RenameActions", () => {
     const onPreview = vi.fn();
     render(
       <RenameActions
-        connectionName="我的相册"
+        storageName="我的相册"
         selectedCount={2}
         isPreviewing={false}
         isExecuting={false}
@@ -44,7 +44,7 @@ describe("RenameActions", () => {
     const { rerender } = render(
       <RenameActions
         preview={validPreview}
-        connectionName="我的相册"
+        storageName="我的相册"
         selectedCount={1}
         isPreviewing={false}
         isExecuting={false}
@@ -65,7 +65,7 @@ describe("RenameActions", () => {
     expect(screen.getByText("将按当前预览重命名文件来源「我的相册」中的 1 个项目。")).not.toBeVisible();
     expect(screen.getByRole("progressbar", { name: "修改进度" })).toHaveAttribute("aria-valuenow", "0");
     const message = "当前预览过期或文件状态发生变化。";
-    rerender(<RenameActions preview={validPreview} connectionName="我的相册" selectedCount={1}
+    rerender(<RenameActions preview={validPreview} storageName="我的相册" selectedCount={1}
       isPreviewing={false} isExecuting={false} hasExecuted={false}
       revalidationError={message} executeError="Raw server diagnostic" onPreview={onPreview} onExecute={onExecute} />);
     const modal = within(screen.getByRole("dialog"));
@@ -78,7 +78,7 @@ describe("RenameActions", () => {
   });
 
   it("renders server counts while pending and closes when execution returns", async () => {
-    const props = { preview: validPreview, connectionName: "我的相册", selectedCount: 1,
+    const props = { preview: validPreview, storageName: "我的相册", selectedCount: 1,
       isPreviewing: false, isExecuting: false, hasExecuted: false, onPreview: vi.fn(), onExecute: vi.fn() };
     const { rerender } = render(<RenameActions {...props} />);
     fireEvent.click(screen.getByRole("button", { name: "开始修改" }));
@@ -98,7 +98,7 @@ describe("RenameActions", () => {
   });
 
   it("does not invent progress on polling failure and closes after the execution request fails", async () => {
-    const props = { preview: validPreview, connectionName: "我的相册", selectedCount: 1,
+    const props = { preview: validPreview, storageName: "我的相册", selectedCount: 1,
       isPreviewing: false, isExecuting: false, hasExecuted: false, onPreview: vi.fn(), onExecute: vi.fn() };
     const { rerender } = render(<RenameActions {...props} />);
     fireEvent.click(screen.getByRole("button", { name: "开始修改" }));

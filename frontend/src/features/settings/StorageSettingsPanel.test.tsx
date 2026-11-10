@@ -64,11 +64,11 @@ describe("storage settings", () => {
   it.each([
     ["zh-CN", "local", "本地根目录"], ["en-US", "local", "Local root directory"],
     ["zh-CN", "onedrive", "OneDrive App ID"], ["en-US", "onedrive", "OneDrive App ID"],
-  ])("edits %s %s using the base label without translating the connection name", async (locale, provider, label) => {
+  ])("edits %s %s using the base label without translating the file source name", async (locale, providerType, label) => {
     const { client } = setup();
     await screen.findByRole("button", { name: "编辑 Local" });
-    const config = provider === "local" ? { root_path: "C:\\原始目录" } : { client_id: "original-client-id" };
-    const storage = { storage_id: provider === "local" ? "default-local" : "onedrive-connection", provider_type: provider, name: "Local Files", revision: 1,
+    const config = providerType === "local" ? { root_path: "C:\\原始目录" } : { client_id: "original-client-id" };
+    const storage = { storage_id: providerType === "local" ? "default-local" : "onedrive-connection", provider_type: providerType, name: "Local Files", revision: 1,
       busy: false, config, account_id: null, account_display_name: null, account_email: null };
     vi.mocked(api.fetchStorages).mockResolvedValue([storage]);
     vi.mocked(api.fetchStorageProviders).mockResolvedValue(builtinDefinitions);
@@ -82,7 +82,7 @@ describe("storage settings", () => {
     const chinese = locale === "zh-CN";
     fireEvent.click(await screen.findByRole("button", { name: chinese ? "编辑 Local Files" : "Edit Local Files" }));
     expect(screen.getByRole("textbox", { name: chinese ? "名称" : "Name" })).toHaveValue("Local Files");
-    expect(screen.getByRole("textbox", { name: label })).toHaveValue(provider === "local" ? config.root_path : config.client_id);
+    expect(screen.getByRole("textbox", { name: label })).toHaveValue(providerType === "local" ? config.root_path : config.client_id);
     fireEvent.click(screen.getByRole("button", { name: chinese ? "保存" : "Save" }));
     await waitFor(() => expect(api.updateStorage).toHaveBeenCalledWith(storage.storage_id, { name: "Local Files", config }));
     client.clear();
@@ -254,7 +254,7 @@ describe("storage settings", () => {
     client.clear();
   });
 
-  it("creates a metadata-defined connection with a top-level write-only secret and clears it when changing provider or reopening", async () => {
+  it("creates a metadata-defined file source with a top-level write-only secret and clears it when changing provider or reopening", async () => {
     const { client } = setup();
     await screen.findByRole("button", { name: "编辑 Local" });
     const definitions: StorageProviderDefinition[] = [
@@ -288,7 +288,7 @@ describe("storage settings", () => {
     client.clear();
   });
 
-  it("uses metadata-defined authorization and ignores callbacks from another origin or connection", async () => {
+  it("uses metadata-defined authorization and ignores callbacks from another origin or file source", async () => {
     const { client } = setup();
     await screen.findByRole("button", { name: "编辑 Local" });
     const oauth = { storage_id: "oauth", provider_type: "fixture_oauth", name: "OAuth", revision: 1, busy: false,
