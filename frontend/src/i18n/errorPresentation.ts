@@ -18,7 +18,7 @@ const codeKeys = new Map<string, ErrorKey>([
   ["APPLICATION_ERROR", "errors:operationUnavailable"],
   ["INTERNAL_ERROR", "errors:operationUnavailable"],
   ["NOT_FOUND", "errors:itemMissing"],
-  ["PROVIDER_ERROR", "errors:storageUnavailable"],
+  ["PROVIDER_ERROR", "errors:storageServiceUnavailable"],
   ["AUTHENTICATION_ERROR", "errors:authorizationUnavailable"],
   ["RATE_LIMIT_ERROR", "errors:tooManyRequests"],
   ["PERMISSION_DENIED", "errors:renamePermissionDenied"],
@@ -28,9 +28,9 @@ const codeKeys = new Map<string, ErrorKey>([
   ["RENAME_CONFLICT", "errors:nameOccupied"],
   ["PREVIEW_EXPIRED", "errors:previewExpired"],
   ["PREVIEW_NOT_FOUND", "errors:previewMissing"],
-  ["STORAGE_BUSY", "errors:connectionBusy"],
-  ["STORAGE_CONNECTION_CHANGED", "errors:connectionChanged"],
-  ["STORAGE_ACCOUNT_ALREADY_CONNECTED", "errors:accountAlreadyConnected"],
+  ["STORAGE_BUSY", "errors:storageBusy"],
+  ["STORAGE_CONNECTION_CHANGED", "errors:storageChanged"],
+  ["STORAGE_ACCOUNT_ALREADY_CONNECTED", "errors:accountAlreadyAuthorized"],
 ]);
 
 interface ReasonPresentation {
@@ -43,12 +43,12 @@ const reasonPresentations = new Map<string, ReasonPresentation>([
   ["SOURCE_CHANGED", { code: "RENAME_CONFLICT", key: "errors:fileChanged" }],
   ["RENAME_UNSUPPORTED", { code: "VALIDATION_ERROR", key: "errors:renameUnsupported" }],
   ["ITEM_RENAME_UNAVAILABLE", { code: "VALIDATION_ERROR", key: "errors:itemRenameUnavailable" }],
-  ["CONNECTION_NOT_FOUND", { code: "NOT_FOUND", key: "errors:connectionMissing" }],
-  ["ACCOUNT_NOT_CONNECTED", { code: "AUTHENTICATION_ERROR", key: "errors:accountDisconnected" }],
+  ["CONNECTION_NOT_FOUND", { code: "NOT_FOUND", key: "errors:storageMissing" }],
+  ["ACCOUNT_NOT_CONNECTED", { code: "AUTHENTICATION_ERROR", key: "errors:accountUnauthorized" }],
   ["AUTHORIZATION_EXPIRED", { code: "AUTHENTICATION_ERROR", key: "errors:authorizationExpired" }],
   ["LOCATION_OUTSIDE_ROOT", { code: "VALIDATION_ERROR", key: "errors:outsideRoot" }],
   ["SYMBOLIC_LINK_UNSUPPORTED", { code: "VALIDATION_ERROR", key: "errors:symbolicLink" }],
-  ["DEFAULT_CONNECTION_DELETE_FORBIDDEN", { code: "VALIDATION_ERROR", key: "errors:defaultConnection" }],
+  ["DEFAULT_CONNECTION_DELETE_FORBIDDEN", { code: "VALIDATION_ERROR", key: "errors:defaultStorage" }],
   ["PREVIEW_DUPLICATE_FILE_IDS", { code: "VALIDATION_ERROR", key: "errors:selectionDuplicated" }],
   ["PREVIEW_ITEMS_NOT_IN_DIRECTORY", { code: "VALIDATION_ERROR", key: "errors:selectionOutsideDirectory" }],
   ["SERIALIZE_NUMBER_OUT_OF_RANGE", { code: "RULE_CONFIGURATION_ERROR", key: "errors:serializeNumberOutOfRange", params: ["item", "min", "max"] }],
@@ -82,13 +82,13 @@ const contextKeys: Record<Exclude<ErrorPresentationContext, "renameStatus">, Rea
     ["PERMISSION_DENIED", "errors:accessDenied"],
   ]),
   connection: new Map([
-    ["NOT_FOUND", "errors:connectionMissing"],
-    ["PROVIDER_ERROR", "errors:connectionUnavailable"],
+    ["NOT_FOUND", "errors:storageMissing"],
+    ["PROVIDER_ERROR", "errors:storageUnavailable"],
     ["VALIDATION_ERROR", "errors:inputInvalid"],
     ["PERMISSION_DENIED", "errors:accessDenied"],
   ]),
   singleRename: new Map([
-    ["STORAGE_CONNECTION_CHANGED", "errors:connectionRefreshRequired"],
+    ["STORAGE_CONNECTION_CHANGED", "errors:storageRefreshRequired"],
   ]),
 };
 
@@ -96,7 +96,7 @@ const contextKeys: Record<Exclude<ErrorPresentationContext, "renameStatus">, Rea
 const renameStatusKeys = new Map<ErrorKey, ErrorKey>([
   ["errors:operationUnavailable", "errors:renameStatus.unavailable"],
   ["errors:itemMissing", "errors:renameStatus.itemMissing"],
-  ["errors:storageUnavailable", "errors:renameStatus.storageUnavailable"],
+  ["errors:storageServiceUnavailable", "errors:renameStatus.storageServiceUnavailable"],
   ["errors:authorizationUnavailable", "errors:renameStatus.authorizationUnavailable"],
   ["errors:tooManyRequests", "errors:renameStatus.rateLimited"],
   ["errors:renamePermissionDenied", "errors:renameStatus.permissionDenied"],
@@ -107,14 +107,14 @@ const renameStatusKeys = new Map<ErrorKey, ErrorKey>([
   ["errors:duplicateNames", "errors:renameStatus.duplicateNames"],
   ["errors:previewExpired", "errors:renameStatus.previewExpired"],
   ["errors:previewMissing", "errors:renameStatus.previewMissing"],
-  ["errors:connectionBusy", "errors:renameStatus.connectionBusy"],
-  ["errors:connectionChanged", "errors:renameStatus.connectionChanged"],
+  ["errors:storageBusy", "errors:renameStatus.storageBusy"],
+  ["errors:storageChanged", "errors:renameStatus.storageChanged"],
   ["errors:readUnavailable", "errors:renameStatus.unavailable"],
   ["errors:fileChanged", "errors:renameStatus.fileChanged"],
   ["errors:renameUnsupported", "errors:renameStatus.renameUnsupported"],
   ["errors:itemRenameUnavailable", "errors:renameStatus.itemUnavailable"],
-  ["errors:connectionMissing", "errors:renameStatus.connectionMissing"],
-  ["errors:accountDisconnected", "errors:renameStatus.accountDisconnected"],
+  ["errors:storageMissing", "errors:renameStatus.storageMissing"],
+  ["errors:accountUnauthorized", "errors:renameStatus.accountUnauthorized"],
   ["errors:authorizationExpired", "errors:renameStatus.authorizationExpired"],
   ["errors:outsideRoot", "errors:renameStatus.outsideRoot"],
   ["errors:symbolicLink", "errors:renameStatus.symbolicLink"],
@@ -154,8 +154,8 @@ function requestValidationKey(errors: unknown): ErrorKey | undefined {
   for (const entry of errors) {
     if (typeof entry !== "object" || entry === null || !Array.isArray(entry.loc)) continue;
     const field = entry.loc[entry.loc.length - 1];
-    if (field === "name" && (entry.type === "string_too_short" || entry.type === "missing")) return "errors:connectionNameEmpty";
-    if (field === "name" && entry.type === "string_too_long") return "errors:connectionNameLength";
+    if (field === "name" && (entry.type === "string_too_short" || entry.type === "missing")) return "errors:storageNameEmpty";
+    if (field === "name" && entry.type === "string_too_long") return "errors:storageNameLength";
     if ((field === "target_name" || field === "new_name") && (entry.type === "string_too_short" || entry.type === "missing")) return "errors:nameEmpty";
     if (field === "client_secret") return "errors:clientSecret";
   }

@@ -86,7 +86,7 @@ export function SettingsPage({ preference, onPreferenceChange, onBack, executing
           </Card>
         </Box>
         <Box component="section" aria-labelledby="connection-settings-title">
-          <Typography id="connection-settings-title" component="h2" variant="subtitle1" sx={{ mb: 1.25, fontWeight: 600 }}>{t("connections")}</Typography>
+          <Typography id="connection-settings-title" component="h2" variant="subtitle1" sx={{ mb: 1.25, fontWeight: 600 }}>{t("storage:title")}</Typography>
           <StorageSettingsPanel key={resetEpoch} executingStorageId={executingStorageId} />
         </Box>
         <Box component="section" aria-labelledby="reset-settings-title">

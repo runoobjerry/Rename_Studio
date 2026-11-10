@@ -121,7 +121,7 @@ describe("factory reset", () => {
     fireEvent.click(await openSettings());
     fireEvent.click(within(screen.getByRole("dialog", { name: "确认重置应用" }))
       .getByRole("button", { name: "重置应用" }));
-    expect(await screen.findByText("未收到重置结果。请刷新页面，检查连接和设置是否已重置。")).toBeInTheDocument();
+    expect(await screen.findByText("未收到重置结果。请刷新页面，检查文件来源和设置是否已重置。")).toBeInTheDocument();
     expect(useRenameStore.getState().rules).toHaveLength(1);
     expect(serverSettings.preferences.theme).toBe("dark");
     expect(screen.getByRole("dialog", { name: "确认重置应用" })).toBeInTheDocument();

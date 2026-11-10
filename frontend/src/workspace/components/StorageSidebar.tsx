@@ -79,10 +79,10 @@ export function StorageSidebar({ storages, providerDefinitions, isLoading, disab
         color="textSecondary"
         sx={{ px: 1.5, mt: 1}}
       >
-      {t("files:sidebar.title")}
+      {t("storage:title")}
       </Typography>
       <List disablePadding>
-        {isLoading && <Skeleton variant="rounded" height={80} aria-label={t("files:sidebar.loading")} />}
+        {isLoading && <Skeleton variant="rounded" height={80} aria-label={t("storage:loading")} />}
         {storages.map((storage) => {
           const definition = providerDefinitions.find((entry) => entry.provider_type === storage.provider_type);
           const Icon = definition ? providerIcons[definition.icon] : StorageRoundedIcon;

@@ -3,7 +3,7 @@ import { appendFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const resource = /^frontend\/src\/locales\/[^/]+\/(meta|common|settings|files|rules|providers|errors)\.json$/;
+const resource = /^frontend\/src\/locales\/[^/]+\/(meta|common|settings|storage|files|rules|providers|errors)\.json$/;
 const affectsFrontend = (path) => path.startsWith("frontend/") ||
   path.startsWith("backend/app/rules/") || path.startsWith("backend/app/providers/") ||
   path === "backend/app/api/dependencies.py" || path === ".github/workflows/frontend-ci.yml";

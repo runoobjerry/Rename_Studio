@@ -13,13 +13,13 @@ describe("error presentation without translation or UI", () => {
   it.each([
     ["NOT_FOUND", undefined, "errors:itemMissing"],
     ["NOT_FOUND", "directory", "errors:directoryMissing"],
-    ["NOT_FOUND", "connection", "errors:connectionMissing"],
+    ["NOT_FOUND", "connection", "errors:storageMissing"],
     ["PROVIDER_ERROR", "settings", "errors:settingsUnavailable"],
-    ["PROVIDER_ERROR", "connection", "errors:connectionUnavailable"],
+    ["PROVIDER_ERROR", "connection", "errors:storageUnavailable"],
     ["VALIDATION_ERROR", "directory", "errors:locationInvalid"],
     ["VALIDATION_ERROR", "settings", "errors:inputInvalid"],
     ["PERMISSION_DENIED", "directory", "errors:accessDenied"],
-    ["STORAGE_CONNECTION_CHANGED", "singleRename", "errors:connectionRefreshRequired"],
+    ["STORAGE_CONNECTION_CHANGED", "singleRename", "errors:storageRefreshRequired"],
   ] as const)("presents %s in %s as %s", (code, context, key) => {
     expect(resolveErrorPresentation(error({ code }), context)).toEqual({ key });
   });
@@ -29,7 +29,7 @@ describe("error presentation without translation or UI", () => {
     expect(resolveErrorPresentation(error({ code: "VALIDATION_ERROR", details }), "directory"))
       .toEqual({ key: "errors:outsideRoot" });
     expect(resolveErrorPresentation(error({ code: "PROVIDER_ERROR", details }), "directory"))
-      .toEqual({ key: "errors:storageUnavailable" });
+      .toEqual({ key: "errors:storageServiceUnavailable" });
     expect(resolveErrorPresentation(error({ code: "VALIDATION_ERROR", details: { reason: "FUTURE_REASON" } }), "directory"))
       .toEqual({ key: "errors:locationInvalid" });
   });
@@ -45,13 +45,13 @@ describe("error presentation without translation or UI", () => {
 
   it("distinguishes pre-write revalidation, confirmed item errors and failed reads from lost writes", () => {
     expect(resolveErrorPresentation(error({ code: "PROVIDER_ERROR", status: 502, operation: "write",
-      details: { execution_started: false } }))).toEqual({ key: "errors:storageUnavailable" });
+      details: { execution_started: false } }))).toEqual({ key: "errors:storageServiceUnavailable" });
     expect(resolveErrorPresentation(error({ code: "PERMISSION_DENIED", status: 403, operation: "write" })))
       .toEqual({ key: "errors:renamePermissionDenied" });
     expect(resolveErrorPresentation(error({ code: "PROVIDER_ERROR", operation: "write" })))
-      .toEqual({ key: "errors:storageUnavailable" });
+      .toEqual({ key: "errors:storageServiceUnavailable" });
     expect(resolveErrorPresentation(error({ code: "PROVIDER_ERROR", status: 502, operation: "read" })))
-      .toEqual({ key: "errors:storageUnavailable" });
+      .toEqual({ key: "errors:storageServiceUnavailable" });
   });
 
   it.each([
@@ -64,8 +64,8 @@ describe("error presentation without translation or UI", () => {
   });
 
   it.each([
-    ["name", "missing", "errors:connectionNameEmpty"],
-    ["name", "string_too_long", "errors:connectionNameLength"],
+    ["name", "missing", "errors:storageNameEmpty"],
+    ["name", "string_too_long", "errors:storageNameLength"],
     ["target_name", "string_too_short", "errors:nameEmpty"],
     ["new_name", "missing", "errors:nameEmpty"],
     ["client_secret", "string_type", "errors:clientSecret"],

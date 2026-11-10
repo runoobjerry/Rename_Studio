@@ -111,7 +111,7 @@ export function RenameActions({
           <div style={{ position: "relative" }}>
             {/* 保留确认文案占位，状态切换时弹窗尺寸保持不变。 */}
             <DialogContentText sx={{ visibility: started ? "hidden" : "visible" }}>
-              {t("files:rename.confirm", { connectionName, count: changedCount })}
+              {t("files:rename.confirm", { storageName: connectionName, count: changedCount })}
             </DialogContentText>
             {started && !hasExecuted && (
               <DialogContentText role="status" sx={{ position: "absolute", inset: 0, overflowY: "auto",

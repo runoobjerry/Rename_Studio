@@ -3,7 +3,7 @@ import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import ts from "typescript";
 
-export const namespaces = ["common", "settings", "files", "rules", "providers", "errors"];
+export const namespaces = ["common", "settings", "storage", "files", "rules", "providers", "errors"];
 const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const object = (value) => value !== null && typeof value === "object" && !Array.isArray(value);
 

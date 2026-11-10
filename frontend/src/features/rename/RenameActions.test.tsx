@@ -57,12 +57,12 @@ describe("RenameActions", () => {
     fireEvent.click(screen.getByRole("button", { name: "开始修改" }));
     expect(onExecute).not.toHaveBeenCalled();
     expect(screen.getByRole("heading", { name: "确认修改" })).toBeInTheDocument();
-    expect(screen.getByText("将按当前预览重命名「我的相册」中的 1 个项目。")).toBeInTheDocument();
+    expect(screen.getByText("将按当前预览重命名文件来源「我的相册」中的 1 个项目。")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "应用" }));
     expect(onExecute).toHaveBeenCalledWith("preview-1");
     expect(screen.getByRole("heading", { name: "正在提交修改" })).toBeInTheDocument();
     expect(screen.getByRole("status")).toHaveTextContent("当前任务已处理 0 项，共 1 项");
-    expect(screen.getByText("将按当前预览重命名「我的相册」中的 1 个项目。")).not.toBeVisible();
+    expect(screen.getByText("将按当前预览重命名文件来源「我的相册」中的 1 个项目。")).not.toBeVisible();
     expect(screen.getByRole("progressbar", { name: "修改进度" })).toHaveAttribute("aria-valuenow", "0");
     const message = "当前预览过期或文件状态发生变化。";
     rerender(<RenameActions preview={validPreview} connectionName="我的相册" selectedCount={1}

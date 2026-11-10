@@ -31,7 +31,7 @@ describe("translation validation", () => {
     const result = checkLocales(localeRoot());
     expect(result.errors).toEqual([]);
     expect(result.warnings).toHaveLength(1);
-    expect(result.warnings[0]).toContain("fr-FR: 5 missing keys");
+    expect(result.warnings[0]).toContain(`fr-FR: ${namespaces.length - 1} missing keys`);
     expect(result.warnings[0]).toContain("settings:message");
     expect(result.warnings[0]).not.toContain("common:message");
   });

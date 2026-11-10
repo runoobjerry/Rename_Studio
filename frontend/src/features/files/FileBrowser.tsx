@@ -215,7 +215,7 @@ export const FileBrowser = memo(function FileBrowser({
           stickyHeader
           aria-rowcount={visibleItems.length + 1}
           size="small"
-          aria-label={t("files:listLabel", { provider: providerName })}
+          aria-label={t("files:listLabel", { storageName: providerName })}
           sx={{
             "& .MuiTableCell-paddingCheckbox": { width: fixedColumnWidths[0], px: 1 },
           }}

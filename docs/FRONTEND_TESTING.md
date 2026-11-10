@@ -28,7 +28,7 @@ npm run dev
 | 差异范围 | 检查路径 |
 |---|---|
 | 不涉及 `frontend/**`、后端 `app/rules/**` / `app/providers/**`、`backend/app/api/dependencies.py` 或本工作流 | `skip`：输出范围说明，不安装依赖，正常上报同一检查 |
-| 整个 PR 只新增/修改 `frontend/src/locales/<语言>/` 下的 `meta.json` 和六个命名空间 JSON，且未改变 en-US 默认词典键结构 | `translations`：安装依赖并执行 `npm run i18n:check` |
+| 整个 PR 只新增/修改 `frontend/src/locales/<语言>/` 下的 `meta.json` 和命名空间 JSON，且未改变 en-US 默认词典键结构 | `translations`：安装依赖并执行 `npm run i18n:check` |
 | 其他涉及上述前端范围的变更，或人工触发 | `full`：安装依赖、i18n 检查、`npm run test:ci`、`npm run build` |
 
 删除、重命名语言资源，改变默认词典键结构，或语言资源混合其他文件的 PR 均走 `full`。默认词典属性顺序和字符串文本变化仍可走翻译路径。Git 读取或默认词典 JSON 解析失败会使检查失败，不会伪装成无关变更。翻译静态检查读取本地词典和注册代码，不调用后端或外部服务。

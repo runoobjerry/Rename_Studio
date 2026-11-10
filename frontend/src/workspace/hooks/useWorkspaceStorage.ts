@@ -79,7 +79,7 @@ export function useWorkspaceStorage({ pauseFileQueries, onLocalRootSelected, dir
   const supportsLocation = useCallback((value: StorageLocation) =>
     providerDefinition?.locations.includes(value.kind) === true, [providerDefinition]);
   const providerError = providerDefinitions.error ?? (activeStorage && providerDefinitions.isSuccess && !providerDefinition
-    ? new Error(t("errors:providerDefinitionUnavailable")) : null);
+    ? new Error(t("errors:storageServiceInfoUnavailable")) : null);
   const cloudStatus = useQuery({
     queryKey: ["storage-auth", storageId, activeStorage?.revision],
     queryFn: () => fetchStorageAuthStatus(storageId),

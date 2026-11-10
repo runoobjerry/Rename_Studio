@@ -71,7 +71,7 @@ describe("PreviewPanel", () => {
     expect(table.getAllByText("待核对")).toHaveLength(2);
     expect(table.getAllByText("修改结果无法确认")).toHaveLength(2);
     const alert = screen.getByRole("alert");
-    expect(alert).toHaveTextContent("本次修改存在未知结果的项目，请刷新文件目录或前往文件源检查。");
+    expect(alert).toHaveTextContent("部分重命名结果尚未确认。请刷新目录，或前往对应的云盘或本地目录核对。");
     expect(screen.getByRole("region", { name: "修改预览" }).lastElementChild).toBe(alert);
     expect(table.queryByText("new-unknown.txt")).not.toBeInTheDocument();
     expect(table.queryByText("new-missing.txt")).not.toBeInTheDocument();
@@ -108,7 +108,7 @@ describe("PreviewPanel", () => {
     expect(table.getAllByText("待核对")).toHaveLength(2);
     expect(table.getAllByText("修改结果无法确认")).toHaveLength(2);
     rerender(<PreviewPanel unknownExecution={{ ...unknownExecution, previewId: "next-execution" }} />);
-    expect(screen.getByRole("alert")).toHaveTextContent("本次修改存在未知结果的项目，请刷新文件目录或前往文件源检查。");
+    expect(screen.getByRole("alert")).toHaveTextContent("部分重命名结果尚未确认。请刷新目录，或前往对应的云盘或本地目录核对。");
   });
 
   it("keeps validation errors out of pending counts and uses their existing labels", () => {

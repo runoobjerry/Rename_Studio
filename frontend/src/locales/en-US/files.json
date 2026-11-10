@@ -2,7 +2,7 @@
   "externalNavigation": {
     "opened": "Opened a folder from {{host}}",
     "unconfirmed": "No open result received. Please check Rename Studio.",
-    "rejected": "External navigation stopped ({{code}}). Check the connection or finish the current operation, then retry."
+    "rejected": "External navigation stopped ({{code}}). Check the file source or finish the current operation, then retry."
   },
   "types": {
     "file": "File",
@@ -32,7 +32,7 @@
       "pending": "To rename",
       "renamed": "Renamed"
     },
-    "currentStorage": "Current storage",
+    "currentStorage": "the current file source",
     "title": "Preview",
     "filter": "Filter by status",
     "original": "Original",
@@ -42,9 +42,9 @@
     "conflict": "Name conflict",
     "invalid": "Cannot rename",
     "summary": "{{pending}} to rename · {{unchanged}} unchanged",
-    "empty": "Click the preview button to see the new names. Previewing does not change anything in {{provider}}.",
+    "empty": "Refresh the preview to see the new names. Previewing leaves the files in {{storageName}} unchanged.",
     "executeFailed": "Execution failed: {{message}}",
-    "unknownOutcome": "Some items have unknown rename results. Refresh the file directory or check the files at their source.",
+    "unknownOutcome": "Some rename results are unconfirmed. Refresh the directory or verify the files in the corresponding cloud drive or local folder.",
     "needsVerification": "Needs verification",
     "unknown": "This item could not be confirmed.",
     "notAttempted": "Not attempted because another item’s rename result needs verification.",
@@ -65,7 +65,7 @@
     "returnedError": "An error was returned: {{message}}. Try refreshing the file directory.",
     "progressUnavailable": "Progress is temporarily unavailable: {{message}}. The execution request is still in progress; do not submit it again.",
     "processed": "Processed {{processed}} of {{total}} items in this task.",
-    "confirm": "Rename items in “{{connectionName}}” according to the current preview. Number of items: {{count}}."
+    "confirm": "Rename {{count}} items in the file source “{{storageName}}” according to the current preview."
   },
   "notifications": {
     "renamedElsewhere": "Renamed successfully, but the item has moved to another directory.",
@@ -95,27 +95,23 @@
     "browse": "Browse…",
     "pickerFailed": "Could not open the folder picker: {{message}}"
   },
-  "sidebar": {
-    "title": "Storage locations",
-    "loading": "Loading storage locations"
-  },
   "workspace": {
     "loading": "Loading homepage configuration…",
-    "loadingSettings": "Loading storage settings…",
+    "loadingStorages": "Loading file sources…",
     "loadingDirectory": "Loading directory…",
-    "unavailable": "The directory is temporarily unavailable. Check your storage settings.",
+    "unavailable": "The directory is temporarily unavailable. Check the file source settings.",
     "loadFailed": "Could not load the homepage information. Restart the app.",
     "directoryFailed": "Could not load the directory: {{message}}",
-    "connectToBrowse": "Authorize {{service}} in Settings to browse cloud files."
+    "authorizeToBrowse": "Sign in and authorize your {{service}} account in Settings to browse cloud files."
   },
   "summary": "Total: {{total}} · Selected: {{selected}}",
   "showing": " · {{count}} shown",
   "refreshFailed": "Could not refresh the directory. Showing the last loaded contents: {{message}}",
-  "listLabel": "{{provider}} file list",
+  "listLabel": "{{storageName}} file list",
   "selectFile": "Select file {{name}}",
   "selectFolder": "Select folder {{name}}",
   "verification": {
-    "required": "Rename results are unconfirmed. Refresh the directory or check the actual names at their source. Do not repeat the operation until you have verified the results."
+    "required": "Rename results are unconfirmed. Refresh the directory or verify the actual names in the corresponding cloud drive or local folder. Do not repeat the operation until you have verified the results."
   },
   "quickRename": {
     "title": "Rename",

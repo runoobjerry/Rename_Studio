@@ -2,7 +2,7 @@
   "externalNavigation": {
     "opened": "已打开来自 {{host}} 的目录",
     "unconfirmed": "未收到打开结果，请查看 Rename Studio。",
-    "rejected": "外部导航已停止（{{code}}）。请检查连接或完成当前操作后重试。"
+    "rejected": "外部导航已停止（{{code}}）。请检查文件来源或完成当前操作后重试。"
   },
   "types": {
     "file": "文件",
@@ -32,7 +32,7 @@
       "pending": "待修改",
       "renamed": "已修改"
     },
-    "currentStorage": "当前存储",
+    "currentStorage": "当前文件来源",
     "title": "修改预览",
     "filter": "筛选状态",
     "original": "原文件名",
@@ -42,9 +42,9 @@
     "conflict": "名称冲突",
     "invalid": "不可修改",
     "summary": "{{pending}} 项待修改 · {{unchanged}} 项无需修改",
-    "empty": "刷新预览查看新名称；预览不会修改 {{provider}} 中的内容。",
+    "empty": "刷新预览可查看新名称。预览不会修改 {{storageName}} 中的文件。",
     "executeFailed": "执行失败：{{message}}",
-    "unknownOutcome": "本次修改存在未知结果的项目，请刷新文件目录或前往文件源检查。",
+    "unknownOutcome": "部分重命名结果尚未确认。请刷新目录，或前往对应的云盘或本地目录核对。",
     "needsVerification": "待核对",
     "unknown": "修改结果无法确认",
     "notAttempted": "因其他项目的修改结果待核对，本项目未执行",
@@ -65,7 +65,7 @@
     "returnedError": "返回错误：{{message}}，请尝试刷新文件目录。",
     "progressUnavailable": "暂时无法读取进度：{{message}}；执行请求仍在进行，请勿重复提交。",
     "processed": "当前任务已处理 {{processed}} 项，共 {{total}} 项。",
-    "confirm": "将按当前预览重命名「{{connectionName}}」中的 {{count}} 个项目。"
+    "confirm": "将按当前预览重命名文件来源「{{storageName}}」中的 {{count}} 个项目。"
   },
   "notifications": {
     "renamedElsewhere": "重命名成功，但该项目已移动至其他目录。",
@@ -95,27 +95,23 @@
     "browse": "浏览…",
     "pickerFailed": "无法打开文件夹选择器：{{message}}"
   },
-  "sidebar": {
-    "title": "存储位置",
-    "loading": "正在加载存储位置"
-  },
   "workspace": {
     "loading": "正在加载主页…",
-    "loadingSettings": "正在读取存储设置…",
+    "loadingStorages": "正在加载文件来源…",
     "loadingDirectory": "正在读取目录…",
-    "unavailable": "目录暂不可用，请检查存储设置。",
+    "unavailable": "目录暂不可用，请检查文件来源设置。",
     "loadFailed": "无法加载主页信息，请重启应用。",
     "directoryFailed": "目录加载失败：{{message}}",
-    "connectToBrowse": "在设置页面授权{{service}}后可浏览云端文件。"
+    "authorizeToBrowse": "请在设置中登录并授权 {{service}} 账号，以浏览云端文件。"
   },
   "summary": "共 {{total}} 项 · 已选择 {{selected}} 项",
   "showing": " · 显示 {{count}} 项",
   "refreshFailed": "目录刷新失败，当前显示上次读取的内容：{{message}}",
-  "listLabel": "{{provider}} 文件列表",
+  "listLabel": "{{storageName}} 文件列表",
   "selectFile": "选择文件 {{name}}",
   "selectFolder": "选择文件夹 {{name}}",
   "verification": {
-    "required": "重命名结果尚未确认。请刷新目录或前往文件源核对实际名称，核对前不要重复执行。"
+    "required": "重命名结果尚未确认。请刷新目录，或前往对应的云盘或本地目录核对实际名称。核对前不要重复执行。"
   },
   "quickRename": {
     "title": "重命名",

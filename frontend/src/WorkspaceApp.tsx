@@ -300,14 +300,14 @@ function Workspace({ preference, setPreference, settingsError, hasSettings }: {
                           settingsLoading || files.isFetching ? (
                             <Box sx={{ p: 2 }} aria-busy="true">
                               <Typography role="status" variant="body2" sx={{ mb: 1 }}>
-                                {settingsLoading ? t("files:workspace.loadingSettings") : t("files:workspace.loadingDirectory")}
+                                {settingsLoading ? t("files:workspace.loadingStorages") : t("files:workspace.loadingDirectory")}
                               </Typography>
                               {[0, 1, 2, 3].map((row) => <Skeleton key={row} height={38} />)}
                             </Box>
                           ) : (
                             <p className="empty-state">
                               {metadataReady && requiresAuth && cloudStatus.isSuccess && !cloudStatus.data.connected
-                                ? t("files:workspace.connectToBrowse", { service: t(`providers:${providerId}.name`, { defaultValue: providerId }) })
+                                ? t("files:workspace.authorizeToBrowse", { service: t(`providers:${providerId}.name`, { defaultValue: providerId }) })
                                 : t("files:workspace.unavailable")}
                             </p>
                           )

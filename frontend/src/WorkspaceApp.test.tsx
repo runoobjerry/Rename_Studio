@@ -153,7 +153,7 @@ describe("workspace workflow wiring", () => {
     expect(screen.getByRole("button", { name: "刷新预览" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "开始修改" })).toBeDisabled();
     const panel = within(screen.getByRole("region", { name: "修改预览" }));
-    expect(panel.getByText("本次修改存在未知结果的项目，请刷新文件目录或前往文件源检查。").closest('[role="alert"]')).toBeInTheDocument();
+    expect(panel.getByText("部分重命名结果尚未确认。请刷新目录，或前往对应的云盘或本地目录核对。").closest('[role="alert"]')).toBeInTheDocument();
     expect(panel.getAllByText("待核对")).toHaveLength(2);
     expect(panel.getAllByText("修改结果无法确认")).toHaveLength(2);
     vi.mocked(api.fetchStorageFiles).mockRejectedValueOnce(new Error("Directory unavailable"));

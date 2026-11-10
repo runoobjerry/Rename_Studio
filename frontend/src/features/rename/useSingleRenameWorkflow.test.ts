@@ -376,7 +376,7 @@ describe("single rename workflow", () => {
 
   it.each([
     { status: 403, code: "PERMISSION_DENIED", text: "没有修改此项目的权限，请检查访问权限，或使用有权限的账号。" },
-    { status: 409, code: "STORAGE_CONNECTION_CHANGED", text: "连接或账号已变化，请刷新目录后重新选择项目。" },
+    { status: 409, code: "STORAGE_CONNECTION_CHANGED", text: "文件来源配置或账号已变化，请刷新目录后重新选择项目。" },
   ])("shows $code without locking either workflow", async ({ status, code, text }) => {
     const hook = await setupWorkspace(1);
     const source = listing(1).items[0];

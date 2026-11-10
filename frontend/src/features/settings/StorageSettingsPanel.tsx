@@ -100,10 +100,10 @@ function ConfigFields({ definition, draft, clientSecret, disabled, creating = fa
     return pickable ? (
       <Stack key={field.key} direction="row" spacing={1} sx={{ alignItems: "flex-end" }}>
         {input}
-        <Tooltip title={t("settings:connection.browse")}
+        <Tooltip title={t("storage:browse")}
           slotProps={{ tooltip: { sx: { fontSize: "caption.fontSize" } } }}>
           <span>
-            <PanelIconButton aria-label={t("settings:connection.browse")} disabled={disabled} onClick={() => onPick(field.key)}>
+            <PanelIconButton aria-label={t("storage:browse")} disabled={disabled} onClick={() => onPick(field.key)}>
               <FolderOpenIcon />
             </PanelIconButton>
           </span>
@@ -189,16 +189,16 @@ function ConnectionRow({ storage, executing, definition }: {
         !("storage_id" in data) || data.storage_id !== storage.storage_id ||
         !("status" in data) || (data.status !== "connected" && data.status !== "failed")
       ) return;
-      let message: NotificationMessage = { key: "settings:connection.authFailed" };
+      let message: NotificationMessage = { key: "storage:authFailed" };
       if (data.status === "failed" && "error_code" in data && data.error_code === "STORAGE_ACCOUNT_ALREADY_CONNECTED" &&
         "details" in data && typeof data.details === "object" && data.details !== null &&
         "storage_name" in data.details && typeof data.details.storage_name === "string") {
-        message = { key: "settings:connection.accountAlreadyConnected", values: { name: data.details.storage_name } };
+        message = { key: "storage:accountAlreadyAuthorized", values: { storageName: data.details.storage_name } };
       }
       setAwaitingAuth(false);
       popup.current = null;
       setAuthError(data.status === "failed" ? message : undefined);
-      if (data.status === "connected") notify({ key: "settings:connection.connectedNotice" });
+      if (data.status === "connected") notify({ key: "storage:authorizedNotice" });
       refresh();
     };
     window.addEventListener("message", receive);
@@ -210,7 +210,7 @@ function ConnectionRow({ storage, executing, definition }: {
       if (popup.current?.closed) {
         setAwaitingAuth(false);
         popup.current = null;
-        setAuthError({ key: "settings:connection.authClosed" });
+        setAuthError({ key: "storage:authClosed" });
         refresh();
       }
     }, 500);
@@ -231,7 +231,7 @@ function ConnectionRow({ storage, executing, definition }: {
         config: buildConfig(definition.config_fields, draft),
         ...secretPayload(definition.config_fields, clientSecret),
       }),
-      message: { key: "settings:connection.updated" },
+      message: { key: "storage:updated" },
     });
   };
   const openEditor = () => {
@@ -245,7 +245,7 @@ function ConnectionRow({ storage, executing, definition }: {
   const beginAuthorization = () => {
     popup.current = window.open("about:blank", `storage-auth-${storage.storage_id}`, "popup,width=600,height=720");
     if (!popup.current) {
-      setAuthError({ key: "settings:connection.popupBlocked" });
+      setAuthError({ key: "storage:popupBlocked" });
       return;
     }
     setAuthError(undefined);
@@ -261,13 +261,13 @@ function ConnectionRow({ storage, executing, definition }: {
   const disconnectAccount = () => {
     operation.mutate({
       run: () => disconnectStorage(storage.storage_id),
-      message: { key: "settings:connection.signedOut" },
+      message: { key: "storage:signedOut" },
     });
   };
   const deleteConnection = () => {
     operation.mutate({
       run: () => deleteStorage(storage.storage_id),
-      message: { key: "settings:connection.deleted", values: { name: storage.name } },
+      message: { key: "storage:deleted", values: { storageName: storage.name } },
       severity: "warning",
     }, { onSuccess: () => setEditing(false) });
   };
@@ -280,19 +280,19 @@ function ConnectionRow({ storage, executing, definition }: {
     statusColor = "success";
     statusIcon = <Verified />;
   } else if (status.isPending) {
-    statusLabel = t("settings:connection.reading");
+    statusLabel = t("storage:reading");
     statusColor = "default";
     statusIcon = undefined;
   } else if (status.error) {
-    statusLabel = t("settings:connection.readFailed");
+    statusLabel = t("storage:readFailed");
     statusColor = "error";
     statusIcon = <ErrorIcon />;
   } else if (status.data?.connected) {
-    statusLabel = status.data.account_email ?? t("settings:connection.noEmail");
+    statusLabel = status.data.account_email ?? t("storage:noEmail");
     statusColor = "success";
     statusIcon = <Verified />;
   } else {
-    statusLabel = t("settings:connection.disconnected");
+    statusLabel = t("storage:unauthorized");
     statusColor = "warning";
     statusIcon = <ErrorIcon />;
   }
@@ -300,17 +300,17 @@ function ConnectionRow({ storage, executing, definition }: {
   let authTitle: string;
   let authDescription: string;
   if (status.isPending) {
-    authTitle = t("settings:connection.authLoading");
-    authDescription = t("settings:connection.accountLoading");
+    authTitle = t("storage:authLoading");
+    authDescription = t("storage:accountLoading");
   } else if (status.error) {
-    authTitle = t("settings:connection.authReadFailed");
-    authDescription = t("settings:connection.authReadHelp");
+    authTitle = t("storage:authReadFailed");
+    authDescription = t("storage:authReadHelp");
   } else if (status.data?.connected) {
     authTitle = status.data.account_display_name ?? t(`providers:${definition.provider_type}.accountLabel`, { defaultValue: definition.provider_type });
-    authDescription = status.data.account_email ?? t("settings:connection.noEmail");
+    authDescription = status.data.account_email ?? t("storage:noEmail");
   } else {
-    authTitle = t("settings:connection.unauthorized");
-    authDescription = t("settings:connection.signInHelp");
+    authTitle = t("storage:unauthorized");
+    authDescription = t("storage:signInHelp");
   }
   const AuthorizationIcon = authorizationIcons.get(definition.provider_type) ?? AccountCircleIcon;
   const authorizationIconColor = status.isSuccess && status.data.connected ? "text.primary" : "text.disabled";
@@ -322,15 +322,15 @@ function ConnectionRow({ storage, executing, definition }: {
         <Chip size="small" variant="outlined" color={statusColor} icon={statusIcon} label={statusLabel} />
         {renaming && (
           <Typography variant="caption" component="div" color="text.secondary" sx={{ mt: 0.5 }}>
-            {t("settings:connection.executing")}
+            {t("storage:executing")}
           </Typography>
         )}
       </TableCell>
       <TableCell align="right">
-        <Tooltip title={busy ? t("settings:connection.busyEdit") : t("settings:connection.edit")}
+        <Tooltip title={busy ? t("storage:busyEdit") : t("storage:edit")}
           slotProps={{ tooltip: { sx: { fontSize: "caption.fontSize" } } }}>
           <span>
-            <PanelIconButton aria-label={t("settings:connection.editLabel", { name: storage.name })} disabled={busy} onClick={openEditor}>
+            <PanelIconButton aria-label={t("storage:editLabel", { storageName: storage.name })} disabled={busy} onClick={openEditor}>
               <EditIcon />
             </PanelIconButton>
           </span>
@@ -339,11 +339,11 @@ function ConnectionRow({ storage, executing, definition }: {
     </TableRow>
     <Dialog open={editing} fullWidth maxWidth="sm" sx={connectionBodySx}
       aria-labelledby={`edit-${storage.storage_id}-title`} onClose={closeEditor}>
-      <DialogTitle id={`edit-${storage.storage_id}-title`}>{t("settings:connection.dialogTitle", { name: storage.name })}</DialogTitle>
+      <DialogTitle id={`edit-${storage.storage_id}-title`}>{t("storage:dialogTitle", { storageName: storage.name })}</DialogTitle>
       <DialogContent dividers>
         <Stack spacing={2}>
-          <TextField variant="standard" label={t("settings:connection.name")} size="small" value={name} disabled={busy}
-            error={nameTooLong} helperText={nameTooLong ? t("errors:connectionNameLength") : undefined}
+          <TextField variant="standard" label={t("storage:name")} size="small" value={name} disabled={busy}
+            error={nameTooLong} helperText={nameTooLong ? t("errors:storageNameLength") : undefined}
             onChange={(event) => setName(event.target.value)} />
           <ConfigFields definition={definition} draft={draft} clientSecret={clientSecret}
             disabled={busy} hasClientSecret={storage.has_client_secret}
@@ -368,12 +368,12 @@ function ConnectionRow({ storage, executing, definition }: {
                 {status.data?.connected ? (
                   <Button variant="text" color="error" disabled={busy} sx={{ flexShrink: 0 }}
                     onClick={disconnectAccount}>
-                    {t("settings:connection.signOut")}
+                    {t("storage:signOut")}
                   </Button>
                 ) : (
                   <Button variant="text" disabled={busy || !status.data?.configured} sx={{ flexShrink: 0 }}
                     onClick={beginAuthorization}>
-                    {awaitingAuth ? t("settings:connection.awaitingAuth") : t("settings:connection.signIn")}
+                    {awaitingAuth ? t("storage:awaitingAuth") : t("storage:signIn")}
                   </Button>
                 )}
               </Stack>
@@ -383,12 +383,12 @@ function ConnectionRow({ storage, executing, definition }: {
             <Alert severity="error">{requestErrorMessage}</Alert>
           )}
           {renaming && (
-            <Alert severity="info">{t("settings:connection.busyHelp")}</Alert>
+            <Alert severity="info">{t("storage:busyHelp")}</Alert>
           )}
         </Stack>
       </DialogContent>
       <DialogActions sx={{ px: 3, py: 2 }}>
-        <Tooltip title={isDefault ? t("settings:connection.defaultCannotDelete") : t("settings:connection.deleteHelp")}
+        <Tooltip title={isDefault ? t("storage:defaultCannotDelete") : t("storage:deleteHelp")}
           slotProps={{ tooltip: { sx: { fontSize: "caption.fontSize" } } }}>
           <span>
             <Button color="error" disabled={busy || isDefault} onClick={deleteConnection}>{t("common:delete")}</Button>
@@ -425,7 +425,7 @@ export function StorageSettingsPanel({ executingStorageId }: { executingStorageI
       setClientSecret("");
       setAdding(false);
       void queryClient.invalidateQueries({ queryKey: ["storages"] });
-      notify({ key: "settings:connection.created" });
+      notify({ key: "storage:created" });
     },
     onError: (error) => notify({ error, errorContext: "connection" }, "error"),
   });
@@ -472,9 +472,9 @@ export function StorageSettingsPanel({ executingStorageId }: { executingStorageI
   return <>
     <Card variant="outlined" sx={connectionBodySx}>
       <Stack direction="row" sx={{ alignItems: "center", justifyContent: "space-between", gap: 2, p: { xs: 2, sm: 2.5 } }}>
-        <Typography component="h3" variant="body2" sx={{ fontWeight: 500 }}>{t("settings:connection.saved")}</Typography>
+        <Typography component="h3" variant="body2" sx={{ fontWeight: 500 }}>{t("storage:saved")}</Typography>
         <Button variant="outlined" size="small" startIcon={<AddIcon />} onClick={openAddDialog}>
-          {t("settings:connection.add")}
+          {t("storage:add")}
         </Button>
       </Stack>
       <Divider />
@@ -487,7 +487,7 @@ export function StorageSettingsPanel({ executingStorageId }: { executingStorageI
         <TableContainer>
           <Table
             size="small"
-            aria-label={t("settings:connection.saved")}
+            aria-label={t("storage:saved")}
             sx={{
               minWidth: 500,
               "& th": { color: "text.secondary", fontWeight: 500 },
@@ -498,10 +498,10 @@ export function StorageSettingsPanel({ executingStorageId }: { executingStorageI
           >
             <TableHead>
               <TableRow>
-                <TableCell>{t("settings:connection.name")}</TableCell>
-                <TableCell>{t("settings:connection.service")}</TableCell>
-                <TableCell>{t("settings:connection.status")}</TableCell>
-                <TableCell align="right" aria-label={t("settings:connection.actions")} sx={{ width: 60 }} />
+                <TableCell>{t("storage:name")}</TableCell>
+                <TableCell>{t("storage:service")}</TableCell>
+                <TableCell>{t("storage:status")}</TableCell>
+                <TableCell align="right" aria-label={t("storage:actions")} sx={{ width: 60 }} />
               </TableRow>
             </TableHead>
             <TableBody>
@@ -514,7 +514,7 @@ export function StorageSettingsPanel({ executingStorageId }: { executingStorageI
                     <TableCell>{storage.name}</TableCell>
                     <TableCell>{storage.provider_type}</TableCell>
                     <TableCell colSpan={2}>
-                      <Typography variant="caption" color="text.secondary">{t("errors:providerDefinitionUnavailable")}</Typography>
+                      <Typography variant="caption" color="text.secondary">{t("errors:storageServiceInfoUnavailable")}</Typography>
                     </TableCell>
                   </TableRow>
                 );
@@ -525,7 +525,7 @@ export function StorageSettingsPanel({ executingStorageId }: { executingStorageI
               })}
               {storages.isSuccess && storages.data.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={4} align="center">{t("settings:connection.empty")}</TableCell>
+                  <TableCell colSpan={4} align="center">{t("storage:empty")}</TableCell>
                 </TableRow>
               )}
             </TableBody>
@@ -535,10 +535,10 @@ export function StorageSettingsPanel({ executingStorageId }: { executingStorageI
     </Card>
     <Dialog open={adding} fullWidth maxWidth="sm" sx={connectionBodySx} aria-labelledby="add-connection-title"
       onClose={closeAddDialog}>
-      <DialogTitle id="add-connection-title">{t("settings:connection.add")}</DialogTitle>
+      <DialogTitle id="add-connection-title">{t("storage:add")}</DialogTitle>
       <DialogContent dividers>
         <Stack spacing={2}>
-          <TextField variant="standard" select label={t("settings:connection.type")} size="small" value={selectedProvider}
+          <TextField variant="standard" select label={t("storage:service")} size="small" value={selectedProvider}
             disabled={addingBusy} onChange={(event) => changeProvider(event.target.value)}
             sx={{ width: { xs: 156, sm: 180 }, flexShrink: 0 }}>
             {(providers.data ?? []).map((definition) => (
@@ -548,8 +548,8 @@ export function StorageSettingsPanel({ executingStorageId }: { executingStorageI
               </MenuItem>
             ))}
           </TextField>
-          <TextField variant="standard" label={t("settings:connection.name")} size="small" value={name} disabled={addingBusy}
-            error={nameTooLong} helperText={nameTooLong ? t("errors:connectionNameLength") : undefined}
+          <TextField variant="standard" label={t("storage:name")} size="small" value={name} disabled={addingBusy}
+            error={nameTooLong} helperText={nameTooLong ? t("errors:storageNameLength") : undefined}
             onChange={(event) => setName(event.target.value)} />
           {activeProvider && (
             <ConfigFields definition={activeProvider} draft={draft} clientSecret={clientSecret}
@@ -562,7 +562,7 @@ export function StorageSettingsPanel({ executingStorageId }: { executingStorageI
       </DialogContent>
       <DialogActions sx={{ px: 3, py: 2 }}>
         <Button disabled={addingBusy} onClick={closeAddDialog}>{t("common:cancel")}</Button>
-        <Button variant="text" disabled={createDisabled} onClick={saveConnection}>{t("settings:connection.save")}</Button>
+        <Button variant="text" disabled={createDisabled} onClick={saveConnection}>{t("common:save")}</Button>
       </DialogActions>
     </Dialog>
   </>;

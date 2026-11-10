@@ -1,7 +1,7 @@
 import { createCatalog, type LanguageMeta } from "./catalog";
 
 export const fallbackLanguage = "en-US";
-export const namespaces = ["common", "settings", "files", "rules", "providers", "errors"] as const;
+export const namespaces = ["common", "settings", "storage", "files", "rules", "providers", "errors"] as const;
 
 const metadata = import.meta.glob<LanguageMeta>("../locales/*/meta.json", { eager: true, import: "default" });
 const dictionaries = import.meta.glob<Record<string, unknown>>(

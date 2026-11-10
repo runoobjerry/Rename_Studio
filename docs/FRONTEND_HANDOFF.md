@@ -104,7 +104,7 @@ TanStack Query 管理服务端状态，Zustand 管理选择、规则、执行中
 - 设置正文和控件文字使用 body2；授权第二行、状态标签、辅助说明、Alert 提示与 Tooltip 使用 caption。规则字段保持显式配置，NumberStepper 草稿不把暂时无效值写入规则。
 - 表格虚拟化保留完整数据语义、固定选择列/复选框几何和键盘导航。长名称与错误在所属面板处理，不撑破页面；侧边栏名称仅实际溢出时启用完整名称 Tooltip。
 - 正常预览不弹成功通知；冲突、无效名称与失败提供反馈，执行成功显示修改数量，部分失败与失败分别提示。新通知立即替换旧通知，保留上下文错误和逐项详情；后台刷新不反复弹成功通知。
-- 前端固定 UI 文案按 common/settings/files/rules/providers/errors 命名空间维护，组件通过 react-i18next 订阅变化；模块常量保留翻译键，通知保留键、插值及原始错误，到展示时翻译。常见错误按 code 给出操作提示并保留诊断 message；未知错误不从句子推断类别。文件名、路径、连接名、账号及规则配置值保持原始数据。Rule 名称/说明按 `rules:types.<type>` 翻译，Provider/字段文案按 `providers:<provider_type>` 翻译；缺词回退 en-US，名称/标签最终显示稳定 ID，可选帮助缺失时省略。元数据 API 仅提供结构和能力；服务端 JSON Schema 的 title/description 不用作 UI 文案。`default-local` 等连接记录名保持用户数据，不以翻译覆盖或猜测别名。
+- 前端固定 UI 文案按 common/settings/storage/files/rules/providers/errors 命名空间维护，组件通过 react-i18next 订阅变化；模块常量保留翻译键，通知保留键、插值及原始错误，到展示时翻译。常见错误按 code 给出操作提示并保留诊断 message；未知错误不从句子推断类别。文件名、路径、连接名、账号及规则配置值保持原始数据。Rule 名称/说明按 `rules:types.<type>` 翻译，Provider/字段文案按 `providers:<provider_type>` 翻译；缺词回退 en-US，名称/标签最终显示稳定 ID，可选帮助缺失时省略。元数据 API 仅提供结构和能力；服务端 JSON Schema 的 title/description 不用作 UI 文案。`default-local` 等连接记录名保持用户数据，不以翻译覆盖或猜测别名。
 - 首次加载、后台读取、未授权与读取失败明确区分；后台刷新保留旧内容，选择器取消不报成功。
 
 ## 文档维护与验证
