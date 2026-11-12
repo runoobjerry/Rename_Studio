@@ -245,6 +245,16 @@ class DirectoryCache:
             return False
         self._entries.expire()
         scope = RenameCacheScope(set())
+        previous = self.get((key[0], key[1], listing.location or key[2]))
+        if previous is not None:
+            current_items = {item.id: item for item in listing.items}
+            for item in previous.items:
+                if not item.is_directory:
+                    continue
+                current = current_items.get(item.id)
+                if current is None or not current.is_directory or current.name != item.name:
+                    scope.folder_ids.add(item.id)
+                    scope.folder_paths.add(item.path)
         root_id = fresh.chain[0][0]
         for index, (folder_id, name) in enumerate(fresh.chain):
             lookup = RootLocation() if index == 0 else folder_id

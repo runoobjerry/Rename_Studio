@@ -177,12 +177,20 @@ export function useWorkspaceStorage({ pauseFileQueries, onLocalRootSelected, dir
         const live = new Map(result.breadcrumbs.map((crumb, index, chain) => [JSON.stringify(crumb.location), {
           name: crumb.name, parent: JSON.stringify(chain[index - 1]?.location),
         }]));
+        const children = new Map(result.items.map((item) => [item.id, item]));
         const scope = { queryKey: ["files", storageId, result.revision] };
-        const changed = queryClient.getQueriesData<DirectoryListing>(scope).some(([, cached]) =>
-          cached?.breadcrumbs?.some((crumb, index, chain) => {
+        const changed = queryClient.getQueriesData<DirectoryListing>(scope).some(([, cached]) => {
+          const childChanged = cached && JSON.stringify(cached.location) === JSON.stringify(result.location) &&
+            cached.items.some((item) => {
+              if (!item.is_directory) return false;
+              const current = children.get(item.id);
+              return !current || !current.is_directory || current.name !== item.name;
+            });
+          return childChanged || cached?.breadcrumbs?.some((crumb, index, chain) => {
             const current = live.get(JSON.stringify(crumb.location));
             return current && (current.name !== crumb.name || current.parent !== JSON.stringify(chain[index - 1]?.location));
-          }));
+          });
+        });
         if (changed) {
           // Removing old directory queries also cancels their pending responses.
           // Keep this refresh, which is about to publish the authoritative listing.
