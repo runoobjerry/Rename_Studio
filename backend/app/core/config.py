@@ -15,8 +15,6 @@ class DirectoryListingCacheSettings(BaseModel, extra="forbid", strict=True):
     ttl: float = Field(default=600, gt=0, allow_inf_nan=False)
     empty_ttl: float = Field(default=30, gt=0, allow_inf_nan=False)
     max_entries: PositiveInt = 64
-    max_bytes: PositiveInt = 32 * 1024**2
-    max_entry_bytes: PositiveInt = 8 * 1024**2
 
 
 class DirectoryCacheSettings(BaseModel, extra="forbid"):

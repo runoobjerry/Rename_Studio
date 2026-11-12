@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, Literal
 from app.core.errors import NotFoundError, PermissionDeniedError, StorageBusyError, StorageConnectionChangedError, ValidationError
 from app.core.log_context import request_id_context
 from app.providers.base import StorageDriver
-from app.providers.directory_metadata import DirectoryHint, DirectoryMetadataConflict
+from app.providers.directory_metadata import AncestorLookup, DirectoryAncestry, DirectoryHint, DirectoryMetadataConflict
 from app.schemas.files import DirectoryListing, FileItem
 from app.schemas.rename import SingleRenameExecuteRequest
 from app.schemas.storage import IdLocation, RootLocation, StorageLocation
@@ -19,7 +19,7 @@ if TYPE_CHECKING:
 
 
 logger = logging.getLogger("rename_studio.directory")
-type DirectoryReadMode = Literal["cached", "refresh", "fresh"]
+type DirectoryReadMode = Literal["cached", "refresh", "fresh", "navigate"]
 _DIRECTORY_FAILURES = (DirectoryMetadataConflict, NotFoundError, PermissionDeniedError, ValidationError)
 
 
@@ -30,6 +30,8 @@ class _Read:
     publish: bool = True
     invalidated: bool = False
     refreshed_locations: set[StorageLocation] = field(default_factory=set)
+    borrowed: set[str] = field(default_factory=set)
+    waiters: int = 0
 
 
 class DirectoryService:
@@ -93,7 +95,7 @@ class DirectoryService:
             auth = self._manager.auth(storage_id, required=False)
             cache_enabled = auth is None or auth.status().connected
         # Leave old listings in place for reconciliation, hidden from reads during the write.
-        if storage_id in self._writing and mode != "refresh":
+        if storage_id in self._writing and mode not in ("refresh", "navigate"):
             return await self._fetch(key, mode)
         if mode != "cached":
             return await self._read_live(key, mode, cache_enabled, parent_location)
@@ -108,7 +110,7 @@ class DirectoryService:
         for read in self._reads:
             if read.key == key and read.task is not None and read.publish and not read.invalidated:
                 logger.debug("directory read joined storage_id=%s", storage_id)
-                _, payload = await asyncio.shield(read.task)
+                _, payload = await self._wait_read(read, read.task)
                 self._check_revision(key)
                 return DirectoryListing.model_validate_json(payload)
 
@@ -117,19 +119,43 @@ class DirectoryService:
         self._reads[read] = None
         read.task = asyncio.create_task(self._fill(read, parent_location))
         read.task.add_done_callback(self._finish_fill)
-        listing, _ = await asyncio.shield(read.task)
+        listing, _ = await self._wait_read(read, read.task)
         # Authorization can change between the shared task finishing and this waiter resuming.
         self._check_revision(key)
         return listing
 
+    async def _wait_read(
+        self, read: _Read, task: asyncio.Task[tuple[DirectoryListing, bytes]],
+    ) -> tuple[DirectoryListing, bytes]:
+        read.waiters += 1
+        try:
+            return await asyncio.shield(task)
+        finally:
+            read.waiters -= 1
+            if read.waiters == 0 and not task.done():
+                read.publish = False
+
+    def _ancestor_lookup(self, read: _Read) -> AncestorLookup:
+        def lookup(folder_id: str | RootLocation) -> DirectoryAncestry | None:
+            if (not read.publish or read.invalidated or read.refreshed_locations
+                    or read.key[0] in self._writing):
+                return None
+            result = self._cache.ancestor(read.key[0], read.key[1], folder_id)
+            if result is not None and not isinstance(folder_id, RootLocation):
+                read.borrowed.add(result.chain[-1][0])
+            return result
+        return lookup
+
     async def _fetch(
         self, key: DirectoryKey, mode: DirectoryReadMode, *, hint: DirectoryHint | None = None,
+        ancestor_lookup: AncestorLookup | None = None,
     ) -> DirectoryListing:
         storage_id, revision, location = key
         logger.info("directory provider read storage_id=%s mode=%s request_id=%s",
                     storage_id, mode, request_id_context.get())
         listing = await self._manager.get_driver(storage_id).read_directory(
             location, hint=hint, include_breadcrumbs=mode != "fresh",
+            ancestor_lookup=ancestor_lookup,
         )
         self._check_revision(key)
         return listing.model_copy(update={"storage_id": storage_id, "revision": revision})
@@ -151,7 +177,8 @@ class DirectoryService:
             parent.location, IdLocation(value=parent.directory_id),
         ):
             return None
-        return DirectoryHint(folder, parent.directory_id, parent.location, parent.path, breadcrumbs, parent.drive_id)
+        return DirectoryHint(folder, parent.directory_id, parent.location, parent.path, breadcrumbs, parent.drive_id,
+                             parent.root_id or (parent.directory_id if isinstance(parent.location, RootLocation) else None))
 
     def _invalidate_failed_read(
         self, read: _Read, *, hint: DirectoryHint | None = None, parent_location: StorageLocation | None = None,
@@ -164,16 +191,18 @@ class DirectoryService:
             if hint is None and parent_location is not None:
                 hint = self._hint(read.key, parent_location)
             self._cache.invalidate_directory(read.key, hint.parent_location if hint is not None else None)
+            if read.borrowed:
+                self._cache.invalidate_rename(storage_id, RenameCacheScope(set(), read.borrowed))
             self._fence_reads(storage_id, except_read=read)
 
     async def _fill(self, read: _Read, parent_location: StorageLocation | None) -> tuple[DirectoryListing, bytes]:
         try:
             hint = self._hint(read.key, parent_location) if not read.invalidated else None
             try:
-                listing = await self._fetch(read.key, "cached", hint=hint)
+                listing = await self._fetch(read.key, "cached", hint=hint, ancestor_lookup=self._ancestor_lookup(read))
             except _DIRECTORY_FAILURES:
                 self._invalidate_failed_read(read, hint=hint)
-                if hint is None:
+                if hint is None and not read.borrowed:
                     raise
                 listing = await self._fetch(read.key, "cached")
             payload = listing.model_dump_json().encode("utf-8")
@@ -189,25 +218,31 @@ class DirectoryService:
             task.exception()
 
     async def _read_live(
-        self, key: DirectoryKey, mode: Literal["refresh", "fresh"], cache_enabled: bool,
+        self, key: DirectoryKey, mode: Literal["refresh", "fresh", "navigate"], cache_enabled: bool,
         parent_location: StorageLocation | None,
     ) -> DirectoryListing:
         storage_id = key[0]
-        if mode == "refresh":
+        if mode in ("refresh", "navigate"):
             self._manager.ensure_mutable(storage_id)
         read = _Read(key)
         self._reads[read] = None
         try:
             try:
-                listing = await self._fetch(key, mode)
+                listing = await self._fetch(key, mode, ancestor_lookup=self._ancestor_lookup(read)
+                                            if mode == "navigate" and cache_enabled else None)
             except _DIRECTORY_FAILURES:
                 if cache_enabled:
                     self._invalidate_failed_read(read, parent_location=parent_location if mode == "refresh" else None)
-                raise
+                if mode != "navigate" or not read.borrowed:
+                    raise
+                listing = await self._fetch(key, mode)
             if mode == "fresh":
                 return listing
             if read.invalidated:
                 raise StorageBusyError("Directory changed during refresh; refresh again")
+            if (mode == "refresh" and cache_enabled and read.publish and not read.refreshed_locations
+                    and self._cache.reconcile_refresh(key, listing)):
+                self._fence_reads(storage_id, except_read=read)
             canonical = self._remember(read, listing) if cache_enabled else None
             if canonical is not None:
                 aliases = {key[2], canonical}

@@ -6,7 +6,7 @@ from app.core.config import DirectoryListingCacheSettings
 from app.core.errors import NotFoundError, ProviderError, StorageBusyError
 from app.providers.base import StorageDriver
 from app.providers.name_validation import NameValidationIssue
-from app.schemas.files import DirectoryListing, FileItem
+from app.schemas.files import DirectoryBreadcrumb, DirectoryListing, FileItem
 from app.schemas.storage import IdLocation, PathLocation, RootLocation, StorageLocation
 from app.services import directory_cache
 from app.services.directory_cache import DirectoryCache, RenameCacheScope
@@ -44,6 +44,10 @@ class DirectoryDriver(StorageDriver):
         return DirectoryListing(
             provider=self.provider_type, path="", parent_path=None, location=canonical,
             directory_id=directory_id, items=[] if self.empty else [item],
+            root_id="root-id", parent_location=None if isinstance(canonical, RootLocation) else RootLocation(),
+            breadcrumbs=[DirectoryBreadcrumb(name="Root", location=RootLocation())] + (
+                [] if isinstance(canonical, RootLocation) else [DirectoryBreadcrumb(name="Folder", location=canonical)]
+            ),
         )
 
     async def list_files(self, path: str) -> list[FileItem]:
@@ -76,37 +80,43 @@ async def test_expiry_is_based_on_read_time_and_hits_are_isolated(
     hit = await directories.list_directory("cloud", IdLocation(value="root-id"))
     assert len(hit.items) == (0 if empty else 1)
     assert driver.calls == 1
+    assert directories._cache.ancestor("cloud", 1, "root-id") is not None
+    assert directories._cache.ancestor("cloud", 1, RootLocation()) is not None
+    assert directories._cache.ancestor("other", 1, "root-id") is None
+    assert directories._cache.ancestor("cloud", 2, "root-id") is None
     now += 1
+    assert directories._cache.ancestor("cloud", 1, "root-id") is None
+    assert directories._cache.ancestor("cloud", 1, RootLocation()) is None
     await directories.list_directory("cloud", RootLocation())
     assert driver.calls == 2
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("limit", ["entries", "bytes"])
-async def test_capacity_evicts_the_least_recently_used_listing(limit: str) -> None:
+async def test_capacity_evicts_the_least_recently_used_listing() -> None:
     driver = DirectoryDriver()
     manager = registry_for({"cloud": driver}, cache_directories=True).manager
-    sample = await manager.directories.list_directory("cloud", IdLocation(value="a"), mode="fresh")
-    entry_size = len(sample.model_dump_json().encode("utf-8"))
-    settings = (DirectoryListingCacheSettings(max_entries=2) if limit == "entries"
-                else DirectoryListingCacheSettings(max_bytes=2 * entry_size))
+    settings = DirectoryListingCacheSettings(max_entries=2)
     directories = DirectoryService(manager, DirectoryCache(settings))
     for value in ["a", "b", "a", "c", "a", "c"]:
         await directories.list_directory("cloud", IdLocation(value=value))
-    assert driver.calls == 4  # One sample and three misses.
+    assert driver.calls == 3
+    assert directories._cache.ancestor("cloud", 1, "b") is None
+    assert directories._cache.ancestor("cloud", 1, "a") is not None
+    assert directories._cache.ancestor("cloud", 1, "c") is not None
     await directories.list_directory("cloud", IdLocation(value="b"))
-    assert driver.calls == 5
+    assert driver.calls == 4
+    directories.invalidate_rename("cloud", RenameCacheScope(set(), {"b"}))
+    assert directories._cache.ancestor("cloud", 1, "b") is None
+    assert directories._cache.ancestor("cloud", 1, "root-id") is not None
+    directories.invalidate("cloud")
+    assert directories._cache.ancestor("cloud", 1, "root-id") is None
 
 
 @pytest.mark.asyncio
-async def test_oversized_and_failed_reads_do_not_fill_cache() -> None:
+async def test_failed_reads_do_not_fill_cache() -> None:
     driver = DirectoryDriver()
     manager = registry_for({"cloud": driver}, cache_directories=True).manager
-    driver.name = "a" * 2048
-    directories = DirectoryService(manager, DirectoryCache(DirectoryListingCacheSettings(max_entry_bytes=1024)))
-    for _ in range(2):
-        listing = await directories.list_directory("cloud", RootLocation())
-        assert listing.items[0].name == driver.name
+    directories = manager.directories
     driver.fail = True
     with pytest.raises(ProviderError):
         await directories.list_directory("cloud", RootLocation())
@@ -114,7 +124,7 @@ async def test_oversized_and_failed_reads_do_not_fill_cache() -> None:
     driver.name = "small"
     for _ in range(2):
         assert (await directories.list_directory("cloud", RootLocation())).items[0].name == "small"
-    assert driver.calls == 4
+    assert driver.calls == 2
 
 
 @pytest.mark.asyncio

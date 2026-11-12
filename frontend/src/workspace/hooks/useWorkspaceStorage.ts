@@ -6,7 +6,7 @@ import { NavigationError, type ExternalNavigationTarget } from "../../integratio
 import { useNotification } from "../../components/NotificationProvider";
 import { readDefaultCloudLocation } from "../../features/files/defaultCloudLocation";
 import { useAppSettings } from "../../features/settings/useAppSettings";
-import type { AuthorizationStatus, StorageLocation } from "../../types";
+import type { AuthorizationStatus, DirectoryListing, StorageLocation } from "../../types";
 import { clearWorkspaceSession, readWorkspaceSession, writeWorkspaceSession } from "../workspaceSession";
 
 interface WorkspaceStorageOptions {
@@ -158,11 +158,12 @@ export function useWorkspaceStorage({ pauseFileQueries, onLocalRootSelected, dir
     queryFn: async (context) => {
       const verify = directoryVerification?.storageId === storageId &&
         JSON.stringify(directoryVerification.location) === JSON.stringify(location);
-      const signal = verify ? context.signal : undefined;
-      const refresh = externalFilesKey !== null || verify || manualRefresh.current?.key === JSON.stringify(context.queryKey);
+      const refresh = verify || manualRefresh.current?.key === JSON.stringify(context.queryKey);
+      const signal = refresh ? context.signal : undefined;
       // Only the dedicated external read belongs to this target; ordinary queries may still finish for the previous file source.
       const target = externalFilesKey ? externalTarget.current : null;
       const result = refresh ? await fetchStorageFiles(storageId, location, true)
+        : externalFilesKey !== null ? await fetchStorageFiles(storageId, location, true, undefined, true)
         : parentLocation ? await fetchStorageFiles(storageId, location, false, parentLocation)
         : await fetchStorageFiles(storageId, location);
       if (target) {
@@ -170,6 +171,25 @@ export function useWorkspaceStorage({ pauseFileQueries, onLocalRootSelected, dir
         if (result.storage_id !== storage.storage_id || result.revision !== storage.revision ||
             !result.location || !["root", "id"].includes(result.location.kind)) throw new NavigationError("cancelled");
         target.validateListing(result);
+      }
+      if (refresh && !signal?.aborted && result.breadcrumbs &&
+          result.storage_id === storageId && result.revision === activeStorage?.revision) {
+        const live = new Map(result.breadcrumbs.map((crumb, index, chain) => [JSON.stringify(crumb.location), {
+          name: crumb.name, parent: JSON.stringify(chain[index - 1]?.location),
+        }]));
+        const scope = { queryKey: ["files", storageId, result.revision] };
+        const changed = queryClient.getQueriesData<DirectoryListing>(scope).some(([, cached]) =>
+          cached?.breadcrumbs?.some((crumb, index, chain) => {
+            const current = live.get(JSON.stringify(crumb.location));
+            return current && (current.name !== crumb.name || current.parent !== JSON.stringify(chain[index - 1]?.location));
+          }));
+        if (changed) {
+          // Removing old directory queries also cancels their pending responses.
+          // Keep this refresh, which is about to publish the authoritative listing.
+          queryClient.removeQueries({ ...scope,
+            predicate: (query) => JSON.stringify(query.queryKey) !== JSON.stringify(context.queryKey),
+          });
+        }
       }
       if (verify && !signal?.aborted && result.storage_id === storageId && result.revision === activeStorage?.revision) {
         directoryVerification.onRead();

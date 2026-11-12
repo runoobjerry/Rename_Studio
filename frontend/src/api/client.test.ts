@@ -13,12 +13,15 @@ describe("API client", () => {
     await fetchStorageFiles("connection", location);
     await fetchStorageFiles("connection", location, false, parent);
     await fetchStorageFiles("connection", location, true, parent);
+    await fetchStorageFiles("connection", location, true, undefined, true);
     expect(fetchMock).toHaveBeenNthCalledWith(1, "/api/storages/connection/files/list",
       expect.objectContaining({ method: "POST", body: JSON.stringify({ location }) }));
     expect(fetchMock).toHaveBeenNthCalledWith(2, "/api/storages/connection/files/list",
       expect.objectContaining({ method: "POST", body: JSON.stringify({ location, parent_location: parent }) }));
     expect(fetchMock).toHaveBeenNthCalledWith(3, "/api/storages/connection/files/list",
       expect.objectContaining({ method: "POST", body: JSON.stringify({ location, refresh: true }) }));
+    expect(fetchMock).toHaveBeenNthCalledWith(4, "/api/storages/connection/files/list",
+      expect.objectContaining({ method: "POST", body: JSON.stringify({ location, refresh: true, reuse_ancestors: true }) }));
   });
 
   it("marks POST reads and rename writes explicitly while preserving a lost response", async () => {

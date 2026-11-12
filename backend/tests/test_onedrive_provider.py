@@ -504,7 +504,7 @@ async def test_graph_missing_target_does_not_retry_or_evict_other_directories(di
         await directories.list_directory("drive", IdLocation(value="missing"))
     assert await directories.list_directory("drive", RootLocation()) == root
     await directories.list_directory("drive", IdLocation(value="a"), parent_location=RootLocation())
-    assert graph.requests == [("GET", "root"), ("GET", "items/missing"), ("GET", "items/a/children")]
+    assert graph.requests == [("GET", "items/missing"), ("GET", "items/a/children")]
 
 
 @pytest.mark.asyncio
@@ -524,7 +524,7 @@ async def test_graph_deleted_folder_evicts_descendants_but_keeps_unrelated_listi
     assert await directories.list_directory("drive", other) == unrelated
     with pytest.raises(NotFoundError):
         await directories.list_directory("drive", child)
-    assert graph.requests == [("GET", "root"), ("GET", "items/b")]
+    assert graph.requests == [("GET", "items/b")]
 
 
 @pytest.mark.asyncio
@@ -543,8 +543,24 @@ async def test_cold_deep_listing_resolves_ancestor_ids_with_duplicate_and_separa
     assert listing.items[0].parent_location == location
     assert listing.path == "Same/with%2Fslash/C/D"
     assert graph.requests == [("GET", route) for route in (
-        "root", "items/d", "items/d/children", "items/c", "items/b", "items/a",
+        "root", "items/d", "items/c", "items/b", "items/a", "items/d/children",
     )]
+    graph.folders["f"] = folder("f", "F", "c")
+    graph.folders["g"] = folder("g", "G", "f")
+    graph.folders["branch"] = folder("branch", "Branch", "a")
+    for target, metadata_ids in (("c", ["c"]), ("f", ["f"]), ("g", ["g", "f"]), ("branch", ["branch"])):
+        manager.directories.invalidate()
+        await manager.directories.list_directory("drive", location)
+        graph.requests.clear()
+        opened = await manager.directories.list_directory("drive", IdLocation(value=target), mode="navigate")
+        assert opened.directory_id == target
+        assert graph.requests == [("GET", route) for route in (
+            *(f"items/{key}" for key in metadata_ids), f"items/{target}/children",
+        )]
+    # Manual refresh ignores ancestry hints and resolves every parent live.
+    graph.requests.clear()
+    await manager.directories.list_directory("drive", IdLocation(value="g"), mode="refresh")
+    assert len(graph.requests) == 7
 
 
 @pytest.mark.asyncio
@@ -554,7 +570,7 @@ async def test_missing_parent_hint_reads_the_directory_live_even_with_a_cached_p
     graph.requests.clear()
     listing = await manager.directories.list_directory("drive", IdLocation(value="a"))
     assert [crumb.name for crumb in listing.breadcrumbs] == ["root", "A"]
-    assert graph.requests == [("GET", route) for route in ("root", "items/a", "items/a/children")]
+    assert graph.requests == [("GET", route) for route in ("items/a", "items/a/children")]
 
 
 @pytest.mark.asyncio
@@ -599,7 +615,8 @@ async def test_unavailable_parent_hint_falls_back_to_live_identity(directory_gra
     graph.requests.clear()
     opened = await directories.list_directory("drive", IdLocation(value="a"), parent_location=parent)
     assert opened.parent_location == root
-    assert graph.requests == [("GET", route) for route in ("root", "items/a", "items/a/children")]
+    routes = ("root", "items/a", "items/a/children") if hint == "expired" else ("items/a", "items/a/children")
+    assert graph.requests == [("GET", route) for route in routes]
 
 
 @pytest.mark.asyncio

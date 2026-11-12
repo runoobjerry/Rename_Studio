@@ -1,9 +1,12 @@
-from collections import OrderedDict
 from dataclasses import dataclass, field, replace
+from collections.abc import Callable
 from time import monotonic
+
+from cachetools import TLRUCache
 
 from app.core.config import DirectoryListingCacheSettings
 from app.core.errors import AppError, NotFoundError, RenameOutcomeUnknownError
+from app.providers.directory_metadata import DirectoryAncestry
 from app.schemas.files import DirectoryBreadcrumb, DirectoryListing, FileItem, RenameFile
 from app.schemas.storage import IdLocation, PathLocation, RootLocation, StorageLocation
 
@@ -66,7 +69,31 @@ class _Entry:
     directory_id: str | None
     path: str
     parent: StorageLocation | None
-    breadcrumb_ids: tuple[str, ...]
+    ancestry: DirectoryAncestry | None
+    recorded_at: float
+
+    @property
+    def breadcrumb_ids(self) -> tuple[str, ...]:
+        return tuple(file_id for file_id, _ in self.ancestry.chain[1:]) if self.ancestry is not None else ()
+
+
+class _ListingCache(TLRUCache):
+    """Notify the derived index when cachetools expires or evicts a listing."""
+
+    def __init__(self, maxsize: int, removed: Callable[[DirectoryKey, _Entry], None]) -> None:
+        super().__init__(maxsize, ttu=lambda key, entry, now: entry.expires_at, timer=lambda: monotonic())
+        self._removed = removed
+
+    def expire(self, time: float | None = None) -> list[tuple[DirectoryKey, _Entry]]:
+        expired = super().expire(time)
+        for key, entry in expired:
+            self._removed(key, entry)
+        return expired
+
+    def popitem(self) -> tuple[DirectoryKey, _Entry]:
+        key, entry = super().popitem()
+        self._removed(key, entry)
+        return key, entry
 
 
 class DirectoryCache:
@@ -74,13 +101,74 @@ class DirectoryCache:
         settings = settings if settings is not None else DirectoryListingCacheSettings()
         self._ttl = settings.ttl
         self._empty_ttl = settings.empty_ttl
-        self._max_entries = settings.max_entries
-        self._max_bytes = settings.max_bytes
-        self._max_entry_bytes = settings.max_entry_bytes
-        self._entries: OrderedDict[DirectoryKey, _Entry] = OrderedDict()
-        self._bytes = 0
+        self._ancestors: dict[tuple[str, int, str | RootLocation], set[DirectoryKey]] = {}
+        self._entries = _ListingCache(settings.max_entries, self._unindex)
+
+    def _unindex(self, key: DirectoryKey, entry: _Entry) -> None:
+        if entry.ancestry is None:
+            return
+        for file_id in (RootLocation(), *(file_id for file_id, _ in entry.ancestry.chain)):
+            index_key = (key[0], key[1], file_id)
+            references = self._ancestors[index_key]
+            references.remove(key)
+            if not references:
+                del self._ancestors[index_key]
+
+    def _remove(self, key: DirectoryKey) -> None:
+        self._entries.expire()
+        entry = self._entries.pop(key, None)
+        if entry is not None:
+            self._unindex(key, entry)
+
+    def _store(self, key: DirectoryKey, entry: _Entry) -> None:
+        with self._entries.timer as now:
+            self._remove(key)
+            # A parent patch must never extend the listing's original deadline.
+            if entry.expires_at <= now:
+                return
+            self._entries[key] = entry
+            if entry.ancestry is not None:
+                for file_id in (RootLocation(), *(file_id for file_id, _ in entry.ancestry.chain)):
+                    self._ancestors.setdefault((key[0], key[1], file_id), set()).add(key)
+
+    def ancestor(self, storage_id: str, revision: int, folder_id: str | RootLocation) -> DirectoryAncestry | None:
+        self._entries.expire()
+        index_key = (storage_id, revision, folder_id)
+        references = self._ancestors.get(index_key)
+        if references is None:
+            return None
+        candidates: list[tuple[float, DirectoryAncestry]] = []
+        for key in tuple(references):
+            entry = self._entries.get(key)
+            if entry is None:
+                # Expiration may have occurred since the initial sweep.
+                self._entries.expire()
+                references.discard(key)
+                continue
+            ancestry = entry.ancestry
+            if ancestry is None:
+                references.discard(key)
+                continue
+            ids = [file_id for file_id, _ in ancestry.chain]
+            if isinstance(folder_id, RootLocation) or folder_id in ids:
+                length = 1 if isinstance(folder_id, RootLocation) else ids.index(folder_id) + 1
+                prefix = DirectoryAncestry(ancestry.chain[:length], ancestry.drive_id)
+                candidates.append((entry.recorded_at, prefix))
+            else:
+                references.discard(key)
+        if not references:
+            self._ancestors.pop(index_key, None)
+        if not candidates:
+            return None
+        _, newest = max(candidates, key=lambda candidate: candidate[0])
+        identity = tuple(file_id for file_id, _ in newest.chain)
+        if any(tuple(file_id for file_id, _ in chain.chain) != identity or chain.drive_id != newest.drive_id
+               for _, chain in candidates):
+            return None
+        return newest
 
     def _find(self, key: DirectoryKey) -> tuple[DirectoryKey, _Entry | None]:
+        self._entries.expire()
         entry = self._entries.get(key)
         if entry is None and isinstance(key[2], IdLocation):
             # The providers represent their canonical root as RootLocation, even for an ID request.
@@ -88,17 +176,16 @@ class DirectoryCache:
             root = self._entries.get(root_key)
             if root is not None and root.directory_id == key[2].value:
                 key, entry = root_key, root
-        if entry is not None and entry.expires_at <= monotonic():
-            self._remove(key)
-            entry = None
         return key, entry
 
     def get(self, key: DirectoryKey) -> DirectoryListing | None:
-        key, entry = self._find(key)
+        _, entry = self._find(key)
         if entry is None:
             return None
-        self._entries.move_to_end(key)
-        return DirectoryListing.model_validate_json(entry.payload)
+        listing = DirectoryListing.model_validate_json(entry.payload)
+        if entry.ancestry is not None:
+            listing.root_id = entry.ancestry.chain[0][0]
+        return listing
 
     @staticmethod
     def find_child_folder(parent: DirectoryListing, child_id: str) -> FileItem | None:
@@ -128,27 +215,65 @@ class DirectoryCache:
         _, entry = self._find(key)
         return entry.path if entry is not None else None
 
+    @classmethod
+    def _listing_ancestry(cls, listing: DirectoryListing) -> DirectoryAncestry | None:
+        chain = cls.get_breadcrumbs(listing)
+        ancestry = None
+        if chain and listing.directory_id is not None:
+            # Root's opaque ID is not present in the public RootLocation breadcrumb.
+            if isinstance(listing.location, RootLocation):
+                root_id = listing.directory_id
+            else:
+                root_id = listing.root_id
+            if root_id is not None and all(isinstance(crumb.location, IdLocation) for crumb in chain[1:]):
+                pairs = ((root_id, chain[0].name), *((crumb.location.value, crumb.name) for crumb in chain[1:]))
+                ids = [file_id for file_id, _ in pairs]
+                expected_parent = (RootLocation() if len(ids) == 2 else IdLocation(value=ids[-2])) if len(ids) > 1 else None
+                if (len(ids) == len(set(ids)) and ids[-1] == listing.directory_id
+                        and listing.parent_location == expected_parent):
+                    ancestry = DirectoryAncestry(pairs, listing.drive_id)
+        return ancestry
+
+    def reconcile_refresh(self, key: DirectoryKey, listing: DirectoryListing) -> bool:
+        """A fully live chain supersedes conflicting snapshots, including parent item lists."""
+        fresh = self._listing_ancestry(listing)
+        if fresh is None:
+            return False
+        self._entries.expire()
+        scope = RenameCacheScope(set())
+        root_id = fresh.chain[0][0]
+        for index, (folder_id, name) in enumerate(fresh.chain):
+            lookup = RootLocation() if index == 0 else folder_id
+            for entry_key in tuple(self._ancestors.get((key[0], key[1], lookup), ())):
+                entry = self._entries.get(entry_key)
+                if entry is None or entry.ancestry is None:
+                    continue
+                old = entry.ancestry
+                if old.chain[0] != fresh.chain[0] or old.drive_id != fresh.drive_id:
+                    self.invalidate(key[0])
+                    return True
+                old_index = next(i for i, (file_id, _) in enumerate(old.chain) if file_id == folder_id)
+                if index == 0:
+                    continue
+                old_parent = old.chain[old_index - 1][0]
+                new_parent = fresh.chain[index - 1][0]
+                if old.chain[old_index][1] != name or old_parent != new_parent:
+                    scope.folder_ids.add(folder_id)
+                    scope.parents.update(RootLocation() if parent == root_id else IdLocation(value=parent)
+                                         for parent in (old_parent, new_parent))
+        if not scope.folder_ids:
+            return False
+        self.invalidate_rename(key[0], scope)
+        return True
+
     def put(self, key: DirectoryKey, listing: DirectoryListing, payload: bytes) -> None:
         ttl = self._ttl if listing.items else self._empty_ttl
-        self._store(key, _Entry(
-            payload, monotonic() + ttl, listing.directory_id, listing.path, listing.parent_location,
-            tuple(crumb.location.value for crumb in listing.breadcrumbs or () if isinstance(crumb.location, IdLocation)),
-        ))
-
-    def _store(self, key: DirectoryKey, entry: _Entry) -> None:
-        if key in self._entries:
-            self._remove(key)
         now = monotonic()
-        if entry.expires_at <= now or len(entry.payload) > min(self._max_entry_bytes, self._max_bytes):
-            return
-        for expired_key in [key for key, entry in self._entries.items() if entry.expires_at <= now]:
-            self._remove(expired_key)
-        self._entries[key] = entry
-        self._bytes += len(entry.payload)
-        while len(self._entries) > self._max_entries or self._bytes > self._max_bytes:
-            self._remove(next(iter(self._entries)))
+        self._store(key, _Entry(payload, now + ttl, listing.directory_id, listing.path,
+                                listing.parent_location, self._listing_ancestry(listing), now))
 
     def invalidate(self, storage_id: str | None = None) -> None:
+        self._entries.expire()
         for key in [key for key in self._entries if storage_id is None or key[0] == storage_id]:
             self._remove(key)
 
@@ -231,6 +356,3 @@ class DirectoryCache:
         if len({item.id for item in listing.items}) != len(listing.items):
             return None
         return replace(entry, payload=listing.model_dump_json().encode("utf-8"))
-
-    def _remove(self, key: DirectoryKey) -> None:
-        self._bytes -= len(self._entries.pop(key).payload)

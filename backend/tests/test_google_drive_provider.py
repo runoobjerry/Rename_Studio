@@ -563,6 +563,21 @@ async def test_browsing_reuses_google_root_and_folders_from_completed_listings(d
     assert [request.url.path.removeprefix("/drive/v3/") for request in server.requests] == [
         "files/root", "files", "files", "files", "files", "files",
     ]
+    server.files["f"] = drive_file("f", "F", "c", FOLDER_MIME)
+    server.files["g"] = drive_file("g", "G", "f", FOLDER_MIME)
+    server.files["branch"] = drive_file("branch", "Branch", "a", FOLDER_MIME)
+    for target, metadata_ids in (("c", ["c"]), ("f", ["f"]), ("g", ["g", "f"]), ("branch", ["branch"])):
+        directories.invalidate()
+        await directories.list_directory(STORAGE_ID, IdLocation(value="d"))
+        server.requests.clear()
+        opened = await directories.list_directory(STORAGE_ID, IdLocation(value=target), mode="navigate")
+        assert opened.directory_id == target
+        assert [request.url.path.removeprefix("/drive/v3/") for request in server.requests] == [
+            "files/root", *(f"files/{key}" for key in metadata_ids), "files",
+        ]
+    server.requests.clear()
+    await directories.list_directory(STORAGE_ID, IdLocation(value="g"), mode="refresh")
+    assert len(server.requests) == 7
 
 
 @pytest.mark.asyncio

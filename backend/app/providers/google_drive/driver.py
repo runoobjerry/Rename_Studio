@@ -18,7 +18,7 @@ from app.core.log_context import request_id_context
 from app.providers.errors import http_error_details, read_error_payload
 from app.providers.retry import RetryBudget
 from app.providers.base import RenameRequest, StorageDriver
-from app.providers.directory_metadata import DirectoryHint, DirectoryMetadataConflict
+from app.providers.directory_metadata import AncestorLookup, DirectoryHint, DirectoryMetadata, DirectoryMetadataConflict, resolve_ancestry
 from app.providers.cooldown import ConnectionCooldown, retry_after_delay
 from app.providers.name_validation import NameValidationIssue
 from app.schemas.files import DirectoryBreadcrumb, DirectoryListing, FileItem, RenameFile
@@ -104,6 +104,7 @@ class GoogleDriveDriver(StorageDriver):
     async def read_directory(
         self, location: StorageLocation, *,
         hint: DirectoryHint | None = None, include_breadcrumbs: bool = True,
+        ancestor_lookup: AncestorLookup | None = None,
     ) -> DirectoryListing:
         if isinstance(location, PathLocation):
             raise ValidationError("Google Drive directories must be addressed by ID")
@@ -114,23 +115,31 @@ class GoogleDriveDriver(StorageDriver):
         directory_id = root.id if isinstance(location, RootLocation) else location.value
         await self._load_files([directory_id], cache)
         directory = cache[directory_id]
-        self._require_folder(directory)
-        await self._load_ancestors([directory], root, cache)
-        chain = self._chain(directory, root, cache)
-        path = self._display_path(chain)
+
+        def metadata(item: _DriveFile) -> DirectoryMetadata:
+            self._require_available(item)
+            self._require_folder(item)
+            return DirectoryMetadata(item.id, item.name, None if item.id == root.id else self._parent_id(item))
+
+        async def load(folder_id: str) -> DirectoryMetadata:
+            await self._load_files([folder_id], cache)
+            return metadata(cache[folder_id])
+
+        ancestry = await resolve_ancestry(metadata(directory), metadata(root), load, ancestor_lookup)
+        path = "/".join(name for _, name in ancestry.chain[1:])
         canonical = self._location(directory, root)
         can_list = directory.capabilities.canListChildren
         self._require_listing_permission(can_list)
-        items = await self._list_children(directory.id, canonical, path, {folder.id for folder in chain})
+        items = await self._list_children(directory.id, canonical, path, {file_id for file_id, _ in ancestry.chain})
         self._require_listing_permission(can_list, empty=not items)
         return DirectoryListing(
             provider=self.provider_type, path=path,
-            parent_path=self._display_path(chain[:-1]) if len(chain) > 1 else None,
+            parent_path="/".join(name for _, name in ancestry.chain[1:-1]) if len(ancestry.chain) > 1 else None,
             location=canonical, directory_id=directory.id,
-            parent_location=self._location(chain[-2], root) if len(chain) > 1 else None,
-            breadcrumbs=[DirectoryBreadcrumb(name=item.name, location=self._location(item, root)) for item in chain]
-            if include_breadcrumbs else None,
-            items=items,
+            parent_location=(RootLocation() if ancestry.chain[-2][0] == root.id
+                             else IdLocation(value=ancestry.chain[-2][0])) if len(ancestry.chain) > 1 else None,
+            breadcrumbs=ancestry.breadcrumbs() if include_breadcrumbs else None,
+            items=items, root_id=root.id,
         )
 
     async def _read_hinted_directory(self, hint: DirectoryHint) -> DirectoryListing:
@@ -157,6 +166,7 @@ class GoogleDriveDriver(StorageDriver):
             provider=self.provider_type, path=path, parent_path=hint.parent_path, location=location,
             directory_id=folder.id, parent_location=hint.parent_location,
             breadcrumbs=hint.breadcrumbs(name), items=items,
+            root_id=hint.root_id,
         )
 
     async def _verify_folder_hint(self, hint: DirectoryHint) -> _DriveFile:
