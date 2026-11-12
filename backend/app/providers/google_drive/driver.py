@@ -132,7 +132,6 @@ class GoogleDriveDriver(StorageDriver):
         can_list = directory.capabilities.canListChildren
         self._require_listing_permission(can_list)
         items = await self._list_children(directory.id, canonical, path, {file_id for file_id, _ in ancestry.chain})
-        self._require_listing_permission(can_list, empty=not items)
         return DirectoryListing(
             provider=self.provider_type, path=path,
             parent_path="/".join(name for _, name in ancestry.chain[1:-1]) if len(ancestry.chain) > 1 else None,
@@ -145,24 +144,18 @@ class GoogleDriveDriver(StorageDriver):
 
     async def _read_hinted_directory(self, hint: DirectoryHint) -> DirectoryListing:
         folder = hint.folder
-        can_list = folder.can_list_children
-        directory = None
-        if can_list is not True:
-            directory = await self._verify_folder_hint(hint)
-            can_list = directory.capabilities.canListChildren
-            self._require_listing_permission(can_list)
-        name = directory.name if directory is not None else folder.name
+        self._require_listing_permission(folder.can_list_children)
+        name = folder.name
         path = "/".join(filter(None, (hint.parent_path, name)))
         location = IdLocation(value=folder.id)
         ancestor_ids = {crumb.location.value for crumb in hint.parent_breadcrumbs if isinstance(crumb.location, IdLocation)}
         items = await self._list_children(folder.id, location, path, ancestor_ids | {hint.parent_id, folder.id})
         # files.list may return a successful empty page after access to the folder is revoked.
-        if not items and directory is None:
+        if not items:
             directory = await self._verify_folder_hint(hint)
-            can_list = directory.capabilities.canListChildren
+            self._require_listing_permission(directory.capabilities.canListChildren)
             name = directory.name
             path = "/".join(filter(None, (hint.parent_path, name)))
-        self._require_listing_permission(can_list, empty=not items)
         return DirectoryListing(
             provider=self.provider_type, path=path, parent_path=hint.parent_path, location=location,
             directory_id=folder.id, parent_location=hint.parent_location,
@@ -179,8 +172,8 @@ class GoogleDriveDriver(StorageDriver):
         return directory
 
     @staticmethod
-    def _require_listing_permission(can_list: bool | None, *, empty: bool = False) -> None:
-        if can_list is False or (empty and can_list is None):
+    def _require_listing_permission(can_list: bool | None) -> None:
+        if can_list is False:
             raise PermissionDeniedError("Google Drive does not permit listing this folder")
 
     async def _list_children(

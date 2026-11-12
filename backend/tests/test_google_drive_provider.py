@@ -681,15 +681,15 @@ async def test_empty_google_folder_checks_live_permission_and_lists_once(
     listing = await directories.list_directory(STORAGE_ID, IdLocation(value="folder"), parent_location=root.location)
     assert not listing.items and listing.parent_location == RootLocation()
     paths = [request.url.path.removeprefix("/drive/v3/") for request in server.requests]
-    assert paths == (["files", "files/folder"] if cached_capability else ["files/folder", "files"])
+    assert paths == ["files", "files/folder"]
 
 
 @pytest.mark.asyncio
-async def test_google_empty_response_cannot_confirm_an_unknown_permission(driver_factory: Callable) -> None:
+async def test_google_empty_response_accepts_an_unknown_permission(driver_factory: Callable) -> None:
     server = WritableDriveServer([drive_file("folder", "Folder", mime=FOLDER_MIME, capabilities={})])
     driver = driver_factory(server)
-    with pytest.raises(PermissionDeniedError):
-        await driver.list_directory(IdLocation(value="folder"))
+    listing = await driver.list_directory(IdLocation(value="folder"))
+    assert not listing.items and listing.location == IdLocation(value="folder")
 
 
 @pytest.mark.asyncio
