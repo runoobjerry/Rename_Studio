@@ -99,6 +99,7 @@ class OneDriveDriver(StorageDriver):
         self, location: StorageLocation, *,
         hint: DirectoryHint | None = None, include_breadcrumbs: bool = True,
         ancestor_lookup: AncestorLookup | None = None,
+        reuse_target: bool = False,
     ) -> DirectoryListing:
         if isinstance(location, PathLocation):
             raise ValidationError("OneDrive directories must be addressed by ID")
@@ -114,6 +115,23 @@ class OneDriveDriver(StorageDriver):
                 drive_id=hint.drive_id, parent_location=hint.parent_location, items=items, breadcrumbs=breadcrumbs,
                 root_id=hint.root_id,
             )
+
+        if reuse_target and ancestor_lookup is not None:
+            target = ancestor_lookup(location.value if isinstance(location, IdLocation) else RootLocation())
+            if target is not None:
+                directory_id = target.chain[-1][0]
+                parent_path = "/".join(quote(name, safe="") for _, name in target.chain[1:-1])
+                path = "/".join(quote(name, safe="") for _, name in target.chain[1:])
+                items = await self._children(directory_id)
+                self._check_directory_items(items, {IdLocation(value=file_id) for file_id, _ in target.chain})
+                return DirectoryListing(
+                    provider=self.provider_type, path=path, parent_path=parent_path if len(target.chain) > 1 else None,
+                    location=RootLocation() if len(target.chain) == 1 else IdLocation(value=directory_id),
+                    parent_location=(RootLocation() if len(target.chain) == 2 else IdLocation(value=target.chain[-2][0]))
+                    if len(target.chain) > 1 else None,
+                    directory_id=directory_id, root_id=target.chain[0][0], drive_id=target.drive_id,
+                    breadcrumbs=target.breadcrumbs(), items=items,
+                )
 
         known_root = ancestor_lookup(RootLocation()) if ancestor_lookup is not None else None
         if known_root is None:

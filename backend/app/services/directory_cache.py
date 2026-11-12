@@ -152,7 +152,7 @@ class DirectoryCache:
             ids = [file_id for file_id, _ in ancestry.chain]
             if isinstance(folder_id, RootLocation) or folder_id in ids:
                 length = 1 if isinstance(folder_id, RootLocation) else ids.index(folder_id) + 1
-                prefix = DirectoryAncestry(ancestry.chain[:length], ancestry.drive_id)
+                prefix = DirectoryAncestry(ancestry.chain[:length], ancestry.drive_id, entry.expires_at)
                 candidates.append((entry.recorded_at, prefix))
             else:
                 references.discard(key)
@@ -186,6 +186,10 @@ class DirectoryCache:
         if entry.ancestry is not None:
             listing.root_id = entry.ancestry.chain[0][0]
         return listing
+
+    def expires_at(self, key: DirectoryKey) -> float | None:
+        _, entry = self._find(key)
+        return entry.expires_at if entry is not None else None
 
     @staticmethod
     def find_child_folder(parent: DirectoryListing, child_id: str) -> FileItem | None:
@@ -266,10 +270,11 @@ class DirectoryCache:
         self.invalidate_rename(key[0], scope)
         return True
 
-    def put(self, key: DirectoryKey, listing: DirectoryListing, payload: bytes) -> None:
+    def put(self, key: DirectoryKey, listing: DirectoryListing, payload: bytes, *, expires_at: float | None = None) -> None:
         ttl = self._ttl if listing.items else self._empty_ttl
         now = monotonic()
-        self._store(key, _Entry(payload, now + ttl, listing.directory_id, listing.path,
+        deadline = min(now + ttl, expires_at) if expires_at is not None else now + ttl
+        self._store(key, _Entry(payload, deadline, listing.directory_id, listing.path,
                                 listing.parent_location, self._listing_ancestry(listing), now))
 
     def invalidate(self, storage_id: str | None = None) -> None:

@@ -105,6 +105,7 @@ class GoogleDriveDriver(StorageDriver):
         self, location: StorageLocation, *,
         hint: DirectoryHint | None = None, include_breadcrumbs: bool = True,
         ancestor_lookup: AncestorLookup | None = None,
+        reuse_target: bool = False,
     ) -> DirectoryListing:
         if isinstance(location, PathLocation):
             raise ValidationError("Google Drive directories must be addressed by ID")

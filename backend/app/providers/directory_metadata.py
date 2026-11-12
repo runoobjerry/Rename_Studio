@@ -24,6 +24,7 @@ class DirectoryAncestry:
     # Root is represented by its real ID internally, and RootLocation on the wire.
     chain: tuple[tuple[str, str], ...]
     drive_id: str | None
+    expires_at: float | None = None
 
     def breadcrumbs(self) -> list[DirectoryBreadcrumb]:
         return [DirectoryBreadcrumb(name=name, location=RootLocation() if index == 0 else IdLocation(value=file_id))

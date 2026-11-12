@@ -528,8 +528,10 @@ async def test_graph_deleted_folder_evicts_descendants_but_keeps_unrelated_listi
 
 
 @pytest.mark.asyncio
-async def test_cold_deep_listing_resolves_ancestor_ids_with_duplicate_and_separator_names(directory_graph) -> None:
+async def test_cold_deep_listing_resolves_ancestor_ids_with_duplicate_and_separator_names(directory_graph, monkeypatch) -> None:
     manager, graph = directory_graph
+    now = 0.0
+    monkeypatch.setattr(directory_cache, "monotonic", lambda: now)
     graph.folders["a"]["name"] = graph.folders["other"]["name"] = "Same"
     graph.folders["b"]["name"] = "with/slash"
     graph.folders["nested"] = folder("nested", "D", "d")
@@ -561,6 +563,15 @@ async def test_cold_deep_listing_resolves_ancestor_ids_with_duplicate_and_separa
     graph.requests.clear()
     await manager.directories.list_directory("drive", IdLocation(value="g"), mode="refresh")
     assert len(graph.requests) == 7
+    manager.directories.invalidate()
+    await manager.directories.list_directory("drive", location)
+    now = 599
+    graph.requests.clear()
+    await manager.directories.list_directory("drive", IdLocation(value="c"))
+    assert graph.requests == [("GET", "items/c/children")]
+    now = 600
+    # Reusing D's ancestry must not give C another full cache lifetime.
+    assert manager.directories._cache.get(("drive", 1, IdLocation(value="c"))) is None
 
 
 @pytest.mark.asyncio

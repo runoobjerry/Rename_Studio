@@ -32,6 +32,7 @@ class _Read:
     refreshed_locations: set[StorageLocation] = field(default_factory=set)
     borrowed: set[str] = field(default_factory=set)
     waiters: int = 0
+    expires_at: float | None = None
 
 
 class DirectoryService:
@@ -141,6 +142,9 @@ class DirectoryService:
                     or read.key[0] in self._writing):
                 return None
             result = self._cache.ancestor(read.key[0], read.key[1], folder_id)
+            if result is not None and result.expires_at is not None:
+                read.expires_at = (min(read.expires_at, result.expires_at) if read.expires_at is not None
+                                   else result.expires_at)
             if result is not None and not isinstance(folder_id, RootLocation):
                 read.borrowed.add(result.chain[-1][0])
             return result
@@ -156,6 +160,7 @@ class DirectoryService:
         listing = await self._manager.get_driver(storage_id).read_directory(
             location, hint=hint, include_breadcrumbs=mode != "fresh",
             ancestor_lookup=ancestor_lookup,
+            reuse_target=mode == "cached" and ancestor_lookup is not None,
         )
         self._check_revision(key)
         return listing.model_copy(update={"storage_id": storage_id, "revision": revision})
@@ -198,12 +203,15 @@ class DirectoryService:
     async def _fill(self, read: _Read, parent_location: StorageLocation | None) -> tuple[DirectoryListing, bytes]:
         try:
             hint = self._hint(read.key, parent_location) if not read.invalidated else None
+            if hint is not None:
+                read.expires_at = self._cache.expires_at((read.key[0], read.key[1], hint.parent_location))
             try:
                 listing = await self._fetch(read.key, "cached", hint=hint, ancestor_lookup=self._ancestor_lookup(read))
             except _DIRECTORY_FAILURES:
                 self._invalidate_failed_read(read, hint=hint)
                 if hint is None and not read.borrowed:
                     raise
+                read.expires_at = None
                 listing = await self._fetch(read.key, "cached")
             payload = listing.model_dump_json().encode("utf-8")
             self._remember(read, listing, payload)
@@ -235,6 +243,7 @@ class DirectoryService:
                     self._invalidate_failed_read(read, parent_location=parent_location if mode == "refresh" else None)
                 if mode != "navigate" or not read.borrowed:
                     raise
+                read.expires_at = None
                 listing = await self._fetch(key, mode)
             if mode == "fresh":
                 return listing
@@ -274,5 +283,5 @@ class DirectoryService:
             return None
         if payload is None:
             payload = listing.model_dump_json().encode("utf-8")
-        self._cache.put((storage_id, revision, location), listing, payload)
+        self._cache.put((storage_id, revision, location), listing, payload, expires_at=read.expires_at)
         return location
