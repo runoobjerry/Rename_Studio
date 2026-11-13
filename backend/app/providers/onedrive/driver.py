@@ -98,7 +98,7 @@ class OneDriveDriver(StorageDriver):
 
     async def read_directory(
         self, location: StorageLocation, *,
-        hint: DirectoryHint | None = None, include_breadcrumbs: bool = True,
+        hint: DirectoryHint | None = None,
         ancestor_lookup: AncestorLookup | None = None,
         reuse_target: bool = False,
         verify: bool = False,
@@ -154,26 +154,22 @@ class OneDriveDriver(StorageDriver):
         directory = root
         if isinstance(location, IdLocation) and location.value != root.id:
             directory = await self._load_folder(location.value)
-        if directory.drive_id is not None and directory.drive_id != root.drive_id:
-            raise DirectoryMetadataConflict("Microsoft Graph returned a directory from a different drive")
 
         canonical = RootLocation() if directory.id == root.id else IdLocation(value=directory.id)
         parent = (None if directory.parent_id is None else RootLocation() if directory.parent_id == root.id
                   else IdLocation(value=directory.parent_id))
         display_parent = directory.parent_path
-        breadcrumbs = None
-        if include_breadcrumbs:
-            async def load(folder_id: str) -> DirectoryMetadata:
-                return await self._load_folder(folder_id, ancestor=True)
 
-            ancestry = await resolve_ancestry(directory, root, load, ancestor_lookup)
-            breadcrumbs = ancestry.breadcrumbs()
-            if not display_parent:
-                display_parent = "/".join(quote(name, safe="") for _, name in ancestry.chain[1:-1])
+        async def load(folder_id: str) -> DirectoryMetadata:
+            return await self._load_folder(folder_id, ancestor=True)
+
+        ancestry = await resolve_ancestry(directory, root, load, ancestor_lookup)
+        breadcrumbs = ancestry.breadcrumbs()
+        if not display_parent:
+            display_parent = "/".join(quote(name, safe="") for _, name in ancestry.chain[1:-1])
         path = "" if parent is None else f"{display_parent}/{directory.name}".strip("/")
         items = await self._children(directory.id)
-        if include_breadcrumbs:
-            self._check_directory_items(items, {IdLocation(value=file_id) for file_id, _ in ancestry.chain})
+        self._check_directory_items(items, {IdLocation(value=file_id) for file_id, _ in ancestry.chain})
         return DirectoryListing(provider=self.provider_type, path=path, parent_path=None if parent is None else display_parent,
                                 location=canonical, directory_id=directory.id, drive_id=root.drive_id,
                                 parent_location=parent, items=items, breadcrumbs=breadcrumbs, root_id=root.id)
@@ -222,7 +218,7 @@ class OneDriveDriver(StorageDriver):
 
     @staticmethod
     def _check_directory_items(items: list[FileItem], ancestors: set[StorageLocation]) -> None:
-        if any(IdLocation(value=item.id) in ancestors or isinstance(item.location, RootLocation) for item in items):
+        if any(IdLocation(value=item.id) in ancestors for item in items):
             raise DirectoryMetadataConflict("Microsoft Graph returned inconsistent directory ancestry")
 
     async def list_files(self, path: str) -> list[FileItem]:

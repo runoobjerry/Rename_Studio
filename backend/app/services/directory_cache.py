@@ -263,12 +263,13 @@ class DirectoryCache:
                 if entry is None or entry.ancestry is None:
                     continue
                 old = entry.ancestry
-                if old.chain[0] != fresh.chain[0] or old.drive_id != fresh.drive_id:
-                    self.invalidate(key[0])
-                    return True
-                old_index = next(i for i, (file_id, _) in enumerate(old.chain) if file_id == folder_id)
                 if index == 0:
+                    # Every indexed listing registers the root alias; check its identity once here.
+                    if old.chain[0] != fresh.chain[0] or old.drive_id != fresh.drive_id:
+                        self.invalidate(key[0])
+                        return True
                     continue
+                old_index = next(i for i, (file_id, _) in enumerate(old.chain) if file_id == folder_id)
                 old_parent = old.chain[old_index - 1][0]
                 new_parent = fresh.chain[index - 1][0]
                 if old.chain[old_index][1] != name or old_parent != new_parent:

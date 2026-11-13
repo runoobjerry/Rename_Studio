@@ -103,7 +103,7 @@ class GoogleDriveDriver(StorageDriver):
 
     async def read_directory(
         self, location: StorageLocation, *,
-        hint: DirectoryHint | None = None, include_breadcrumbs: bool = True,
+        hint: DirectoryHint | None = None,
         ancestor_lookup: AncestorLookup | None = None,
         reuse_target: bool = False,
         verify: bool = False,
@@ -135,7 +135,9 @@ class GoogleDriveDriver(StorageDriver):
             await self._load_files([folder_id], cache)
             return metadata(cache[folder_id])
 
-        ancestry = await resolve_ancestry(metadata(directory), metadata(root), load, ancestor_lookup)
+        root_metadata = DirectoryMetadata(root.id, root.name, None)
+        directory_metadata = root_metadata if directory is root else metadata(directory)
+        ancestry = await resolve_ancestry(directory_metadata, root_metadata, load, ancestor_lookup)
         path = "/".join(name for _, name in ancestry.chain[1:])
         canonical = self._location(directory, root)
         can_list = directory.capabilities.canListChildren
@@ -147,7 +149,7 @@ class GoogleDriveDriver(StorageDriver):
             location=canonical, directory_id=directory.id,
             parent_location=(RootLocation() if ancestry.chain[-2][0] == root.id
                              else IdLocation(value=ancestry.chain[-2][0])) if len(ancestry.chain) > 1 else None,
-            breadcrumbs=ancestry.breadcrumbs() if include_breadcrumbs else None,
+            breadcrumbs=ancestry.breadcrumbs(),
             items=items, root_id=root.id,
         )
 

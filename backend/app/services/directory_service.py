@@ -158,7 +158,7 @@ class DirectoryService:
         logger.info("directory provider read storage_id=%s mode=%s request_id=%s",
                     storage_id, mode, request_id_context.get())
         listing = await self._manager.get_driver(storage_id).read_directory(
-            location, hint=hint, include_breadcrumbs=mode != "verify",
+            location, hint=hint,
             ancestor_lookup=ancestor_lookup,
             reuse_target=mode == "cached" and ancestor_lookup is not None,
             verify=mode == "verify",

@@ -22,7 +22,7 @@ class StorageDriver(ABC):
 
     async def read_directory(
         self, location: StorageLocation, *,
-        hint: DirectoryHint | None = None, include_breadcrumbs: bool = True,
+        hint: DirectoryHint | None = None,
         ancestor_lookup: AncestorLookup | None = None,
         reuse_target: bool = False,
         verify: bool = False,
