@@ -19,7 +19,7 @@ if TYPE_CHECKING:
 
 
 logger = logging.getLogger("rename_studio.directory")
-type DirectoryReadMode = Literal["cached", "refresh", "fresh", "navigate"]
+type DirectoryReadMode = Literal["cached", "refresh", "verify", "navigate"]
 _DIRECTORY_FAILURES = (DirectoryMetadataConflict, NotFoundError, PermissionDeniedError, ValidationError)
 
 
@@ -158,9 +158,10 @@ class DirectoryService:
         logger.info("directory provider read storage_id=%s mode=%s request_id=%s",
                     storage_id, mode, request_id_context.get())
         listing = await self._manager.get_driver(storage_id).read_directory(
-            location, hint=hint, include_breadcrumbs=mode != "fresh",
+            location, hint=hint, include_breadcrumbs=mode != "verify",
             ancestor_lookup=ancestor_lookup,
             reuse_target=mode == "cached" and ancestor_lookup is not None,
+            verify=mode == "verify",
         )
         self._check_revision(key)
         return listing.model_copy(update={"storage_id": storage_id, "revision": revision})
@@ -226,7 +227,7 @@ class DirectoryService:
             task.exception()
 
     async def _read_live(
-        self, key: DirectoryKey, mode: Literal["refresh", "fresh", "navigate"], cache_enabled: bool,
+        self, key: DirectoryKey, mode: Literal["refresh", "verify", "navigate"], cache_enabled: bool,
         parent_location: StorageLocation | None,
     ) -> DirectoryListing:
         storage_id = key[0]
@@ -245,7 +246,7 @@ class DirectoryService:
                     raise
                 read.expires_at = None
                 listing = await self._fetch(key, mode)
-            if mode == "fresh":
+            if mode == "verify":
                 return listing
             if read.invalidated:
                 raise StorageBusyError("Directory changed during refresh; refresh again")

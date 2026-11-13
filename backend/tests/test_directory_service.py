@@ -155,17 +155,17 @@ async def test_provider_without_cache_capability_reads_live() -> None:
 
 
 @pytest.mark.asyncio
-async def test_fresh_read_leaves_cached_listing_until_refresh() -> None:
+async def test_verify_read_leaves_cached_listing_until_refresh() -> None:
     driver = DirectoryDriver()
     directories = registry_for({"cloud": driver}, cache_directories=True).manager.directories
     root = RootLocation()
     cached = await directories.list_directory("cloud", root)
     driver.name = "new"
-    fresh = await directories.list_directory("cloud", root, mode="fresh")
-    assert fresh.items[0].name == "new"
+    verified = await directories.list_directory("cloud", root, mode="verify")
+    assert verified.items[0].name == "new"
     assert await directories.list_directory("cloud", root) == cached
     refreshed = await directories.list_directory("cloud", root, mode="refresh")
-    assert await directories.list_directory("cloud", root) == refreshed == fresh
+    assert await directories.list_directory("cloud", root) == refreshed == verified
     assert driver.calls == 3
 
 

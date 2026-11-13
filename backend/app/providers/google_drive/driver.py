@@ -6,7 +6,7 @@ from datetime import datetime
 from email import policy
 from email.parser import BytesParser
 from time import perf_counter
-from typing import Literal
+from typing import Literal, cast
 from urllib.parse import quote, urlencode
 from uuid import uuid4
 
@@ -106,9 +106,18 @@ class GoogleDriveDriver(StorageDriver):
         hint: DirectoryHint | None = None, include_breadcrumbs: bool = True,
         ancestor_lookup: AncestorLookup | None = None,
         reuse_target: bool = False,
+        verify: bool = False,
     ) -> DirectoryListing:
         if isinstance(location, PathLocation):
             raise ValidationError("Google Drive directories must be addressed by ID")
+        if verify:
+            directory_id = location.value if isinstance(location, IdLocation) else "root"
+            items = await self._list_children(directory_id, location, None, {directory_id})
+            actual_id = directory_id if isinstance(location, IdLocation) else (
+                cast(IdLocation, items[0].parent_location).value if items else None
+            )
+            return DirectoryListing(provider=self.provider_type, location=location, directory_id=actual_id,
+                                    path="", parent_path=None, items=items)
         if hint is not None:
             return await self._read_hinted_directory(hint)
 
@@ -177,11 +186,12 @@ class GoogleDriveDriver(StorageDriver):
             raise PermissionDeniedError("Google Drive does not permit listing this folder")
 
     async def _list_children(
-        self, directory_id: str, location: StorageLocation, path: str, ancestor_ids: set[str],
+        self, directory_id: str, location: StorageLocation, path: str | None, ancestor_ids: set[str],
     ) -> list[FileItem]:
         items: list[FileItem] = []
         seen_ids: set[str] = set()
         seen_tokens: set[str] = set()
+        resolved_parent = None if path is None and isinstance(location, RootLocation) else directory_id
         escaped_id = directory_id.replace("\\", "\\\\").replace("'", "\\'")
         params = {
             "q": f"'{escaped_id}' in parents and trashed = false",
@@ -199,12 +209,19 @@ class GoogleDriveDriver(StorageDriver):
                 raise DirectoryMetadataConflict("Google Drive returned an incomplete directory; refresh before continuing")
             for item in page.files:
                 self._require_available(item)
-                if item.parents != [directory_id] or item.id in seen_ids:
+                if resolved_parent is None:
+                    resolved_parent = self._parent_id(item)
+                if item.parents != [resolved_parent] or item.id in seen_ids:
                     raise DirectoryMetadataConflict("Google Drive directory changed or contains invalid items; refresh it")
-                if item.id in ancestor_ids:
+                if item.id in ancestor_ids or item.id == resolved_parent:
                     raise DirectoryMetadataConflict("Google Drive folder ancestry changed; refresh before continuing")
                 seen_ids.add(item.id)
-                items.append(self._file_item(item, IdLocation(value=item.id), location, path))
+                child = self._file_item(item, IdLocation(value=item.id),
+                                        IdLocation(value=resolved_parent) if path is None else location, path or "")
+                if path is None:
+                    # Verification has no display path; never present a fabricated relative path as current metadata.
+                    child.path = ""
+                items.append(child)
             token = page.nextPageToken
             if token is None:
                 break

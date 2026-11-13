@@ -203,14 +203,20 @@ async def test_lists_root_with_pagination_and_maps_folders() -> None:
         ]
     )
 
-    items = await driver.list_files("")
+    for page in driver.responses:
+        for item in page["value"]:
+            item["parentReference"]["id"] = "root-id"
+    verified = await driver.read_directory(RootLocation(), verify=True)
+    items = verified.items
 
     assert "/root/children?" in driver.calls[0][1]
     assert "$select=" in driver.calls[0][1]
     assert driver.calls[1][1] == next_link
+    assert len(driver.calls) == 2 and verified.directory_id == "root-id"
     assert [item.name for item in items] == ["Trip", "photo.jpg"]
     assert items[0].is_directory is True
-    assert items[0].parent_path == "Photos"
+    assert items[0].parent_path == "" and items[0].path == ""
+    assert all(item.parent_location == IdLocation(value="root-id") for item in items)
 
 
 @pytest.mark.asyncio
@@ -663,11 +669,16 @@ async def test_old_graph_paths_are_display_hints_and_execute_rechecks_live_membe
         storage_id="drive", location=b, file_ids=["c"], target_name="Renamed",
     ))
     assert snapshot.valid
+    graph.folders["b"]["name"] = "Moved"
+    graph.requests.clear()
+    sources = await execute._revalidate(preview.store.get(snapshot.preview_id))
+    assert sources[0].parent_location == b
+    assert graph.requests == [("GET", "items/b/children")]
     graph.folders["c"]["parentReference"]["id"] = "other"
     graph.requests.clear()
     with pytest.raises(PreviewExpiredError):
         await execute.execute(snapshot.preview_id)
-    assert graph.requests == [("GET", route) for route in ("root", "items/b", "items/b/children")]
+    assert graph.requests == [("GET", "items/b/children")]
 
 
 @pytest.mark.asyncio

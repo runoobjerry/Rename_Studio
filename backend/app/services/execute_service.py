@@ -95,7 +95,7 @@ class ExecuteService:
         directories = self.providers.manager.directories
         parent = StorageDriver.parent_directory(snapshot.sources[0])
         try:
-            listing = await directories.list_directory(storage_id, parent, mode="fresh")
+            listing = await directories.list_directory(storage_id, parent, mode="verify")
             by_id = {item.id: item for item in listing.items}
             sources = [by_id[file_id] for file_id in snapshot.request.file_ids]
             items, _, _ = await self.preview_service.evaluate(

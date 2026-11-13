@@ -3,6 +3,7 @@ import logging
 from time import perf_counter
 from collections.abc import Awaitable, Callable
 from datetime import datetime
+from typing import cast
 from urllib.parse import quote, urlsplit
 
 import httpx
@@ -100,9 +101,20 @@ class OneDriveDriver(StorageDriver):
         hint: DirectoryHint | None = None, include_breadcrumbs: bool = True,
         ancestor_lookup: AncestorLookup | None = None,
         reuse_target: bool = False,
+        verify: bool = False,
     ) -> DirectoryListing:
         if isinstance(location, PathLocation):
             raise ValidationError("OneDrive directories must be addressed by ID")
+        if verify:
+            directory_id = location.value if isinstance(location, IdLocation) else None
+            items = await self._children(directory_id)
+            if directory_id is None and items:
+                directory_id = cast(IdLocation, items[0].parent_location).value
+            for item in items:
+                item.path = ""
+                item.parent_path = ""
+            return DirectoryListing(provider=self.provider_type, location=location, directory_id=directory_id,
+                                    path="", parent_path=None, items=items)
         if hint is not None:
             folder = hint.folder
             breadcrumbs = hint.breadcrumbs(folder.name)
@@ -193,11 +205,17 @@ class OneDriveDriver(StorageDriver):
             raise DirectoryMetadataConflict("Microsoft Graph returned an invalid drive ID")
         return DirectoryMetadata(item.id, item.name, parent.value, parent_path=item.parent_path, drive_id=drive_id)
 
-    async def _children(self, directory_id: str) -> list[FileItem]:
-        items = await self._list_url(f"{GRAPH_ROOT}/me/drive/items/{quote(directory_id, safe='')}/children")
-        parent = IdLocation(value=directory_id)
+    async def _children(self, directory_id: str | None) -> list[FileItem]:
+        endpoint = "root" if directory_id is None else f"items/{quote(directory_id, safe='')}"
+        items = await self._list_url(f"{GRAPH_ROOT}/me/drive/{endpoint}/children")
+        parent = IdLocation(value=directory_id) if directory_id is not None else None
         for item in items:
-            if item.id == directory_id or (item.parent_location is not None and item.parent_location != parent):
+            if parent is None:
+                if not isinstance(item.parent_location, IdLocation):
+                    raise DirectoryMetadataConflict("Microsoft Graph returned a missing root parent ID")
+                parent = item.parent_location
+            if (item.id == parent.value or isinstance(item.location, RootLocation)
+                    or (item.parent_location is not None and item.parent_location != parent)):
                 raise DirectoryMetadataConflict("Microsoft Graph returned an item outside the requested directory")
             item.parent_location = parent
         return items

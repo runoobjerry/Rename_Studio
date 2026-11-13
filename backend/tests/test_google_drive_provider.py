@@ -191,7 +191,8 @@ class WritableDriveServer(DriveServer):
         if request.method == "GET" and request.url.path == "/drive/v3/files":
             parent = re.search(r"'([^']+)' in parents", request.url.params["q"])
             assert parent is not None
-            self.pages[None] = file_page([item for item in self.files.values() if item["parents"] == [parent[1]]])
+            parent_id = "root-id" if parent[1] == "root" else parent[1]
+            self.pages[None] = file_page([item for item in self.files.values() if item["parents"] == [parent_id]])
         if request.method != "POST" or b"\r\nPATCH " not in request.content:
             return super().__call__(request)
         self.requests.append(request)
@@ -270,6 +271,12 @@ async def test_root_pagination_continues_empty_page_and_maps_types_permissions(d
     assert by_id["readonly"].modified_at.isoformat() == "2026-10-18T01:02:03+00:00"
     assert all(item.parent_location == RootLocation() for item in listing.items)
     assert all("outside" not in request.url.path for request in server.requests)
+    server.requests.clear()
+    verified = await driver_factory(server).read_directory(RootLocation(), verify=True)
+    assert len(server.requests) == 3
+    assert all(request.url.path == "/drive/v3/files" for request in server.requests)
+    assert verified.directory_id == "root-id" and len(verified.items) == 5
+    assert all(item.parent_location == IdLocation(value="root-id") and item.path == "" for item in verified.items)
 
 
 @pytest.mark.asyncio
@@ -1045,6 +1052,10 @@ async def test_execute_revalidates_google_snapshot_before_any_write(driver_facto
     ))
     assert snapshot.valid
     server.files[folder.value]["parents"] = ["other-folder"]
+    server.requests.clear()
+    sources = await execute._revalidate(preview.store.get(snapshot.preview_id))
+    assert sources[0].parent_location == folder and sources[0].path == ""
+    assert [request.url.path for request in server.requests] == ["/drive/v3/files"]
     if change == "permission":
         server.files["a"]["capabilities"]["canRename"] = False
     else:
@@ -1055,7 +1066,7 @@ async def test_execute_revalidates_google_snapshot_before_any_write(driver_facto
         await execute.execute(snapshot.preview_id)
     assert not server.writes
     assert [request.url.path.removeprefix("/drive/v3/") for request in server.requests] == [
-        "files/root", "files/folder", "files/other-folder", "files",
+        "files",
     ]
 
 

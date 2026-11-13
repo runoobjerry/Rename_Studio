@@ -25,8 +25,9 @@ class StorageDriver(ABC):
         hint: DirectoryHint | None = None, include_breadcrumbs: bool = True,
         ancestor_lookup: AncestorLookup | None = None,
         reuse_target: bool = False,
+        verify: bool = False,
     ) -> DirectoryListing:
-        """Read a listing with optional browse context from the directory service."""
+        """Read a listing; verify requests live children and no directory/ancestor metadata."""
         return await self.list_directory(location)
 
     async def list_directory(self, location: StorageLocation) -> DirectoryListing:
