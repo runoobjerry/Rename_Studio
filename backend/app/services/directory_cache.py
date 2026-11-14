@@ -8,7 +8,7 @@ from app.core.config import DirectoryListingCacheSettings
 from app.core.errors import AppError, NotFoundError, RenameOutcomeUnknownError
 from app.providers.directory_metadata import DirectoryAncestry
 from app.schemas.files import DirectoryBreadcrumb, DirectoryListing, FileItem, RenameFile
-from app.schemas.storage import IdLocation, PathLocation, RootLocation, StorageLocation
+from app.schemas.storage import IdLocation, RootLocation, StorageLocation
 
 
 type DirectoryKey = tuple[str, int, StorageLocation]
@@ -25,14 +25,13 @@ class _RenameUpdate:
 class RenameCacheScope:
     parents: set[StorageLocation]
     folder_ids: set[str] = field(default_factory=set)
-    folder_paths: set[str] = field(default_factory=set)
     unknown_parent: bool = False
     stale_parent: bool = False
     updates: dict[str, _RenameUpdate] = field(default_factory=dict)
 
     def observe(
         self, file_id: str, parent: StorageLocation, original_name: str, outcome: RenameFile | AppError,
-        *, target_confirmed: bool, original_path: str | None = None,
+        *, target_confirmed: bool,
     ) -> None:
         if isinstance(outcome, RenameOutcomeUnknownError):
             self.unknown_parent = True
@@ -41,21 +40,13 @@ class RenameCacheScope:
             if isinstance(outcome, NotFoundError) or "actual_name" in outcome.details:
                 self.stale_parent = True
                 self.folder_ids.add(file_id)
-                if original_path:
-                    self.folder_paths.add(original_path)
             return
         if outcome.parent_location is not None:
             self.parents.add(outcome.parent_location)
-        if outcome.is_directory or original_path is not None:
+        if outcome.is_directory:
             self.folder_ids.update((file_id, outcome.id))
             if isinstance(outcome.location, IdLocation):
                 self.folder_ids.add(outcome.location.value)
-            if original_path:
-                self.folder_paths.add(original_path)
-            if outcome.path:
-                self.folder_paths.add(outcome.path)
-            if outcome.parent_path is not None and original_name:
-                self.folder_paths.add("/".join(filter(None, (outcome.parent_path, original_name))))
         if target_confirmed:
             self.updates[file_id] = _RenameUpdate(parent, original_name, outcome)
         else:
@@ -67,14 +58,9 @@ class _Entry:
     payload: bytes
     expires_at: float
     directory_id: str | None
-    path: str
     parent: StorageLocation | None
     ancestry: DirectoryAncestry | None
     recorded_at: float
-
-    @property
-    def breadcrumb_ids(self) -> tuple[str, ...]:
-        return tuple(file_id for file_id, _ in self.ancestry.chain[1:]) if self.ancestry is not None else ()
 
 
 class _ListingCache(TLRUCache):
@@ -210,15 +196,6 @@ class DirectoryCache:
             parent = parent if parent is not None else entry.parent if entry is not None else None
             self.invalidate_rename(key[0], RenameCacheScope({parent} if parent is not None else set(), {key[2].value}))
 
-    def path_for(self, key: DirectoryKey) -> str | None:
-        _, _, location = key
-        if isinstance(location, RootLocation):
-            return ""
-        if isinstance(location, PathLocation):
-            return location.value
-        _, entry = self._find(key)
-        return entry.path if entry is not None else None
-
     @classmethod
     def _listing_ancestry(cls, listing: DirectoryListing) -> DirectoryAncestry | None:
         chain = cls.get_breadcrumbs(listing)
@@ -242,7 +219,9 @@ class DirectoryCache:
         """A fully live chain supersedes conflicting snapshots, including parent item lists."""
         fresh = self._listing_ancestry(listing)
         if fresh is None:
-            return False
+            # Without a complete chain, a refresh cannot rule out moved ancestors.
+            self.invalidate(key[0])
+            return True
         self._entries.expire()
         scope = RenameCacheScope(set())
         previous = self.get((key[0], key[1], listing.location or key[2]))
@@ -254,7 +233,6 @@ class DirectoryCache:
                 current = current_items.get(item.id)
                 if current is None or not current.is_directory or current.name != item.name:
                     scope.folder_ids.add(item.id)
-                    scope.folder_paths.add(item.path)
         root_id = fresh.chain[0][0]
         for index, (folder_id, name) in enumerate(fresh.chain):
             lookup = RootLocation() if index == 0 else folder_id
@@ -285,7 +263,7 @@ class DirectoryCache:
         ttl = self._ttl if listing.items else self._empty_ttl
         now = monotonic()
         deadline = min(now + ttl, expires_at) if expires_at is not None else now + ttl
-        self._store(key, _Entry(payload, deadline, listing.directory_id, listing.path,
+        self._store(key, _Entry(payload, deadline, listing.directory_id,
                                 listing.parent_location, self._listing_ancestry(listing), now))
 
     def invalidate(self, storage_id: str | None = None) -> None:
@@ -304,31 +282,17 @@ class DirectoryCache:
 
     def _apply_rename(self, storage_id: str, scope: RenameCacheScope, *, patch_revision: int | None) -> None:
         entries = [(key, entry) for key, entry in self._entries.items() if key[0] == storage_id]
-        folder_ids = {IdLocation(value=value) for value in scope.folder_ids}
-        # Path-based listings can identify a renamed ancestor via its cached folder or direct child.
-        for key, entry in entries:
-            if entry.breadcrumb_ids:
-                continue
-            if key[2] in folder_ids or entry.directory_id in scope.folder_ids:
-                scope.folder_paths.add(entry.path)
-            elif entry.parent in folder_ids:
-                scope.folder_paths.add(entry.path.rpartition("/")[0])
-
+        subtree: set[DirectoryKey] = set()
+        for revision in {key[1] for key, _ in entries}:
+            for folder_id in scope.folder_ids:
+                subtree.update(self._ancestors.get((storage_id, revision, folder_id), ()))
         parent_ids = {parent.value for parent in scope.parents if isinstance(parent, IdLocation)}
-        parent_paths = {parent.value.casefold() for parent in scope.parents if isinstance(parent, PathLocation)}
-        folder_paths = {path.casefold() for path in scope.folder_paths if path}
         patchable: list[DirectoryKey] = []
         for key, entry in entries:
-            path = entry.path.casefold()
-            in_subtree = (
-                key[2] in folder_ids or entry.directory_id in scope.folder_ids or entry.parent in folder_ids
-                or scope.folder_ids.intersection(entry.breadcrumb_ids)
-                or (not entry.breadcrumb_ids and any(path == folder or path.startswith(folder + "/") for folder in folder_paths))
-            )
-            if in_subtree:
+            # An unindexed listing cannot prove it lies outside a renamed subtree.
+            if key in subtree or (scope.folder_ids and entry.ancestry is None):
                 self._remove(key)
-            elif (key[2] in scope.parents or entry.directory_id in parent_ids
-                  or (not entry.breadcrumb_ids and path in parent_paths)):
+            elif key[2] in scope.parents or entry.directory_id in parent_ids:
                 if key[1] == patch_revision:
                     patchable.append(key)
                 else:

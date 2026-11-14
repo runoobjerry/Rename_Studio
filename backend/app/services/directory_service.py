@@ -10,7 +10,6 @@ from app.core.log_context import request_id_context
 from app.providers.base import StorageDriver
 from app.providers.directory_metadata import AncestorLookup, DirectoryAncestry, DirectoryHint, DirectoryMetadataConflict
 from app.schemas.files import DirectoryListing, FileItem
-from app.schemas.rename import SingleRenameExecuteRequest
 from app.schemas.storage import IdLocation, RootLocation, StorageLocation
 from app.services.directory_cache import DirectoryCache, DirectoryKey, RenameCacheScope
 
@@ -68,14 +67,6 @@ class DirectoryService:
 
     def _can_publish(self, read: _Read) -> bool:
         return not read.abandoned and read.generation == self._generations[read.key[0]]
-
-    def single_rename_scope(self, storage_id: str, request: SingleRenameExecuteRequest) -> RenameCacheScope:
-        # The request supplies only browse context. Collect cache hints without a Provider read.
-        scope = RenameCacheScope({request.location}, {request.file_id})
-        parent_path = self._cache.path_for((storage_id, request.revision, request.location))
-        if parent_path is not None and request.original_name:
-            scope.folder_paths.add("/".join(filter(None, (parent_path, request.original_name))))
-        return scope
 
     @contextmanager
     def writing(self, storage_id: str, revision: int, scope: RenameCacheScope) -> Iterator[None]:

@@ -266,16 +266,16 @@ class ExecuteService:
             return self._response(snapshot.preview_id, results)
 
         by_id = {source.id: source for source in sources}
-        previous_by_id = {source.id: source for source in snapshot.sources}
         requests = [RenameRequest(item.file_id, item.new_name) for item in changed]
         source_parents = {request.file_id: StorageDriver.parent_directory(by_id[request.file_id]) for request in requests}
-        scope = RenameCacheScope(set(source_parents.values()))
+        scope = RenameCacheScope(set(source_parents.values()), {
+            source.id for source in snapshot.sources if source.is_directory and source.id in source_parents
+        })
 
         def observe(file_id: str, outcome: FileItem | AppError, target_confirmed: bool) -> None:
-            previous = previous_by_id[file_id]
             scope.observe(
                 file_id, source_parents[file_id], by_id[file_id].name, outcome,
-                target_confirmed=target_confirmed, original_path=previous.path if previous.is_directory else None,
+                target_confirmed=target_confirmed,
             )
 
         progress.phase = "renaming"

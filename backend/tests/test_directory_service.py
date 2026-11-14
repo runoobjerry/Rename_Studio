@@ -311,7 +311,16 @@ async def test_late_cached_read_preserves_patched_parent_and_renamed_folder_inva
         await asyncio.wait_for(driver.started.wait(), 5)
         await directories.list_directory("cloud", IdLocation(value="root-id"))
         if is_folder:
-            await directories.list_directory("cloud", child)
+            child_listing = await directories.list_directory("cloud", child)
+            # Include a deeper indexed descendant and one whose ancestry is unavailable.
+            for folder_id, complete in (("grandchild", True), ("missing-ancestry", False)):
+                location = IdLocation(value=folder_id)
+                descendant = child_listing.model_copy(update={
+                    "directory_id": folder_id, "location": location, "parent_location": child,
+                    "breadcrumbs": [*child_listing.breadcrumbs, DirectoryBreadcrumb(name="Nested", location=location)]
+                    if complete else None,
+                })
+                directories._cache.put(("cloud", 1, location), descendant, descendant.model_dump_json().encode("utf-8"))
         deadline = directories._cache.expires_at(("cloud", 1, root))
         now = 20
         scope = RenameCacheScope({root})
@@ -331,6 +340,8 @@ async def test_late_cached_read_preserves_patched_parent_and_renamed_folder_inva
     assert directories._cache.expires_at(("cloud", 1, root)) == deadline
     if is_folder:
         assert directories._cache.get(("cloud", 1, child)) is None
+        for folder_id in ("grandchild", "missing-ancestry"):
+            assert directories._cache.get(("cloud", 1, IdLocation(value=folder_id))) is None
         assert directories._cache.ancestor("cloud", 1, "item") is None
     assert driver.calls == (4 if is_folder else 3)
 
@@ -360,6 +371,12 @@ async def test_refresh_structure_change_fences_reads_started_during_the_refresh(
     assert directories._cache.get(("cloud", 1, child)) is None
     assert await directories.list_directory("cloud", root) == latest
     assert latest.items[0].name == "renamed folder" and driver.calls == 3
+    # An incomplete live chain cannot establish which old ancestry remains valid.
+    await directories.list_directory("cloud", child)
+    incomplete = latest.model_copy(update={"directory_id": None, "breadcrumbs": None})
+    assert directories._cache.reconcile_refresh(("cloud", 1, root), incomplete)
+    assert directories._cache.get(("cloud", 1, root)) is None
+    assert directories._cache.get(("cloud", 1, child)) is None
 
 
 @pytest.mark.asyncio

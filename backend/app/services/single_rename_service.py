@@ -6,6 +6,7 @@ from app.providers.base import RenameRequest, StorageDriver
 from app.providers.registry import ProviderRegistry
 from app.schemas.files import RenameFile
 from app.schemas.rename import SingleExecuteItem, SingleRenameExecuteRequest, SingleRenameExecuteResponse
+from app.services.directory_cache import RenameCacheScope
 from app.services.rename_write import RenameObserver, drain_writes, rename_failure_status, resolve_rename_outcome
 
 
@@ -28,7 +29,7 @@ class SingleRenameService:
                 new_name=request.target_name, status="failed",
             )
             directories = self.providers.manager.directories
-            scope = directories.single_rename_scope(storage_id, request)
+            scope = RenameCacheScope({request.location}, {request.file_id})
             with directories.writing(storage_id, request.revision, scope):
                 task = asyncio.create_task(self._rename(
                     driver, RenameRequest(request.file_id, request.target_name),
