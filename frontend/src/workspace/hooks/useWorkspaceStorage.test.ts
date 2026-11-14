@@ -191,17 +191,14 @@ function mountStorage() {
   });
 }
 
-it("forces a manual refresh past an older read and keeps later navigation in cache mode", async () => {
-  const old = deferred<DirectoryListing>();
-  const refreshed = listing(1);
-  vi.mocked(api.fetchStorageFiles).mockReturnValueOnce(old.promise).mockResolvedValueOnce(refreshed);
+it("sends manual refreshes in live mode and later navigation in cache mode", async () => {
   const hook = mountStorage();
-  await waitFor(() => expect(api.fetchStorageFiles).toHaveBeenCalledWith("default-local", { kind: "root" }));
+  await waitFor(() => expect(hook.result.current.files.isSuccess).toBe(true));
+  const refreshed = listing(1);
+  vi.mocked(api.fetchStorageFiles).mockResolvedValueOnce(refreshed);
   act(() => hook.result.current.refreshFiles());
   await waitFor(() => expect(hook.result.current.files.data).toEqual(refreshed));
   expect(api.fetchStorageFiles).toHaveBeenLastCalledWith("default-local", { kind: "root" }, true);
-  await act(async () => old.resolve(listing(2)));
-  expect(hook.result.current.files.data).toEqual(refreshed);
   act(() => hook.result.current.setPath("another"));
   await waitFor(() => expect(api.fetchStorageFiles).toHaveBeenLastCalledWith("default-local", { kind: "path", value: "another" }));
 });

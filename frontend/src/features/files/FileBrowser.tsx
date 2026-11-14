@@ -1,6 +1,5 @@
 import { memo, useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import ArrowBackRoundedIcon from "@mui/icons-material/ArrowBackRounded";
 import EditRoundedIcon from "@mui/icons-material/EditRounded";
 import FolderRoundedIcon from "@mui/icons-material/FolderRounded";
 import InsertDriveFileOutlinedIcon from "@mui/icons-material/InsertDriveFileOutlined";
@@ -153,14 +152,6 @@ export const FileBrowser = memo(function FileBrowser({
           </p>
         </div>
         <div className="browser-heading-actions">
-          {(listing.parent_location !== undefined ? listing.parent_location !== null : listing.parent_path !== null) && (
-            <Tooltip title={t("files:parent")} arrow>
-              <PanelIconButton size="small" aria-label={t("files:parent")} disabled={disabled}
-                onClick={() => listing.parent_location && onNavigateLocation ? onNavigateLocation(listing.parent_location) : onNavigate(listing.parent_path ?? "")}>
-                <ArrowBackRoundedIcon fontSize="small" />
-              </PanelIconButton>
-            </Tooltip>
-          )}
           <Tooltip title={isRefreshing ? t("common:refreshing") : t("common:refresh")} arrow>
             <span>
               <PanelIconButton

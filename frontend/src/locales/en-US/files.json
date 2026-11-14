@@ -9,7 +9,6 @@
     "folder": "Folder"
   },
   "title": "File selection",
-  "parent": "Up one level",
   "invert": "Invert selection",
   "filterItems": "Filter items",
   "refreshingDirectory": "Refreshing directory",

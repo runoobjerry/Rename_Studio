@@ -22,7 +22,7 @@
 | 不同账号连接的目录隔离，换号后的旧目录与旧预览不能污染新工作区 | [工作台存储集成](../frontend/src/WorkspaceApp.storage.test.tsx)、[默认云目录](../frontend/src/features/files/defaultCloudLocation.test.ts) |
 | 工作区按 browser_auth 判定授权；元数据 pending/error 不读取授权或文件，恢复后使用原目录；元数据刷新失败保留账号身份与选择 | [存储 Hook](../frontend/src/workspace/hooks/useWorkspaceStorage.test.ts) |
 | 子目录点击和面包屑跳转按不透明 ID 导航并携带已知父位置，强制读取忽略提示 | [工作区](../frontend/src/WorkspaceApp.storage.test.tsx) · [面包屑](../frontend/src/features/files/LocationBreadcrumbs.test.tsx) · [API 客户端](../frontend/src/api/client.test.ts) |
-| 手动目录刷新发送 `refresh: true`，可越过正在进行的普通读取并丢弃迟到结果；普通导航沿用默认读取模式。外部导航发送 `refresh: true, reuse_ancestors: true`；手动重试仍只发送 `refresh: true`。通过真实根 ID 进入 OneDrive 时，预览使用返回的规范根位置 | [API 请求体](../frontend/src/api/client.test.ts)、[存储 Hook](../frontend/src/workspace/hooks/useWorkspaceStorage.test.ts)、[外部导航集成](../frontend/src/WorkspaceApp.externalNavigation.test.tsx)、[预览工作流](../frontend/src/features/rename/useRenameWorkflow.test.ts) |
+| 手动目录刷新发送 `refresh: true`；普通导航沿用默认读取模式。外部导航发送 `refresh: true, reuse_ancestors: true`；手动重试仍只发送 `refresh: true`。通过真实根 ID 进入 OneDrive 时，预览使用返回的规范根位置 | [API 请求体](../frontend/src/api/client.test.ts)、[存储 Hook](../frontend/src/workspace/hooks/useWorkspaceStorage.test.ts)、[外部导航集成](../frontend/src/WorkspaceApp.externalNavigation.test.tsx)、[预览工作流](../frontend/src/features/rename/useRenameWorkflow.test.ts) |
 | 非 Local 且无需浏览器授权的服务恢复 ID 位置，不发授权请求；未知 OAuth 服务等待授权，不支持的位置类型不请求 | 存储 Hook |
 | 无浏览器授权服务的选择随成功列表同步 | 工作流 Hook |
 | 选择及规则变化使旧预览失效；保留替换 ID、释放迟到或工作区变化后的预览，选择改回原值也不会接收已失效的响应 | [工作流 Hook](../frontend/src/features/rename/useRenameWorkflow.test.ts)、工作台集成 代表性 UI 接线 |

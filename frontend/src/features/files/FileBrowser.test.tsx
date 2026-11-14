@@ -34,7 +34,7 @@ const listing = {
 
 describe("FileBrowser", () => {
 
-  it("navigates same-named folders and parents by opaque location", () => {
+  it("navigates same-named folders by opaque location", () => {
     const navigate = vi.fn();
     const navigateLocation = vi.fn();
     render(<FileBrowser listing={{ ...listing, location: { kind: "id", value: "current-id" }, parent_location: { kind: "id", value: "parent-id" }, items: [
@@ -43,8 +43,6 @@ describe("FileBrowser", () => {
     ] }} storageName="Cloud" selectedIds={[]} onNavigate={navigate} onNavigateLocation={navigateLocation} onToggle={vi.fn()} onSelectAll={vi.fn()} onInvertSelection={vi.fn()} />);
     fireEvent.click(screen.getAllByRole("button", { name: "same" })[1]);
     expect(navigateLocation).toHaveBeenCalledWith({ kind: "id", value: "second" }, { kind: "id", value: "current-id" });
-    fireEvent.click(screen.getByRole("button", { name: "返回上级" }));
-    expect(navigateLocation).toHaveBeenLastCalledWith({ kind: "id", value: "parent-id" });
     expect(navigate).not.toHaveBeenCalled();
   });
   it("passes only visible IDs to bulk actions and uses visible rows for header state", async () => {

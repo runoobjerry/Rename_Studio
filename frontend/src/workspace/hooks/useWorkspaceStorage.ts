@@ -208,6 +208,7 @@ export function useWorkspaceStorage({ pauseFileQueries, onLocalRootSelected, dir
     ...(externalPending ? { staleTime: Infinity } : {}),
     enabled: !pauseFileQueries && Boolean(activeStorage) && locationReady,
   });
+  const directoryBusy = files.isFetching;
   useEffect(() => {
     if (external.current || externalFilesKey) return;
     if (!activeStorage || !locationReady || !files.isSuccess || files.isFetching || !files.data.location) return;
@@ -227,7 +228,7 @@ export function useWorkspaceStorage({ pauseFileQueries, onLocalRootSelected, dir
   const openExternalTarget = useCallback((target: ExternalNavigationTarget, beforeSwitch: () => void,
     guard: () => void): Promise<void> => {
     // Reserve the operation synchronously, before the caller emits accepted.
-    if (external.current) throw new NavigationError("busy");
+    if (external.current || directoryBusy) throw new NavigationError("busy");
     const { storage } = target;
     const auth = queryClient.getQueryData<AuthorizationStatus>(["storage-auth", storage.storage_id, storage.revision]);
     if (auth && !auth.connected) throw new NavigationError("auth_required");
@@ -246,7 +247,7 @@ export function useWorkspaceStorage({ pauseFileQueries, onLocalRootSelected, dir
       // so a synchronous Store render cannot resume the old directory under the new navigation.
       beforeSwitch();
     });
-  }, [queryClient]);
+  }, [queryClient, directoryBusy]);
 
   useEffect(() => {
     // A task reset can flush effects from the source render before the destination state commits.
@@ -373,10 +374,8 @@ export function useWorkspaceStorage({ pauseFileQueries, onLocalRootSelected, dir
   }, [cloudAccountId, cloudReady, files.isSuccess, files.isFetching, files.error, files.data, storageId, notify, appSettings.save]);
 
   const refreshFiles = useCallback(() => {
-    if (!locationReady) return;
-    // refetch alone can join an initial request that has no data yet. Cancel that
-    // request first, and keep the refresh intent for any retries of this refetch.
-    void queryClient.cancelQueries({ queryKey: directoryKey, exact: true });
+    if (!locationReady || directoryBusy || manualRefresh.current?.key === JSON.stringify(directoryKey)) return;
+    // Keep the refresh intent for any retries of this refetch.
     const operation = { key: JSON.stringify(directoryKey) };
     manualRefresh.current = operation;
     void files.refetch().then((result) => {
@@ -385,7 +384,7 @@ export function useWorkspaceStorage({ pauseFileQueries, onLocalRootSelected, dir
       if (result.error) notify({ key: "files:notifications.refreshFailed", error: result.error, errorContext: "directory" }, "error");
       else notify({ key: "files:notifications.refreshed" });
     });
-  }, [locationReady, queryClient, directoryKey, files.refetch, notify]);
+  }, [locationReady, directoryBusy, directoryKey, files.refetch, notify]);
 
   // 执行保护与重命名重置仍由工作区协调，Hook 不依赖任务 Store 或重命名 mutation。
   return {
@@ -395,7 +394,7 @@ export function useWorkspaceStorage({ pauseFileQueries, onLocalRootSelected, dir
     providerDefinitions, providerDefinition, providerDefinitionError, metadataReady, requiresAuth, supportsLocalPicker, supportsLocation,
     cloudAccountId, cloudAuthorized, cloudSession, cloudReady, restoredCloudSession,
     appSettingsReady: appSettings.isSuccess || appSettings.isError,
-    files, workspaceKey, settingsLoading, pickLocalRoot,
+    files, directoryBusy, workspaceKey, settingsLoading, pickLocalRoot,
     restoreDefaultCloudPath, setDefaultCloudPath, refreshFiles,
   };
 }

@@ -9,7 +9,6 @@
     "folder": "文件夹"
   },
   "title": "文件选择",
-  "parent": "返回上级",
   "invert": "反选",
   "filterItems": "筛选项目",
   "refreshingDirectory": "正在刷新目录",
