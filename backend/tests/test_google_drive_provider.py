@@ -580,7 +580,7 @@ async def test_browsing_reuses_google_root_and_folders_from_completed_listings(d
         opened = await directories.list_directory(STORAGE_ID, IdLocation(value=target), mode="navigate")
         assert opened.directory_id == target
         assert [request.url.path.removeprefix("/drive/v3/") for request in server.requests] == [
-            "files/root", *(f"files/{key}" for key in metadata_ids), "files",
+            *(f"files/{key}" for key in metadata_ids), "files",
         ]
     server.requests.clear()
     await directories.list_directory(STORAGE_ID, IdLocation(value="g"), mode="refresh")
@@ -597,7 +597,7 @@ async def test_google_missing_target_does_not_retry_or_evict_the_root(driver_fac
     with pytest.raises(NotFoundError):
         await directories.list_directory(STORAGE_ID, IdLocation(value="missing"))
     assert await directories.list_directory(STORAGE_ID, RootLocation()) == root
-    assert [request.url.path for request in server.requests] == ["/drive/v3/files/root", "/drive/v3/files/missing"]
+    assert [request.url.path for request in server.requests] == ["/drive/v3/files/missing"]
 
 
 @pytest.mark.asyncio
@@ -743,7 +743,7 @@ async def test_google_structural_conflict_invalidates_the_hint_and_retries_live(
     ]
     server.requests.clear()
     await directories.list_directory(STORAGE_ID, root)
-    assert len(server.requests) == 2
+    assert [request.url.path for request in server.requests] == ["/drive/v3/files"]
 
 
 @pytest.mark.asyncio

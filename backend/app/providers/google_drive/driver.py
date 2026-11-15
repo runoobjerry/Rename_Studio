@@ -121,10 +121,41 @@ class GoogleDriveDriver(StorageDriver):
         if hint is not None:
             return await self._read_hinted_directory(hint)
 
-        root, cache = await self._root_context()
-        directory_id = root.id if isinstance(location, RootLocation) else location.value
-        await self._load_files([directory_id], cache)
-        directory = cache[directory_id]
+        if reuse_target and ancestor_lookup is not None:
+            target = ancestor_lookup(location.value if isinstance(location, IdLocation) else RootLocation())
+            if target is not None:
+                directory_id = target.chain[-1][0]
+                canonical = RootLocation() if len(target.chain) == 1 else IdLocation(value=directory_id)
+                parent = (
+                    (RootLocation() if len(target.chain) == 2 else IdLocation(value=target.chain[-2][0]))
+                    if len(target.chain) > 1 else None
+                )
+                parent_path = "/".join(name for _, name in target.chain[1:-1])
+                path = "/".join(name for _, name in target.chain[1:])
+                items = await self._list_children(directory_id, canonical, path, {file_id for file_id, _ in target.chain})
+                # Google may return an empty successful list after folder access is revoked.
+                if not items:
+                    directory = await self._get_file(directory_id)
+                    self._require_available(directory)
+                    self._require_folder(directory)
+                    self._require_listing_permission(directory.capabilities.canListChildren)
+                    expected_parents = [target.chain[-2][0]] if len(target.chain) > 1 else []
+                    if (directory.parents or []) != expected_parents or directory.name != target.chain[-1][1]:
+                        raise DirectoryMetadataConflict("Google Drive returned different folder ancestry")
+                return DirectoryListing(
+                    provider=self.provider_type, path=path, parent_path=parent_path if parent is not None else None,
+                    location=canonical, directory_id=directory_id, parent_location=parent,
+                    breadcrumbs=target.breadcrumbs(), items=items, root_id=target.chain[0][0],
+                )
+
+        known_root = ancestor_lookup(RootLocation()) if ancestor_lookup is not None else None
+        if known_root is None:
+            root_file, cache = await self._root_context()
+            root = DirectoryMetadata(root_file.id, root_file.name, None)
+        else:
+            root_id, root_name = known_root.chain[0]
+            root = DirectoryMetadata(root_id, root_name, None)
+            cache = {}
 
         def metadata(item: _DriveFile) -> DirectoryMetadata:
             self._require_available(item)
@@ -135,13 +166,16 @@ class GoogleDriveDriver(StorageDriver):
             await self._load_files([folder_id], cache)
             return metadata(cache[folder_id])
 
-        root_metadata = DirectoryMetadata(root.id, root.name, None)
-        directory_metadata = root_metadata if directory is root else metadata(directory)
-        ancestry = await resolve_ancestry(directory_metadata, root_metadata, load, ancestor_lookup)
+        directory_id = root.id if isinstance(location, RootLocation) else location.value
+        directory = root
+        if directory_id != root.id or known_root is None:
+            await self._load_files([directory_id], cache)
+            directory_file = cache[directory_id]
+            directory = metadata(directory_file)
+            self._require_listing_permission(directory_file.capabilities.canListChildren)
+        ancestry = await resolve_ancestry(directory, root, load, ancestor_lookup)
         path = "/".join(name for _, name in ancestry.chain[1:])
-        canonical = self._location(directory, root)
-        can_list = directory.capabilities.canListChildren
-        self._require_listing_permission(can_list)
+        canonical = RootLocation() if directory.id == root.id else IdLocation(value=directory.id)
         items = await self._list_children(directory.id, canonical, path, {file_id for file_id, _ in ancestry.chain})
         return DirectoryListing(
             provider=self.provider_type, path=path,
