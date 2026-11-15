@@ -23,10 +23,10 @@ class _RenameUpdate:
 
 @dataclass(slots=True)
 class RenameCacheScope:
-    parents: set[StorageLocation]
+    stale_parents: set[StorageLocation] = field(default_factory=set)
+    # Preserve possible source folders even if result metadata disagrees about type.
     folder_ids: set[str] = field(default_factory=set)
-    unknown_parent: bool = False
-    stale_parent: bool = False
+    outcome_unknown: bool = False
     updates: dict[str, _RenameUpdate] = field(default_factory=dict)
 
     def observe(
@@ -34,15 +34,15 @@ class RenameCacheScope:
         *, target_confirmed: bool,
     ) -> None:
         if isinstance(outcome, RenameOutcomeUnknownError):
-            self.unknown_parent = True
+            self.outcome_unknown = True
             return
         if isinstance(outcome, AppError):
             if isinstance(outcome, NotFoundError) or "actual_name" in outcome.details:
-                self.stale_parent = True
+                self.stale_parents.add(parent)
                 self.folder_ids.add(file_id)
+            else:
+                self.folder_ids.discard(file_id)
             return
-        if outcome.parent_location is not None:
-            self.parents.add(outcome.parent_location)
         if outcome.is_directory:
             self.folder_ids.update((file_id, outcome.id))
             if isinstance(outcome.location, IdLocation):
@@ -50,7 +50,9 @@ class RenameCacheScope:
         if target_confirmed:
             self.updates[file_id] = _RenameUpdate(parent, original_name, outcome)
         else:
-            self.stale_parent = True
+            self.stale_parents.add(parent)
+            if outcome.parent_location is not None:
+                self.stale_parents.add(outcome.parent_location)
 
 
 @dataclass(frozen=True, slots=True)
@@ -194,7 +196,9 @@ class DirectoryCache:
             self.invalidate(key[0])
         elif isinstance(key[2], IdLocation):
             parent = parent if parent is not None else entry.parent if entry is not None else None
-            self.invalidate_rename(key[0], RenameCacheScope({parent} if parent is not None else set(), {key[2].value}))
+            self.invalidate_rename(key[0], RenameCacheScope(
+                stale_parents={parent} if parent is not None else set(), folder_ids={key[2].value},
+            ))
 
     @classmethod
     def _listing_ancestry(cls, listing: DirectoryListing) -> DirectoryAncestry | None:
@@ -223,7 +227,7 @@ class DirectoryCache:
             self.invalidate(key[0])
             return True
         self._entries.expire()
-        scope = RenameCacheScope(set())
+        scope = RenameCacheScope()
         previous = self.get((key[0], key[1], listing.location or key[2]))
         if previous is not None:
             current_items = {item.id: item for item in listing.items}
@@ -252,8 +256,8 @@ class DirectoryCache:
                 new_parent = fresh.chain[index - 1][0]
                 if old.chain[old_index][1] != name or old_parent != new_parent:
                     scope.folder_ids.add(folder_id)
-                    scope.parents.update(RootLocation() if parent == root_id else IdLocation(value=parent)
-                                         for parent in (old_parent, new_parent))
+                    scope.stale_parents.update(RootLocation() if parent == root_id else IdLocation(value=parent)
+                                               for parent in (old_parent, new_parent))
         if not scope.folder_ids:
             return False
         self.invalidate_rename(key[0], scope)
@@ -272,37 +276,42 @@ class DirectoryCache:
             self._remove(key)
 
     def finish_rename(self, storage_id: str, revision: int, scope: RenameCacheScope) -> None:
-        if scope.unknown_parent:
+        if scope.outcome_unknown:
             self.invalidate(storage_id)
-        elif scope.updates or scope.stale_parent:
-            self._apply_rename(storage_id, scope, patch_revision=None if scope.stale_parent else revision)
+        elif scope.updates or scope.stale_parents:
+            self._apply_rename(storage_id, scope, patch_revision=revision)
 
     def invalidate_rename(self, storage_id: str, scope: RenameCacheScope) -> None:
         self._apply_rename(storage_id, scope, patch_revision=None)
 
     def _apply_rename(self, storage_id: str, scope: RenameCacheScope, *, patch_revision: int | None) -> None:
+        updates_by_parent: dict[StorageLocation, dict[str, _RenameUpdate]] = {}
+        for file_id, update in scope.updates.items():
+            for parent in (update.parent, update.current.parent_location):
+                if parent is not None:
+                    updates_by_parent.setdefault(parent, {})[file_id] = update
         entries = [(key, entry) for key, entry in self._entries.items() if key[0] == storage_id]
         subtree: set[DirectoryKey] = set()
         for revision in {key[1] for key, _ in entries}:
             for folder_id in scope.folder_ids:
                 subtree.update(self._ancestors.get((storage_id, revision, folder_id), ()))
-        parent_ids = {parent.value for parent in scope.parents if isinstance(parent, IdLocation)}
-        patchable: list[DirectoryKey] = []
+        patchable: list[tuple[DirectoryKey, _Entry, dict[str, _RenameUpdate]]] = []
         for key, entry in entries:
+            # Canonical root listings also match their opaque directory ID.
+            locations = {key[2]}
+            if entry.directory_id is not None:
+                locations.add(IdLocation(value=entry.directory_id))
+            updates = {file_id: update for parent in locations
+                       for file_id, update in updates_by_parent.get(parent, {}).items()}
             # An unindexed listing cannot prove it lies outside a renamed subtree.
-            if key in subtree or (scope.folder_ids and entry.ancestry is None):
+            if (key in subtree or (scope.folder_ids and entry.ancestry is None)
+                    or locations & scope.stale_parents or (updates and key[1] != patch_revision)):
                 self._remove(key)
-            elif key[2] in scope.parents or entry.directory_id in parent_ids:
-                if key[1] == patch_revision:
-                    patchable.append(key)
-                else:
-                    self._remove(key)
+            elif updates:
+                patchable.append((key, entry, updates))
 
-        for key in patchable:
-            _, entry = self._find(key)
-            if entry is None:
-                continue
-            updated = self._patch_parent(key, entry, scope.updates)
+        for key, entry, updates in patchable:
+            updated = self._patch_parent(key, entry, updates)
             if updated is None:
                 self._remove(key)
             else:

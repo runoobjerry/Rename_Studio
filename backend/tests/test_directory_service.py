@@ -1,4 +1,5 @@
 import asyncio
+from uuid import uuid4
 
 import pytest
 
@@ -6,11 +7,18 @@ from app.core.config import DirectoryListingCacheSettings
 from app.core.errors import NotFoundError, ProviderError, StorageBusyError, StorageConnectionChangedError
 from app.providers.base import StorageDriver
 from app.providers.name_validation import NameValidationIssue
+from app.rules.registry import RuleRegistry
 from app.schemas.files import DirectoryBreadcrumb, DirectoryListing, FileItem, RenameFile
+from app.schemas.rename import RenamePreviewRequest, SingleRenameExecuteRequest
 from app.schemas.storage import IdLocation, PathLocation, RootLocation, StorageLocation
 from app.services import directory_cache
 from app.services.directory_cache import DirectoryCache, RenameCacheScope
 from app.services.directory_service import DirectoryService
+from app.services.execute_service import ExecuteService
+from app.services.preview_service import PreviewService
+from app.services.preview_store import PreviewStore
+from app.services.rename_engine import RenameEngine
+from app.services.single_rename_service import SingleRenameService
 from provider_fixtures import registry_for
 
 
@@ -103,7 +111,7 @@ async def test_other_storage_can_read_refresh_and_write_while_a_read_is_pending(
     try:
         await asyncio.wait_for(first_driver.started.wait(), 5)
         await asyncio.wait_for(directories.list_directory("other", root, mode="refresh"), 5)
-        with manager.execution("other", 1), directories.writing("other", 1, RenameCacheScope({root})):
+        with manager.execution("other", 1), directories.writing("other", 1, RenameCacheScope()):
             assert (await directories.list_directory("other", root)).revision == 1
         directories.invalidate("other")
         assert not pending.done()
@@ -323,7 +331,7 @@ async def test_late_cached_read_preserves_patched_parent_and_renamed_folder_inva
                 directories._cache.put(("cloud", 1, location), descendant, descendant.model_dump_json().encode("utf-8"))
         deadline = directories._cache.expires_at(("cloud", 1, root))
         now = 20
-        scope = RenameCacheScope({root})
+        scope = RenameCacheScope()
         with manager.execution("cloud", 1), directories.writing("cloud", 1, scope):
             driver.started.clear()
             driver.pause_next = True
@@ -344,6 +352,52 @@ async def test_late_cached_read_preserves_patched_parent_and_renamed_folder_inva
             assert directories._cache.get(("cloud", 1, IdLocation(value=folder_id))) is None
         assert directories._cache.ancestor("cloud", 1, "item") is None
     assert driver.calls == (4 if is_folder else 3)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("single", [True, False], ids=["single", "batch"])
+async def test_rename_services_patch_parent_without_extra_reads(single: bool) -> None:
+    class RenamingDriver(DirectoryDriver):
+        writes = 0
+
+        async def list_directory(self, location: StorageLocation) -> DirectoryListing:
+            listing = await super().list_directory(location)
+            listing.items[0].parent_location = RootLocation()
+            return listing
+
+        async def rename(self, file_id: str, new_name: str) -> FileItem:
+            self.writes += 1
+            self.name = new_name
+            return FileItem(id=file_id, name=new_name, path=new_name, parent_path="",
+                            parent_location=RootLocation(), is_directory=self.is_directory)
+
+    driver = RenamingDriver()
+    registry = registry_for({"cloud": driver}, cache_directories=True)
+    directories = registry.manager.directories
+    root = RootLocation()
+    await directories.list_directory("cloud", root)
+    await directories.list_directory("cloud", IdLocation(value="unrelated"))
+    reads = driver.calls
+    deadline = directories._cache.expires_at(("cloud", 1, root))
+    if single:
+        result = await SingleRenameService(registry).execute("cloud", SingleRenameExecuteRequest(
+            operation_id=uuid4(), revision=1, file_id="item", location=root,
+            original_name="original", target_name="renamed",
+        ))
+    else:
+        store = PreviewStore()
+        preview = PreviewService(registry, RenameEngine(RuleRegistry()), store)
+        snapshot = await preview.preview(RenamePreviewRequest(
+            storage_id="cloud", location=root, file_ids=["item"], target_name="renamed",
+        ))
+        result = await ExecuteService(registry, store, preview).execute(snapshot.preview_id)
+    assert result.status == "completed"
+    assert (await directories.list_directory("cloud", root)).items[0].name == "renamed"
+    await directories.list_directory("cloud", IdLocation(value="unrelated"))
+    # Batch execution still makes exactly one live pre-write verification read.
+    assert driver.calls == reads + (0 if single else 1)
+    assert driver.writes == 1
+    assert directories._cache.expires_at(("cloud", 1, root)) == deadline
 
 
 @pytest.mark.asyncio
@@ -393,7 +447,7 @@ async def test_capacity_evicts_the_least_recently_used_listing() -> None:
     assert directories._cache.ancestor("cloud", 1, "c") is not None
     await directories.list_directory("cloud", IdLocation(value="b"))
     assert driver.calls == 4
-    directories.invalidate_rename("cloud", RenameCacheScope(set(), {"b"}))
+    directories.invalidate_rename("cloud", RenameCacheScope(folder_ids={"b"}))
     assert directories._cache.ancestor("cloud", 1, "b") is None
     assert directories._cache.ancestor("cloud", 1, "root-id") is not None
     directories.invalidate("cloud")
@@ -488,7 +542,7 @@ async def test_concurrent_misses_share_a_read_without_repopulating_after_refresh
                 await directories.list_directory("cloud", location, mode="refresh")
             driver.fail = False
         elif interruption == "write":
-            with manager.execution("cloud", 1), directories.writing("cloud", 1, RenameCacheScope({location})):
+            with manager.execution("cloud", 1), directories.writing("cloud", 1, RenameCacheScope()):
                 with pytest.raises(StorageBusyError):
                     await directories.list_directory("cloud", location, mode="refresh")
         else:
@@ -530,7 +584,7 @@ async def test_refresh_overlapping_a_write_cannot_confirm_the_directory() -> Non
     refresh = asyncio.create_task(directories.list_directory("cloud", RootLocation(), mode="refresh"))
     try:
         await asyncio.wait_for(driver.started.wait(), timeout=5)
-        with manager.execution("cloud", 1), directories.writing("cloud", 1, RenameCacheScope({RootLocation()})):
+        with manager.execution("cloud", 1), directories.writing("cloud", 1, RenameCacheScope()):
             driver.name = "updated"
     finally:
         driver.resume.set()

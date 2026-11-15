@@ -29,7 +29,7 @@ class SingleRenameService:
                 new_name=request.target_name, status="failed",
             )
             directories = self.providers.manager.directories
-            scope = RenameCacheScope({request.location}, {request.file_id})
+            scope = RenameCacheScope(folder_ids={request.file_id})
             with directories.writing(storage_id, request.revision, scope):
                 task = asyncio.create_task(self._rename(
                     driver, RenameRequest(request.file_id, request.target_name),

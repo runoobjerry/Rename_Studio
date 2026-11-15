@@ -202,7 +202,7 @@ class DirectoryService:
                 hint = self._hint(read.key, parent_location)
             self._cache.invalidate_directory(read.key, hint.parent_location if hint is not None else None)
             if read.borrowed:
-                self._cache.invalidate_rename(storage_id, RenameCacheScope(set(), read.borrowed))
+                self._cache.invalidate_rename(storage_id, RenameCacheScope(folder_ids=read.borrowed))
             # This read owns the invalidation and may publish its unhinted retry.
             read.generation = self._advance_generation(storage_id)
 

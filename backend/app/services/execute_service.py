@@ -104,14 +104,14 @@ class ExecuteService:
                 siblings=listing.items,
             )
         except (KeyError, NotFoundError) as exc:
-            directories.invalidate_rename(storage_id, RenameCacheScope({parent}))
+            directories.invalidate_rename(storage_id, RenameCacheScope(stale_parents={parent}))
             raise PreviewExpiredError(
                 "Files changed after the preview was created"
             ) from exc
 
         # 与有效快照逐项一致即可保证有效性；源项始终按同一请求 ID 列表构建。
         if items != snapshot.response.items:
-            directories.invalidate_rename(storage_id, RenameCacheScope({parent}))
+            directories.invalidate_rename(storage_id, RenameCacheScope(stale_parents={parent}))
             raise PreviewExpiredError("Rename preview is no longer valid")
         return sources
 
@@ -268,7 +268,7 @@ class ExecuteService:
         by_id = {source.id: source for source in sources}
         requests = [RenameRequest(item.file_id, item.new_name) for item in changed]
         source_parents = {request.file_id: StorageDriver.parent_directory(by_id[request.file_id]) for request in requests}
-        scope = RenameCacheScope(set(source_parents.values()), {
+        scope = RenameCacheScope(folder_ids={
             source.id for source in snapshot.sources if source.is_directory and source.id in source_parents
         })
 
