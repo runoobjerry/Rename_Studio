@@ -149,10 +149,6 @@ class DirectoryCache:
         if not candidates:
             return None
         _, newest = max(candidates, key=lambda candidate: candidate[0])
-        identity = tuple(file_id for file_id, _ in newest.chain)
-        if any(tuple(file_id for file_id, _ in chain.chain) != identity or chain.drive_id != newest.drive_id
-               for _, chain in candidates):
-            return None
         return newest
 
     def _find(self, key: DirectoryKey) -> tuple[DirectoryKey, _Entry | None]:

@@ -283,7 +283,7 @@ async def test_revision_change_rejects_pending_result_without_publishing() -> No
 
 
 @pytest.mark.asyncio
-async def test_verify_does_not_join_or_invalidate_an_inflight_cached_read() -> None:
+async def test_verify_reads_live_without_joining_or_replacing_browse_cache() -> None:
     driver = DirectoryDriver()
     directories = registry_for({"cloud": driver}, cache_directories=True).manager.directories
     driver.pause_next = True
@@ -299,6 +299,14 @@ async def test_verify_does_not_join_or_invalidate_an_inflight_cached_read() -> N
         original = await old
     assert await directories.list_directory("cloud", RootLocation()) == original
     assert original.items[0].name == "original" and driver.calls == 2
+
+    driver.name = "newer"
+    verified = await directories.list_directory("cloud", RootLocation(), mode="verify")
+    assert verified.items[0].name == "newer"
+    assert await directories.list_directory("cloud", RootLocation()) == original
+    refreshed = await directories.list_directory("cloud", RootLocation(), mode="refresh")
+    assert await directories.list_directory("cloud", RootLocation()) == refreshed == verified
+    assert driver.calls == 4
 
 
 @pytest.mark.asyncio
@@ -494,21 +502,6 @@ async def test_provider_without_cache_capability_reads_live() -> None:
     driver.name = "changed"
     assert (await directories.list_directory("direct", RootLocation())).items[0].name == "changed"
     assert driver.calls == 2
-
-
-@pytest.mark.asyncio
-async def test_verify_read_leaves_cached_listing_until_refresh() -> None:
-    driver = DirectoryDriver()
-    directories = registry_for({"cloud": driver}, cache_directories=True).manager.directories
-    root = RootLocation()
-    cached = await directories.list_directory("cloud", root)
-    driver.name = "new"
-    verified = await directories.list_directory("cloud", root, mode="verify")
-    assert verified.items[0].name == "new"
-    assert await directories.list_directory("cloud", root) == cached
-    refreshed = await directories.list_directory("cloud", root, mode="refresh")
-    assert await directories.list_directory("cloud", root) == refreshed == verified
-    assert driver.calls == 3
 
 
 @pytest.mark.asyncio

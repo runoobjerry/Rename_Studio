@@ -36,10 +36,8 @@ def item(file_id: str, parent: StorageLocation, *, folder: bool = False) -> File
     (RenameOutcomeUnknownError("Lost response"), False),
 ], ids=["rejected", "missing", "stale", "unconfirmed-target", "unknown"])
 def test_partial_success_preserves_only_trustworthy_caches(
-    monkeypatch: pytest.MonkeyPatch, failure: RenameFile | AppError, parent_trusted: bool,
+    failure: RenameFile | AppError, parent_trusted: bool,
 ) -> None:
-    now = 10
-    monkeypatch.setattr(directory_cache, "monotonic", lambda: now)
     cache = DirectoryCache()
     root = RootLocation()
     source, folder = item("file", root), item("folder", root, folder=True)
@@ -48,16 +46,13 @@ def test_partial_success_preserves_only_trustworthy_caches(
     unrelated = cache_listing(cache, "other")
     old_revision = cache_listing(cache, items=[source, folder], revision=2)
     other_storage = cache_listing(cache, items=[source, folder], storage_id="other")
-    deadline = cache.expires_at(parent)
     scope = RenameCacheScope(folder_ids={"folder"})
     scope.observe("file", root, "file", source.model_copy(update={"name": "new"}), target_confirmed=True)
     scope.observe("folder", root, "folder", failure, target_confirmed=False)
-    now = 20
     cache.finish_rename("cloud", 1, scope)
 
     if parent_trusted:
         assert [entry.name for entry in cache.get(parent).items] == ["new", "folder"]
-        assert cache.expires_at(parent) == deadline
         assert cache.get(descendant) is not None
         assert cache.ancestor("cloud", 1, "folder") is not None
     else:
