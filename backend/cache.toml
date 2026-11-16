@@ -10,9 +10,3 @@
 
 # 目录列表数量上限
 # max_entries =
-
-# 所有列表合计的序列化字节上限
-# max_bytes =
-
-# 单个列表的序列化字节上限
-# max_entry_bytes =

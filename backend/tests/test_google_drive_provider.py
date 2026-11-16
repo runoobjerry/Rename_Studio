@@ -191,7 +191,8 @@ class WritableDriveServer(DriveServer):
         if request.method == "GET" and request.url.path == "/drive/v3/files":
             parent = re.search(r"'([^']+)' in parents", request.url.params["q"])
             assert parent is not None
-            self.pages[None] = file_page([item for item in self.files.values() if item["parents"] == [parent[1]]])
+            parent_id = "root-id" if parent[1] == "root" else parent[1]
+            self.pages[None] = file_page([item for item in self.files.values() if item["parents"] == [parent_id]])
         if request.method != "POST" or b"\r\nPATCH " not in request.content:
             return super().__call__(request)
         self.requests.append(request)
@@ -270,6 +271,12 @@ async def test_root_pagination_continues_empty_page_and_maps_types_permissions(d
     assert by_id["readonly"].modified_at.isoformat() == "2026-10-18T01:02:03+00:00"
     assert all(item.parent_location == RootLocation() for item in listing.items)
     assert all("outside" not in request.url.path for request in server.requests)
+    server.requests.clear()
+    verified = await driver_factory(server).read_directory(RootLocation(), verify=True)
+    assert len(server.requests) == 3
+    assert all(request.url.path == "/drive/v3/files" for request in server.requests)
+    assert verified.directory_id == "root-id" and len(verified.items) == 5
+    assert all(item.parent_location == IdLocation(value="root-id") and item.path == "" for item in verified.items)
 
 
 @pytest.mark.asyncio
@@ -563,6 +570,21 @@ async def test_browsing_reuses_google_root_and_folders_from_completed_listings(d
     assert [request.url.path.removeprefix("/drive/v3/") for request in server.requests] == [
         "files/root", "files", "files", "files", "files", "files",
     ]
+    server.files["f"] = drive_file("f", "F", "c", FOLDER_MIME)
+    server.files["g"] = drive_file("g", "G", "f", FOLDER_MIME)
+    server.files["branch"] = drive_file("branch", "Branch", "a", FOLDER_MIME)
+    for target, metadata_ids in (("c", ["c"]), ("f", ["f"]), ("g", ["g", "f"]), ("branch", ["branch"])):
+        directories.invalidate()
+        await directories.list_directory(STORAGE_ID, IdLocation(value="d"))
+        server.requests.clear()
+        opened = await directories.list_directory(STORAGE_ID, IdLocation(value=target), mode="navigate")
+        assert opened.directory_id == target
+        assert [request.url.path.removeprefix("/drive/v3/") for request in server.requests] == [
+            *(f"files/{key}" for key in metadata_ids), "files",
+        ]
+    server.requests.clear()
+    await directories.list_directory(STORAGE_ID, IdLocation(value="g"), mode="refresh")
+    assert len(server.requests) == 7
 
 
 @pytest.mark.asyncio
@@ -575,7 +597,7 @@ async def test_google_missing_target_does_not_retry_or_evict_the_root(driver_fac
     with pytest.raises(NotFoundError):
         await directories.list_directory(STORAGE_ID, IdLocation(value="missing"))
     assert await directories.list_directory(STORAGE_ID, RootLocation()) == root
-    assert [request.url.path for request in server.requests] == ["/drive/v3/files/root", "/drive/v3/files/missing"]
+    assert [request.url.path for request in server.requests] == ["/drive/v3/files/missing"]
 
 
 @pytest.mark.asyncio
@@ -666,15 +688,15 @@ async def test_empty_google_folder_checks_live_permission_and_lists_once(
     listing = await directories.list_directory(STORAGE_ID, IdLocation(value="folder"), parent_location=root.location)
     assert not listing.items and listing.parent_location == RootLocation()
     paths = [request.url.path.removeprefix("/drive/v3/") for request in server.requests]
-    assert paths == (["files", "files/folder"] if cached_capability else ["files/folder", "files"])
+    assert paths == ["files", "files/folder"]
 
 
 @pytest.mark.asyncio
-async def test_google_empty_response_cannot_confirm_an_unknown_permission(driver_factory: Callable) -> None:
+async def test_google_empty_response_accepts_an_unknown_permission(driver_factory: Callable) -> None:
     server = WritableDriveServer([drive_file("folder", "Folder", mime=FOLDER_MIME, capabilities={})])
     driver = driver_factory(server)
-    with pytest.raises(PermissionDeniedError):
-        await driver.list_directory(IdLocation(value="folder"))
+    listing = await driver.list_directory(IdLocation(value="folder"))
+    assert not listing.items and listing.location == IdLocation(value="folder")
 
 
 @pytest.mark.asyncio
@@ -721,7 +743,7 @@ async def test_google_structural_conflict_invalidates_the_hint_and_retries_live(
     ]
     server.requests.clear()
     await directories.list_directory(STORAGE_ID, root)
-    assert len(server.requests) == 2
+    assert [request.url.path for request in server.requests] == ["/drive/v3/files"]
 
 
 @pytest.mark.asyncio
@@ -1030,6 +1052,10 @@ async def test_execute_revalidates_google_snapshot_before_any_write(driver_facto
     ))
     assert snapshot.valid
     server.files[folder.value]["parents"] = ["other-folder"]
+    server.requests.clear()
+    sources = await execute._revalidate(preview.store.get(snapshot.preview_id))
+    assert sources[0].parent_location == folder and sources[0].path == ""
+    assert [request.url.path for request in server.requests] == ["/drive/v3/files"]
     if change == "permission":
         server.files["a"]["capabilities"]["canRename"] = False
     else:
@@ -1040,7 +1066,7 @@ async def test_execute_revalidates_google_snapshot_before_any_write(driver_facto
         await execute.execute(snapshot.preview_id)
     assert not server.writes
     assert [request.url.path.removeprefix("/drive/v3/") for request in server.requests] == [
-        "files/root", "files/folder", "files/other-folder", "files",
+        "files",
     ]
 
 

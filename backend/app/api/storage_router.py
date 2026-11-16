@@ -67,7 +67,8 @@ async def delete_storage(storage_id: str, manager: Manager) -> Response:
 @router.post("/storages/{storage_id}/files/list", response_model=DirectoryListing)
 async def list_files(storage_id: str, request: StorageListRequest, manager: Manager) -> DirectoryListing:
     return await manager.directories.list_directory(
-        storage_id, request.location, mode="refresh" if request.refresh else "cached",
+        storage_id, request.location,
+        mode=("navigate" if request.reuse_ancestors else "refresh") if request.refresh else "cached",
         parent_location=request.parent_location,
     )
 

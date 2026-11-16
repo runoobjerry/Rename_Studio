@@ -1,16 +1,24 @@
 import asyncio
+from uuid import uuid4
 
 import pytest
 
 from app.core.config import DirectoryListingCacheSettings
-from app.core.errors import NotFoundError, ProviderError, StorageBusyError
+from app.core.errors import NotFoundError, ProviderError, StorageBusyError, StorageConnectionChangedError
 from app.providers.base import StorageDriver
 from app.providers.name_validation import NameValidationIssue
-from app.schemas.files import DirectoryListing, FileItem
+from app.rules.registry import RuleRegistry
+from app.schemas.files import DirectoryBreadcrumb, DirectoryListing, FileItem, RenameFile
+from app.schemas.rename import RenamePreviewRequest, SingleRenameExecuteRequest
 from app.schemas.storage import IdLocation, PathLocation, RootLocation, StorageLocation
 from app.services import directory_cache
 from app.services.directory_cache import DirectoryCache, RenameCacheScope
 from app.services.directory_service import DirectoryService
+from app.services.execute_service import ExecuteService
+from app.services.preview_service import PreviewService
+from app.services.preview_store import PreviewStore
+from app.services.rename_engine import RenameEngine
+from app.services.single_rename_service import SingleRenameService
 from provider_fixtures import registry_for
 
 
@@ -21,6 +29,7 @@ class DirectoryDriver(StorageDriver):
         self.name = "original"
         self.path_id = "folder"
         self.empty = False
+        self.is_directory = False
         self.fail = False
         self.started, self.resume = asyncio.Event(), asyncio.Event()
         self.pause_next = False
@@ -30,7 +39,7 @@ class DirectoryDriver(StorageDriver):
         self.calls += 1
         if self.fail:
             raise ProviderError("Incomplete directory")
-        item = FileItem(id="item", name=self.name, path=self.name, parent_path="", is_directory=False)
+        item = FileItem(id="item", name=self.name, path=self.name, parent_path="", is_directory=self.is_directory)
         canonical = IdLocation(value=self.path_id) if isinstance(location, PathLocation) else location
         if canonical == IdLocation(value="root-id"):
             canonical = RootLocation()
@@ -44,6 +53,10 @@ class DirectoryDriver(StorageDriver):
         return DirectoryListing(
             provider=self.provider_type, path="", parent_path=None, location=canonical,
             directory_id=directory_id, items=[] if self.empty else [item],
+            root_id="root-id", parent_location=None if isinstance(canonical, RootLocation) else RootLocation(),
+            breadcrumbs=[DirectoryBreadcrumb(name="Root", location=RootLocation())] + (
+                [] if isinstance(canonical, RootLocation) else [DirectoryBreadcrumb(name="Folder", location=canonical)]
+            ),
         )
 
     async def list_files(self, path: str) -> list[FileItem]:
@@ -76,37 +89,384 @@ async def test_expiry_is_based_on_read_time_and_hits_are_isolated(
     hit = await directories.list_directory("cloud", IdLocation(value="root-id"))
     assert len(hit.items) == (0 if empty else 1)
     assert driver.calls == 1
+    assert directories._cache.ancestor("cloud", 1, "root-id") is not None
+    assert directories._cache.ancestor("cloud", 1, RootLocation()) is not None
+    assert directories._cache.ancestor("other", 1, "root-id") is None
+    assert directories._cache.ancestor("cloud", 2, "root-id") is None
     now += 1
+    assert directories._cache.ancestor("cloud", 1, "root-id") is None
+    assert directories._cache.ancestor("cloud", 1, RootLocation()) is None
     await directories.list_directory("cloud", RootLocation())
     assert driver.calls == 2
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("limit", ["entries", "bytes"])
-async def test_capacity_evicts_the_least_recently_used_listing(limit: str) -> None:
-    driver = DirectoryDriver()
-    manager = registry_for({"cloud": driver}, cache_directories=True).manager
-    sample = await manager.directories.list_directory("cloud", IdLocation(value="a"), mode="fresh")
-    entry_size = len(sample.model_dump_json().encode("utf-8"))
-    settings = (DirectoryListingCacheSettings(max_entries=2) if limit == "entries"
-                else DirectoryListingCacheSettings(max_bytes=2 * entry_size))
-    directories = DirectoryService(manager, DirectoryCache(settings))
-    for value in ["a", "b", "a", "c", "a", "c"]:
-        await directories.list_directory("cloud", IdLocation(value=value))
-    assert driver.calls == 4  # One sample and three misses.
-    await directories.list_directory("cloud", IdLocation(value="b"))
-    assert driver.calls == 5
+async def test_other_storage_can_read_refresh_and_write_while_a_read_is_pending() -> None:
+    first_driver, other_driver = DirectoryDriver(), DirectoryDriver("fixture_other")
+    manager = registry_for({"cloud": first_driver, "other": other_driver}, cache_directories=True).manager
+    directories = manager.directories
+    root = RootLocation()
+    first_driver.pause_next = True
+    pending = asyncio.create_task(directories.list_directory("cloud", root))
+    try:
+        await asyncio.wait_for(first_driver.started.wait(), 5)
+        await asyncio.wait_for(directories.list_directory("other", root, mode="refresh"), 5)
+        with manager.execution("other", 1), directories.writing("other", 1, RenameCacheScope()):
+            assert (await directories.list_directory("other", root)).revision == 1
+        directories.invalidate("other")
+        assert not pending.done()
+    finally:
+        first_driver.resume.set()
+        original = await pending
+    assert await directories.list_directory("cloud", root) == original
+    assert first_driver.calls == 1
 
 
 @pytest.mark.asyncio
-async def test_oversized_and_failed_reads_do_not_fill_cache() -> None:
+async def test_cancelling_one_waiter_preserves_the_shared_read_and_cache() -> None:
+    driver = DirectoryDriver()
+    directories = registry_for({"cloud": driver}, cache_directories=True).manager.directories
+    driver.pause_next = True
+    first = asyncio.create_task(directories.list_directory("cloud", RootLocation()))
+    await asyncio.wait_for(driver.started.wait(), 5)
+    joined = asyncio.Event()
+
+    async def follow() -> DirectoryListing:
+        joined.set()
+        return await directories.list_directory("cloud", RootLocation())
+
+    second = asyncio.create_task(follow())
+    try:
+        await asyncio.wait_for(joined.wait(), 5)
+        first.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await first
+        assert not second.done()
+    finally:
+        driver.resume.set()
+        result = await second
+    assert await directories.list_directory("cloud", RootLocation()) == result
+    assert not directories._flights
+    assert driver.calls == 1
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("failure", [False, True])
+async def test_abandoned_shared_read_neither_publishes_nor_evicts_cache_and_cleans_up(failure: bool) -> None:
+    driver = DirectoryDriver()
+    directories = registry_for({"cloud": driver}, cache_directories=True).manager.directories
+    root = RootLocation()
+    driver.pause_next = True
+    driver.pause_error = NotFoundError("Gone") if failure else None
+    pending = asyncio.create_task(directories.list_directory("cloud", root))
+    await asyncio.wait_for(driver.started.wait(), 5)
+    provider_task = directories._flights[("cloud", 1, root)].task
+    joined = asyncio.Event()
+
+    async def follow() -> DirectoryListing:
+        joined.set()
+        return await directories.list_directory("cloud", root)
+
+    follower = asyncio.create_task(follow())
+    await asyncio.wait_for(joined.wait(), 5)
+    pending.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await pending
+    assert ("cloud", 1, root) in directories._flights
+    follower.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await follower
+    assert not directories._flights
+    driver.resume.set()
+    # Wait for the shielded task's own cleanup callback, without retrieving its exception.
+    completed = asyncio.Event()
+    provider_task.add_done_callback(lambda _: completed.set())
+    await asyncio.wait_for(completed.wait(), 5)
+    assert directories._cache.get(("cloud", 1, root)) is None
+    driver.name = "fresh"
+    result = await directories.list_directory("cloud", root)
+    assert result.items[0].name == "fresh" and driver.calls == 2
+    assert not directories._flights
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("interruption", ["refresh", "cancel"])
+async def test_old_task_completion_cannot_unregister_a_replacement_flight(interruption: str) -> None:
+    driver = DirectoryDriver()
+    directories = registry_for({"cloud": driver}, cache_directories=True).manager.directories
+    root = RootLocation()
+    driver.pause_next = True
+    old = asyncio.create_task(directories.list_directory("cloud", root))
+    await asyncio.wait_for(driver.started.wait(), 5)
+    old_resume = driver.resume
+    old_provider = directories._flights[("cloud", 1, root)].task
+    if interruption == "cancel":
+        old.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await old
+    else:
+        # A different live directory also advances this storage's generation.
+        await directories.list_directory("cloud", IdLocation(value="other"), mode="refresh")
+    driver.started, driver.resume = asyncio.Event(), asyncio.Event()
+    driver.pause_next = True
+    driver.name = "replacement"
+    replacement = asyncio.create_task(directories.list_directory("cloud", root))
+    try:
+        await asyncio.wait_for(driver.started.wait(), 5)
+        flight = directories._flights[("cloud", 1, root)]
+        old_resume.set()
+        await old_provider
+        if interruption != "cancel":
+            await old
+        assert directories._flights[("cloud", 1, root)] is flight
+        joined = asyncio.Event()
+
+        async def follow() -> DirectoryListing:
+            joined.set()
+            return await directories.list_directory("cloud", root)
+
+        follower = asyncio.create_task(follow())
+        await asyncio.wait_for(joined.wait(), 5)
+    finally:
+        driver.resume.set()
+        result = await replacement
+    assert await follower == result
+    assert result.items[0].name == "replacement"
+    assert driver.calls == (2 if interruption == "cancel" else 3)
+    assert not directories._flights
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("failure", [False, True])
+async def test_unknown_root_alias_cannot_overwrite_or_evict_an_existing_canonical_result(failure: bool) -> None:
+    driver = DirectoryDriver()
+    directories = registry_for({"cloud": driver}, cache_directories=True).manager.directories
+    driver.pause_next = True
+    driver.pause_error = NotFoundError("Old failure") if failure else None
+    old = asyncio.create_task(directories.list_directory("cloud", RootLocation()))
+    try:
+        await asyncio.wait_for(driver.started.wait(), 5)
+        driver.name = "fresh"
+        latest = await directories.list_directory("cloud", IdLocation(value="root-id"))
+    finally:
+        driver.resume.set()
+    if failure:
+        with pytest.raises(NotFoundError):
+            await old
+    else:
+        assert (await old).items[0].name == "original"
+    assert await directories.list_directory("cloud", RootLocation()) == latest
+    assert await directories.list_directory("cloud", IdLocation(value="root-id")) == latest
+    assert driver.calls == 2
+
+
+@pytest.mark.asyncio
+async def test_revision_change_rejects_pending_result_without_publishing() -> None:
     driver = DirectoryDriver()
     manager = registry_for({"cloud": driver}, cache_directories=True).manager
-    driver.name = "a" * 2048
-    directories = DirectoryService(manager, DirectoryCache(DirectoryListingCacheSettings(max_entry_bytes=1024)))
-    for _ in range(2):
-        listing = await directories.list_directory("cloud", RootLocation())
-        assert listing.items[0].name == driver.name
+    directories = manager.directories
+    driver.pause_next = True
+    old = asyncio.create_task(directories.list_directory("cloud", RootLocation()))
+    try:
+        await asyncio.wait_for(driver.started.wait(), 5)
+        # Model the atomic connection replacement; revision remains an independent check.
+        manager.state.connections["cloud"] = manager.record("cloud").model_copy(update={"revision": 2})
+        driver.name = "new connection"
+        latest = await directories.list_directory("cloud", RootLocation())
+    finally:
+        driver.resume.set()
+    with pytest.raises(StorageConnectionChangedError):
+        await old
+    assert directories._cache.get(("cloud", 1, RootLocation())) is None
+    assert await directories.list_directory("cloud", RootLocation()) == latest
+    assert latest.revision == 2 and driver.calls == 2
+
+
+@pytest.mark.asyncio
+async def test_verify_reads_live_without_joining_or_replacing_browse_cache() -> None:
+    driver = DirectoryDriver()
+    directories = registry_for({"cloud": driver}, cache_directories=True).manager.directories
+    driver.pause_next = True
+    old = asyncio.create_task(directories.list_directory("cloud", RootLocation()))
+    try:
+        await asyncio.wait_for(driver.started.wait(), 5)
+        driver.name = "verified"
+        verified = await directories.list_directory("cloud", RootLocation(), mode="verify")
+        assert verified.items[0].name == "verified"
+        assert directories._cache.get(("cloud", 1, RootLocation())) is None
+    finally:
+        driver.resume.set()
+        original = await old
+    assert await directories.list_directory("cloud", RootLocation()) == original
+    assert original.items[0].name == "original" and driver.calls == 2
+
+    driver.name = "newer"
+    verified = await directories.list_directory("cloud", RootLocation(), mode="verify")
+    assert verified.items[0].name == "newer"
+    assert await directories.list_directory("cloud", RootLocation()) == original
+    refreshed = await directories.list_directory("cloud", RootLocation(), mode="refresh")
+    assert await directories.list_directory("cloud", RootLocation()) == refreshed == verified
+    assert driver.calls == 4
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("is_folder", [False, True])
+async def test_late_cached_read_preserves_patched_parent_and_renamed_folder_invalidation(
+    monkeypatch: pytest.MonkeyPatch, is_folder: bool,
+) -> None:
+    now = 10
+    monkeypatch.setattr(directory_cache, "monotonic", lambda: now)
+    driver = DirectoryDriver()
+    driver.is_directory = is_folder
+    manager = registry_for({"cloud": driver}, cache_directories=True).manager
+    directories = manager.directories
+    root, child = RootLocation(), IdLocation(value="item")
+    driver.pause_next = True
+    old = asyncio.create_task(directories.list_directory("cloud", root))
+    try:
+        await asyncio.wait_for(driver.started.wait(), 5)
+        await directories.list_directory("cloud", IdLocation(value="root-id"))
+        if is_folder:
+            child_listing = await directories.list_directory("cloud", child)
+            # Include a deeper indexed descendant and one whose ancestry is unavailable.
+            for folder_id, complete in (("grandchild", True), ("missing-ancestry", False)):
+                location = IdLocation(value=folder_id)
+                descendant = child_listing.model_copy(update={
+                    "directory_id": folder_id, "location": location, "parent_location": child,
+                    "breadcrumbs": [*child_listing.breadcrumbs, DirectoryBreadcrumb(name="Nested", location=location)]
+                    if complete else None,
+                })
+                directories._cache.put(("cloud", 1, location), descendant, descendant.model_dump_json().encode("utf-8"))
+        deadline = directories._cache.expires_at(("cloud", 1, root))
+        now = 20
+        scope = RenameCacheScope()
+        with manager.execution("cloud", 1), directories.writing("cloud", 1, scope):
+            driver.started.clear()
+            driver.pause_next = True
+            during_write = asyncio.create_task(directories.list_directory("cloud", root))
+            await asyncio.wait_for(driver.started.wait(), 5)
+            scope.observe("item", root, "original", RenameFile(
+                id="item", name="renamed", is_directory=is_folder, parent_location=root,
+            ), target_confirmed=True)
+    finally:
+        driver.resume.set()
+    assert (await old).items[0].name == "original"
+    assert (await during_write).items[0].name == "original"
+    assert (await directories.list_directory("cloud", root)).items[0].name == "renamed"
+    assert directories._cache.expires_at(("cloud", 1, root)) == deadline
+    if is_folder:
+        assert directories._cache.get(("cloud", 1, child)) is None
+        for folder_id in ("grandchild", "missing-ancestry"):
+            assert directories._cache.get(("cloud", 1, IdLocation(value=folder_id))) is None
+        assert directories._cache.ancestor("cloud", 1, "item") is None
+    assert driver.calls == (4 if is_folder else 3)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("single", [True, False], ids=["single", "batch"])
+async def test_rename_services_patch_parent_without_extra_reads(single: bool) -> None:
+    class RenamingDriver(DirectoryDriver):
+        writes = 0
+
+        async def list_directory(self, location: StorageLocation) -> DirectoryListing:
+            listing = await super().list_directory(location)
+            listing.items[0].parent_location = RootLocation()
+            return listing
+
+        async def rename(self, file_id: str, new_name: str) -> FileItem:
+            self.writes += 1
+            self.name = new_name
+            return FileItem(id=file_id, name=new_name, path=new_name, parent_path="",
+                            parent_location=RootLocation(), is_directory=self.is_directory)
+
+    driver = RenamingDriver()
+    registry = registry_for({"cloud": driver}, cache_directories=True)
+    directories = registry.manager.directories
+    root = RootLocation()
+    await directories.list_directory("cloud", root)
+    await directories.list_directory("cloud", IdLocation(value="unrelated"))
+    reads = driver.calls
+    deadline = directories._cache.expires_at(("cloud", 1, root))
+    if single:
+        result = await SingleRenameService(registry).execute("cloud", SingleRenameExecuteRequest(
+            operation_id=uuid4(), revision=1, file_id="item", location=root,
+            original_name="original", target_name="renamed",
+        ))
+    else:
+        store = PreviewStore()
+        preview = PreviewService(registry, RenameEngine(RuleRegistry()), store)
+        snapshot = await preview.preview(RenamePreviewRequest(
+            storage_id="cloud", location=root, file_ids=["item"], target_name="renamed",
+        ))
+        result = await ExecuteService(registry, store, preview).execute(snapshot.preview_id)
+    assert result.status == "completed"
+    assert (await directories.list_directory("cloud", root)).items[0].name == "renamed"
+    await directories.list_directory("cloud", IdLocation(value="unrelated"))
+    # Batch execution still makes exactly one live pre-write verification read.
+    assert driver.calls == reads + (0 if single else 1)
+    assert driver.writes == 1
+    assert directories._cache.expires_at(("cloud", 1, root)) == deadline
+
+
+@pytest.mark.asyncio
+async def test_refresh_structure_change_fences_reads_started_during_the_refresh() -> None:
+    driver = DirectoryDriver()
+    driver.is_directory = True
+    directories = registry_for({"cloud": driver}, cache_directories=True).manager.directories
+    root, child = RootLocation(), IdLocation(value="item")
+    await directories.list_directory("cloud", root)
+    driver.name = "renamed folder"
+    driver.pause_next = True
+    refresh = asyncio.create_task(directories.list_directory("cloud", root, mode="refresh"))
+    await asyncio.wait_for(driver.started.wait(), 5)
+    refresh_resume = driver.resume
+    driver.started, driver.resume = asyncio.Event(), asyncio.Event()
+    driver.pause_next = True
+    child_read = asyncio.create_task(directories.list_directory("cloud", child))
+    try:
+        await asyncio.wait_for(driver.started.wait(), 5)
+        refresh_resume.set()
+        latest = await refresh
+    finally:
+        driver.resume.set()
+        await child_read
+    assert directories._cache.get(("cloud", 1, child)) is None
+    assert await directories.list_directory("cloud", root) == latest
+    assert latest.items[0].name == "renamed folder" and driver.calls == 3
+    # An incomplete live chain cannot establish which old ancestry remains valid.
+    await directories.list_directory("cloud", child)
+    incomplete = latest.model_copy(update={"directory_id": None, "breadcrumbs": None})
+    assert directories._cache.reconcile_refresh(("cloud", 1, root), incomplete)
+    assert directories._cache.get(("cloud", 1, root)) is None
+    assert directories._cache.get(("cloud", 1, child)) is None
+
+
+@pytest.mark.asyncio
+async def test_capacity_evicts_the_least_recently_used_listing() -> None:
+    driver = DirectoryDriver()
+    manager = registry_for({"cloud": driver}, cache_directories=True).manager
+    settings = DirectoryListingCacheSettings(max_entries=2)
+    directories = DirectoryService(manager, DirectoryCache(settings))
+    for value in ["a", "b", "a", "c", "a", "c"]:
+        await directories.list_directory("cloud", IdLocation(value=value))
+    assert driver.calls == 3
+    assert directories._cache.ancestor("cloud", 1, "b") is None
+    assert directories._cache.ancestor("cloud", 1, "a") is not None
+    assert directories._cache.ancestor("cloud", 1, "c") is not None
+    await directories.list_directory("cloud", IdLocation(value="b"))
+    assert driver.calls == 4
+    directories.invalidate_rename("cloud", RenameCacheScope(folder_ids={"b"}))
+    assert directories._cache.ancestor("cloud", 1, "b") is None
+    assert directories._cache.ancestor("cloud", 1, "root-id") is not None
+    directories.invalidate("cloud")
+    assert directories._cache.ancestor("cloud", 1, "root-id") is None
+
+
+@pytest.mark.asyncio
+async def test_failed_reads_do_not_fill_cache() -> None:
+    driver = DirectoryDriver()
+    manager = registry_for({"cloud": driver}, cache_directories=True).manager
+    directories = manager.directories
     driver.fail = True
     with pytest.raises(ProviderError):
         await directories.list_directory("cloud", RootLocation())
@@ -114,7 +474,7 @@ async def test_oversized_and_failed_reads_do_not_fill_cache() -> None:
     driver.name = "small"
     for _ in range(2):
         assert (await directories.list_directory("cloud", RootLocation())).items[0].name == "small"
-    assert driver.calls == 4
+    assert driver.calls == 2
 
 
 @pytest.mark.asyncio
@@ -145,22 +505,7 @@ async def test_provider_without_cache_capability_reads_live() -> None:
 
 
 @pytest.mark.asyncio
-async def test_fresh_read_leaves_cached_listing_until_refresh() -> None:
-    driver = DirectoryDriver()
-    directories = registry_for({"cloud": driver}, cache_directories=True).manager.directories
-    root = RootLocation()
-    cached = await directories.list_directory("cloud", root)
-    driver.name = "new"
-    fresh = await directories.list_directory("cloud", root, mode="fresh")
-    assert fresh.items[0].name == "new"
-    assert await directories.list_directory("cloud", root) == cached
-    refreshed = await directories.list_directory("cloud", root, mode="refresh")
-    assert await directories.list_directory("cloud", root) == refreshed == fresh
-    assert driver.calls == 3
-
-
-@pytest.mark.asyncio
-@pytest.mark.parametrize("interruption", ["refresh", "write"])
+@pytest.mark.parametrize("interruption", ["refresh", "navigate", "failed_refresh", "write", "invalidate", "invalidate_all"])
 async def test_concurrent_misses_share_a_read_without_repopulating_after_refresh_or_write(interruption: str) -> None:
     driver = DirectoryDriver()
     manager = registry_for({"cloud": driver}, cache_directories=True).manager
@@ -180,14 +525,21 @@ async def test_concurrent_misses_share_a_read_without_repopulating_after_refresh
         await asyncio.wait_for(joined.wait(), timeout=5)
         assert driver.calls == 1
         driver.name = "updated"
-        if interruption == "refresh":
+        if interruption in ("refresh", "navigate"):
             # Refresh through the root ID while a read using the root marker is still pending.
-            refreshed = await directories.list_directory("cloud", IdLocation(value="root-id"), mode="refresh")
+            refreshed = await directories.list_directory("cloud", IdLocation(value="root-id"), mode=interruption)
             assert refreshed.items[0].name == "updated"
-        else:
-            with manager.execution("cloud", 1), directories.writing("cloud", 1, RenameCacheScope({location})):
+        elif interruption == "failed_refresh":
+            driver.fail = True
+            with pytest.raises(ProviderError):
+                await directories.list_directory("cloud", location, mode="refresh")
+            driver.fail = False
+        elif interruption == "write":
+            with manager.execution("cloud", 1), directories.writing("cloud", 1, RenameCacheScope()):
                 with pytest.raises(StorageBusyError):
                     await directories.list_directory("cloud", location, mode="refresh")
+        else:
+            directories.invalidate("cloud" if interruption == "invalidate" else None)
     finally:
         driver.resume.set()
         original, follower = await asyncio.gather(first, second)
@@ -195,7 +547,7 @@ async def test_concurrent_misses_share_a_read_without_repopulating_after_refresh
     original.items[0].name = "mutated"
     assert follower.items[0].name == "original"
     assert (await directories.list_directory("cloud", location)).items[0].name == "updated"
-    assert driver.calls == 2
+    assert driver.calls == (3 if interruption == "failed_refresh" else 2)
 
 
 @pytest.mark.asyncio
@@ -225,7 +577,7 @@ async def test_refresh_overlapping_a_write_cannot_confirm_the_directory() -> Non
     refresh = asyncio.create_task(directories.list_directory("cloud", RootLocation(), mode="refresh"))
     try:
         await asyncio.wait_for(driver.started.wait(), timeout=5)
-        with manager.execution("cloud", 1), directories.writing("cloud", 1, RenameCacheScope({RootLocation()})):
+        with manager.execution("cloud", 1), directories.writing("cloud", 1, RenameCacheScope()):
             driver.name = "updated"
     finally:
         driver.resume.set()
@@ -235,22 +587,24 @@ async def test_refresh_overlapping_a_write_cannot_confirm_the_directory() -> Non
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("mode", ["refresh", "navigate"])
 @pytest.mark.parametrize("same_directory", [True, False])
-async def test_overlapping_path_refreshes_update_their_own_canonical_entries(same_directory: bool) -> None:
+async def test_new_live_read_supersedes_an_older_read_across_the_storage(mode: str, same_directory: bool) -> None:
     driver = DirectoryDriver()
     directories = registry_for({"cloud": driver}, cache_directories=True).manager.directories
     driver.pause_next = True
-    first = asyncio.create_task(directories.list_directory("cloud", PathLocation(value="first"), mode="refresh"))
+    first = asyncio.create_task(directories.list_directory("cloud", PathLocation(value="first"), mode=mode))
     try:
         await asyncio.wait_for(driver.started.wait(), timeout=5)
         if not same_directory:
             driver.path_id = "other-folder"
         driver.name = "newer"
-        await directories.list_directory("cloud", PathLocation(value="second"), mode="refresh")
+        latest = await directories.list_directory("cloud", PathLocation(value="second"), mode=mode)
     finally:
         driver.resume.set()
+    with pytest.raises(StorageBusyError):
         await first
-    first_directory = await directories.list_directory("cloud", IdLocation(value="folder"))
-    assert first_directory.items[0].name == ("newer" if same_directory else "original")
-    assert (await directories.list_directory("cloud", IdLocation(value=driver.path_id))).items[0].name == "newer"
+    if not same_directory:
+        assert directories._cache.get(("cloud", 1, IdLocation(value="folder"))) is None
+    assert await directories.list_directory("cloud", latest.location) == latest
     assert driver.calls == 2

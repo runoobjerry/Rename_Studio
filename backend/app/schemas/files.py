@@ -31,6 +31,8 @@ class DirectoryBreadcrumb(BaseModel):
 
 
 class DirectoryListing(BaseModel):
+    # Internal root identity for cache ancestry; never part of the HTTP payload.
+    root_id: str | None = Field(default=None, exclude=True)
     provider: str
     path: str
     parent_path: str | None

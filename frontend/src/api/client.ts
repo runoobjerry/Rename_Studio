@@ -99,8 +99,10 @@ export const fetchStorage = (id: string): Promise<StorageInfo> => request(storag
 export const createStorage = (body: StorageCreate): Promise<StorageInfo> => request("/storages", "write", jsonPost(body));
 export const updateStorage = (id: string, body: StorageUpdate): Promise<StorageInfo> => request(storageUrl(id), "write", { ...jsonPost(body), method: "PUT" });
 export const deleteStorage = (id: string): Promise<void> => request(storageUrl(id), "write", { method: "DELETE" });
-export const fetchStorageFiles = (id: string, location: StorageLocation, refresh = false, parentLocation?: StorageLocation): Promise<DirectoryListing> =>
-  request(`${storageUrl(id)}/files/list`, "read", jsonPost(refresh ? { location, refresh } : { location, parent_location: parentLocation }));
+export const fetchStorageFiles = (id: string, location: StorageLocation, refresh = false, parentLocation?: StorageLocation, reuseAncestors = false): Promise<DirectoryListing> =>
+  request(`${storageUrl(id)}/files/list`, "read", jsonPost(refresh
+    ? { location, refresh, ...(reuseAncestors ? { reuse_ancestors: true } : {}) }
+    : { location, parent_location: parentLocation }));
 export const createStoragePreview = (id: string, location: StorageLocation, fileIds: string[], rules: RuleSpec[], previousPreviewId?: string): Promise<PreviewResponse> => request(`${storageUrl(id)}/rename/preview`, "read", jsonPost({ location, file_ids: fileIds, rules, previous_preview_id: previousPreviewId }));
 export function executeStorageSingleRename(id: string, input: SingleRenameExecuteRequest): Promise<SingleRenameExecuteResponse> {
   return request(`${storageUrl(id)}/rename/single/execute`, "write", jsonPost(input));

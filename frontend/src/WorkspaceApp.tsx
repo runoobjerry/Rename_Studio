@@ -112,7 +112,7 @@ function Workspace({ preference, setPreference, settingsError, hasSettings }: {
     storages, activeStorage, providerType, storageName, cloudStatus,
     providerDefinitions, providerDefinition, providerDefinitionError, metadataReady, requiresAuth, supportsLocalPicker, supportsLocation,
     cloudAccountId, cloudSession, cloudReady, restoredCloudSession, appSettingsReady,
-    files, workspaceKey, settingsLoading, pickLocalRoot,
+    files, directoryBusy, workspaceKey, settingsLoading, pickLocalRoot,
     restoreDefaultCloudPath, setDefaultCloudPath, refreshFiles, externalPending,
   } = workspaceStorage;
   const definitions = useQuery({ queryKey: ["rules"], queryFn: fetchRules });
@@ -161,14 +161,14 @@ function Workspace({ preference, setPreference, settingsError, hasSettings }: {
 
   const navigate = useCallback((nextPath: string) => {
     if (!locationReady || !supportsLocation(nextPath ? { kind: "path", value: nextPath } : { kind: "root" }) ||
-      isExecuting || pickLocalRoot.isPending || activeStorage?.busy) return;
+      directoryBusy || isExecuting || pickLocalRoot.isPending || activeStorage?.busy) return;
     setPath(nextPath);
-  }, [locationReady, supportsLocation, isExecuting, pickLocalRoot.isPending, activeStorage?.busy, setPath]);
+  }, [locationReady, supportsLocation, directoryBusy, isExecuting, pickLocalRoot.isPending, activeStorage?.busy, setPath]);
 
   const navigateLocation = useCallback((next: StorageLocation, parent?: StorageLocation) => {
-    if (!locationReady || !supportsLocation(next) || isExecuting || pickLocalRoot.isPending || activeStorage?.busy) return;
+    if (!locationReady || !supportsLocation(next) || directoryBusy || isExecuting || pickLocalRoot.isPending || activeStorage?.busy) return;
     setLocation(next, parent);
-  }, [locationReady, supportsLocation, isExecuting, pickLocalRoot.isPending, activeStorage?.busy, setLocation]);
+  }, [locationReady, supportsLocation, directoryBusy, isExecuting, pickLocalRoot.isPending, activeStorage?.busy, setLocation]);
 
   const renameBlocked = externalPending || !locationReady || pickLocalRoot.isPending || !activeStorage || activeStorage.busy || files.isFetching || Boolean(files.error);
   const handleSelectStorage = (nextStorageId: string) => {
@@ -252,7 +252,7 @@ function Workspace({ preference, setPreference, settingsError, hasSettings }: {
                   rootLabel={storageName}
                   requiresAuth={metadataReady && requiresAuth}
                   supportsLocalPicker={supportsLocalPicker}
-                  navigationDisabled={!locationReady || !activeStorage || isExecuting || pickLocalRoot.isPending || activeStorage.busy}
+                  navigationDisabled={externalPending || directoryBusy || !locationReady || !activeStorage || isExecuting || pickLocalRoot.isPending || activeStorage.busy}
                   defaultPathDisabled={!cloudAccountId || !cloudReady || !files.isSuccess || files.isFetching || Boolean(files.error) || cloudStatus.isError}
                   browseDisabled={!activeStorage || pickLocalRoot.isPending || isExecuting || activeStorage.busy}
                   isPickingFolder={pickLocalRoot.isPending}
@@ -276,7 +276,7 @@ function Workspace({ preference, setPreference, settingsError, hasSettings }: {
                         onSortChange={(next) => { workspaceStorage.cancelExternalNavigation(); changeSort(next); }}
                         storageName={storageName}
                         selectedIds={selectedIds}
-                        disabled={externalPending || isExecuting || files.isFetching || Boolean(activeStorage?.busy)}
+                        disabled={externalPending || isExecuting || directoryBusy || Boolean(activeStorage?.busy)}
                         isRefreshing={files.isFetching}
                         refreshError={files.error ? errorMessage(files.error, t, "directory") : undefined}
                         onNavigate={navigate}
@@ -290,7 +290,7 @@ function Workspace({ preference, setPreference, settingsError, hasSettings }: {
                       <section className="panel">
                         {files.error ? (
                           <Alert severity="error" sx={{ m: 2 }} action={
-                            <Button color="inherit" size="small" onClick={refreshFiles}>
+                            <Button color="inherit" size="small" disabled={directoryBusy} onClick={refreshFiles}>
                               {t("common:retry")}
                             </Button>
                           }>

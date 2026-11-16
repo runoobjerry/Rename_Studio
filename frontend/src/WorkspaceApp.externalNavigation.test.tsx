@@ -71,7 +71,7 @@ describe("external Google Drive navigation", () => {
   it("opens the email-matched folder using the file source's stable account identity", async () => {
     await mount();
     expect(await start(request).reply()).toMatchObject({ status: "opened", storage_id: storageId });
-    expect(api.fetchStorageFiles).toHaveBeenCalledWith(storageId, request.location, true);
+    expect(api.fetchStorageFiles).toHaveBeenCalledWith(storageId, request.location, true, undefined, true);
     await waitFor(() => expect(readWorkspaceSession().session.locations[storageId]?.accountId).toBe(accountId));
   });
 });
@@ -122,7 +122,7 @@ describe("external OneDrive navigation", () => {
     expect(await operation.reply()).toMatchObject({ status: "opened", storage_id: "user-onedrive" });
     expect(operation.accepted).toHaveBeenCalledWith({ version: 1, request_id: target.request_id, status: "accepted" });
     await screen.findByText("target-file.txt");
-    expect(api.fetchStorageFiles).toHaveBeenCalledWith("user-onedrive", { kind: "id", value: "target-id" }, true);
+    expect(api.fetchStorageFiles).toHaveBeenCalledWith("user-onedrive", { kind: "id", value: "target-id" }, true, undefined, true);
     expect(oneDriveLocations()).not.toContainEqual({ kind: "id", value: "remembered-default" });
     await waitFor(() => expect(readWorkspaceSession().session.locations["user-onedrive"].location)
       .toEqual({ kind: "id", value: "target-id" }));
@@ -242,7 +242,7 @@ describe("external OneDrive navigation", () => {
       id === "user-onedrive" ? response.promise : { ...listing(1), location });
     await mount();
     const operation = start();
-    await waitFor(() => expect(api.fetchStorageFiles).toHaveBeenCalledWith("user-onedrive", { kind: "id", value: "target-id" }, true));
+    await waitFor(() => expect(api.fetchStorageFiles).toHaveBeenCalledWith("user-onedrive", { kind: "id", value: "target-id" }, true, undefined, true));
     const second = start({ ...target, request_id: "second" });
     expect(await second.reply()).toMatchObject({ status: "rejected", code: "busy" });
     expect(second.accepted).not.toHaveBeenCalled();

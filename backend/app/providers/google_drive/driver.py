@@ -6,7 +6,7 @@ from datetime import datetime
 from email import policy
 from email.parser import BytesParser
 from time import perf_counter
-from typing import Literal
+from typing import Literal, cast
 from urllib.parse import quote, urlencode
 from uuid import uuid4
 
@@ -18,7 +18,7 @@ from app.core.log_context import request_id_context
 from app.providers.errors import http_error_details, read_error_payload
 from app.providers.retry import RetryBudget
 from app.providers.base import RenameRequest, StorageDriver
-from app.providers.directory_metadata import DirectoryHint, DirectoryMetadataConflict
+from app.providers.directory_metadata import AncestorLookup, DirectoryHint, DirectoryMetadata, DirectoryMetadataConflict, resolve_ancestry
 from app.providers.cooldown import ConnectionCooldown, retry_after_delay
 from app.providers.name_validation import NameValidationIssue
 from app.schemas.files import DirectoryBreadcrumb, DirectoryListing, FileItem, RenameFile
@@ -103,60 +103,109 @@ class GoogleDriveDriver(StorageDriver):
 
     async def read_directory(
         self, location: StorageLocation, *,
-        hint: DirectoryHint | None = None, include_breadcrumbs: bool = True,
+        hint: DirectoryHint | None = None,
+        ancestor_lookup: AncestorLookup | None = None,
+        reuse_target: bool = False,
+        verify: bool = False,
     ) -> DirectoryListing:
         if isinstance(location, PathLocation):
             raise ValidationError("Google Drive directories must be addressed by ID")
+        if verify:
+            directory_id = location.value if isinstance(location, IdLocation) else "root"
+            items = await self._list_children(directory_id, location, None, {directory_id})
+            actual_id = directory_id if isinstance(location, IdLocation) else (
+                cast(IdLocation, items[0].parent_location).value if items else None
+            )
+            return DirectoryListing(provider=self.provider_type, location=location, directory_id=actual_id,
+                                    path="", parent_path=None, items=items)
         if hint is not None:
             return await self._read_hinted_directory(hint)
 
-        root, cache = await self._root_context()
+        if reuse_target and ancestor_lookup is not None:
+            target = ancestor_lookup(location.value if isinstance(location, IdLocation) else RootLocation())
+            if target is not None:
+                directory_id = target.chain[-1][0]
+                canonical = RootLocation() if len(target.chain) == 1 else IdLocation(value=directory_id)
+                parent = (
+                    (RootLocation() if len(target.chain) == 2 else IdLocation(value=target.chain[-2][0]))
+                    if len(target.chain) > 1 else None
+                )
+                parent_path = "/".join(name for _, name in target.chain[1:-1])
+                path = "/".join(name for _, name in target.chain[1:])
+                items = await self._list_children(directory_id, canonical, path, {file_id for file_id, _ in target.chain})
+                # Google may return an empty successful list after folder access is revoked.
+                if not items:
+                    directory = await self._get_file(directory_id)
+                    self._require_available(directory)
+                    self._require_folder(directory)
+                    self._require_listing_permission(directory.capabilities.canListChildren)
+                    expected_parents = [target.chain[-2][0]] if len(target.chain) > 1 else []
+                    if (directory.parents or []) != expected_parents or directory.name != target.chain[-1][1]:
+                        raise DirectoryMetadataConflict("Google Drive returned different folder ancestry")
+                return DirectoryListing(
+                    provider=self.provider_type, path=path, parent_path=parent_path if parent is not None else None,
+                    location=canonical, directory_id=directory_id, parent_location=parent,
+                    breadcrumbs=target.breadcrumbs(), items=items, root_id=target.chain[0][0],
+                )
+
+        known_root = ancestor_lookup(RootLocation()) if ancestor_lookup is not None else None
+        if known_root is None:
+            root_file, cache = await self._root_context()
+            root = DirectoryMetadata(root_file.id, root_file.name, None)
+        else:
+            root_id, root_name = known_root.chain[0]
+            root = DirectoryMetadata(root_id, root_name, None)
+            cache = {}
+
+        def metadata(item: _DriveFile) -> DirectoryMetadata:
+            self._require_available(item)
+            self._require_folder(item)
+            return DirectoryMetadata(item.id, item.name, None if item.id == root.id else self._parent_id(item))
+
+        async def load(folder_id: str) -> DirectoryMetadata:
+            await self._load_files([folder_id], cache)
+            return metadata(cache[folder_id])
+
         directory_id = root.id if isinstance(location, RootLocation) else location.value
-        await self._load_files([directory_id], cache)
-        directory = cache[directory_id]
-        self._require_folder(directory)
-        await self._load_ancestors([directory], root, cache)
-        chain = self._chain(directory, root, cache)
-        path = self._display_path(chain)
-        canonical = self._location(directory, root)
-        can_list = directory.capabilities.canListChildren
-        self._require_listing_permission(can_list)
-        items = await self._list_children(directory.id, canonical, path, {folder.id for folder in chain})
-        self._require_listing_permission(can_list, empty=not items)
+        directory = root
+        if directory_id != root.id or known_root is None:
+            await self._load_files([directory_id], cache)
+            directory_file = cache[directory_id]
+            directory = metadata(directory_file)
+            self._require_listing_permission(directory_file.capabilities.canListChildren)
+        ancestry = await resolve_ancestry(directory, root, load, ancestor_lookup)
+        path = "/".join(name for _, name in ancestry.chain[1:])
+        canonical = RootLocation() if directory.id == root.id else IdLocation(value=directory.id)
+        items = await self._list_children(directory.id, canonical, path, {file_id for file_id, _ in ancestry.chain})
         return DirectoryListing(
             provider=self.provider_type, path=path,
-            parent_path=self._display_path(chain[:-1]) if len(chain) > 1 else None,
+            parent_path="/".join(name for _, name in ancestry.chain[1:-1]) if len(ancestry.chain) > 1 else None,
             location=canonical, directory_id=directory.id,
-            parent_location=self._location(chain[-2], root) if len(chain) > 1 else None,
-            breadcrumbs=[DirectoryBreadcrumb(name=item.name, location=self._location(item, root)) for item in chain]
-            if include_breadcrumbs else None,
-            items=items,
+            parent_location=(RootLocation() if ancestry.chain[-2][0] == root.id
+                             else IdLocation(value=ancestry.chain[-2][0])) if len(ancestry.chain) > 1 else None,
+            breadcrumbs=ancestry.breadcrumbs(),
+            items=items, root_id=root.id,
         )
 
     async def _read_hinted_directory(self, hint: DirectoryHint) -> DirectoryListing:
         folder = hint.folder
-        can_list = folder.can_list_children
-        directory = None
-        if can_list is not True:
-            directory = await self._verify_folder_hint(hint)
-            can_list = directory.capabilities.canListChildren
-            self._require_listing_permission(can_list)
-        name = directory.name if directory is not None else folder.name
+        self._require_listing_permission(folder.can_list_children)
+        name = folder.name
         path = "/".join(filter(None, (hint.parent_path, name)))
         location = IdLocation(value=folder.id)
         ancestor_ids = {crumb.location.value for crumb in hint.parent_breadcrumbs if isinstance(crumb.location, IdLocation)}
         items = await self._list_children(folder.id, location, path, ancestor_ids | {hint.parent_id, folder.id})
         # files.list may return a successful empty page after access to the folder is revoked.
-        if not items and directory is None:
+        if not items:
             directory = await self._verify_folder_hint(hint)
-            can_list = directory.capabilities.canListChildren
+            self._require_listing_permission(directory.capabilities.canListChildren)
             name = directory.name
             path = "/".join(filter(None, (hint.parent_path, name)))
-        self._require_listing_permission(can_list, empty=not items)
         return DirectoryListing(
             provider=self.provider_type, path=path, parent_path=hint.parent_path, location=location,
             directory_id=folder.id, parent_location=hint.parent_location,
             breadcrumbs=hint.breadcrumbs(name), items=items,
+            root_id=hint.root_id,
         )
 
     async def _verify_folder_hint(self, hint: DirectoryHint) -> _DriveFile:
@@ -168,16 +217,17 @@ class GoogleDriveDriver(StorageDriver):
         return directory
 
     @staticmethod
-    def _require_listing_permission(can_list: bool | None, *, empty: bool = False) -> None:
-        if can_list is False or (empty and can_list is None):
+    def _require_listing_permission(can_list: bool | None) -> None:
+        if can_list is False:
             raise PermissionDeniedError("Google Drive does not permit listing this folder")
 
     async def _list_children(
-        self, directory_id: str, location: StorageLocation, path: str, ancestor_ids: set[str],
+        self, directory_id: str, location: StorageLocation, path: str | None, ancestor_ids: set[str],
     ) -> list[FileItem]:
         items: list[FileItem] = []
         seen_ids: set[str] = set()
         seen_tokens: set[str] = set()
+        resolved_parent = None if path is None and isinstance(location, RootLocation) else directory_id
         escaped_id = directory_id.replace("\\", "\\\\").replace("'", "\\'")
         params = {
             "q": f"'{escaped_id}' in parents and trashed = false",
@@ -195,12 +245,19 @@ class GoogleDriveDriver(StorageDriver):
                 raise DirectoryMetadataConflict("Google Drive returned an incomplete directory; refresh before continuing")
             for item in page.files:
                 self._require_available(item)
-                if item.parents != [directory_id] or item.id in seen_ids:
+                if resolved_parent is None:
+                    resolved_parent = self._parent_id(item)
+                if item.parents != [resolved_parent] or item.id in seen_ids:
                     raise DirectoryMetadataConflict("Google Drive directory changed or contains invalid items; refresh it")
-                if item.id in ancestor_ids:
+                if item.id in ancestor_ids or item.id == resolved_parent:
                     raise DirectoryMetadataConflict("Google Drive folder ancestry changed; refresh before continuing")
                 seen_ids.add(item.id)
-                items.append(self._file_item(item, IdLocation(value=item.id), location, path))
+                child = self._file_item(item, IdLocation(value=item.id),
+                                        IdLocation(value=resolved_parent) if path is None else location, path or "")
+                if path is None:
+                    # Verification has no display path; never present a fabricated relative path as current metadata.
+                    child.path = ""
+                items.append(child)
             token = page.nextPageToken
             if token is None:
                 break

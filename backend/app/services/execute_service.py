@@ -95,7 +95,7 @@ class ExecuteService:
         directories = self.providers.manager.directories
         parent = StorageDriver.parent_directory(snapshot.sources[0])
         try:
-            listing = await directories.list_directory(storage_id, parent, mode="fresh")
+            listing = await directories.list_directory(storage_id, parent, mode="verify")
             by_id = {item.id: item for item in listing.items}
             sources = [by_id[file_id] for file_id in snapshot.request.file_ids]
             items, _, _ = await self.preview_service.evaluate(
@@ -104,14 +104,14 @@ class ExecuteService:
                 siblings=listing.items,
             )
         except (KeyError, NotFoundError) as exc:
-            directories.invalidate_rename(storage_id, RenameCacheScope({parent}))
+            directories.invalidate_rename(storage_id, RenameCacheScope(stale_parents={parent}))
             raise PreviewExpiredError(
                 "Files changed after the preview was created"
             ) from exc
 
         # 与有效快照逐项一致即可保证有效性；源项始终按同一请求 ID 列表构建。
         if items != snapshot.response.items:
-            directories.invalidate_rename(storage_id, RenameCacheScope({parent}))
+            directories.invalidate_rename(storage_id, RenameCacheScope(stale_parents={parent}))
             raise PreviewExpiredError("Rename preview is no longer valid")
         return sources
 
@@ -266,16 +266,16 @@ class ExecuteService:
             return self._response(snapshot.preview_id, results)
 
         by_id = {source.id: source for source in sources}
-        previous_by_id = {source.id: source for source in snapshot.sources}
         requests = [RenameRequest(item.file_id, item.new_name) for item in changed]
         source_parents = {request.file_id: StorageDriver.parent_directory(by_id[request.file_id]) for request in requests}
-        scope = RenameCacheScope(set(source_parents.values()))
+        scope = RenameCacheScope(folder_ids={
+            source.id for source in snapshot.sources if source.is_directory and source.id in source_parents
+        })
 
         def observe(file_id: str, outcome: FileItem | AppError, target_confirmed: bool) -> None:
-            previous = previous_by_id[file_id]
             scope.observe(
                 file_id, source_parents[file_id], by_id[file_id].name, outcome,
-                target_confirmed=target_confirmed, original_path=previous.path if previous.is_directory else None,
+                target_confirmed=target_confirmed,
             )
 
         progress.phase = "renaming"
