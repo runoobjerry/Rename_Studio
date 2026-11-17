@@ -23,9 +23,9 @@
 | `target_name` | string | 否 | 是 | 默认 `null`，使用规则链；其他字符串包括 `""` 表示指定完整目标名，不裁剪空白。 |
 | `previous_preview_id` | string | 否 | 是 | 默认 `null`；字符串至少 1 个字符。新快照保存后释放同连接的此预览。 |
 
-`target_name` 非 `null` 时必须恰好选择 1 项，且 `rules` 必须为空或省略，不能同时提交禁用规则。指定名称的文件需自行包含扩展名。
+`target_name` 非 `null` 时必须恰好选择 1 项，且 `rules` 必须为空或省略。指定名称的文件需自行包含扩展名。
 
-新快照保存成功即替换指定旧快照，即使新响应 `valid: false`；请求失败保留旧快照。其他连接的预览不受影响。
+新快照保存成功即替换指定旧快照，即使新响应 `valid: false`；请求失败保留旧快照。
 
 冲突比较遵循 Provider 名称语义。Local、OneDrive 忽略大小写；Google Drive 精确比较，区分大小写及 Unicode 形式。发生变化的目标不得重复其他目标或未选中兄弟项名称；已有重名可保持不变。
 
@@ -33,7 +33,7 @@
 
 #### Returns
 
-HTTP 200，返回 `RenamePreviewResponse`。逐项名称、可用性或冲突校验不通过时返回 `valid: false`，不是 HTTP 错误。执行时只提交 `preview_id`。
+HTTP 200，返回 `RenamePreviewResponse`；逐项名称、可用性或冲突校验不通过时，响应中 `valid` 为 `false`。执行时只提交 `preview_id`。
 
 #### Request / Response 示例
 

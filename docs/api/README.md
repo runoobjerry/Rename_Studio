@@ -51,8 +51,6 @@ Python 后端与 React 前端之间的 API 契约。按资源定义对象，再�
 | 更新应用设置 | `PATCH` | `/app-settings` | [更新应用设置](settings/update.md#endpoint-patch-app-settings) |
 | 获取健康状态 | `GET` | `/health` | [获取健康状态](health/index.md#endpoint-get-health) |
 
-## 契约范围
-
-当前没有 History、Undo、Redo、RuleSet 持久化或服务端文件选择接口。目录 API 不提供分页、搜索、排序、筛选参数。旧 Provider/path 路由、Provider 专属认证回调和 `/rename/preview` 已移除，不提供别名或重定向；`local`、`onedrive` 不能替代连接 ID。
+## 契约依据
 
 契约依据：[共享路由](../../backend/app/api/router.py)、[连接路由](../../backend/app/api/storage_router.py)、[设置路由](../../backend/app/api/app_settings_router.py)、[Schema](../../backend/app/schemas)、[服务](../../backend/app/services)、[Provider](../../backend/app/providers)、[规则](../../backend/app/rules)及[前端客户端](../../frontend/src/api/client.ts)。组织形式参考 Stripe 的[对象定义](https://docs.stripe.com/api/customers/object)和[接口条目](https://docs.stripe.com/api/customers/create)。

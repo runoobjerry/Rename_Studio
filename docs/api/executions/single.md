@@ -17,24 +17,22 @@
 
 | 字段 | 类型 | 必填 | 可空 | 说明 |
 | --- | --- | --- | --- | --- |
-| `operation_id` | string | 是 | 否 | 客户端生成的 UUID，仅标识操作，不是预览 ID 或幂等键。 |
+| `operation_id` | string | 是 | 否 | 客户端生成的操作 UUID。 |
 | `revision` | integer | 是 | 否 | 当前连接版本，≥ 1。 |
 | `location` | StorageLocation | 否 | 否 | 默认根目录，作为请求上下文。 |
 | `file_id` | string | 是 | 否 | 至少 1 个字符，目标项目 ID。 |
 | `original_name` | string | 是 | 否 | 原名上下文，不用于比对当前名称。 |
 | `target_name` | string | 是 | 否 | 完整目标名，文件须含扩展名；名称是否可用由 Provider 判断。 |
 
-拒绝额外字段，不接受规则链；使用规则链时应先创建预览。
+请求仅接受上表字段；规则链重命名使用[创建预览](../previews/create.md#endpoint-post-storages-storage-id-rename-preview)。
 
-核对连接版本后按 ID 直接执行，不读取整个目录、不比对原名。名称、权限与冲突以 Provider 结果为准。Google Drive 单项直接按 ID 修改，不做 My Drive、祖先、类型或权限预检，允许其 API 接受的同目录同名；不因此新增 shared drive 浏览支持。
-
-服务端按独立请求处理每次提交，不按 `operation_id` 去重。同名请求也按 Provider 实际返回确认，不预先标为跳过。没有按 `operation_id` 查询结果或进度的接口。
+服务端核对连接版本后按 ID 独立执行每次提交，同名请求同样交由 Provider 执行并确认结果，名称、权限与冲突以 Provider 返回的结果为准。
 
 #### Returns
 
 HTTP 200，返回 [SingleRenameExecuteResponse](index.md#对象singlerenameexecuteresponse)。整体成功为 `completed`，失败或未知为 `incomplete`；唯一结果项的 `status` 分别为 `renamed`、`failed` 或 `unknown`，定义见[逐项状态](index.md#execution-outcomes)。`counts` 返回各状态的数量。
 
-成功后用 `current_file` 更新 ID 和名称。写入未知时先按 ID 核对，无法确认则返回 `RENAME_OUTCOME_UNKNOWN`，不自动重放。客户端网络失败也不得自动重发。
+成功后用 `current_file` 更新 ID 和名称。写入未知时先按 ID 核对，无法确认则返回 `RENAME_OUTCOME_UNKNOWN`，无自动重放机制。
 
 #### Request / Response 示例
 
@@ -130,4 +128,4 @@ Content-Type: application/json
 - 409 `STORAGE_CONNECTION_CHANGED`：连接删除或版本变化。读取连接、目录，用户确认后提交新操作。
 - 409 `STORAGE_BUSY`：等待已有重命名结束。
 - 422 `VALIDATION_ERROR`：连接不支持重命名。
-- 写入阶段的 `NOT_FOUND`、`PERMISSION_DENIED`、`VALIDATION_ERROR`、`RENAME_CONFLICT` 等 Provider 错误位于 HTTP 200 的失败项中，可显示在名称输入框下；不要只依赖 HTTP 状态。
+- 写入阶段的 `NOT_FOUND`、`PERMISSION_DENIED`、`VALIDATION_ERROR`、`RENAME_CONFLICT` 等 Provider 错误位于 HTTP 200 的失败项中。客户端按结果项的 `status` 和 `error_code` 显示错误，可放在名称输入框下。

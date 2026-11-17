@@ -40,7 +40,7 @@
 | `error` | string | 是 | 无效原因的诊断信息，正常为 `null`。 |
 | `details` | object | 是 | [校验原因与参数](../common/errors.md#validation-reasons)，无结构化原因时为 `null`。 |
 
-`conflict` 只是无效的一种原因；名称非法、不可重命名等也使 `valid: false`。
+名称非法、不可重命名或名称冲突等校验不通过时，`valid` 为 `false`。
 
 <a id="endpoint-delete-storages-storage-id-rename-previews-preview-id"></a>
 ### 释放预览
@@ -58,7 +58,7 @@
 
 #### Returns
 
-HTTP 204，无响应体。不存在、过期、已消费、重复释放或属于其他连接均不报错。不会取消已开始的执行，也不会清除执行进度。
+HTTP 204，无响应体；预览不存在、过期、已消费、重复释放或属于其他连接时也返回此状态。已开始的执行继续进行，进度记录继续保留。
 
 #### Request / Response 示例
 

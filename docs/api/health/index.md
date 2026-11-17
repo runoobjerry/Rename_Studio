@@ -32,7 +32,7 @@
 
 #### Returns
 
-HTTP 200，返回 `HealthResponse`。不检查云账号、Provider 或目录是否可用。
+HTTP 200，返回 `HealthResponse`，表示 API 进程可响应。
 
 #### Request / Response 示例
 

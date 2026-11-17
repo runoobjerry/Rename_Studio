@@ -20,13 +20,13 @@
 | `cloud_default_locations` | object | 否 | 否 | 省略保留全部记录；逐连接合并，键约束同 AppPreferences。 |
 | ↳ `<storage_id>` | CloudDefaultLocation | 否 | 是 | 对象整体替换此连接记录，`null` 删除；未提交的连接保持不变。 |
 
-字段直接放在请求体，不包裹 `preferences`。`{}` 不修改偏好；保存失败保留既有状态。
+偏好字段直接放在请求体顶层。提交 `{}` 时保留全部偏好；保存失败保留既有状态。
 
 新增或替换默认目录时，`account_id` 必须匹配连接的当前账号，`location.kind` 必须在该 Provider 的 [`locations`](../providers/index.md#providers) 中。保存时不检查目标目录是否存在。
 
 #### Returns
 
-HTTP 200，返回完整 `AppSettingsResponse`，包含未修改字段。偏好不提供 `revision`。
+HTTP 200，返回完整 `AppSettingsResponse`，包含未修改字段。
 
 #### Request / Response 示例
 

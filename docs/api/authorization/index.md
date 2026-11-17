@@ -39,7 +39,7 @@
 
 ### 对象：授权回调消息
 
-通过 `window.opener.postMessage` 发送，不是 JSON HTTP 响应。
+授权回调页面通过 `window.opener.postMessage` 向发起窗口发送以下消息。
 
 #### Attributes
 

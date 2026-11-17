@@ -19,7 +19,7 @@
 
 | 字段 | 类型 | 可空 | 说明 |
 | --- | --- | --- | --- |
-| `provider` | string | 否 | Provider 类型，不替代 `storage_id`。 |
+| `provider` | string | 否 | Provider 类型。 |
 | `storage_id` | string | 是 | 当前目录接口返回实际连接 ID。 |
 | `revision` | integer | 是 | 当前目录接口返回读取时的连接版本。 |
 | `location` | StorageLocation | 是 | 规范化后的目录位置，后续导航和位置记忆使用此值。 |
@@ -36,4 +36,4 @@
 | 字段 | 类型 | 可空 | 说明 |
 | --- | --- | --- | --- |
 | `name` | string | 否 | 导航项显示名。 |
-| `location` | StorageLocation | 否 | 导航目标，不从显示路径推导。 |
+| `location` | StorageLocation | 否 | 导航目标。 |

@@ -13,7 +13,7 @@
 
 ### 对象：StorageProviderInfo
 
-描述存储实现的配置与能力。前端应按能力启用操作，不从类型名称推断。
+描述存储实现的配置与能力。前端按返回的能力字段启用操作。
 
 #### Attributes
 
@@ -41,12 +41,12 @@
 
 客户端只在识别 `browser_navigation` 且具备所需授权和位置能力时启用外部浏览器导航。
 
-定义不返回展示名称或字段文案。前端使用稳定 `provider_type`、`key` 查找翻译。
+展示名称和字段文案由前端按稳定的 `provider_type`、`key` 查找翻译。
 
 <a id="provider-config"></a>
 ### 配置对象：config
 
-创建时必填，更新时可省略。更新配置时整体替换原 `config`，不逐字段合并。内置配置拒绝未知字段。
+创建时必填，更新时可省略。更新配置时整体替换原 `config`。内置配置拒绝未知字段。
 
 | Provider | 字段 | 类型 | 必填 | 可空 | 默认值与约束 |
 | --- | --- | --- | --- | --- | --- |
@@ -54,7 +54,7 @@
 | `onedrive` | `client_id` | string | 否 | 是 | 默认 `null`；最长 200 字符；去除两端空白后不能为空。 |
 | `google_drive` | `client_id` | string | 否 | 是 | 默认 `null`；最长 200 字符；去除两端空白后不能为空。 |
 
-`client_secret` 是创建、更新请求的顶层字段，不属于 `config`。仅声明对应 `target` 的 Provider 接受非空密钥，内置实现中仅 Google Drive 支持。Google Drive 的 Client ID、Secret 均就绪后才能授权；可以先保存不完整配置。
+`client_secret` 在创建、更新请求的顶层提交。仅声明对应 `target` 的 Provider 接受非空密钥，内置实现中仅 Google Drive 支持。Google Drive 的 Client ID、Secret 均就绪后才能授权；可以先保存不完整配置。
 
 <a id="endpoint-get-storage-providers"></a>
 ### 列出 Provider 定义

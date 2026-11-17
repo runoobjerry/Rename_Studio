@@ -22,7 +22,7 @@
 
 #### Returns
 
-成功返回 HTTP 200 `text/html`，发送 `status: connected` 消息；失败返回 HTTP 400 `text/html`，发送 `status: failed` 消息。HTTP 状态不采用载荷错误码对应的常规状态。
+成功返回 HTTP 200 `text/html`，发送 `status: connected` 消息；失败返回 HTTP 400 `text/html`，发送 `status: failed` 消息。
 
 前端必须校验 `redirect_uri` 对应的 origin、弹窗 source、消息结构和 `storage_id`。成功后重新读取连接、授权状态与目录。
 

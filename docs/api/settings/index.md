@@ -15,7 +15,7 @@
 
 ### 对象：AppSettingsResponse
 
-仅返回偏好，不包含连接配置、凭据或执行任务。
+返回应用偏好。
 
 #### Attributes
 

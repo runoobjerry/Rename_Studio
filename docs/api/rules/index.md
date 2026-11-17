@@ -22,7 +22,7 @@
 | `type` | string | 否 | 稳定类型。当前为 `padding`、`replace`、`remove`、`insert`、`serialize`。 |
 | `config_schema` | object | 否 | 配置的 JSON Schema。 |
 
-不返回规则名称或说明，前端按 `type` 查找翻译。
+规则名称和说明由前端按 `type` 查找翻译。
 
 <a id="rule-spec"></a>
 ### 对象：RuleSpec
@@ -44,7 +44,7 @@
 
 #### padding
 
-补齐文件主名称或其中的数字，不修改文件扩展名。
+补齐文件主名称或其中的数字，保留文件扩展名。
 
 | 字段 | 类型 | 必填 | 可空 | 默认值与约束 |
 | --- | --- | --- | --- | --- |
@@ -55,7 +55,7 @@
 
 #### replace / remove 的匹配字段
 
-使用字面文本匹配，不将 `search` 当作正则表达式。`remove` 删除匹配，`replace` 使用 `replacement` 替换。
+`search` 按字面文本匹配。`remove` 删除匹配，`replace` 使用 `replacement` 替换。
 
 | 字段 | 类型 | 必填 | 可空 | 默认值与约束 |
 | --- | --- | --- | --- | --- |

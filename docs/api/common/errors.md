@@ -40,12 +40,12 @@
 
 ### 错误详情
 
-以下字段按错误场景提供。预览项及执行项的 `details` 复用适用字段；无详情时可为 `null`。
+以下字段按错误场景提供。预览项及执行项的 `details` 复用适用字段；无详情时可为 `null`。客户端按应用错误码和执行项 `status` 处理结果，底层 HTTP 状态、供应商错误码和 OS 错误编号用于诊断。
 
 | `details` 字段 | 类型 | 必含 | 可空 | 说明 |
 | --- | --- | --- | --- | --- |
-| `reason` | string | 否 | 否 | 应用定义的稳定细分原因，用于分类和本地化；不能直接填供应商错误码。 |
-| `params` | object | 否 | 否 | `reason` 对应的展示参数，不能用作业务标识或重试指令。 |
+| `reason` | string | 否 | 否 | 应用定义的稳定细分原因，用于分类和本地化。 |
+| `params` | object | 否 | 否 | `reason` 对应的本地化展示参数。 |
 | `stop_reason` | string | 否 | 否 | 停止继续提交的应用错误码；当前为 `RENAME_OUTCOME_UNKNOWN`。本项结果见逐项 `status`。 |
 | `file_ids` | array of string | 否 | 否 | 预览选择错误涉及的 ID。 |
 | `errors` | array of object | 否 | 否 | 校验错误；每项通常含 `type`、`loc`、`msg`，可能有其他校验数据。 |
@@ -58,20 +58,18 @@
 | `file_id` | string | 否 | 否 | 请求涉及的项目 ID。 |
 | `path` | string | 否 | 否 | 请求涉及的相对目录路径。 |
 | `new_name` | string | 否 | 否 | 请求目标名；确认后的名称见 `actual_name`。 |
-| `provider` | string | 否 | 否 | 配置校验涉及的 Provider 类型；不是 `storage_id`。 |
-| `graph_status` | integer | 否 | 否 | 保留的底层 HTTP 状态诊断字段；前端不据此分类或决定重试。 |
-| `google_status` | integer | 否 | 否 | 保留的底层 HTTP 状态诊断字段；前端不据此分类或决定重试。 |
-| `provider_type` | string | 否 | 否 | 错误来源的 Provider 类型，不是连接 ID。用于 HTTP 或本地 OS 错误诊断。 |
-| `provider_status` | integer | 否 | 否 | 底层 HTTP 状态，与 `graph_status` / `google_status` 对应；不是本 API 的 HTTP 状态。 |
-| `provider_codes` | array of string | 否 | 否 | Graph 外层至内层的错误码或 Google `errors[].reason`，仅供诊断和 Provider 内部识别；缺失时不补假定值。 |
+| `provider` | string | 否 | 否 | 配置校验涉及的 Provider 类型。 |
+| `graph_status` | integer | 否 | 否 | Graph HTTP 状态。 |
+| `google_status` | integer | 否 | 否 | Google HTTP 状态。 |
+| `provider_type` | string | 否 | 否 | 错误来源的 Provider 类型，用于 HTTP 或本地 OS 错误诊断。 |
+| `provider_status` | integer | 否 | 否 | Provider HTTP 状态，与 `graph_status` / `google_status` 对应。 |
+| `provider_codes` | array of string | 否 | 否 | Graph 外层至内层的错误码或 Google `errors[].reason`，也用于 Provider 内部识别。 |
 | `errno` | integer | 否 | 是 | 本地操作系统错误编号，未提供编号时为 `null`。 |
 | `winerror` | integer | 否 | 是 | Windows 错误编号，仅在系统提供时出现。 |
 
 创建、更新连接和更新偏好的请求校验错误会移除条目的 `input`、`ctx`，避免回显敏感请求值。
 
-`details` 只提供经过筛选的 JSON 数据，不包含令牌、密钥、Authorization header 或第三方完整响应。供应商状态和错误码仅用于诊断，不替代应用错误码。
-
-缺少字段表示未提供对应信息。写入结果按[执行结果项](../executions/index.md#execution-items)的状态与确认名称处理。
+`details` 只提供经过筛选的 JSON 数据，不包含令牌、密钥、Authorization header 或第三方完整响应。写入结果按[执行结果项](../executions/index.md#execution-items)的状态与确认名称处理。
 
 ### 执行原因
 
@@ -80,7 +78,7 @@
 | `PROVIDER_ERROR` | `RENAME_NOT_ATTEMPTED` | 配合 `status: not_attempted` 表示本项尚未发出写请求。`stop_reason: RENAME_OUTCOME_UNKNOWN` 表示另一项未知导致停止。 |
 | `RENAME_CONFLICT` | `SOURCE_CHANGED` | Provider 报告源状态或前置条件已变化，刷新目录后重新预览或重新输入。Graph `412` 产生此原因。 |
 
-已提交但被明确拒绝的项目属于 `failed`，即使后续重试未发生，也不属于 `not_attempted`。
+已提交但被明确拒绝的项目返回 `failed`。
 
 <a id="validation-reasons"></a>
 ### 校验原因

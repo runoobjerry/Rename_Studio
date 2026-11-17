@@ -46,7 +46,7 @@
 
 ### 单项直接执行
 
-`SingleRenameService` 检查连接 revision、互斥与 Provider 可改名能力，在目录写入协调范围内调用 `rename_single`。它不创建快照、不读取整个目录、不比对原名；名称和存储边界由 Schema 与驱动按[单项契约](../api/executions/single.md)检查。Google 单项按 ID PATCH，遵循第三方同名语义，不增加批量的目录/祖先预检。单项与批量共用未知结果核对与连接保护。
+`SingleRenameService` 检查连接 revision、互斥与 Provider 可改名能力，在目录写入协调范围内调用 `rename_single`。名称和存储边界由 Schema 与驱动按[单项契约](../api/executions/single.md)检查。Google 单项按 ID PATCH，遵循第三方同名语义。单项与批量共用未知结果核对与连接保护。
 
 ## 目录读取与缓存
 
