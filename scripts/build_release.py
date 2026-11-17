@@ -12,7 +12,7 @@ from set_version import ROOT, parse_version, prepare_updates
 
 def package_files(platform: str) -> dict[str, Path]:
     files = {
-        "README.md": ROOT / "docs/RELEASE_README.md",
+        "README.md": ROOT / "README.md",
         "LICENSE": ROOT / "LICENSE",
         "backend/pyproject.toml": ROOT / "backend/pyproject.toml",
         "backend/cache.toml": ROOT / "backend/cache.toml",
@@ -72,11 +72,6 @@ def build(version: str, python_version: str, platform: str, output: Path) -> Pat
             target = staging / relative
             target.parent.mkdir(parents=True, exist_ok=True)
             shutil.copyfile(source, target)
-        readme = staging / "README.md"
-        readme.write_text(
-            readme.read_text(encoding="utf-8").replace("{{TAG}}", f"v{version}"),
-            encoding="utf-8", newline="\n",
-        )
         if platform == "macos" and b"\r" in (staging / "Start.sh").read_bytes():
             raise ValueError("Start.sh must use LF line endings; check .gitattributes")
 

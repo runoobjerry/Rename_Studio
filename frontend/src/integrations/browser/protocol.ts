@@ -6,7 +6,7 @@ export const BROWSER_ORIGIN = import.meta.env.DEV ? "http://localhost:5173" : "h
 export const validRequestId = (value: unknown): value is string =>
   typeof value === "string" && /^[a-z0-9_-]{1,64}$/iu.test(value);
 
-// docs/BROWSER_PROTOCOL.md owns the contract, mirrored by the extension boundary.
+// See docs/browser-extensions/ARCHITECTURE.md; keep app and extension validators synchronized.
 export function parseBrowserTarget(value: unknown): { request: BrowserNavigationRequest } | { code: string } {
   if (!value || typeof value !== "object" || Array.isArray(value)) return { code: "invalid_request" };
   const data = value as Record<string, unknown>;

@@ -18,7 +18,7 @@
 | `modified_at` | string | 是 | ISO 8601 修改时间。 |
 | `location` | StorageLocation | 是 | 当前位置，进入文件夹时使用。 |
 | `parent_location` | StorageLocation | 是 | 父目录位置。 |
-| `can_rename` | boolean | 是 | `false` 表示不能重命名；`null` 表示未知，不能保证写入成功。 |
+| `can_rename` | boolean | 是 | 重命名能力提示：`true` 表示可用，`false` 表示不可用，`null` 表示未知；写入时由 Provider 检查名称、权限与冲突。 |
 | `can_list_children` | boolean | 是 | 仅 `FileItem`。Google Drive 文件夹的列举权限提示。缺失权限和其他项目均为 `null`。 |
 | `mime_type` | string | 是 | Google MIME type；其他内置 Provider 为 `null`。 |
 

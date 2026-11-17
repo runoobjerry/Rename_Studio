@@ -7,7 +7,7 @@ const change = (path, status = "M") => ({ path, status });
 
 describe("PR frontend checks", () => {
   it.each([
-    ["documentation", [change("docs/FRONTEND_TESTING.md")], "skip"],
+    ["documentation", [change("docs/README.md")], "skip"],
     ["backend service", [change("backend/app/services/execute_service.py")], "skip"],
     ["empty diff", [], "skip"],
     ["translation text", [change(locale)], "translations"],

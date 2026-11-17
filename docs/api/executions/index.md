@@ -75,7 +75,7 @@
 | `error_code` | string | 是 | 是 | [统一错误码](../common/errors.md#errors)，默认 `null`。 |
 | `details` | object | 是 | 是 | 附加详情，包括[校验原因](../common/errors.md#validation-reasons)，默认 `null`。 |
 | `actual_name` | string | 是 | 是 | 成功为已确认名称，跳过为预览原名；失败时为已核实名称或 `null`，未知和未执行不猜测名称；默认 `null`。 |
-| `current_file` | FileItem / RenameFile | 是 | 是 | 成功写入后确认的元数据；默认 `null`；为空不能证明是否已写入。 |
+| `current_file` | FileItem / RenameFile | 是 | 是 | 成功写入后确认的元数据；默认 `null`；写入结果见 `status`。 |
 
 <a id="execution-outcomes"></a>
 ### 操作结果
@@ -86,13 +86,13 @@
 | --- | --- |
 | `renamed` | 已确认达到目标名。 |
 | `skipped` | 无需修改而跳过，不能用于错误或停止提交。 |
-| `failed` | 已确认未达到目标，不保证仍为原名，也不证明请求从未执行。 |
-| `unknown` | 最终结果无法确认，不能直接判为失败。 |
-| `not_attempted` | 尚未发出本项写请求；不是响应丢失，也不是下一次重试未发生。 |
+| `failed` | 已确认未达到目标；当前名称可能是原名或其他名称，已核实时由 `actual_name` 返回。 |
+| `unknown` | 最终结果无法确认，需核对真实文件。 |
+| `not_attempted` | 尚未发出本项写请求。 |
 
-总体状态只表示是否全部成功修改，`incomplete` 不代表全部失败；客户端使用 `counts` 和逐项状态区分部分完成、确认失败、未知及未执行。存在未知或缺失结果时，优先提示待核对。`error_code` 说明具体原因，`stop_reason` 说明停止原因；缺少当前名称不改变结果状态。
+总体状态表示是否全部成功修改；`incomplete` 包含部分完成、确认失败、未知及未执行的情况，客户端使用 `counts` 和逐项状态展示各类结果。存在未知或缺失结果时，优先提示待核对。`error_code` 说明具体原因，`stop_reason` 说明停止原因。
 
-`actual_name` 是已确认的当前名称，`new_name` 始终是请求目标。`current_file` 提供确认元数据；使用其返回 ID 更新文件身份。名称或元数据为空不改变 `status`，也不能证明文件仍为原名。
+`actual_name` 是已确认的当前名称，`new_name` 始终是请求目标。`current_file` 提供确认元数据；使用其返回 ID 更新文件身份。名称或元数据为 `null` 时，继续按 `status` 处理结果，按需重新读取文件信息。
 
 同组出现未知写入时，先按 ID 核实。确认目标已达到则返回 `renamed`，确认其他名称则返回 `failed`；核实不了则保留 `unknown` 并停止提交后续组。未提交项返回 `not_attempted`，已确认成功项保留，不自动回滚。
 
@@ -134,9 +134,9 @@
 | `validating` | 执行前复核。 |
 | `renaming` | 写入目标名称。 |
 | `finished` | 执行响应已就绪，可能为 `completed` 或 `incomplete`。 |
-| `failed` | 执行请求复核失败、异常或中断，不代表已有完整执行响应。 |
+| `failed` | 执行请求复核失败、异常或中断；最终结果由执行响应或文件核对取得。 |
 
-`phase` 和 `processed` 仅表示进度，不替代最终逐项结果。`finished` 不保证全部成功，`failed` 不证明从未写入。
+`phase` 和 `processed` 用于展示执行阶段与已定案数量。逐项结果从执行响应取得；响应丢失时进入待核对流程。
 
 <a id="endpoint-get-rename-progress-preview-id"></a>
 ### 获取执行进度
@@ -151,7 +151,7 @@
 
 #### Returns
 
-HTTP 200，返回 `RenameProgress`。有效预览执行前为 `waiting`；执行结束后进度保留 10 分钟。`finished` 或 `processed == total` 不代表全部成功，以执行请求的最终响应为准。
+HTTP 200，返回 `RenameProgress`。有效预览执行前为 `waiting`；执行结束后进度保留 10 分钟。客户端据此更新进度展示，并按执行响应展示逐项结果。
 
 #### Request / Response 示例
 
@@ -171,5 +171,5 @@ GET /rename/progress/4db956a6-c583-47af-bcde-9ea71312fc36
 
 #### Errors
 
-- 404 `PREVIEW_NOT_FOUND`：进度已清理且无可用预览，或 ID 无效；不能据此判断执行结果。
+- 404 `PREVIEW_NOT_FOUND`：进度已清理且无可用预览，或 ID 无效。停止轮询；已提交的写入通过执行响应或真实文件核对结果。
 - 409 `PREVIEW_EXPIRED`：尚未执行的预览过期。重新预览。

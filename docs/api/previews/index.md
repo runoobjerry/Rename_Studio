@@ -23,7 +23,7 @@
 | `preview_id` | string | 否 | 服务端签发的标识，用于执行、进度查询和释放。 |
 | `expires_at` | string | 否 | ISO 8601 到期时间。 |
 | `items` | array of PreviewItem | 否 | 与请求 `file_ids` 顺序相同，包含未变化项。 |
-| `valid` | boolean | 否 | 全部项目有效时为 `true`，不表示所有名称都会变化。 |
+| `valid` | boolean | 否 | 全部项目有效时为 `true`；名称是否变化见逐项 `changed`。 |
 
 ### 对象：PreviewItem
 

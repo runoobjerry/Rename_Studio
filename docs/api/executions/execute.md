@@ -23,11 +23,11 @@
 
 Google Drive 可能以成功的空列表隐藏不存在或无权访问的目录。若因此无法找到快照中的源项，返回 `PREVIEW_EXPIRED`；明确的授权或权限错误仍按[共享错误](../common/errors.md)返回。
 
-预览在复核成功后、开始写入前被消费，不能再次执行。请求等待最终结果，进度查询不替代此响应。
+预览在复核成功后、开始写入前被消费，只能执行一次。请求等待并返回最终逐项结果，进度查询用于展示执行阶段。
 
 #### Returns
 
-HTTP 200，返回 [RenameExecuteResponse](index.md#对象renameexecuteresponse)。`completed` 表示全部完成，`incomplete` 表示未全部完成；HTTP 200 不保证全部成功。通过 `counts` 和[逐项状态](index.md#execution-outcomes)区分部分完成、失败、未知和未执行。
+HTTP 200，返回 [RenameExecuteResponse](index.md#对象renameexecuteresponse)。`completed` 表示全部完成，`incomplete` 表示未全部完成。通过 `counts` 和[逐项状态](index.md#execution-outcomes)区分部分完成、失败、未知和未执行。
 
 #### Request / Response 示例
 
@@ -78,4 +78,4 @@ Content-Type: application/json
 - 409 `STORAGE_CONNECTION_CHANGED`：连接删除或版本变化。读取连接、目录后重新预览。
 - 409 `STORAGE_BUSY`：连接已有重命名，等待完成。
 - 422 `VALIDATION_ERROR`：预览含无效项，不能执行。
-- 复核期间的应用错误附 `details.execution_started: false`。可明确提示尚未开始写入并要求重新预览；缺少该标记时不能直接推断写入状态。
+- 复核期间的应用错误附 `details.execution_started: false`，客户端提示尚未开始写入并要求重新预览。缺少该标记时，按执行结果核对真实文件状态。

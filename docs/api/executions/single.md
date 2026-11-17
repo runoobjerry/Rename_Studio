@@ -28,7 +28,7 @@
 
 核对连接版本后按 ID 直接执行，不读取整个目录、不比对原名。名称、权限与冲突以 Provider 结果为准。Google Drive 单项直接按 ID 修改，不做 My Drive、祖先、类型或权限预检，允许其 API 接受的同目录同名；不因此新增 shared drive 浏览支持。
 
-重复 `operation_id` 不保证只执行一次。同名请求也按 Provider 实际返回确认，不预先标为跳过。没有按 `operation_id` 查询结果或进度的接口。
+服务端按独立请求处理每次提交，不按 `operation_id` 去重。同名请求也按 Provider 实际返回确认，不预先标为跳过。没有按 `operation_id` 查询结果或进度的接口。
 
 #### Returns
 

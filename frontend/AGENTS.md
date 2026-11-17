@@ -1,41 +1,29 @@
-# Frontend Codex 指令
+# Frontend Agent Instructions
 
-以下规则仅适用于 `frontend/`。业务约定见 `../docs/FRONTEND_HANDOFF.md`，测试及授权流程见 `../docs/FRONTEND_TESTING.md`。
+适用于 `frontend/` 下的 AI Coding Agents；与[根级指令](../AGENTS.md)共同使用。本文件只补充前端特有约定，按任务选择入口，无需每次读取全部文档。
 
-## 开发及验证
+[文档索引](../docs/README.md) · [前端架构](../docs/frontend/ARCHITECTURE.md)
 
-- 修改前定位受影响的组件、状态和 API 行为，优先复用现有 Vitest + Testing Library 测试。
-- 新增业务功能或修复实际 Bug 时补充必要回归测试；纯样式和文案变动不为覆盖率编造测试。
-- 测试须模拟 API 响应，不访问真实 OneDrive、不操作真实用户文件或凭据；禁止低价值快照和脆弱断言。
-- 测试覆盖范围变化时，同步更新 [前端测试用例清单](../docs/FRONTEND_TEST_CASES.md) 的关键场景和源文件链接；单纯调整用例拆分或参数不重复维护数量。用例数以 Vitest 执行输出为准。
-- 完成修改后停止，说明修改范围、建议运行的测试及人工 UI 验收要点。**本地 `npm ci`、`npm test`、`npm run check`、`npm run build` 及浏览器验收均由用户亲自执行；Codex 不擅自运行或声称已通过。**
-- 用户报告测试失败时，依据日志定位并最小范围修复，再交回用户人工复测；不得删除有效测试、跳过断言或降低检查强度。
+## 按任务定位
 
-## 业务场景测试约束
+| 修改内容 | 相关入口 |
+| --- | --- |
+| 工作流、状态、缓存或目录导航 | [状态归属与核心流程](../docs/frontend/ARCHITECTURE.md#依赖与状态归属) |
+| 页面布局、控件、交互与可访问性 | [UI 设计规范](../docs/frontend/UI_DESIGN.md) |
+| 文案、语言或错误展示 | [UX 文案规范](../docs/frontend/UI_DESIGN.md#ux-文案规范ux-writing) · [文案与错误链路](../docs/frontend/ARCHITECTURE.md#文案与错误) |
+| 请求、类型或执行结果 | [API 索引](../docs/api/README.md)中的对应资源，以及 [client](src/api/client.ts) / [types](src/types/index.ts) |
+| 浏览器扩展接入 | [扩展架构](../docs/browser-extensions/ARCHITECTURE.md)与 [integrations/browser](src/integrations/browser) |
+| 测试修改或验证建议 | [测试定位与验证](../docs/frontend/TEST.md#测试定位与验证) |
 
-- 测试按“前置场景 → 真实操作入口 → 直接结果与关联状态”编写，名称说明业务行为；不按组件方法或覆盖率机械补测试。
-- 复用 `src/test/fixtures.ts` 和 `deferred.ts` 准备数据及异步响应。工厂只构造数据，不计算被测业务的预期值；被测操作不能用 `setState` 或缓存注入代替。
-- Store 保存选择、规则、最近修改记录及待核对执行信息；Hook 保留真实 Query/Store 验证工作流；组件验证交互和展示；工作台只承接跨模块接线。Mock API、浏览器等外部边界，不 Mock 被测 Hook、Store 或排序业务。
-- 修改选择、规则、排序、连接、账号或执行流程时，同时检查相关预览、选择、缓存和释放请求；未知或缺失执行结果不得被重新提交。
-- `vi.mock` 保留在测试入口；共享生命周期由入口显式调用，异步测试等待具体状态，禁止固定 sleep、扩大超时或跳过有效断言来通过 CI。
-- 测试覆盖分工与工具用法见 [测试指南](../docs/FRONTEND_TESTING.md)。
+## 实现约定
 
-## 工作区职责边界
+- `WorkspaceApp` 负责布局与跨 Hook 接线；目录/连接归 `useWorkspaceStorage`，预览与执行归 `useRenameWorkflow`。两个主 Hook 通过容器传值，展示组件保持受控。
+- 服务端数据用 TanStack Query；选择、规则、提交/最近记录和待核对信息用 Zustand。排序、筛选与虚拟化基于完整集合；文件显示名和 DOM 不承担资源身份或结果判断。
+- 修改选择、规则、排序、连接、账号、revision 或文件身份时，同步处理预览失效、快照释放、迟到响应和缓存更新。未知保护独立于当前视图，切换页面或关闭警告不能清除；结果只合并服务端确认的元数据。
+- 规则字段在 `RuleFields` 显式适配；通用连接 UI 消费 Provider 能力与字段元数据。名称转换与冲突校验留在后端。
+- UI 复用 MUI、主题和共享控件。固定文案、通知、Tooltip、ARIA 使用 `react-i18next`，同步维护 en-US / zh-CN；模块常量保存键，展示时翻译，文件名等用户数据保持原值。
+- 错误通过 `errorPresentation` / `messages` 从结构化字段选择提示；展示层不决定是否重试或改变执行结果。OAuth 保留来源、窗口和连接身份校验，令牌不进入浏览器持久化。
 
-- 新 UI 文案（含通知、Tooltip、ARIA）使用 `react-i18next`，默认与回退资源为 `en-US`，同步维护 `zh-CN`；不得在模块导入时缓存译文。新增 Rule/Provider 补齐稳定 type/field key 的词条，不能用译文标识业务或翻译文件名、路径、连接与账号数据。翻译贡献指南见 [README 的开发章节](../README.md#开发)，静态检查见 [测试指南](../docs/FRONTEND_TESTING.md)。
-- 错误展示统一从应用错误码、结构化原因和结果状态选择本地化文案。业务分支依据 API 的结构化字段判断，禁止匹配诊断文案、译文或供应商错误码。错误展示层不决定是否重试或改变执行状态。
+## 测试与收尾
 
-- `WorkspaceApp` 只负责 Provider 入口、布局、导航保护和跨 Hook 协调；连接/目录生命周期归 `useWorkspaceStorage`，选择、预览和执行归 `useRenameWorkflow`。两个 Hook 不直接互相调用，所需状态和重置动作由容器显式传递。
-- TanStack Query 管理服务端数据和缓存，Zustand 仅保存选择、规则链、当前页面内存中的提交与最近修改记录及独立待核对信息；展示组件不承载工作流状态机，也不以 DOM、文件名或推测结果推断执行结果。
-- 批量预览取当前选择，按当前排序提交。工作区、选择、规则、排序或选中项的名称变化后，旧预览不可执行。按预览生命周期释放过时快照。预览和执行响应只更新匹配的工作区视图，执行记录归属发起操作的连接和目录，与当前选择和预览分开管理。
-- 缺失执行结果或写入结果未知时，锁定新的预览与执行。原连接和原目录须绕过服务端缓存成功读取后才解除保护，禁止客户端重放或推断成功。手动刷新及未知结果核对发送 `refresh: true`，不启用祖先复用；外部导航发送 `refresh: true, reuse_ancestors: true`，实时读取目录内容并保留目标核验。
-- 目录读取期间禁止目录导航和重复刷新，外部导航返回忙碌；仍允许切换连接。完整刷新发现祖先关系或子目录变化时，移除同连接版本的其他目录查询及其待完成请求，保留本次刷新和其他连接的查询。
-
-## Git 和 CI 审批
-
-- **默认禁止自行执行 Git Commit 和 Git Push。** 用户完成本地测试并明确批准本次 Commit 后才能提交；Push 还须获得针对目标开发分支的明确批准。普通开发需求或“测试通过”不构成 Git 操作批准。
-- 提交前列明变更文件和建议 Commit 信息；仅提交本次任务相关文件。未经批准不得 Push 到任何远程分支，始终不得直接 Push 到 `main`。
-- 经批准 Push 到开发分支后，可按用户指令创建/更新 PR；GitHub Actions 自动复核。**PR 合并、自动合并的启用及正式发布只由用户操作。**
-- CI 失败时读取对应 Job 日志并修复，之后仍先由用户本地测试，再分别批准新的 Commit 和 Push；不得未经批准自动循环提交。最多建议 3 轮修复，仍失败则报告阻碍。
-- 如果无法获取日志、缺少权限或用户尚未确认测试结果，暂停 Git 操作并如实报告。保留无关代码不变。
-
+测试入口与编写约定见[TEST.md](../docs/frontend/TEST.md)。按受影响行为选择检查，交付时说明实际静态检查、用户待执行项与未验证范围；运行权限遵循[根级指令](../AGENTS.md#验证与交付)。

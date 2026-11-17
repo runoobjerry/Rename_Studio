@@ -134,8 +134,8 @@ jobs:
 
           Browser extension only; download the Rename Studio application separately.
 
-          - [Install and update instructions](https://github.com/$GH_REPO/blob/$tag/extensions/browser/README.md#快速开始)
-          - [Release and verification guide](https://github.com/$GH_REPO/blob/$tag/docs/RELEASING.md#浏览器扩展独立发布)
+          - [Install and update instructions](https://github.com/$GH_REPO/blob/$tag/docs/browser-extensions/README.md#快速开始)
+          - [Release and verification guide](https://github.com/$GH_REPO/blob/$tag/docs/browser-extensions/DEVELOPMENT.md#发布)
 
           Before publishing, add the changes and the application version verified with this extension.
           EOF

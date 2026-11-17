@@ -1,6 +1,6 @@
 import { findRequestAdapter } from "./adapters/index.js";
 
-// Keep these boundaries synchronized with docs/BROWSER_PROTOCOL.md.
+// See docs/browser-extensions/ARCHITECTURE.md; keep extension and app validators synchronized.
 export const NAMESPACE = "rename-studio.browser.v1";
 export const PROJECT = "rename-studio";
 export const validRequestId = (value) => typeof value === "string" && /^[a-z0-9_-]{1,64}$/iu.test(value);

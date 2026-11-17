@@ -1,5 +1,7 @@
 # API Reference
 
+[开发文档索引](../README.md) · [系统架构](../ARCHITECTURE.md) · [前端架构](../frontend/ARCHITECTURE.md) · [后端架构](../backend/ARCHITECTURE.md)
+
 Python 后端与 React 前端之间的 API 契约。按资源定义对象，再列出接口；字段名、枚举值和错误码与当前代码一致。
 
 ## 全局说明
