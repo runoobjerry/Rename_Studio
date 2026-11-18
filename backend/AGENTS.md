@@ -2,18 +2,15 @@
 
 适用于 `backend/` 下的 AI Coding Agents；与[根级指令](../AGENTS.md)共同使用。本文件只补充后端特有约定，按任务选择入口，无需每次读取全部文档。
 
-[文档索引](../docs/README.md) · [后端架构](../docs/backend/ARCHITECTURE.md)
+[开发文档索引](../docs/README.md)统一维护后端文档目录与职责。
 
 ## 按任务定位
 
-| 修改内容 | 相关入口 |
-| --- | --- |
-| 服务边界、装配或持久化 | [依赖与对象装配](../docs/backend/ARCHITECTURE.md#依赖与对象装配)、[持久化与部署](../docs/backend/ARCHITECTURE.md#持久化与部署) |
-| 预览、单项或批量改名 | [执行流程](../docs/backend/ARCHITECTURE.md#预览与执行)与 [API 执行契约](../docs/api/executions/index.md) |
-| 目录、缓存或云盘分页 | [读取模式与缓存](../docs/backend/ARCHITECTURE.md#目录读取与缓存)、[目录 API](../docs/api/directories/list.md) |
-| 新增 Rule / Provider | [扩展入口](../docs/backend/ARCHITECTURE.md#扩展入口) |
-| HTTP、Schema、错误或结果枚举 | [API 索引](../docs/api/README.md)与[共享错误](../docs/api/common/errors.md) |
-| 测试修改或验证建议 | [测试定位与验证](../docs/backend/TEST.md#测试定位与验证) |
+- 服务边界、依赖装配、持久化、规则与 Provider：阅读[后端架构](../docs/backend/ARCHITECTURE.md)。
+- 预览、单项或批量改名：阅读[执行流程](../docs/backend/ARCHITECTURE.md#预览与执行)和[执行 API 契约](../docs/api/executions/index.md)。
+- 目录、缓存和分页：阅读[目录读取与缓存](../docs/backend/ARCHITECTURE.md#目录读取与缓存)和[目录 API](../docs/api/directories/list.md)。
+- HTTP、Schema、错误与结果枚举：从 [API 索引](../docs/api/README.md)定位对应契约。
+- 测试与验收：阅读[后端测试文档](../docs/backend/TEST.md)。
 
 ## 实现约定
 
