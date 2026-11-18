@@ -6,12 +6,12 @@ from time import perf_counter
 
 from app.core.log_context import request_id_context
 from app.core.errors import StorageConnectionChangedError, ValidationError
-from app.providers.registry import ProviderRegistry
 from app.rules.base import RuleContext
 from app.schemas.files import FileItem
 from app.schemas.rename import PreviewItem, RenamePreviewRequest, RenamePreviewResponse
 from app.services.preview_store import PreviewStore
 from app.services.rename_engine import RenameEngine
+from app.services.storage_manager import StorageManager
 
 
 logger = logging.getLogger("rename_studio.preview")
@@ -34,22 +34,22 @@ def _timed_phase(storage_id: str, phase: str, item_count: int) -> Iterator[None]
 class PreviewService:
     def __init__(
         self,
-        providers: ProviderRegistry,
+        manager: StorageManager,
         engine: RenameEngine,
         store: PreviewStore | None = None,
     ) -> None:
-        self.providers = providers
+        self.manager = manager
         self.engine = engine
         self.store = store or PreviewStore()
 
     async def preview(
         self, request: RenamePreviewRequest, *, previous_preview_id: str | None = None,
     ) -> RenamePreviewResponse:
-        revision = self.providers.revision(request.storage_id)
+        revision = self.manager.record(request.storage_id).revision
         request = request.model_copy(deep=True)
         with _timed_phase(request.storage_id, "evaluate", len(request.file_ids)):
             items, files, valid = await self.evaluate(request)
-        if self.providers.revision(request.storage_id) != revision:
+        if self.manager.record(request.storage_id).revision != revision:
             raise StorageConnectionChangedError("Storage changed while creating the preview")
         with _timed_phase(request.storage_id, "snapshot", len(files)):
             response = self.store.save(request, items, valid, files, revision)
@@ -65,10 +65,9 @@ class PreviewService:
         files: list[FileItem] | None = None,
         siblings: list[FileItem] | None = None,
     ) -> tuple[list[PreviewItem], list[FileItem], bool]:
-        driver = self.providers.get_driver(request.storage_id)
-        directories = self.providers.manager.directories
-        record = self.providers.manager.record(request.storage_id)
-        supports_rename = self.providers.definition(record.provider_type).can_rename
+        driver = self.manager.get_driver(request.storage_id)
+        directories = self.manager.directories
+        supports_rename = self.manager.provider_definition(request.storage_id).can_rename
         if len(request.file_ids) != len(set(request.file_ids)):
             raise ValidationError(
                 "Duplicate file IDs are not allowed",

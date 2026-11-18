@@ -16,7 +16,7 @@ class TestProviderConfig(BaseModel):
     pass
 
 
-def registry_for(drivers: dict[str, StorageDriver], *, cache_directories: bool = False) -> ProviderRegistry:
+def manager_for(drivers: dict[str, StorageDriver], *, cache_directories: bool = False) -> StorageManager:
     """Exercise service tests through the same driver factory and storage lookup as production."""
     registry = ProviderRegistry()
     records = {}
@@ -30,9 +30,10 @@ def registry_for(drivers: dict[str, StorageDriver], *, cache_directories: bool =
             storage_id=storage_id, provider_type=driver.provider_type,
             name=storage_id, config={},
         )
-    StorageManager(registry, JsonStorageRepository(Path("unused-unit-test-state.json")),
-                   StorageState(connections=records))
-    return registry
+    return StorageManager(
+        registry, JsonStorageRepository(Path("unused-unit-test-state.json")), StorageState(connections=records),
+        default_connection=next(iter(records.values())),
+    )
 
 
 class CooldownClock:

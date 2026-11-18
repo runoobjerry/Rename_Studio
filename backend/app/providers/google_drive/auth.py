@@ -131,7 +131,7 @@ class GoogleDriveAuthService:
             # Request a fresh offline grant for the selected account.
             "prompt": "consent select_account",
         })
-        return AuthorizationStart(authorization_url=f"{AUTHORIZE_URL}?{query}")
+        return AuthorizationStart(authorization_url=f"{AUTHORIZE_URL}?{query}", state=state)
 
     async def finish_authorization(self, code: str, state: str) -> None:
         self._before_change()

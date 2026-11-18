@@ -1,21 +1,19 @@
 import asyncio
 import json
-from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Annotated, cast
-from urllib.parse import parse_qs, urlsplit
 
 from fastapi import APIRouter, Depends, Query, Response
 from fastapi.responses import HTMLResponse
 
 from app.api.dependencies import get_single_rename_service, get_preview_service, get_preview_store, get_storage_manager
 from app.core.config import get_settings
-from app.core.errors import AppError, AuthenticationError, StorageConnectionChangedError, ValidationError
+from app.core.errors import StorageConnectionChangedError, ValidationError
+from app.providers.auth import StorageAuth
 from app.schemas.files import DirectoryListing
 from app.schemas.storage import LocalFolderPickResponse
 from app.schemas.rename import RenamePreviewRequest, RenamePreviewResponse, SingleRenameExecuteRequest, SingleRenameExecuteResponse
 from app.schemas.storage import AuthorizationStatus, StorageAuthStartResponse, StorageCreate, StorageInfo, StorageListRequest, StoragePreviewRequest, StorageProviderInfo, StorageUpdate
-from app.services.storage_auth import StorageAuth
 from app.services.local_folder_picker import choose_local_directory
 from app.services.preview_service import PreviewService
 from app.services.preview_store import PreviewStore
@@ -77,7 +75,7 @@ async def list_files(storage_id: str, request: StorageListRequest, manager: Mana
 async def pick_local(storage_id: str, manager: Manager) -> LocalFolderPickResponse:
     manager.ensure_mutable(storage_id)
     before = manager.record(storage_id)
-    if not manager.registry.definition(before.provider_type).local_picker:
+    if not manager.provider_definition(storage_id).local_picker:
         raise ValidationError("This storage does not support a local folder picker")
     root = Path(str(before.config["root_path"]))
     selected = await asyncio.to_thread(choose_local_directory, root)
@@ -105,15 +103,9 @@ async def auth_status(storage_id: str, manager: Manager) -> AuthorizationStatus:
 
 @router.post("/storages/{storage_id}/auth/start", response_model=StorageAuthStartResponse)
 async def auth_start(storage_id: str, manager: Manager) -> StorageAuthStartResponse:
-    manager.ensure_mutable(storage_id)
-    record = manager.record(storage_id)
-    auth = cast(StorageAuth, manager.auth(storage_id))
-    result = auth.start_authorization(get_settings().storage_redirect_uri)
-    provider_state = parse_qs(urlsplit(result.authorization_url).query)["state"][0]
-    now = datetime.now(UTC)
-    manager.authorization_sessions = {key: value for key, value in manager.authorization_sessions.items() if value[3] > now and value[0] != record.storage_id}
-    manager.authorization_sessions[provider_state] = (record.storage_id, manager.record(storage_id).revision, provider_state, now + timedelta(minutes=10))
-    return StorageAuthStartResponse(authorization_url=result.authorization_url, redirect_uri=get_settings().storage_redirect_uri)
+    redirect_uri = get_settings().storage_redirect_uri
+    result = manager.start_authorization(storage_id, redirect_uri)
+    return StorageAuthStartResponse(authorization_url=result.authorization_url, redirect_uri=redirect_uri)
 
 
 @router.delete("/storages/{storage_id}/auth/session", status_code=204)
@@ -125,26 +117,13 @@ async def disconnect(storage_id: str, manager: Manager) -> Response:
 @router.get("/auth/storage/callback", response_class=HTMLResponse)
 async def callback(manager: Manager, code: str | None = Query(default=None), state: str | None = Query(default=None),
                    error: str | None = Query(default=None)) -> HTMLResponse:
-    success = False
-    error_code: str | None = None
-    details: dict[str, object] = {}
-    message = "Authorization failed. You can close this window."
-    storage_id: str | None = None
-    try:
-        session = manager.authorization_sessions.pop(state or "", None)
-        if session is None or session[3] <= datetime.now(UTC) or error or not code:
-            raise AuthenticationError("Authorization is invalid, expired or cancelled")
-        storage_id, revision, provider_state, _ = session
-        if manager.record(storage_id).revision != revision:
-            raise StorageConnectionChangedError("Storage changed during authorization")
-        manager.ensure_mutable(storage_id)
-        await cast(StorageAuth, manager.auth(storage_id)).finish_authorization(code, provider_state)
-        success = True
+    storage_id, failure = await manager.finish_authorization(code, state, error)
+    success = failure is None
+    if failure is None:
         message = "Storage connected. You can close this window."
-    except AppError as exc:
-        message = exc.message
-        error_code = exc.code
-        details = exc.details
+        error_code, details = None, {}
+    else:
+        message, error_code, details = failure.message, failure.code, failure.details
     payload = json.dumps({"type": "storage-auth", "storage_id": storage_id, "status": "connected" if success else "failed", "message": message, "error_code": error_code, "details": details}).replace("<", "\\u003c")
     origin = json.dumps(get_settings().frontend_origin)
     # 回调页仅使用英文；原始错误只留在诊断载荷中。
@@ -156,8 +135,7 @@ async def callback(manager: Manager, code: str | None = Query(default=None), sta
 @router.post("/storages/{storage_id}/rename/preview", response_model=RenamePreviewResponse)
 async def preview(storage_id: str, request: StoragePreviewRequest, manager: Manager,
                   service: Annotated[PreviewService, Depends(get_preview_service)]) -> RenamePreviewResponse:
-    record = manager.record(storage_id)
-    if not manager.registry.definition(record.provider_type).can_rename:
+    if not manager.provider_definition(storage_id).can_rename:
         raise ValidationError("This storage does not support rename previews")
     return await service.preview(RenamePreviewRequest(storage_id=storage_id, location=request.location,
                                                       file_ids=request.file_ids, rules=request.rules,

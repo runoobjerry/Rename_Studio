@@ -1,17 +1,13 @@
-from collections.abc import Callable, Iterator
-from contextlib import contextmanager
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Literal
+from typing import Literal
 
 from pydantic import BaseModel, ValidationError as ModelValidationError
 
 from app.core.errors import ValidationError
+from app.providers.auth import StorageAuth
 from app.providers.base import StorageDriver
 from app.schemas.storage import StorageConfigField, StorageRecord
-from app.services.storage_auth import StorageAuth
-
-if TYPE_CHECKING:
-    from app.services.storage_manager import StorageManager
 
 
 @dataclass(frozen=True)
@@ -32,7 +28,6 @@ class ProviderDefinition:
 class ProviderRegistry:
     def __init__(self) -> None:
         self.definitions: dict[str, ProviderDefinition] = {}
-        self.manager: StorageManager
 
     def register(self, definition: ProviderDefinition) -> None:
         if definition.provider_type in self.definitions:
@@ -49,17 +44,3 @@ class ProviderRegistry:
             return self.definition(provider_type).config_model.model_validate(config).model_dump(mode="json")
         except ModelValidationError as exc:
             raise ValidationError("Invalid storage configuration", details={"provider": provider_type}) from exc
-
-    def revision(self, storage_id: str) -> int:
-        return self.manager.record(storage_id).revision
-
-    @contextmanager
-    def execution(self, storage_id: str, revision: int) -> Iterator[None]:
-        with self.manager.execution(storage_id, revision):
-            yield
-
-    def get_driver(self, storage_id: str) -> StorageDriver:
-        return self.manager.get_driver(storage_id)
-
-    async def aclose(self) -> None:
-        await self.manager.aclose()

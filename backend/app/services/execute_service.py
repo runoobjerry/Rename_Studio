@@ -6,7 +6,6 @@ from time import monotonic
 from app.core.errors import AppError, NotFoundError, PreviewExpiredError, ValidationError, RenameOutcomeUnknownError, ProviderError
 from app.core.log_context import request_id_context
 from app.providers.base import RenameRequest, StorageDriver
-from app.providers.registry import ProviderRegistry
 from app.schemas.files import FileItem
 from app.schemas.rename import (
     ExecuteItem,
@@ -17,6 +16,7 @@ from app.services.directory_cache import RenameCacheScope
 from app.services.preview_service import PreviewService
 from app.services.preview_store import PreviewSnapshot, PreviewStore
 from app.services.rename_write import RenameObserver, drain_writes, rename_failure_status, resolve_rename_outcome
+from app.services.storage_manager import StorageManager
 
 
 logger = logging.getLogger("rename_studio.rename")
@@ -25,11 +25,11 @@ logger = logging.getLogger("rename_studio.rename")
 class ExecuteService:
     def __init__(
         self,
-        providers: ProviderRegistry,
+        manager: StorageManager,
         previews: PreviewStore,
         preview_service: PreviewService,
     ) -> None:
-        self.providers = providers
+        self.manager = manager
         self.previews = previews
         self.preview_service = preview_service
         self._lock = asyncio.Lock()
@@ -51,7 +51,7 @@ class ExecuteService:
         # 单进程内串行执行，避免两个批次同时争用相同目录中的目标名称。
         async with self._lock:
             snapshot = self.previews.get(preview_id)
-            with self.providers.execution(snapshot.request.storage_id, snapshot.connection_revision):
+            with self.manager.execution(snapshot.request.storage_id, snapshot.connection_revision):
                 self._purge_progress()
                 progress = RenameProgress(
                     preview_id=preview_id,
@@ -92,7 +92,7 @@ class ExecuteService:
             raise ValidationError("Rename preview contains invalid items")
 
         storage_id = snapshot.request.storage_id
-        directories = self.providers.manager.directories
+        directories = self.manager.directories
         parent = StorageDriver.parent_directory(snapshot.sources[0])
         try:
             listing = await directories.list_directory(storage_id, parent, mode="verify")
@@ -251,7 +251,7 @@ class ExecuteService:
         sources: list[FileItem],
         progress: RenameProgress,
     ) -> RenameExecuteResponse:
-        driver = self.providers.get_driver(snapshot.request.storage_id)
+        driver = self.manager.get_driver(snapshot.request.storage_id)
         results = {
             item.file_id: ExecuteItem(
                 file_id=item.file_id,
@@ -279,7 +279,7 @@ class ExecuteService:
             )
 
         progress.phase = "renaming"
-        with self.providers.manager.directories.writing(snapshot.request.storage_id, snapshot.connection_revision, scope):
+        with self.manager.directories.writing(snapshot.request.storage_id, snapshot.connection_revision, scope):
             outcomes = await self._rename_in_batches(driver, requests, progress, observe=observe)
         for item in changed:
             outcome = outcomes[item.file_id]

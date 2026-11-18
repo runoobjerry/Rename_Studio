@@ -21,7 +21,7 @@ flowchart LR
   Drivers --> Cloud[OneDrive / Google Drive API]
 ```
 
-图展示主要业务调用，具体对象装配与现有 Registry 转接关系见[后端架构](backend/ARCHITECTURE.md#依赖与对象装配)。扩展消息只请求导航，不执行改名，详见[扩展架构](browser-extensions/ARCHITECTURE.md)。
+图展示主要业务调用，服务装配与 Provider 注册见[后端架构](backend/ARCHITECTURE.md#依赖与对象装配)。扩展消息只请求导航，详见[扩展架构](browser-extensions/ARCHITECTURE.md)。
 
 ## 模块与依赖
 

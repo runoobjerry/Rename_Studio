@@ -1,9 +1,11 @@
 from functools import lru_cache
 
-from app.core.config import get_settings
+from app.core.config import Settings, get_settings
+from app.core.errors import ProviderError
 from app.providers.builtin import register_builtin_providers
 from app.providers.registry import ProviderRegistry
 from app.repositories.storage_repository import JsonStorageRepository
+from app.schemas.storage import StorageRecord, StorageState
 from app.services.storage_manager import StorageManager
 from app.rules.insert import InsertRule
 from app.rules.padding import PaddingRule
@@ -19,19 +21,39 @@ from app.services.rename_engine import RenameEngine
 
 
 @lru_cache
-def get_provider_registry() -> ProviderRegistry:
-    return get_storage_manager().registry
-
-
-@lru_cache
 def get_storage_manager() -> StorageManager:
     settings = get_settings()
     registry = ProviderRegistry()
     register_builtin_providers(registry, settings)
+    return build_storage_manager(settings, registry)
+
+
+def build_storage_manager(settings: Settings, registry: ProviderRegistry) -> StorageManager:
     repository = JsonStorageRepository(settings.storage_state_file)
-    state = repository.load_or_initialize(settings.local_storage_root, registry.validate_config)
+    default = StorageRecord(
+        storage_id="default-local", provider_type="local", name="Local Files",
+        config={"root_path": str(settings.local_storage_root)},
+    )
+    state = repository.load()
+    if state is None:
+        try:
+            settings.local_storage_root.mkdir(parents=True, exist_ok=True)
+        except OSError as exc:
+            raise ProviderError("Could not initialize the local storage root") from exc
+        initial = default.model_copy(update={"config": registry.validate_config(default.provider_type, default.config)})
+        state = StorageState(connections={initial.storage_id: initial})
+        repository.save(state)
+    else:
+        try:
+            existing = state.connections[default.storage_id]
+            if existing.provider_type != default.provider_type:
+                raise ValueError("Default storage connection type mismatch")
+            for record in state.connections.values():
+                record.config = registry.validate_config(record.provider_type, record.config)
+        except (OSError, KeyError, ValueError) as exc:
+            raise ProviderError("Storage state is invalid; restore its backup before starting") from exc
     return StorageManager(
-        registry, repository, state,
+        registry, repository, state, default_connection=default,
         directory_cache=DirectoryCache(settings.directory_cache.directory_listings),
     )
 
@@ -55,7 +77,7 @@ def get_preview_store() -> PreviewStore:
 @lru_cache
 def get_preview_service() -> PreviewService:
     return PreviewService(
-        get_provider_registry(),
+        get_storage_manager(),
         RenameEngine(get_rule_registry()),
         get_preview_store(),
     )
@@ -64,7 +86,7 @@ def get_preview_service() -> PreviewService:
 @lru_cache
 def get_execute_service() -> ExecuteService:
     return ExecuteService(
-        get_provider_registry(),
+        get_storage_manager(),
         get_preview_store(),
         get_preview_service(),
     )
@@ -72,4 +94,4 @@ def get_execute_service() -> ExecuteService:
 
 @lru_cache
 def get_single_rename_service() -> SingleRenameService:
-    return SingleRenameService(get_provider_registry())
+    return SingleRenameService(get_storage_manager())

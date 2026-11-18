@@ -127,6 +127,7 @@ class AuthorizationStatus(BaseModel):
 
 class AuthorizationStart(BaseModel):
     authorization_url: str
+    state: str
 
 
 class StorageRecord(BaseModel):

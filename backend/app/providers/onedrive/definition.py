@@ -3,11 +3,11 @@ from typing import cast
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.core.config import Settings
+from app.providers.auth import StorageAuth
 from app.providers.onedrive.auth import OneDriveAuthService
 from app.providers.onedrive.driver import OneDriveDriver
 from app.providers.registry import ProviderDefinition
 from app.schemas.storage import StorageConfigField
-from app.services.storage_auth import StorageAuth
 
 
 class OneDriveConfig(BaseModel):

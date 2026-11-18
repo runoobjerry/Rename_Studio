@@ -94,7 +94,7 @@ class DirectoryService:
     ) -> DirectoryListing:
         record = self._manager.record(storage_id)
         key = (storage_id, record.revision, location)
-        cache_enabled = self._manager.registry.definition(record.provider_type).cache_directories
+        cache_enabled = self._manager.provider_definition(storage_id).cache_directories
         if cache_enabled:
             auth = self._manager.auth(storage_id, required=False)
             cache_enabled = auth is None or auth.status().connected

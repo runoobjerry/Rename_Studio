@@ -1,6 +1,5 @@
 import asyncio
 import json
-from datetime import UTC, datetime
 from dataclasses import replace
 from pathlib import Path
 from typing import cast
@@ -9,19 +8,18 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from app.api.dependencies import get_storage_manager, get_preview_service, get_execute_service, get_preview_store
-from app.api import app_settings_router, storage_router
-from app.core.errors import ProviderError, StorageBusyError, StorageConnectionChangedError, ValidationError
+from app.api.dependencies import build_storage_manager, get_storage_manager, get_preview_service, get_execute_service, get_preview_store
+from app.api import storage_router
+from app.core.errors import AuthenticationError, ProviderError, StorageBusyError, StorageConnectionChangedError, ValidationError
 from app.core import config as app_config
 from app.main import create_app
+from app.providers.auth import StorageAuth
 from app.providers.local.definition import get_definition as local_definition
 from app.providers.onedrive.definition import OneDriveConfig, get_definition as onedrive_definition
 from app.providers.registry import ProviderRegistry
-from app.repositories.storage_repository import JsonStorageRepository
 from app.schemas.rename import RenamePreviewRequest
 from app.schemas.rules import RuleSpec
 from app.schemas.storage import AppSettingsPatch, StorageConfigField, RootLocation, StorageCreate, StorageUpdate
-from app.services.storage_auth import StorageAuth
 from app.services.execute_service import ExecuteService
 from app.providers.onedrive.auth import OneDriveAuthService
 from app.services.preview_service import PreviewService
@@ -32,27 +30,24 @@ from app.rules.registry import RuleRegistry
 from app.rules.text_operations import ReplaceRule
 
 
-def make_manager(tmp_path: Path) -> StorageManager:
-    root = tmp_path / "files"
-    root.mkdir(exist_ok=True)
-    repository = JsonStorageRepository(tmp_path / "storages.json")
+def make_manager(tmp_path: Path, *, local_root: Path | None = None) -> StorageManager:
     registry = ProviderRegistry()
     settings = app_config.Settings(
-        _env_file=None, local_storage_root=root,
+        _env_file=None, local_storage_root=local_root or tmp_path / "files",
+        storage_state_file=tmp_path / "storages.json",
         storage_redirect_uri="http://localhost/auth/storage/callback",
     )
     registry.register(local_definition(settings))
     registry.register(onedrive_definition(settings))
-    state = repository.load_or_initialize(root, registry.validate_config)
-    return StorageManager(registry, repository, state)
+    return build_storage_manager(settings, registry)
 
 
 def services(manager: StorageManager) -> tuple[PreviewService, ExecuteService]:
     rules = RuleRegistry()
     rules.register(ReplaceRule())
     store = PreviewStore()
-    preview = PreviewService(manager.registry, RenameEngine(rules), store)
-    return preview, ExecuteService(manager.registry, store, preview)
+    preview = PreviewService(manager, RenameEngine(rules), store)
+    return preview, ExecuteService(manager, store, preview)
 
 
 def test_provider_metadata_exposes_form_fields_without_connection_secrets(tmp_path: Path) -> None:
@@ -133,8 +128,9 @@ def test_new_install_only_creates_local_and_restores_it(tmp_path: Path) -> None:
     }
     assert manager.record("default-local").config["root_path"] == str((tmp_path / "files").resolve())
     assert make_manager(tmp_path).state == manager.state
-    restored = manager.repository.load_or_initialize(tmp_path / "different-default", manager.registry.validate_config)
-    assert restored == manager.state
+    alternate_root = tmp_path / "different-default"
+    assert make_manager(tmp_path, local_root=alternate_root).state == manager.state
+    assert not alternate_root.exists()
 
 
 def test_default_documents_root_and_explicit_override(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -201,11 +197,14 @@ def test_draft_folder_picker_does_not_modify_connections(tmp_path: Path, monkeyp
     assert not chosen.exists()
 
 
-def test_corrupt_state_does_not_reset_connections(tmp_path: Path) -> None:
+@pytest.mark.parametrize("payload", ['{"schema_version":3}', '{"schema_version":3,"connections":{}}'])
+def test_corrupt_state_does_not_reset_connections(tmp_path: Path, payload: str) -> None:
     make_manager(tmp_path)
-    (tmp_path / "storages.json").write_text('{"schema_version":3}', encoding="utf-8")
+    state_file = tmp_path / "storages.json"
+    state_file.write_text(payload, encoding="utf-8")
     with pytest.raises(ProviderError):
         make_manager(tmp_path)
+    assert state_file.read_text(encoding="utf-8") == payload
 
 
 def test_app_settings_keeps_only_current_account_default_and_rotated_token(tmp_path: Path) -> None:
@@ -328,14 +327,11 @@ def test_app_settings_api_partial_updates_preserve_other_fields_and_credentials(
         assert make_manager(tmp_path).state == manager.state
 
 
-def test_factory_reset_api_rejects_busy_and_never_returns_credentials(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_factory_reset_api_rejects_busy_and_never_returns_credentials(tmp_path: Path) -> None:
     manager = make_manager(tmp_path)
     cloud = manager.create(StorageCreate(provider_type="onedrive", name="Cloud", config={"client_id": "app"}))
     manager._persist_auth(cloud.storage_id, {"client_id": "app"}, {"account_id": "account-a", "refresh_token": "fixture-secret"})
     previews = PreviewStore()
-    monkeypatch.setattr(app_settings_router, "get_settings", lambda: app_config.Settings(
-        _env_file=None, local_storage_root=tmp_path / "files",
-    ))
     app = create_app()
     app.dependency_overrides[get_storage_manager] = lambda: manager
     app.dependency_overrides[get_preview_store] = lambda: previews
@@ -359,13 +355,14 @@ async def test_factory_reset_clears_connections_preferences_and_old_preview(tmp_
     from app.core.errors import PreviewNotFoundError
 
     manager = make_manager(tmp_path)
-    source = tmp_path / "files" / "keep.txt"
+    source = tmp_path / "keep.txt"
     source.write_text("keep", encoding="utf-8")
+    await manager.update("default-local", StorageUpdate(name="Edited", config={"root_path": str(tmp_path)}))
     cloud = manager.create(StorageCreate(provider_type="onedrive", name="Cloud", config={"client_id": "app"}))
     extra = manager.create(StorageCreate(provider_type="local", name="Extra", config={"root_path": str(tmp_path)}))
     manager._persist_auth(cloud.storage_id, {"client_id": "app"}, {"refresh_token": "fixture-secret", "account_id": "account-a"})
     auth = manager.auth(cloud.storage_id)
-    manager.authorization_sessions["old-session"] = (cloud.storage_id, 1, "old-session", datetime.now(UTC))
+    session = manager.start_authorization(cloud.storage_id, "http://localhost/auth/storage/callback")
     manager.update_app_settings(AppSettingsPatch(language="en-US", theme="dark"))
     preview, execute = services(manager)
     snapshot = await preview.preview(RenamePreviewRequest(
@@ -373,14 +370,19 @@ async def test_factory_reset_clears_connections_preferences_and_old_preview(tmp_
     ))
     previous_revision = manager.record("default-local").revision
 
-    result = await manager.factory_reset(tmp_path / "files", preview.store)
+    result = await manager.factory_reset(preview.store)
 
     assert result.preferences.model_dump() == {
         "language": "auto", "theme": "system", "cloud_default_locations": {},
     }
     assert list(manager.state.connections) == ["default-local"]
-    assert manager.record("default-local").revision == previous_revision + 1
-    assert manager.authorization_sessions == {}
+    restored = manager.record("default-local")
+    assert restored.revision == previous_revision + 1
+    assert restored.name == "Local Files"
+    assert restored.config["root_path"] == str((tmp_path / "files").resolve())
+    callback_storage_id, failure = await manager.finish_authorization("fixture-code", session.state, None)
+    assert callback_storage_id is None
+    assert isinstance(failure, AuthenticationError)
     assert source.read_text(encoding="utf-8") == "keep"
     assert cloud.storage_id not in manager.state.connections and extra.storage_id not in manager.state.connections
     assert "fixture-secret" not in manager.repository.path.read_text(encoding="utf-8")
@@ -404,7 +406,7 @@ async def test_factory_reset_busy_and_failed_save_leave_state_untouched(tmp_path
     previews = PreviewStore()
     with manager.execution("default-local", manager.record("default-local").revision):
         with pytest.raises(StorageBusyError):
-            await manager.factory_reset(tmp_path / "files", previews)
+            await manager.factory_reset(previews)
     assert manager.state == before
     assert manager.repository.path.read_bytes() == disk
 
@@ -413,7 +415,7 @@ async def test_factory_reset_busy_and_failed_save_leave_state_untouched(tmp_path
 
     monkeypatch.setattr(manager.repository, "save", fail_save)
     with pytest.raises(ProviderError):
-        await manager.factory_reset(tmp_path / "files", previews)
+        await manager.factory_reset(previews)
     assert manager.state == before
     assert manager.repository.path.read_bytes() == disk
     assert manager.record(cloud.storage_id).credentials["refresh_token"] == "fixture-secret"

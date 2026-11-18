@@ -15,6 +15,7 @@ from pydantic import BaseModel, Field, ValidationError as ModelValidationError
 
 from app.core.errors import AppError, AuthenticationError, NotFoundError, PermissionDeniedError, ProviderError, RateLimitError, RenameOutcomeUnknownError, ValidationError
 from app.core.log_context import request_id_context
+from app.providers.auth import StorageAuth
 from app.providers.errors import http_error_details, read_error_payload
 from app.providers.retry import RetryBudget
 from app.providers.base import RenameRequest, StorageDriver
@@ -23,7 +24,6 @@ from app.providers.cooldown import ConnectionCooldown, retry_after_delay
 from app.providers.name_validation import NameValidationIssue
 from app.schemas.files import DirectoryBreadcrumb, DirectoryListing, FileItem, RenameFile
 from app.schemas.storage import IdLocation, PathLocation, RootLocation, StorageLocation
-from app.services.storage_auth import StorageAuth
 
 
 DRIVE_ROOT = "https://www.googleapis.com/drive/v3"

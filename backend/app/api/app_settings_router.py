@@ -3,7 +3,6 @@ from typing import Annotated
 from fastapi import APIRouter, Depends
 
 from app.api.dependencies import get_preview_store, get_storage_manager
-from app.core.config import get_settings
 from app.schemas.storage import AppSettingsPatch, AppSettingsResponse
 from app.services.preview_store import PreviewStore
 from app.services.storage_manager import StorageManager
@@ -27,4 +26,4 @@ async def patch_app_settings(request: AppSettingsPatch, manager: Manager) -> App
 async def factory_reset(
     manager: Manager, previews: Annotated[PreviewStore, Depends(get_preview_store)],
 ) -> AppSettingsResponse:
-    return await manager.factory_reset(get_settings().local_storage_root, previews)
+    return await manager.factory_reset(previews)

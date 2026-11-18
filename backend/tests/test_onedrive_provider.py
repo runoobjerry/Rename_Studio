@@ -470,7 +470,10 @@ async def directory_graph(tmp_path: Path) -> AsyncIterator[tuple[StorageManager,
             lambda record, _: OneDriveDriver(auth, client=client), cache_directories=True,
         ))
         record = StorageRecord(storage_id="drive", provider_type="onedrive", name="Drive", config={"client_id": "original"})
-        manager = StorageManager(registry, JsonStorageRepository(tmp_path / "state.json"), StorageState(connections={"drive": record}))
+        manager = StorageManager(
+            registry, JsonStorageRepository(tmp_path / "state.json"), StorageState(connections={"drive": record}),
+            default_connection=record,
+        )
         yield manager, graph
 
 
@@ -663,8 +666,8 @@ async def test_old_graph_paths_are_display_hints_and_execute_rechecks_live_membe
     stale = await directories.list_directory("drive", b, parent_location=a)
     assert stale.path == "A/B" and stale.parent_location == a
     assert graph.requests == [("GET", "items/b/children")]
-    preview = PreviewService(manager.registry, RenameEngine(RuleRegistry()))
-    execute = ExecuteService(manager.registry, preview.store, preview)
+    preview = PreviewService(manager, RenameEngine(RuleRegistry()))
+    execute = ExecuteService(manager, preview.store, preview)
     snapshot = await preview.preview(RenamePreviewRequest(
         storage_id="drive", location=b, file_ids=["c"], target_name="Renamed",
     ))

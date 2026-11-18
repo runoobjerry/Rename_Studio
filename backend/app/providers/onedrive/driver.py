@@ -20,6 +20,7 @@ from app.core.errors import (
     ValidationError,
     RenameOutcomeUnknownError,
 )
+from app.providers.auth import StorageAuth
 from app.providers.errors import http_error_details, read_error_payload
 from app.providers.retry import RetryBudget
 from app.providers.base import RenameRequest, StorageDriver
@@ -28,7 +29,6 @@ from app.providers.cooldown import ConnectionCooldown, retry_after_delay
 from app.providers.name_validation import NameValidationIssue, validate_onedrive_name
 from app.schemas.files import DirectoryListing, FileItem
 from app.schemas.storage import IdLocation, PathLocation, RootLocation, StorageLocation
-from app.services.storage_auth import StorageAuth
 
 
 logger = logging.getLogger("rename_studio.onedrive_performance")

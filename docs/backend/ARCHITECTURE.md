@@ -12,23 +12,27 @@
 | [api/router.py](../../backend/app/api/router.py)、[storage_router.py](../../backend/app/api/storage_router.py)、[app_settings_router.py](../../backend/app/api/app_settings_router.py) | 共享、连接级和设置路由 |
 | [api/dependencies.py](../../backend/app/api/dependencies.py) | 单进程共享服务装配、内置 Rule 与 Provider 注册 |
 | [schemas](../../backend/app/schemas) | 输入输出、位置、配置、持久化状态和结果结构 |
-| [StorageManager](../../backend/app/services/storage_manager.py) | 连接配置、revision、驱动/认证实例、身份、互斥、偏好与目录服务生命周期 |
-| [ProviderRegistry](../../backend/app/providers/registry.py)、[builtin.py](../../backend/app/providers/builtin.py) | Provider 定义、配置模型校验、内置注册与现有管理器转接入口 |
+| [StorageManager](../../backend/app/services/storage_manager.py) | 连接配置、revision、驱动与认证实例、OAuth 会话、身份、互斥、偏好与目录服务生命周期 |
+| [ProviderRegistry](../../backend/app/providers/registry.py)、[builtin.py](../../backend/app/providers/builtin.py) | Provider 定义、配置模型校验与显式注册内置 Provider |
 | [DirectoryService](../../backend/app/services/directory_service.py)、[DirectoryCache](../../backend/app/services/directory_cache.py)、[directory_metadata](../../backend/app/providers/directory_metadata.py) | 读取策略、并发请求合并、缓存与祖先索引、写入期间发布隔离和改名后的缓存协调 |
 | [PreviewService](../../backend/app/services/preview_service.py)、[PreviewStore](../../backend/app/services/preview_store.py) | 评估源项/规则/冲突，保存与释放有期限、绑定 revision 的预览快照 |
 | [RenameEngine](../../backend/app/services/rename_engine.py)、[rules](../../backend/app/rules) | 规则配置解析、顺序应用与带索引的 RuleContext |
 | [ExecuteService](../../backend/app/services/execute_service.py) | 批量实时复核、快照消费、分组调度、进度与结果汇总 |
 | [SingleRenameService](../../backend/app/services/single_rename_service.py)、[rename_write](../../backend/app/services/rename_write.py) | 单项直接执行、共享结果核对、写入取消后的收尾 |
-| [StorageDriver](../../backend/app/providers/base.py)、[local](../../backend/app/providers/local)、[onedrive](../../backend/app/providers/onedrive)、[google_drive](../../backend/app/providers/google_drive) | 统一存储接口与各 Provider 实现 |
+| [StorageDriver](../../backend/app/providers/base.py)、[StorageAuth](../../backend/app/providers/auth.py)、[local](../../backend/app/providers/local)、[onedrive](../../backend/app/providers/onedrive)、[google_drive](../../backend/app/providers/google_drive) | 统一存储与授权接口及各 Provider 实现 |
 | [core/errors](../../backend/app/core/errors.py)、[providers/errors](../../backend/app/providers/errors.py)、[retry](../../backend/app/providers/retry.py)、[cooldown](../../backend/app/providers/cooldown.py) | 应用错误、第三方诊断解析、重试预算和连接级限流等待 |
 | [JsonStorageRepository](../../backend/app/repositories/storage_repository.py)、[core/config](../../backend/app/core/config.py)、[core/paths](../../backend/app/core/paths.py) | JSON 原子保存、环境/缓存配置、本地路径边界 |
 | [release.py](../../backend/app/release.py)、[launcher.py](../../backend/app/launcher.py) | 静态资源组装、发布服务启动和退出 |
 
 ## 依赖与对象装配
 
-路由通过 `dependencies.py` 取得共享对象；`StorageManager` 持有 Registry、Repository、连接状态、DirectoryService，以及按连接版本复用的驱动与认证实例。Registry 保存 Provider 定义与配置校验，并通过 `manager` 转接现有 `revision`、`execution`、`get_driver` 调用。Registry 定义扩展点，Manager 管理运行期生命周期，二者目前通过 `manager` 引用协作。
+路由通过 `dependencies.py` 取得共享对象。装配时显式注册内置 Provider，再把 `ProviderRegistry` 交给 `StorageManager`。Registry 管理 Provider 定义与配置校验。Manager 使用定义中的工厂创建驱动与认证实例，管理连接状态、目录服务与资源生命周期。应用退出时由 Manager 关闭驱动。
 
-预览和执行服务依赖 Registry 的统一入口取得驱动和连接约束；名称转换交给 `RenameEngine` / Rule；存储差异通过 `StorageDriver` 与 Provider 定义扩展。Repository 只负责完整状态的加载与保存，不做账号、权限或业务决策。修改时维持这些职责，避免将 Provider 类型分支移入核心重命名流程。
+装配时将同一个 `StorageManager` 注入 `PreviewService`、`ExecuteService` 和 `SingleRenameService`，由它提供连接 revision、Provider 定义、驱动与目录服务。批量和单项执行共用 Manager 的连接级执行锁。名称转换交给 `RenameEngine` 与 Rule，各 Provider 实现 `StorageDriver` 并按需提供 `StorageAuth`。
+
+装配入口定义默认连接 `default-local` 并处理首次启动和已保存连接的配置校验。Manager 使用注入的默认连接定义处理恢复出厂设置和删除保护。Repository 负责 JSON 状态的读取、结构校验与原子保存。
+
+OAuth 路由调用 Manager 开始授权并处理回调。Manager 将 Provider 返回的 `state` 绑定到连接和 revision，在回调时一次性消费会话并检查有效期、revision 和忙碌状态。Provider 负责 PKCE 与令牌交换，路由负责 HTTP 响应和回调页。
 
 ## 预览与执行
 

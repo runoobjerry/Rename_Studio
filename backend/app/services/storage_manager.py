@@ -1,18 +1,18 @@
 import asyncio
 from collections.abc import Iterator
 from contextlib import contextmanager
+from datetime import UTC, datetime, timedelta
+from typing import cast
 from uuid import uuid4
-from datetime import datetime
-from pathlib import Path
 
 from pydantic import SecretStr
 
-from app.core.errors import NotFoundError, StorageAccountAlreadyConnectedError, StorageBusyError, StorageConnectionChangedError, ValidationError
+from app.core.errors import AppError, AuthenticationError, NotFoundError, StorageAccountAlreadyConnectedError, StorageBusyError, StorageConnectionChangedError, ValidationError
+from app.providers.auth import StorageAuth
 from app.providers.base import StorageDriver
-from app.providers.registry import ProviderRegistry
+from app.providers.registry import ProviderDefinition, ProviderRegistry
 from app.repositories.storage_repository import JsonStorageRepository
-from app.schemas.storage import AppPreferences, AppSettingsPatch, AppSettingsResponse, StorageCreate, StorageInfo, StorageRecord, StorageState, StorageUpdate, validate_preferences_size
-from app.services.storage_auth import StorageAuth
+from app.schemas.storage import AppSettingsPatch, AppSettingsResponse, AuthorizationStart, StorageCreate, StorageInfo, StorageRecord, StorageState, StorageUpdate, validate_preferences_size
 from app.services.directory_cache import DirectoryCache
 from app.services.directory_service import DirectoryService
 from app.services.preview_store import PreviewStore
@@ -21,18 +21,19 @@ from app.services.preview_store import PreviewStore
 class StorageManager:
     def __init__(
         self, registry: ProviderRegistry, repository: JsonStorageRepository, state: StorageState, *,
+        default_connection: StorageRecord,
         directory_cache: DirectoryCache | None = None,
     ) -> None:
         self.registry = registry
         self.repository = repository
         self.state = state
+        self._default_connection = default_connection
         self.directories = DirectoryService(self, directory_cache if directory_cache is not None else DirectoryCache())
         self._drivers: dict[str, tuple[int, StorageDriver]] = {}
         self._auth: dict[str, StorageAuth] = {}
         self._busy: set[str] = set()
         self._closing: set[asyncio.Task[None]] = set()
-        self.authorization_sessions: dict[str, tuple[str, int, str, datetime]] = {}
-        registry.manager = self
+        self._authorization_sessions: dict[str, tuple[str, int, datetime]] = {}
 
     def record(self, storage_id: str) -> StorageRecord:
         if storage_id not in self.state.connections:
@@ -49,6 +50,9 @@ class StorageManager:
 
     def validate_config(self, provider_type: str, config: dict[str, object]) -> dict[str, object]:
         return self.registry.validate_config(provider_type, config)
+
+    def provider_definition(self, storage_id: str) -> ProviderDefinition:
+        return self.registry.definition(self.record(storage_id).provider_type)
 
     def ensure_mutable(self, storage_id: str) -> None:
         if self.record(storage_id).storage_id in self._busy:
@@ -103,22 +107,18 @@ class StorageManager:
         self.state = state
         return self.app_settings()
 
-    async def factory_reset(self, local_root: Path, previews: PreviewStore) -> AppSettingsResponse:
+    async def factory_reset(self, previews: PreviewStore) -> AppSettingsResponse:
         if self._busy:
             raise StorageBusyError("A storage is executing a rename; finish it before resetting")
-        config = self.validate_config("local", {"root_path": str(local_root)})
-        previous_local = self.record("default-local")
-        state = StorageState(
-            preferences=AppPreferences(),
-            connections={"default-local": StorageRecord(
-                storage_id="default-local", provider_type="local", name="Local Files",
-                config=config, revision=previous_local.revision + 1,
-            )},
-        )
+        default = self._default_connection
+        config = self.validate_config(default.provider_type, default.config)
+        revision = self.record(default.storage_id).revision + 1
+        restored = default.model_copy(update={"config": config, "revision": revision})
+        state = StorageState(connections={restored.storage_id: restored})
         # No await separates the busy check, atomic save, and in-memory invalidation.
         self.repository.save(state)
         self.state = state
-        self.authorization_sessions.clear()
+        self._authorization_sessions.clear()
         self._auth.clear()
         previews.clear()
         self.directories.invalidate()
@@ -173,10 +173,39 @@ class StorageManager:
     async def delete(self, storage_id: str) -> None:
         self.ensure_mutable(storage_id)
         record = self.record(storage_id)
-        if record.storage_id == "default-local":
-            raise ValidationError("The default Local connection cannot be deleted", details={"reason": "DEFAULT_CONNECTION_DELETE_FORBIDDEN", "params": {}})
+        if record.storage_id == self._default_connection.storage_id:
+            raise ValidationError("The default storage connection cannot be deleted", details={"reason": "DEFAULT_CONNECTION_DELETE_FORBIDDEN", "params": {}})
         self._commit(None, record.storage_id)
         await self._invalidate(record.storage_id)
+
+    def start_authorization(self, storage_id: str, redirect_uri: str) -> AuthorizationStart:
+        self.ensure_mutable(storage_id)
+        result = cast(StorageAuth, self.auth(storage_id)).start_authorization(redirect_uri)
+        revision = self.record(storage_id).revision
+        now = datetime.now(UTC)
+        self._authorization_sessions = {
+            state: session for state, session in self._authorization_sessions.items()
+            if session[0] != storage_id and session[2] > now
+        }
+        self._authorization_sessions[result.state] = (storage_id, revision, now + timedelta(minutes=10))
+        return result
+
+    async def finish_authorization(
+        self, code: str | None, state: str | None, error: str | None,
+    ) -> tuple[str | None, AppError | None]:
+        provider_state = state or ""
+        session = self._authorization_sessions.pop(provider_state, None)
+        if session is None or session[2] <= datetime.now(UTC) or error or not code:
+            return None, AuthenticationError("Authorization is invalid, expired or cancelled")
+        storage_id, revision, _ = session
+        try:
+            if self.record(storage_id).revision != revision:
+                raise StorageConnectionChangedError("Storage changed during authorization")
+            self.ensure_mutable(storage_id)
+            await cast(StorageAuth, self.auth(storage_id)).finish_authorization(code, provider_state)
+        except AppError as exc:
+            return storage_id, exc
+        return storage_id, None
 
     def get_driver(self, storage_id: str) -> StorageDriver:
         record = self.record(storage_id)

@@ -1,4 +1,4 @@
-from provider_fixtures import registry_for
+from provider_fixtures import manager_for
 import asyncio
 from pydantic import BaseModel
 import pytest
@@ -251,7 +251,7 @@ async def test_unresolved_unknown_waits_for_other_in_flight_write_before_returni
         await wait_processed(execute, preview_id, 20)
         assert not task.done()
         assert not driver.gates[1].is_set()
-        assert execute.providers.manager.info("stable").busy
+        assert execute.manager.info("stable").busy
         assert len(driver.groups) == 2
     finally:
         driver.release_everything()
@@ -294,7 +294,7 @@ async def test_serial_cancellation_waits_for_the_started_write_without_starting_
         await asyncio.sleep(0)
         await asyncio.sleep(0)
         assert not task.done()
-        assert execute.providers.manager.info("stable").busy
+        assert execute.manager.info("stable").busy
         task.cancel()
         await asyncio.sleep(0)
         assert not task.done()
@@ -306,7 +306,7 @@ async def test_serial_cancellation_waits_for_the_started_write_without_starting_
             await asyncio.wait_for(task, timeout=5)
     assert driver.active == 0
     assert len(driver.groups) == 1
-    assert not execute.providers.manager.info("stable").busy
+    assert not execute.manager.info("stable").busy
     assert execute.progress(preview_id).phase == "failed"
     assert driver.items["0"].name == "new-0"
     assert driver.items["20"].name == "old-20"
@@ -329,7 +329,7 @@ async def test_interrupted_execution_holds_connection_until_in_flight_writes_fin
         await asyncio.sleep(0)
         await asyncio.sleep(0)
         assert not task.done()
-        assert execute.providers.manager.info("stable").busy
+        assert execute.manager.info("stable").busy
         assert len(driver.groups) == 2
         if interrupt == "cancel":
             task.cancel()
@@ -342,18 +342,18 @@ async def test_interrupted_execution_holds_connection_until_in_flight_writes_fin
             await asyncio.wait_for(task, timeout=5)
     assert driver.active == 0
     assert len(driver.groups) == 2
-    assert not execute.providers.manager.info("stable").busy
+    assert not execute.manager.info("stable").busy
     assert execute.progress(preview_id).phase == "failed"
     assert driver.items["20"].name == "new-20"
 
 
 def services(driver: StableIdDriver):
-    registry = registry_for({"stable": driver})
+    manager = manager_for({"stable": driver})
     rules = RuleRegistry()
     rules.register(MappingRule())
     store = PreviewStore()
-    preview = PreviewService(registry, RenameEngine(rules), store)
-    return preview, ExecuteService(registry, store, preview)
+    preview = PreviewService(manager, RenameEngine(rules), store)
+    return preview, ExecuteService(manager, store, preview)
 
 
 def request(ids: list[str], names: dict[str, str]) -> RenamePreviewRequest:

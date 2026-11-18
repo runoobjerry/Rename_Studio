@@ -3,7 +3,7 @@ import base64
 import hashlib
 import json
 from collections.abc import Callable
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import cast
 from urllib.parse import parse_qs, urlsplit
@@ -21,6 +21,7 @@ from app.rules.text_operations import ReplaceRule
 from app.schemas.storage import AppSettingsPatch, StorageCreate, StorageUpdate
 from app.providers.google_drive.auth import ABOUT_URL, SCOPE, TOKEN_URL, GoogleDriveAuthService
 from app.providers.onedrive.auth import GRAPH_ME_URL, TOKEN_URL as ONEDRIVE_TOKEN_URL, OneDriveAuthService
+from app.services import storage_manager
 from app.services.preview_service import PreviewService
 from app.services.preview_store import PreviewStore
 from app.services.execute_service import ExecuteService
@@ -79,10 +80,10 @@ def api(manager: StorageManager) -> TestClient:
     app.dependency_overrides[dependencies.get_storage_manager] = lambda: manager
     rules = RuleRegistry()
     rules.register(ReplaceRule())
-    preview = PreviewService(manager.registry, RenameEngine(rules), PreviewStore())
+    preview = PreviewService(manager, RenameEngine(rules), PreviewStore())
     app.dependency_overrides[dependencies.get_preview_service] = lambda: preview
     app.dependency_overrides[dependencies.get_preview_store] = lambda: preview.store
-    execute = ExecuteService(manager.registry, preview.store, preview)
+    execute = ExecuteService(manager, preview.store, preview)
     app.dependency_overrides[dependencies.get_execute_service] = lambda: execute
     return TestClient(app)
 
@@ -184,7 +185,13 @@ def test_callback_verifies_pkce_identity_and_commits_without_access_token(manage
 
 
 @pytest.mark.parametrize("failure", ["wrong_state", "expired", "cancelled"])
-def test_invalid_callback_never_commits_account(manager: StorageManager, failure: str) -> None:
+def test_invalid_callback_never_commits_account(
+    manager: StorageManager, monkeypatch: pytest.MonkeyPatch, failure: str,
+) -> None:
+    def reject_request(request: httpx.Request) -> httpx.Response:
+        pytest.fail("Invalid callback reached Google Drive")
+
+    mock_google(monkeypatch, reject_request)
     storage_id, auth = google_connection(manager)
     with api(manager) as client:
         started = client.post(f"/storages/{storage_id}/auth/start").json()
@@ -193,8 +200,12 @@ def test_invalid_callback_never_commits_account(manager: StorageManager, failure
         if failure == "wrong_state":
             params["state"] = "unrelated-state"
         elif failure == "expired":
-            session = manager.authorization_sessions[state]
-            manager.authorization_sessions[state] = (*session[:3], datetime.now(UTC) - timedelta(seconds=1))
+            class ExpiredClock(datetime):
+                @classmethod
+                def now(cls, tz=None):
+                    return datetime.now(tz) + timedelta(minutes=11)
+
+            monkeypatch.setattr(storage_manager, "datetime", ExpiredClock)
         else:
             params["error"] = "access_denied"
         assert client.get("/auth/storage/callback", params=params).status_code == 400
@@ -526,7 +537,7 @@ async def test_delete_and_reset_remove_google_client_secret(manager: StorageMana
     if action == "delete":
         await manager.delete(storage_id)
     else:
-        await manager.factory_reset(Path(str(manager.record("default-local").config["root_path"])), PreviewStore())
+        await manager.factory_reset(PreviewStore())
     assert storage_id not in manager.state.connections
     assert CLIENT_SECRET not in manager.repository.path.read_text(encoding="utf-8")
 

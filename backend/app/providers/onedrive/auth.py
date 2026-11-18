@@ -122,7 +122,7 @@ class OneDriveAuthService:
                 "prompt": "select_account",
             }
         )
-        return AuthorizationStart(authorization_url=f"{AUTHORIZE_URL}?{query}")
+        return AuthorizationStart(authorization_url=f"{AUTHORIZE_URL}?{query}", state=state)
 
     async def finish_authorization(self, code: str, state: str) -> None:
         if self._before_change is not None:

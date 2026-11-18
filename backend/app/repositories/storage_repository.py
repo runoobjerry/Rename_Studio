@@ -2,12 +2,9 @@ import json
 import logging
 from pathlib import Path
 from uuid import uuid4
-from collections.abc import Callable
-
-from pydantic import ValidationError as ModelValidationError
 
 from app.core.errors import ProviderError
-from app.schemas.storage import StorageRecord, StorageState
+from app.schemas.storage import StorageState
 
 
 class JsonStorageRepository:
@@ -16,35 +13,17 @@ class JsonStorageRepository:
     def __init__(self, path: Path) -> None:
         self.path = path
 
-    def load_or_initialize(
-        self, local_root: Path,
-        validate_config: Callable[[str, dict[str, object]], dict[str, object]],
-    ) -> StorageState:
-        if self.path.exists():
-            try:
-                payload = json.loads(self.path.read_text(encoding="utf-8"))
-                state = StorageState.model_validate(payload)
-                if any(key != record.storage_id for key, record in state.connections.items()):
-                    raise ValueError("Connection key mismatch")
-                if state.connections["default-local"].provider_type != "local":
-                    raise ValueError("Default Local connection type mismatch")
-                for record in state.connections.values():
-                    record.config = validate_config(record.provider_type, record.config)
-                return state
-            except (OSError, ValueError, KeyError, TypeError, AttributeError, ModelValidationError) as exc:
-                raise ProviderError("Storage state is invalid; restore its backup before starting") from exc
+    def load(self) -> StorageState | None:
         try:
-            local_root.mkdir(parents=True, exist_ok=True)
-        except OSError as exc:
-            raise ProviderError("Could not initialize the local storage root") from exc
-        state = StorageState(connections={
-            "default-local": StorageRecord(
-                storage_id="default-local", provider_type="local", name="Local Files",
-                config=validate_config("local", {"root_path": str(local_root)}),
-            ),
-        })
-        self.save(state)
-        return state
+            payload = json.loads(self.path.read_text(encoding="utf-8"))
+            state = StorageState.model_validate(payload)
+            if any(key != record.storage_id for key, record in state.connections.items()):
+                raise ValueError("Connection key mismatch")
+            return state
+        except FileNotFoundError:
+            return None
+        except (OSError, ValueError) as exc:
+            raise ProviderError("Storage state is invalid; restore its backup before starting") from exc
 
     def save(self, state: StorageState) -> None:
         temporary = self.path.with_name(f"{self.path.name}.{uuid4().hex}.tmp")
