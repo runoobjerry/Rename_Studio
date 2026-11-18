@@ -4,20 +4,13 @@
 
 ## 按任务阅读
 
-按任务需要查阅下列入口与直接调用方。拼写、纯文案等局部修改可直接定位相关文件，无需先通读架构或整套文档。
+开发文档的完整目录、职责与主题入口统一由[开发文档索引](docs/README.md)维护。按任务读取必要文档与直接调用方；拼写、纯文案等局部修改无需通读架构。
 
-| 任务 | 阅读入口 |
-| --- | --- |
-| 安装、运行、开发环境 | [项目 README](README.md) · [开发环境](docs/DEVELOPMENT.md) |
-| 查找文档、维护文档 | [文档索引](docs/README.md) · [AI 写作指南](docs/AI_WRITING_GUIDE.MD) |
-| 系统边界、核心流程与业务不变量 | [系统架构](docs/ARCHITECTURE.md) |
-| 前端开发、状态和测试约定 | [前端 Agent 指令](frontend/AGENTS.md) · [前端架构](docs/frontend/ARCHITECTURE.md) · [测试与验收](docs/frontend/TEST.md) |
-| 前端 UI / UX | [UI 设计规范](docs/frontend/UI_DESIGN.md) |
-| 后端开发、Provider、规则和测试约定 | [后端 Agent 指令](backend/AGENTS.md) · [后端架构](docs/backend/ARCHITECTURE.md) · [测试与验收](docs/backend/TEST.md) |
-| HTTP 字段、错误码与结果状态 | [API 索引](docs/api/README.md)及对应资源文档 |
-| 浏览器扩展使用、架构与开发 | [扩展 README](docs/browser-extensions/README.md) · [扩展架构](docs/browser-extensions/ARCHITECTURE.md) · [扩展开发](docs/browser-extensions/DEVELOPMENT.md) |
-| 启动器与发布 | [启动说明](docs/LAUNCHER.md) · [发布流程](docs/DEVELOPMENT.md#发布流程) |
-| 复杂阶段性任务、接续记录 | [临时文档索引与使用规则](docs/generated/README.md) |
+- 前端任务：遵循 [frontend/AGENTS.md](frontend/AGENTS.md)，按需阅读前端架构、UI 设计与测试文档。
+- 后端任务：遵循 [backend/AGENTS.md](backend/AGENTS.md)，按需阅读后端架构、API 契约与测试文档。
+- 跨端流程或业务不变量：阅读[系统架构](docs/ARCHITECTURE.md)，再定位相关模块。
+- HTTP 字段、错误码与执行结果：从 [API 索引](docs/api/README.md)进入对应资源文档。
+- 文档编写或维护：遵循 [AI 写作指南](docs/AI_WRITING_GUIDE.MD)；复杂阶段记录遵循 [generated 索引](docs/generated/README.md)。
 
 ## 开发行为
 
