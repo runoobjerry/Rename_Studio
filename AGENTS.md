@@ -4,20 +4,14 @@
 
 ## 按任务阅读
 
-按任务需要查阅下列入口与直接调用方。拼写、纯文案等局部修改可直接定位相关文件，无需先通读架构或整套文档。
+按任务选择入口并查看直接调用方。共享技术文档及其职责见[开发文档索引](docs/README.md)。拼写、纯文案等局部修改可直接定位相关文件，无需先通读架构或整套文档。
 
 | 任务 | 阅读入口 |
 | --- | --- |
-| 安装、运行、开发环境 | [项目 README](README.md) · [开发环境](docs/DEVELOPMENT.md) |
-| 查找文档、维护文档 | [文档索引](docs/README.md) · [AI 写作指南](docs/AI_WRITING_GUIDE.MD) |
-| 系统边界、核心流程与业务不变量 | [系统架构](docs/ARCHITECTURE.md) |
-| 前端开发、状态和测试约定 | [前端 Agent 指令](frontend/AGENTS.md) · [前端架构](docs/frontend/ARCHITECTURE.md) · [测试与验收](docs/frontend/TEST.md) |
-| 前端 UI / UX | [UI 设计规范](docs/frontend/UI_DESIGN.md) |
-| 后端开发、Provider、规则和测试约定 | [后端 Agent 指令](backend/AGENTS.md) · [后端架构](docs/backend/ARCHITECTURE.md) · [测试与验收](docs/backend/TEST.md) |
-| HTTP 字段、错误码与结果状态 | [API 索引](docs/api/README.md)及对应资源文档 |
-| 浏览器扩展使用、架构与开发 | [扩展 README](docs/browser-extensions/README.md) · [扩展架构](docs/browser-extensions/ARCHITECTURE.md) · [扩展开发](docs/browser-extensions/DEVELOPMENT.md) |
-| 启动器与发布 | [启动说明](docs/LAUNCHER.md) · [发布流程](docs/DEVELOPMENT.md#发布流程) |
-| 复杂阶段性任务、接续记录 | [临时文档索引与使用规则](docs/generated/README.md) |
+| 前端实现、UI / UX 或测试 | [前端 Agent 指令](frontend/AGENTS.md) |
+| 后端实现、Provider、规则或测试 | [后端 Agent 指令](backend/AGENTS.md) |
+| 编写、维护或审查文档 | [AI 写作指南](docs/AI_WRITING_GUIDE.MD) |
+| 复杂任务的阶段计划、交接或验收记录 | [临时文档索引与使用规则](docs/generated/README.md) |
 
 ## 开发行为
 
@@ -32,7 +26,7 @@
 
 - **代码实现子代理对 `docs/` 文档库只有读取权限，禁止新增、修改、移动或删除其中的文件，包括临时记录与索引。** 需要同步文档时，仅向主代理提交建议，说明受影响页面、事实变化和代码依据；不得自行切换角色或转派文档修改来绕过此限制。
 - 主代理决定建议是否纳入文档，可直接修改，也可按需委派文档子代理。委派时明确允许修改的文件和内容范围，由主代理审查结果；契约同步、阶段记录和交付要求均遵守此权限划分。
-- 主代理分派子任务时必须明确代码实现或文档写作角色及写入范围。项目的文档内容与导航约定见 [AI 写作指南](docs/AI_WRITING_GUIDE.MD)，文档库入口与目录职责由 [docs/README.md](docs/README.md)维护。
+- 主代理分派子任务时必须明确代码实现或文档写作角色及写入范围。
 
 ## 验证与交付
 
