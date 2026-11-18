@@ -2,18 +2,15 @@
 
 适用于 `frontend/` 下的 AI Coding Agents；与[根级指令](../AGENTS.md)共同使用。本文件只补充前端特有约定，按任务选择入口，无需每次读取全部文档。
 
-[文档索引](../docs/README.md) · [前端架构](../docs/frontend/ARCHITECTURE.md)
+[开发文档索引](../docs/README.md)统一维护前端文档目录与职责。
 
 ## 按任务定位
 
-| 修改内容 | 相关入口 |
-| --- | --- |
-| 工作流、状态、缓存或目录导航 | [状态归属与核心流程](../docs/frontend/ARCHITECTURE.md#依赖与状态归属) |
-| 页面布局、控件、交互与可访问性 | [UI 设计规范](../docs/frontend/UI_DESIGN.md) |
-| 文案、语言或错误展示 | [UX 文案规范](../docs/frontend/UI_DESIGN.md#ux-文案规范ux-writing) · [文案与错误链路](../docs/frontend/ARCHITECTURE.md#文案与错误) |
-| 请求、类型或执行结果 | [API 索引](../docs/api/README.md)中的对应资源，以及 [client](src/api/client.ts) / [types](src/types/index.ts) |
-| 浏览器扩展接入 | [扩展架构](../docs/browser-extensions/ARCHITECTURE.md)与 [integrations/browser](src/integrations/browser) |
-| 测试修改或验证建议 | [测试定位与验证](../docs/frontend/TEST.md#测试定位与验证) |
+- 工作流、状态、缓存和目录导航：阅读[前端架构](../docs/frontend/ARCHITECTURE.md)。
+- 页面、控件、交互、文案和可访问性：阅读[UI 设计规范](../docs/frontend/UI_DESIGN.md)。
+- HTTP 请求、类型和执行结果：从 [API 索引](../docs/api/README.md)定位契约，并检查 [client](src/api/client.ts) 与 [types](src/types/index.ts)。
+- 浏览器扩展接入：阅读[扩展架构](../docs/browser-extensions/ARCHITECTURE.md)并定位 [integrations/browser](src/integrations/browser)。
+- 测试与验收：阅读[前端测试文档](../docs/frontend/TEST.md)。
 
 ## 实现约定
 
