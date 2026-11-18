@@ -39,6 +39,3 @@
 
 [临时任务文档索引](generated/README.md)管理阶段计划、交接与验收证据；完成后将稳定结论迁入对应主题文档。
 
-## Agent 协作
-
-Agent 行为约束与按任务阅读策略由 [根级 AGENTS.md](../AGENTS.md)、[前端 AGENTS.md](../frontend/AGENTS.md)及[后端 AGENTS.md](../backend/AGENTS.md)维护；[AI 写作指南](AI_WRITING_GUIDE.MD)规定文档写作、事实核对和导航维护方式。这些文件不替代上述开发文档的技术事实与契约。
