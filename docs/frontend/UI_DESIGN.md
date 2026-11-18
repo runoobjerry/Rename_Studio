@@ -14,7 +14,7 @@
 | --- | --- |
 | 全局颜色、字体、控件默认样式、菜单几何 | [theme.ts](../frontend/src/theme.ts)、其中的 `MENU_METRICS` |
 | 面板、列布局、滚动与断点 | [styles.css](../frontend/src/styles.css)、[WorkspaceApp](../frontend/src/WorkspaceApp.tsx) |
-| 面板图标操作、过滤与数字输入 | [PanelIconButton](../frontend/src/components/PanelIconButton.tsx)、[CheckboxFilterMenu](../frontend/src/components/CheckboxFilterMenu.tsx)、[NumberField](../frontend/src/components/NumberField.tsx) |
+| 面板图标操作、过滤与数字输入 | [PanelIconButton](../frontend/src/components/PanelIconButton.tsx)、[RadioFilterMenu](../../frontend/src/components/RadioFilterMenu.tsx)、[NumberField](../frontend/src/components/NumberField.tsx) |
 | 表格与虚拟化 | [FileBrowser](../frontend/src/features/files/FileBrowser.tsx)、[PreviewPanel](../frontend/src/features/rename/PreviewPanel.tsx)、[useVirtualTable](../frontend/src/hooks/useVirtualTable.ts) |
 | 全局通知 | [NotificationProvider](../frontend/src/components/NotificationProvider.tsx) |
 

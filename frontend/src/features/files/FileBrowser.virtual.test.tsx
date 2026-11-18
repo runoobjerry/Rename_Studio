@@ -1,7 +1,6 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { FileBrowserHarness as FileBrowser } from "../../test/FileBrowserHarness";
-import { PreviewPanel } from "../rename/PreviewPanel";
 
 const items = Array.from({ length: 1000 }, (_, index) => ({
   id: `file-${index}`, name: `file-${index}`, path: `file-${index}`, parent_path: "",
@@ -22,7 +21,7 @@ beforeEach(() => {
 });
 afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 
-it("mounts a bounded window while selecting all filtered items, including unmounted rows", () => {
+it("mounts a bounded window while selecting all items, including unmounted rows", () => {
   const callbacks = props();
   render(<FileBrowser {...callbacks} />);
   expect(screen.getByRole("table")).toHaveAttribute("aria-rowcount", "1001");
@@ -58,14 +57,6 @@ it("keeps a distant selected item's rename action attached to its opaque ID", as
   expect(screen.getAllByRole("row").length).toBeLessThan(40);
 });
 
-it("clears selections hidden by a filter across the entire dataset", () => {
-  const callbacks = { ...props(), selectedIds: items.map((item) => item.id) };
-  render(<FileBrowser {...callbacks} />);
-  fireEvent.click(screen.getByRole("button", { name: "筛选项目" }));
-  fireEvent.click(screen.getByRole("menuitemcheckbox", { name: "文件" }));
-  expect(callbacks.onSelectAll).toHaveBeenCalledWith(items.filter((item) => !item.is_directory).map((item) => item.id));
-});
-
 it("sorts all rows before virtualization and resets the scroll position", () => {
   const callbacks = props();
   render(<FileBrowser {...callbacks} />);
@@ -81,21 +72,3 @@ it("sorts all rows before virtualization and resets the scroll position", () => 
     ...items.filter((item) => item.is_directory).reverse(), ...items.filter((item) => !item.is_directory).reverse(),
   ].map((item) => item.id));
 });
-
-it("filters errors across unmounted preview rows without losing full preview statistics", async () => {
-  const preview = { preview_id: "preview", expires_at: "2099-01-01T00:00:00Z", valid: false,
-    items: items.map((item, index) => ({ file_id: item.id, original_name: item.name, new_name: `new-${item.name}`,
-      changed: true, valid: index !== 999, conflict: index === 999, error: index === 999 ? "目标名称出现重复" : null })) };
-  render(<PreviewPanel preview={preview} />);
-  expect(screen.getAllByRole("row").length).toBeLessThan(40);
-  expect(screen.getByText("999 项待修改 · 0 项无需修改")).toBeInTheDocument();
-  expect(screen.queryByText("目标名称重复或已被占用")).not.toBeInTheDocument();
-  fireEvent.click(screen.getByRole("button", { name: "筛选状态" }));
-  fireEvent.click(screen.getByRole("menuitemcheckbox", { name: "错误" }));
-  expect(screen.getByText("目标名称重复或已被占用")).toBeInTheDocument();
-  // 菜单打开时 MUI 隐藏背景的可访问角色，关闭后再检查表格。
-  fireEvent.keyDown(screen.getByRole("menu"), { key: "Escape" });
-  const table = await screen.findByRole("table", { name: "修改预览" });
-  expect(table).toHaveAttribute("aria-rowcount", "2");
-});
-

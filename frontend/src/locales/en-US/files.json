@@ -11,6 +11,15 @@
   "title": "File selection",
   "invert": "Invert selection",
   "filterItems": "Filter items",
+  "filters": {
+    "all": "All",
+    "type": "File type",
+    "name": "File name",
+    "clearName": "Clear file name search",
+    "clearExtensions": "Clear extensions",
+    "extensionsHelp": "Press Enter to add",
+    "invalidExtension": "Enter a valid extension, e.g. jpg or png"
+  },
   "refreshingDirectory": "Refreshing directory",
   "selectAll": "Select all displayed items that can be renamed",
   "columns": {
@@ -33,7 +42,7 @@
     },
     "currentStorage": "the current file source",
     "title": "Preview",
-    "filter": "Filter by status",
+    "filter": "Status",
     "original": "Original",
     "new": "New",
     "failed": "Rename failed",

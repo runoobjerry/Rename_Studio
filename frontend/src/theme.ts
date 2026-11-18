@@ -192,7 +192,7 @@ export function createAppTheme(mode: PaletteMode, locale = "en-US") {
           head: {
             color: textPrimary,
             backgroundColor: surfaceMuted,
-            fontWeight: 750,
+            fontWeight: 700,
           },
         },
       },

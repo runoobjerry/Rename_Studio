@@ -11,6 +11,15 @@
   "title": "文件选择",
   "invert": "反选",
   "filterItems": "筛选项目",
+  "filters": {
+    "all": "全部",
+    "type": "文件类型",
+    "name": "文件名",
+    "clearName": "清空文件名搜索",
+    "clearExtensions": "清空扩展名",
+    "extensionsHelp": "按 Enter 添加",
+    "invalidExtension": "请输入有效扩展名，如 jpg 或 png"
+  },
   "refreshingDirectory": "正在刷新目录",
   "selectAll": "选择当前显示且可修改名称的全部项目",
   "columns": {
@@ -33,7 +42,7 @@
     },
     "currentStorage": "当前文件来源",
     "title": "修改预览",
-    "filter": "筛选状态",
+    "filter": "状态",
     "original": "原文件名",
     "new": "新文件名",
     "failed": "修改失败",

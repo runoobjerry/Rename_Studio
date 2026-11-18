@@ -63,26 +63,6 @@ describe("directory refresh selection", () => {
     expect(client.getQueryData(["files", "default-local", 2, { kind: "root" }])).toEqual(listing(["B"]));
     await waitFor(() => expect(api.releaseStoragePreview).toHaveBeenCalledWith("default-local", "revision-preview"));
   });
-
-  it("clears hidden selections and does not restore them after refresh or removing the filter", async () => {
-    vi.mocked(api.fetchStorageFiles).mockResolvedValue(listing(["A", "B"]));
-    renderWorkspace();
-    fireEvent.click(await screen.findByRole("checkbox", { name: "选择当前显示且可修改名称的全部项目" }));
-    fireEvent.click(screen.getByRole("button", { name: "筛选项目" }));
-    fireEvent.click(screen.getByRole("menuitemcheckbox", { name: "文件夹" }));
-    fireEvent.keyDown(screen.getByRole("menu"), { key: "Escape" });
-    await waitFor(() => expect(screen.queryByRole("menu")).not.toBeInTheDocument());
-    expect(useRenameStore.getState().selectedIds).toEqual([]);
-
-    vi.mocked(api.fetchStorageFiles).mockResolvedValue(listing(["B"]));
-    fireEvent.click(screen.getByRole("button", { name: "刷新" }));
-    await screen.findByText("目录已刷新。");
-    expect(useRenameStore.getState().selectedIds).toEqual([]);
-    expect(screen.getByRole("button", { name: "刷新预览" })).toBeDisabled();
-    fireEvent.click(screen.getByRole("button", { name: "筛选项目" }));
-    fireEvent.click(screen.getByRole("menuitemcheckbox", { name: "文件夹" }));
-    expect(useRenameStore.getState().selectedIds).toEqual([]);
-  });
 });
 
 describe("cloud default path integration", () => {

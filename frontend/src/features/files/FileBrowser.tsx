@@ -21,28 +21,19 @@ import {
 } from "@mui/material";
 
 import type { DirectoryListing, FileItem, StorageLocation } from "../../types";
-import { CheckboxFilterMenu } from "../../components/CheckboxFilterMenu";
 import { PanelIconButton } from "../../components/PanelIconButton";
 import { useVirtualTable } from "../../hooks/useVirtualTable";
 import { VirtualTableSpacer } from "../../components/VirtualTableSpacer";
 import selectInverseIcon from "../../assets/icon/select-inverse.svg";
 import type { FileSort } from "./fileSort";
+import { FileFilterMenu, type FileFilterType } from "./FileFilterMenu";
 
-const fileFilters = [
-  { value: "file", labelKey: "files:types.file" },
-  { value: "folder", labelKey: "files:types.folder" },
-] as const;
 const fixedColumnWidths = [44] as const;
 // 直接约束控件，避免 MUI 自身内边距或表格列宽改变其 20px 几何。
 const fileCheckboxSx = {
   width: 20, minWidth: 20, maxWidth: 20, height: 20, p: 0,
   "& .MuiSvgIcon-root": { width: 20, height: 20, fontSize: 20 },
 };
-type FileFilter = typeof fileFilters[number]["value"];
-
-function matchesFileFilters(item: FileItem, filters: FileFilter[]) {
-  return filters.length === 0 || filters.includes(item.is_directory ? "folder" : "file");
-}
 
 interface FileBrowserProps {
   listing: DirectoryListing;
@@ -65,10 +56,9 @@ interface FileBrowserProps {
   onInvertSelection: (visibleIds: string[]) => void;
 }
 
-function getExtension(name: string, isDirectory: boolean, folderLabel: string): string {
-  if (isDirectory) return folderLabel;
+function getExtension(name: string): string {
   const dotIndex = name.lastIndexOf(".");
-  return dotIndex > 0 && dotIndex < name.length - 1 ? name.slice(dotIndex + 1) : "—";
+  return dotIndex > 0 && dotIndex < name.length - 1 ? name.slice(dotIndex + 1) : "";
 }
 
 function formatModifiedAt(value: string | null, formatter: Intl.DateTimeFormat): string {
@@ -98,11 +88,16 @@ export const FileBrowser = memo(function FileBrowser({
     year: "numeric", month: "2-digit", day: "2-digit",
     hour: "2-digit", minute: "2-digit", hour12: false,
   }), [i18n.resolvedLanguage]);
-  const [filters, setFilters] = useState<FileFilter[]>([]);
-  const filteredItems = useCallback((nextFilters: FileFilter[]) =>
-    panelItems.filter((item) => matchesFileFilters(item, nextFilters)), [panelItems]);
-  const visibleItems = useMemo(() => filteredItems(filters), [filteredItems, filters]);
-  const filterOptions = fileFilters.map((option) => ({ ...option, label: t(option.labelKey) }));
+  const [filterType, setFilterType] = useState<FileFilterType>("all");
+  const [keyword, setKeyword] = useState("");
+  const [extensions, setExtensions] = useState<string[]>([]);
+  const searchKeyword = keyword.trim().toLowerCase();
+  const visibleItems = useMemo(() => panelItems.filter((item) => {
+    if (filterType === "file" && item.is_directory) return false;
+    if (filterType === "folder" && !item.is_directory) return false;
+    if (filterType === "extension" && (item.is_directory || !extensions.includes(getExtension(item.name).toLowerCase()))) return false;
+    return item.name.toLowerCase().includes(searchKeyword);
+  }), [panelItems, filterType, extensions, searchKeyword]);
   const totalCount = panelItems.length;
   const selectedSet = useMemo(() => new Set(selectedIds), [selectedIds]);
   const selectedCount = useMemo(() => panelItems.filter((item) => selectedSet.has(item.id)).length, [panelItems, selectedSet]);
@@ -111,7 +106,7 @@ export const FileBrowser = memo(function FileBrowser({
   const [selectionAnchor, setSelectionAnchor] = useState<string | null>(null);
   useEffect(() => {
     setSelectionAnchor(null);
-  }, [listing, filters, sort]);
+  }, [listing, filterType, extensions, searchKeyword, sort]);
   const selectRow = useCallback((fileId: string, shiftKey: boolean) => {
     const anchorIndex = selectionAnchor !== null && selectedSet.has(selectionAnchor)
       ? selectableIds.indexOf(selectionAnchor) : -1;
@@ -124,21 +119,21 @@ export const FileBrowser = memo(function FileBrowser({
       onSelectAll([fileId]);
     }
   }, [selectionAnchor, selectedSet, selectableIds, onSelectAll]);
-  const scrollKey = useMemo(() => [listing.items, filters, sort], [listing.items, filters, sort]);
+  const scrollKey = useMemo(() => [listing.items, filterType, extensions, searchKeyword, sort],
+    [listing.items, filterType, extensions, searchKeyword, sort]);
   const columnValues = useMemo(() => {
-    // 文本最大宽度与排序无关，测量数据直接来自目录列表。
+    // 按完整筛选结果测量，未挂载的行也参与列宽计算。
     const names: string[] = [];
     const extensions: string[] = [];
     const modifiedDates: string[] = [];
     const folderLabel = t("files:types.folder");
-    for (const item of listing.items) {
-      if (!matchesFileFilters(item, filters)) continue;
+    for (const item of visibleItems) {
       names.push(item.name);
-      extensions.push(getExtension(item.name, item.is_directory, folderLabel));
+      extensions.push(item.is_directory ? folderLabel : getExtension(item.name) || "—");
       modifiedDates.push(formatModifiedAt(item.modified_at, modifiedAtFormatter));
     }
     return [[], names, extensions, modifiedDates];
-  }, [listing.items, filters, modifiedAtFormatter, t]);
+  }, [visibleItems, modifiedAtFormatter, t]);
   const virtual = useVirtualTable(visibleItems.length, scrollKey, columnValues, fixedColumnWidths);
   const allSelected = selectableIds.length > 0 && selectableIds.every((id) => selectedSet.has(id));
   return (
@@ -148,7 +143,7 @@ export const FileBrowser = memo(function FileBrowser({
           <h2 id="files-title">{t("files:title")}</h2>
           <p className="panel-summary">
             {t("files:summary", { total: totalCount, selected: selectedCount })}
-            {filters.length > 0 && t("files:showing", { count: visibleItems.length })}
+            {(filterType !== "all" || searchKeyword.length > 0) && t("files:showing", { count: visibleItems.length })}
           </p>
         </div>
         <div className="browser-heading-actions">
@@ -186,13 +181,8 @@ export const FileBrowser = memo(function FileBrowser({
               </PanelIconButton>
             </span>
           </Tooltip>
-          <CheckboxFilterMenu label={t("files:filterItems")} options={filterOptions} disabled={disabled} selected={filters} onChange={(nextFilters) => {
-            setFilters(nextFilters);
-            // 被筛选隐藏的项目退出选择，取消筛选也不恢复旧选择。
-            const nextVisibleIds = new Set(filteredItems(nextFilters).map((item) => item.id));
-            const nextSelectedIds = selectedIds.filter((id) => nextVisibleIds.has(id));
-            if (nextSelectedIds.length !== selectedIds.length) onSelectAll(nextSelectedIds);
-          }} />
+          <FileFilterMenu type={filterType} keyword={keyword} extensions={extensions} disabled={disabled}
+            onTypeChange={setFilterType} onKeywordChange={setKeyword} onExtensionsChange={setExtensions} />
         </div>
       </div>
       {isRefreshing && <LinearProgress aria-label={t("files:refreshingDirectory")} sx={{ flexShrink: 0 }} />}
@@ -329,7 +319,7 @@ const FileBrowserRow = memo(function FileBrowserRow({ item, rowIndex, selected, 
         </Tooltip> : onRename && <span className="file-rename-action" aria-hidden="true" />}
       </div>
     </TableCell>
-    <TableCell>{getExtension(item.name, item.is_directory, t("files:types.folder"))}</TableCell>
+    <TableCell>{item.is_directory ? t("files:types.folder") : getExtension(item.name) || "—"}</TableCell>
     <TableCell>{modifiedAt}</TableCell>
   </TableRow>;
 });

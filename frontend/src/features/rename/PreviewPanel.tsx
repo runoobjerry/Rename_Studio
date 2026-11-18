@@ -19,9 +19,10 @@ import type { UnknownExecution } from "../../stores/useRenameStore";
 import type { ExecuteResponse, PreviewResponse } from "../../types";
 import { useVirtualTable } from "../../hooks/useVirtualTable";
 import { VirtualTableSpacer } from "../../components/VirtualTableSpacer";
-import { CheckboxFilterMenu } from "../../components/CheckboxFilterMenu";
+import { RadioFilterMenu } from "../../components/RadioFilterMenu";
 
 const statusFilters = [
+  { value: "all", labelKey: "files:filters.all" },
   { value: "error", labelKey: "files:preview.filters.error" },
   { value: "unchanged", labelKey: "files:preview.filters.unchanged" },
   { value: "pending", labelKey: "files:preview.filters.pending" },
@@ -48,7 +49,7 @@ export const PreviewPanel = memo(function PreviewPanel({
   executeError,
 }: PreviewPanelProps) {
   const { t } = useTranslation();
-  const [filters, setFilters] = useState<StatusFilter[]>([]);
+  const [filter, setFilter] = useState<StatusFilter>("all");
   const [dismissedVerification, setDismissedVerification] = useState<string | null>(null);
   const verificationKey = unknownExecution
     ? JSON.stringify([unknownExecution.storageId, unknownExecution.previewId]) : null;
@@ -79,8 +80,8 @@ export const PreviewPanel = memo(function PreviewPanel({
     return { rows, pendingCount, unchangedCount };
   }, [preview?.items, unknownExecution?.items, unknownIds, executionById, t]);
   const visibleItems = useMemo(() => rows.filter(({ status }) =>
-    filters.length === 0 || filters.includes(status.category)), [rows, filters]);
-  const scrollKey = useMemo(() => [preview?.preview_id, filters], [preview?.preview_id, filters]);
+    filter === "all" || filter === status.category), [rows, filter]);
+  const scrollKey = useMemo(() => [preview?.preview_id, filter], [preview?.preview_id, filter]);
   const columnValues = useMemo(() => [visibleItems.map(({ item }) => item.original_name), visibleItems.map(({ newName }) => newName),
     visibleItems.map(({ status }) => status.label)], [visibleItems]);
   const virtual = useVirtualTable(visibleItems.length, scrollKey, columnValues);
@@ -92,10 +93,10 @@ export const PreviewPanel = memo(function PreviewPanel({
           <h2 id="preview-title">{t("files:preview.title")}</h2>
           {(preview || unknownExecution) && <p className="panel-summary">
             {t("files:preview.summary", { pending: pendingCount, unchanged: unchangedCount })}
-            {filters.length > 0 && t("files:showing", { count: visibleItems.length })}
+            {filter !== "all" && t("files:showing", { count: visibleItems.length })}
           </p>}
         </div>
-        <CheckboxFilterMenu label={t("files:preview.filter")} options={filterOptions} selected={filters} onChange={setFilters} />
+        <RadioFilterMenu label={t("files:preview.filter")} options={filterOptions} selected={filter} onChange={setFilter} />
       </div>
 
       {error && <Alert severity="error" sx={{ m: 2, whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{error}</Alert>}
@@ -181,7 +182,7 @@ function statusFor(item: PreviewResponse["items"][number], result: ExecuteRespon
     isPendingChange: false, isUnchanged: false,
   };
   // 已修改项保留原预览分类；失败和跳过的执行结果覆盖分类。
-  let category: StatusFilter = item.error || !item.valid || item.conflict ? "error"
+  let category: Exclude<StatusFilter, "all"> = item.error || !item.valid || item.conflict ? "error"
     : item.changed ? "pending" : "unchanged";
   let label: string;
   let color: "success" | "warning" | "error" | "default";

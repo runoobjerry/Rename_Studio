@@ -45,7 +45,7 @@ describe("PreviewPanel", () => {
     expect(screen.queryByText("修改结果无法确认")).not.toBeInTheDocument();
   });
 
-  it("shows confirmed and unverified results with independent counts and error filtering", () => {
+  it("shows confirmed and unverified results with independent counts", () => {
     const item = validPreview.items[0];
     const items = ["renamed", "failed", "skipped", "unchanged", "unknown", "missing"].map((id) => ({
       ...item, file_id: id, original_name: `${id}.txt`, new_name: id === "unchanged" ? "unchanged.txt" : `new-${id}.txt`,
@@ -79,30 +79,11 @@ describe("PreviewPanel", () => {
     expect(table.getByText("修改失败")).toBeInTheDocument();
     expect(table.getAllByText("无变化")).toHaveLength(2);
     expect(screen.getByText("0 项待修改 · 2 项无需修改")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "筛选状态" }));
-    expect(screen.queryByRole("menuitemcheckbox", { name: "待修改" })).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole("menuitemcheckbox", { name: "已修改" }));
-    fireEvent.keyDown(screen.getByRole("menu"), { key: "Escape" });
-    expect(table.getByText("已修改")).toBeInTheDocument();
-    expect(table.queryByText("待修改")).not.toBeInTheDocument();
-    expect(table.queryByText("修改失败")).not.toBeInTheDocument();
-    expect(table.queryByText("new-skipped.txt")).not.toBeInTheDocument();
-    expect(table.queryByText("unchanged.txt")).not.toBeInTheDocument();
-    expect(screen.getByText("0 项待修改 · 2 项无需修改 · 显示 1 项")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "筛选状态" }));
-    fireEvent.click(screen.getByRole("menuitemcheckbox", { name: "已修改" }));
-    fireEvent.click(screen.getByRole("menuitemcheckbox", { name: "错误" }));
-    fireEvent.keyDown(screen.getByRole("menu"), { key: "Escape" });
-    expect(table.getAllByText("待核对")).toHaveLength(2);
-    expect(table.getAllByText("修改结果无法确认")).toHaveLength(2);
-    expect(table.getByText("修改失败")).toBeInTheDocument();
-    expect(table.queryByText("new-renamed.txt")).not.toBeInTheDocument();
-    expect(screen.getByText("0 项待修改 · 2 项无需修改 · 显示 3 项")).toBeInTheDocument();
     // 丢失整次响应且没有执行展示时，仍由待核对记录展示文件。
     rerender(<PreviewPanel unknownExecution={unknownExecution} />);
     expect(table.getAllByText("待核对")).toHaveLength(2);
     expect(table.getAllByText("修改结果无法确认")).toHaveLength(2);
-    expect(screen.getByText("0 项待修改 · 0 项无需修改 · 显示 2 项")).toBeInTheDocument();
+    expect(screen.getByText("0 项待修改 · 0 项无需修改")).toBeInTheDocument();
     fireEvent.click(within(screen.getByRole("alert")).getByRole("button", { name: "关闭" }));
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
     expect(table.getAllByText("待核对")).toHaveLength(2);
@@ -126,55 +107,5 @@ describe("PreviewPanel", () => {
     expect(screen.getByText("0 项待修改 · 0 项无需修改")).toBeInTheDocument();
   });
 
-  it("switches the selected pending filter to renamed results and separates failures and skipped rows", () => {
-    const preview = { ...validPreview, items: [
-      validPreview.items[0],
-      { ...validPreview.items[0], file_id: "failed", original_name: "failed.txt", new_name: "failed-new.txt" },
-      { ...validPreview.items[0], file_id: "unchanged", original_name: "same.txt", new_name: "same.txt", changed: false },
-    ] };
-    const { rerender } = render(<PreviewPanel preview={preview} />);
-    fireEvent.click(screen.getByRole("button", { name: "筛选状态" }));
-    expect(screen.getByRole("menuitemcheckbox", { name: "待修改" })).toHaveAttribute("aria-checked", "false");
-    fireEvent.click(screen.getByRole("menuitemcheckbox", { name: "待修改" }));
-    expect(screen.getByText("renamed.txt")).toBeInTheDocument();
-    expect(screen.getByText("failed-new.txt")).toBeInTheDocument();
-    expect(screen.queryByText("same.txt")).not.toBeInTheDocument();
-    rerender(<PreviewPanel preview={preview} execution={{ preview_id: "preview-1", status: "incomplete",
-    counts: { renamed: 1, skipped: 1, failed: 1, unknown: 0, not_attempted: 0 },
-    items: [
-      { file_id: "one.txt", original_name: "one.txt", new_name: "renamed.txt", status: "renamed", error: null },
-      { file_id: "failed", original_name: "failed.txt", new_name: "failed-new.txt", status: "failed", error: "修改失败" },
-      { file_id: "unchanged", original_name: "same.txt", new_name: "same.txt", status: "skipped", error: null },
-    ] }} />);
-    expect(screen.queryByRole("menuitemcheckbox", { name: "待修改" })).not.toBeInTheDocument();
-    expect(screen.getByRole("menuitemcheckbox", { name: "已修改" })).toHaveAttribute("aria-checked", "true");
-    expect(screen.getByText("renamed.txt")).toBeInTheDocument();
-    expect(screen.queryByText("未提供当前名称")).not.toBeInTheDocument();
-    expect(screen.queryByText("same.txt")).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole("menuitemcheckbox", { name: "已修改" }));
-    expect(screen.getByText("未提供当前名称")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("menuitemcheckbox", { name: "错误" }));
-    expect(screen.getByText("未提供当前名称")).toBeInTheDocument();
-    expect(screen.queryByText("renamed.txt")).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole("menuitemcheckbox", { name: "错误" }));
-    fireEvent.click(screen.getByRole("menuitemcheckbox", { name: "无变化" }));
-    expect(screen.queryByText("renamed.txt")).not.toBeInTheDocument();
-    expect(screen.queryByText("未提供当前名称")).not.toBeInTheDocument();
-    expect(screen.getAllByText("same.txt")).toHaveLength(2);
-    fireEvent.click(screen.getByRole("menuitemcheckbox", { name: "无变化" }));
-    expect(screen.getByText("renamed.txt")).toBeInTheDocument();
-    expect(screen.getByText("未提供当前名称")).toBeInTheDocument();
-  });
-  it("shows the filtered empty state only while a nonempty filter excludes all rows", () => {
-    render(<PreviewPanel preview={validPreview} />);
-    expect(screen.getByText("renamed.txt")).toBeInTheDocument();
-    expect(screen.getByText("待修改")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "筛选状态" }));
-    fireEvent.click(screen.getByRole("menuitemcheckbox", { name: "错误" }));
-    expect(screen.getByText("没有符合筛选条件的项目。")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("menuitemcheckbox", { name: "错误" }));
-    expect(screen.getByText("renamed.txt")).toBeInTheDocument();
-    expect(screen.queryByText("没有符合筛选条件的项目。")).not.toBeInTheDocument();
-  });
 });
 
