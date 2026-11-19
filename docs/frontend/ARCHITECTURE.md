@@ -6,25 +6,61 @@
 
 ## 代码地图
 
-下列入口均链接到实际实现；测试入口与验收方法见[TEST.md](TEST.md)。
+[应用入口与布局](#应用入口与布局) · [主题与共享组件](#主题与共享组件) · [连接与文件浏览](#连接与文件浏览) · [规则与重命名](#规则与重命名) · [设置与授权](#设置与授权) · [接口、国际化与浏览器集成](#接口国际化与浏览器集成)
+
+界面修改遵循 [UI 设计规范](UI_DESIGN.md)。测试入口与验收方法见[前端测试与验收](TEST.md)。
+
+### 应用入口与布局
 
 | 入口 | 职责 |
 | --- | --- |
-| [main.tsx](../../frontend/src/main.tsx)、[App.tsx](../../frontend/src/App.tsx)、[WorkspaceApp.tsx](../../frontend/src/WorkspaceApp.tsx) | QueryClient、应用入口、Provider 组合、布局、工作区/设置内存视图及导航保护；没有 URL 路由 |
+| [main.tsx](../../frontend/src/main.tsx)、[App.tsx](../../frontend/src/App.tsx) | 应用入口与 QueryClient 初始化 |
+| [WorkspaceApp](../../frontend/src/WorkspaceApp.tsx) | 语言、主题和通知 Provider 装配，工作区与设置页切换、面板布局、侧栏 Drawer 与导航保护 |
+| [styles.css](../../frontend/src/styles.css) | 面板与列布局、滚动和响应式断点 |
+
+### 主题与共享组件
+
+| 入口 | 职责 |
+| --- | --- |
+| [theme.ts](../../frontend/src/theme.ts) | 全局配色、字体和控件默认样式。菜单尺寸见 `MENU_METRICS` |
+| [共享组件目录](../../frontend/src/components) | 多个功能共用的控件 |
+| [PanelIconButton](../../frontend/src/components/PanelIconButton.tsx)、[RadioFilterMenu](../../frontend/src/components/RadioFilterMenu.tsx)、[NumberField](../../frontend/src/components/NumberField.tsx) | 面板图标按钮、单选筛选菜单与数字输入 |
+| [useVirtualTable](../../frontend/src/hooks/useVirtualTable.ts) | 文件表格与预览表格共用的虚拟化逻辑 |
+| [NotificationProvider](../../frontend/src/components/NotificationProvider.tsx) | 全局通知 |
+
+### 连接与文件浏览
+
+| 入口 | 职责 |
+| --- | --- |
 | [useWorkspaceStorage](../../frontend/src/workspace/hooks/useWorkspaceStorage.ts)、[workspaceSession](../../frontend/src/workspace/workspaceSession.ts) | 连接与目录查询、位置恢复、目录选择、刷新和标签会话记忆 |
+| [StorageSidebar](../../frontend/src/workspace/components/StorageSidebar.tsx)、[StorageLocationPanel](../../frontend/src/workspace/components/StorageLocationPanel.tsx) | 连接侧栏与目录工具栏 |
+| [FileBrowser](../../frontend/src/features/files/FileBrowser.tsx)、[LocationBreadcrumbs](../../frontend/src/features/files/LocationBreadcrumbs.tsx)、[fileSort](../../frontend/src/features/files/fileSort.ts) | 文件表格、目录导航及完整文件集合的排序、筛选和选择 |
+
+### 规则与重命名
+
+| 入口 | 职责 |
+| --- | --- |
+| [RuleEditor](../../frontend/src/features/rules/RuleEditor.tsx)、[RuleFields](../../frontend/src/features/rules/RuleFields.tsx) | 规则链排序和规则字段编辑 |
 | [useRenameWorkflow](../../frontend/src/features/rename/useRenameWorkflow.ts) | 有序有效选择、批量预览生命周期、单项与批量协调、未知结果门控 |
 | [useRenameExecution](../../frontend/src/features/rename/useRenameExecution.ts)、[useSingleRename](../../frontend/src/features/rename/useSingleRename.ts) | 独立的批量/单项请求、结果合并、错误和未知结果保护 |
 | [renameRecord](../../frontend/src/features/rename/renameRecord.ts)、[useRenameStore](../../frontend/src/stores/useRenameStore.ts) | 提交与最近逐项记录、确认元数据、选择、规则和独立待核对信息 |
-| [FileBrowser](../../frontend/src/features/files/FileBrowser.tsx)、[LocationBreadcrumbs](../../frontend/src/features/files/LocationBreadcrumbs.tsx)、[fileSort](../../frontend/src/features/files/fileSort.ts) | 文件表、完整集合的排序/筛选/选择、目录导航 |
-| [RuleEditor](../../frontend/src/features/rules/RuleEditor.tsx)、[RuleFields](../../frontend/src/features/rules/RuleFields.tsx) | 顺序规则链和显式字段编辑器 |
-| [PreviewPanel](../../frontend/src/features/rename/PreviewPanel.tsx)、[RenameActions](../../frontend/src/features/rename/RenameActions.tsx)、[RenameActionsWithProgress](../../frontend/src/features/rename/RenameActionsWithProgress.tsx)、[SingleRenameDialog](../../frontend/src/features/rename/SingleRenameDialog.tsx) | 预览/结果展示、执行确认、局部进度订阅与单项输入 |
-| [StorageSidebar](../../frontend/src/workspace/components/StorageSidebar.tsx)、[StorageLocationPanel](../../frontend/src/workspace/components/StorageLocationPanel.tsx) | 连接侧栏与目录工具栏；Drawer 由工作台容器管理 |
+| [PreviewPanel](../../frontend/src/features/rename/PreviewPanel.tsx)、[SingleRenameDialog](../../frontend/src/features/rename/SingleRenameDialog.tsx) | 预览与结果表格、单项改名输入 |
+| [RenameActions](../../frontend/src/features/rename/RenameActions.tsx)、[RenameActionsWithProgress](../../frontend/src/features/rename/RenameActionsWithProgress.tsx) | 批量执行操作、确认与局部进度订阅 |
+
+### 设置与授权
+
+| 入口 | 职责 |
+| --- | --- |
 | [SettingsPage](../../frontend/src/features/settings/SettingsPage.tsx)、[StorageSettingsPanel](../../frontend/src/features/settings/StorageSettingsPanel.tsx) | 外观、语言、多连接配置与授权交互 |
 | [useAppSettings](../../frontend/src/features/settings/useAppSettings.ts)、[useThemePreference](../../frontend/src/features/settings/useThemePreference.ts)、[useFactoryReset](../../frontend/src/workspace/hooks/useFactoryReset.ts) | 串行保存偏好、主题订阅及恢复出厂后的协调清理 |
-| [api/client.ts](../../frontend/src/api/client.ts)、[types](../../frontend/src/types/index.ts) | HTTP 客户端、连接级请求、跨端类型与结构化错误 |
-| [i18n](../../frontend/src/i18n)、[locales](../../frontend/src/locales) | 语言发现/加载/偏好、错误展示与本地化资源 |
-| [browser integration](../../frontend/src/integrations/browser) | 消息桥、Provider 适配器、外部导航接入；边界与流程见[扩展架构](../browser-extensions/ARCHITECTURE.md) |
-| [components](../../frontend/src/components)、[useVirtualTable](../../frontend/src/hooks/useVirtualTable.ts)、[theme](../../frontend/src/theme.ts)、[styles](../../frontend/src/styles.css) | 共享控件、通知、虚拟化、主题和布局 |
+
+### 接口、国际化与浏览器集成
+
+| 入口 | 职责 |
+| --- | --- |
+| [`api/client.ts`](../../frontend/src/api/client.ts)、[跨端类型](../../frontend/src/types/index.ts) | HTTP 客户端、连接级请求、跨端类型与结构化错误 |
+| [i18n](../../frontend/src/i18n)、[locales](../../frontend/src/locales) | 语言发现、加载与偏好，错误展示与本地化资源 |
+| [浏览器集成](../../frontend/src/integrations/browser) | 消息桥、Provider 适配器与外部导航接入。边界和流程见[扩展架构](../browser-extensions/ARCHITECTURE.md) |
 
 ## 依赖与状态归属
 
@@ -92,7 +128,7 @@ OAuth 完成由回调或授权状态查询确认，校验 origin、source、消�
 
 固定 UI、通知、Tooltip 和 ARIA 使用 `react-i18next`，默认/回退为 en-US，同时维护 zh-CN；模块常量和通知保留键及参数，到展示时翻译。Rule 文案按 `rules:types.<type>`、Provider 字段按 `providers:<provider_type>.fields.<key>` 定位。文件名、路径、连接名、账号与规则输入值保持用户数据，不用 JSON Schema 的 title/description 代替 UI 词条。
 
-语言通过 `meta.json` 与命名空间文件发现，社区语言缺词回退英文，必要文件结构仍需完整。检查器入口是 [check-i18n.mjs](../../frontend/scripts/check-i18n.mjs)，动态键、MUI 自带文案和实际布局仍由浏览器验收。贡献步骤见[翻译指南](https://github.com/runoobjerry/Rename_Studio/wiki/Contribute-translations)与[Agent 版指南](https://github.com/runoobjerry/Rename_Studio/wiki/Contribute-translations-(Agents))。
+语言通过 `meta.json` 与命名空间文件发现，社区语言缺词回退英文，必要文件结构仍需完整。检查器入口是 [check-i18n.mjs](../../frontend/scripts/check-i18n.mjs)，动态键、MUI 自带文案和实际布局仍由浏览器验收。贡献步骤见 [AI 辅助翻译贡献指南](../TRANSLATING_AGENTS.md)。
 
 错误链路为 [API client](../../frontend/src/api/client.ts) → [errorPresentation](../../frontend/src/i18n/errorPresentation.ts) → [messages](../../frontend/src/i18n/messages.ts) → 词典。展示层依据应用错误码、结构化原因和结果确定性选择提示，不负责重试或执行状态转换；后端原始 message 保留诊断用途，不直接当作 UI 提示。`errorMessage(error, t, context)` 与通知的 `errorContext` 使用 `ErrorPresentationContext` 声明的场景；插值仅接受允许的展示字段，不把用户数据作为 i18next 配置。契约见[共享错误](../api/common/errors.md)。
 

@@ -2,9 +2,7 @@
 
 一款文件重命名 WebUI 程序，帮助您整理本地和云盘里混乱的文件名。
 
-导航：[使用帮助](https://github.com/runoobjerry/Rename_Studio/wiki/Usage-Guide) · [配置说明](https://github.com/runoobjerry/Rename_Studio/wiki/Configuration) · [常见问题](https://github.com/runoobjerry/Rename_Studio/wiki/FAQ) · [浏览器扩展](https://github.com/runoobjerry/Rename_Studio/blob/main/docs/browser-extensions/README.md) · [开发知识库](https://github.com/runoobjerry/Rename_Studio/blob/main/docs/README.md)
-
-章节：[特性](#特性) · [兼容性](#兼容性) · [快速开始](#快速开始) · [许可与使用须知](#许可与使用须知)
+章节：[特性](#特性) · [兼容性](#兼容性) · [快速开始](#快速开始) · [许可与免责声明](#许可与免责声明)
 
 ## 特性
 
@@ -62,11 +60,18 @@ bash "/项目完整路径/Start.sh"
 
 > 默认本地目录为后端系统用户的 Documents 文件夹。每次预览使用当前选中的文件。调整选择、规则或排序后，需要重新预览。遇到超时或未知结果先核对进度和真实文件，不要盲目重试。
 
-## 许可与使用须知
+## 许可与免责声明
 
 > [!WARNING] 
-> 本项目为 Vibe Coding 实验性项目，大部分源代码由 AI 生成，开发过程采用人工测试验收。
+> 本项目为 Vibe Coding 实验性项目，大部分源代码由 AI 生成，仅供个人学习使用，每次提交均有人工测试验收，但无法保证完全无错误运行。
 
 项目按 [GNU AGPL v3](LICENSE) 提供，许可条件与责任条款见许可证。批量重命名会修改真实文件，操作前请备份，并使用自己拥有或获授权的数据。执行失败不自动回滚，目前没有历史撤销功能。
 
 项目与 Microsoft 等第三方服务商无官方关联。第三方服务的可用性与条款由其提供方决定；请妥善保护本地凭据与账号授权。完整说明见[隐私政策](https://github.com/runoobjerry/Rename_Studio/wiki/Privacy-Policy)。
+
+## 文档导航
+
+- 日常使用、配置云盘或排查问题，请查阅[用户文档](https://github.com/runoobjerry/Rename_Studio/wiki/Home)。
+- 使用网页跳转浏览器扩展，请查阅[浏览器扩展使用说明](https://github.com/runoobjerry/Rename_Studio/blob/main/docs/browser-extensions/README.md)。
+- 参与项目开发，请从[开发文档索引](https://github.com/runoobjerry/Rename_Studio/blob/main/docs/README.md)开始。
+- 使用 AI Agent 协作，请查阅[项目协作规则](https://github.com/runoobjerry/Rename_Studio/blob/main/AGENTS.md)。
