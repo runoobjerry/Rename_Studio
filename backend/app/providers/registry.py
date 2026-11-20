@@ -23,6 +23,7 @@ class ProviderDefinition:
     icon: Literal["computer", "cloud"] = "cloud"
     browser_navigation: str | None = None
     cache_directories: bool = False
+    accepts_client_secret: bool = False
 
 
 class ProviderRegistry:

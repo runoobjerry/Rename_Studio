@@ -13,6 +13,7 @@ from app.schemas.rename import (
     RenameProgress,
 )
 from app.services.directory_cache import RenameCacheScope
+from app.services.directory_service import DirectoryService
 from app.services.preview_service import PreviewService
 from app.services.preview_store import PreviewSnapshot, PreviewStore
 from app.services.rename_write import RenameObserver, drain_writes, rename_failure_status, resolve_rename_outcome
@@ -26,10 +27,12 @@ class ExecuteService:
     def __init__(
         self,
         manager: StorageManager,
+        directories: DirectoryService,
         previews: PreviewStore,
         preview_service: PreviewService,
     ) -> None:
         self.manager = manager
+        self.directories = directories
         self.previews = previews
         self.preview_service = preview_service
         self._lock = asyncio.Lock()
@@ -92,10 +95,9 @@ class ExecuteService:
             raise ValidationError("Rename preview contains invalid items")
 
         storage_id = snapshot.request.storage_id
-        directories = self.manager.directories
         parent = StorageDriver.parent_directory(snapshot.sources[0])
         try:
-            listing = await directories.list_directory(storage_id, parent, mode="verify")
+            listing = await self.directories.list_directory(storage_id, parent, mode="verify")
             by_id = {item.id: item for item in listing.items}
             sources = [by_id[file_id] for file_id in snapshot.request.file_ids]
             items, _, _ = await self.preview_service.evaluate(
@@ -104,14 +106,14 @@ class ExecuteService:
                 siblings=listing.items,
             )
         except (KeyError, NotFoundError) as exc:
-            directories.invalidate_rename(storage_id, RenameCacheScope(stale_parents={parent}))
+            self.directories.invalidate_rename(storage_id, RenameCacheScope(stale_parents={parent}))
             raise PreviewExpiredError(
                 "Files changed after the preview was created"
             ) from exc
 
         # 与有效快照逐项一致即可保证有效性；源项始终按同一请求 ID 列表构建。
         if items != snapshot.response.items:
-            directories.invalidate_rename(storage_id, RenameCacheScope(stale_parents={parent}))
+            self.directories.invalidate_rename(storage_id, RenameCacheScope(stale_parents={parent}))
             raise PreviewExpiredError("Rename preview is no longer valid")
         return sources
 
@@ -279,7 +281,7 @@ class ExecuteService:
             )
 
         progress.phase = "renaming"
-        with self.manager.directories.writing(snapshot.request.storage_id, snapshot.connection_revision, scope):
+        with self.directories.writing(snapshot.request.storage_id, snapshot.connection_revision, scope):
             outcomes = await self._rename_in_batches(driver, requests, progress, observe=observe)
         for item in changed:
             outcome = outcomes[item.file_id]

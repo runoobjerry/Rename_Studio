@@ -1,5 +1,5 @@
 from app.schemas.storage import RootLocation
-from provider_fixtures import manager_for
+from provider_fixtures import storage_services_for
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -56,11 +56,11 @@ class IndexRule(RenameRule[EmptyRuleConfig]):
 
 
 def build_service(root: Path, *, with_test_rule: bool = False) -> PreviewService:
-    manager = manager_for({"local": LocalDriver(root)})
+    manager, directories = storage_services_for({"local": LocalDriver(root)})
     rules = RuleRegistry()
     if with_test_rule:
         rules.register(ConstantRule())
-    return PreviewService(manager, RenameEngine(rules))
+    return PreviewService(manager, directories, RenameEngine(rules))
 
 
 @pytest.mark.asyncio
@@ -85,7 +85,7 @@ async def test_known_directory_preview_uses_one_listing(tmp_path: Path) -> None:
     (tmp_path / "one.txt").write_text("one", encoding="utf-8")
     driver = CountingLocalDriver(tmp_path)
     service = PreviewService(
-        manager_for({"local": driver}), RenameEngine(RuleRegistry())
+        *storage_services_for({"local": driver}), RenameEngine(RuleRegistry())
     )
 
     preview = await service.preview(
@@ -106,7 +106,7 @@ async def test_request_order_controls_rule_context_and_preview_items(tmp_path: P
         (tmp_path / name).write_text(name, encoding="utf-8")
     rules = RuleRegistry()
     rules.register(IndexRule())
-    service = PreviewService(manager_for({"local": LocalDriver(tmp_path)}), RenameEngine(rules))
+    service = PreviewService(*storage_services_for({"local": LocalDriver(tmp_path)}), RenameEngine(rules))
     preview = await service.preview(RenamePreviewRequest(
         storage_id="local", location=RootLocation() if known_directory else None,
         file_ids=["002.jpg", "001.jpg"], rules=[RuleSpec(type="test_index")],

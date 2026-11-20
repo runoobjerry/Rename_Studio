@@ -54,7 +54,7 @@
 | `onedrive` | `client_id` | string | 否 | 是 | 默认 `null`；最长 200 字符；去除两端空白后不能为空。 |
 | `google_drive` | `client_id` | string | 否 | 是 | 默认 `null`；最长 200 字符；去除两端空白后不能为空。 |
 
-`client_secret` 在创建、更新请求的顶层提交。仅声明对应 `target` 的 Provider 接受非空密钥，内置实现中仅 Google Drive 支持。Google Drive 的 Client ID、Secret 均就绪后才能授权；可以先保存不完整配置。
+`client_secret` 在创建、更新请求的顶层提交。服务端按 Provider 声明的能力校验，内置实现中仅 Google Drive 支持。Google Drive 的 Client ID 和 Secret 均就绪后才能授权，可以先保存不完整配置。
 
 <a id="endpoint-get-storage-providers"></a>
 ### 列出 Provider 定义

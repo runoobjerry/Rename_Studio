@@ -1,4 +1,4 @@
-from provider_fixtures import manager_for
+from provider_fixtures import storage_services_for
 import asyncio
 from pydantic import BaseModel
 import pytest
@@ -348,12 +348,12 @@ async def test_interrupted_execution_holds_connection_until_in_flight_writes_fin
 
 
 def services(driver: StableIdDriver):
-    manager = manager_for({"stable": driver})
+    manager, directories = storage_services_for({"stable": driver})
     rules = RuleRegistry()
     rules.register(MappingRule())
     store = PreviewStore()
-    preview = PreviewService(manager, RenameEngine(rules), store)
-    return preview, ExecuteService(manager, store, preview)
+    preview = PreviewService(manager, directories, RenameEngine(rules), store)
+    return preview, ExecuteService(manager, directories, store, preview)
 
 
 def request(ids: list[str], names: dict[str, str]) -> RenamePreviewRequest:

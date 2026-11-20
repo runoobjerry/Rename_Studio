@@ -9,6 +9,8 @@ from app.providers.base import StorageDriver
 from app.providers.registry import ProviderDefinition, ProviderRegistry
 from app.repositories.storage_repository import JsonStorageRepository
 from app.schemas.storage import StorageRecord, StorageState
+from app.services.directory_cache import DirectoryCache
+from app.services.directory_service import DirectoryService
 from app.services.storage_manager import StorageManager
 
 
@@ -16,7 +18,10 @@ class TestProviderConfig(BaseModel):
     pass
 
 
-def manager_for(drivers: dict[str, StorageDriver], *, cache_directories: bool = False) -> StorageManager:
+def storage_services_for(
+    drivers: dict[str, StorageDriver], *, cache_directories: bool = False,
+    directory_cache: DirectoryCache | None = None,
+) -> tuple[StorageManager, DirectoryService]:
     """Exercise service tests through the same driver factory and storage lookup as production."""
     registry = ProviderRegistry()
     records = {}
@@ -30,10 +35,12 @@ def manager_for(drivers: dict[str, StorageDriver], *, cache_directories: bool = 
             storage_id=storage_id, provider_type=driver.provider_type,
             name=storage_id, config={},
         )
-    return StorageManager(
+    cache = directory_cache if directory_cache is not None else DirectoryCache()
+    manager = StorageManager(
         registry, JsonStorageRepository(Path("unused-unit-test-state.json")), StorageState(connections=records),
-        default_connection=next(iter(records.values())),
+        default_connection=next(iter(records.values())), directory_cache=cache,
     )
+    return manager, DirectoryService(manager, cache)
 
 
 class CooldownClock:

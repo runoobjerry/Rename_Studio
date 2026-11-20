@@ -6,8 +6,8 @@ from uuid import uuid4
 import pytest
 from fastapi.testclient import TestClient
 
-from provider_fixtures import manager_for
-from app.api.dependencies import get_execute_service, get_rule_registry, get_single_rename_service, get_storage_manager, get_preview_service, get_preview_store
+from provider_fixtures import storage_services_for
+from app.api.dependencies import get_directory_service, get_execute_service, get_rule_registry, get_single_rename_service, get_storage_manager, get_preview_service, get_preview_store
 from app.main import create_app
 from app.providers.local.driver import LocalDriver
 from app.services.execute_service import ExecuteService
@@ -54,16 +54,17 @@ def test_execution_api_preserves_unknown_status_after_committed_write(
 
 @pytest.fixture
 def api_client(tmp_path: Path) -> Iterator[TestClient]:
-    manager = manager_for({"local": LocalDriver(tmp_path)})
+    manager, directories = storage_services_for({"local": LocalDriver(tmp_path)})
     store = PreviewStore()
-    preview = PreviewService(manager, RenameEngine(get_rule_registry()), store)
-    execute = ExecuteService(manager, store, preview)
+    preview = PreviewService(manager, directories, RenameEngine(get_rule_registry()), store)
+    execute = ExecuteService(manager, directories, store, preview)
     app = create_app()
     app.dependency_overrides[get_storage_manager] = lambda: manager
+    app.dependency_overrides[get_directory_service] = lambda: directories
     app.dependency_overrides[get_preview_service] = lambda: preview
     app.dependency_overrides[get_preview_store] = lambda: store
     app.dependency_overrides[get_execute_service] = lambda: execute
-    app.dependency_overrides[get_single_rename_service] = lambda: SingleRenameService(manager)
+    app.dependency_overrides[get_single_rename_service] = lambda: SingleRenameService(manager, directories)
     with TestClient(app) as client:
         yield client
 

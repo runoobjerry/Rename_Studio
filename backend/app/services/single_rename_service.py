@@ -6,6 +6,7 @@ from app.providers.base import RenameRequest, StorageDriver
 from app.schemas.files import RenameFile
 from app.schemas.rename import SingleExecuteItem, SingleRenameExecuteRequest, SingleRenameExecuteResponse
 from app.services.directory_cache import RenameCacheScope
+from app.services.directory_service import DirectoryService
 from app.services.rename_write import RenameObserver, drain_writes, rename_failure_status, resolve_rename_outcome
 from app.services.storage_manager import StorageManager
 
@@ -14,8 +15,9 @@ logger = logging.getLogger("rename_studio.rename")
 
 
 class SingleRenameService:
-    def __init__(self, manager: StorageManager) -> None:
+    def __init__(self, manager: StorageManager, directories: DirectoryService) -> None:
         self.manager = manager
+        self.directories = directories
 
     async def execute(self, storage_id: str, request: SingleRenameExecuteRequest) -> SingleRenameExecuteResponse:
         # StorageManager also guards batch execution and connection changes.
@@ -27,9 +29,8 @@ class SingleRenameService:
                 file_id=request.file_id, original_name=request.original_name,
                 new_name=request.target_name, status="failed",
             )
-            directories = self.manager.directories
             scope = RenameCacheScope(folder_ids={request.file_id})
-            with directories.writing(storage_id, request.revision, scope):
+            with self.directories.writing(storage_id, request.revision, scope):
                 task = asyncio.create_task(self._rename(
                     driver, RenameRequest(request.file_id, request.target_name),
                     lambda file_id, outcome, target_confirmed: scope.observe(

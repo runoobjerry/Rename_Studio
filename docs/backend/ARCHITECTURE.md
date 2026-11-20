@@ -12,9 +12,10 @@
 | [`api/router.py`](../../backend/app/api/router.py)、[storage_router.py](../../backend/app/api/storage_router.py)、[app_settings_router.py](../../backend/app/api/app_settings_router.py) | 共享、连接级和设置路由 |
 | [`api/dependencies.py`](../../backend/app/api/dependencies.py) | 单进程共享服务装配、内置 Rule 与 Provider 注册 |
 | [schemas](../../backend/app/schemas) | 输入输出、位置、配置、持久化状态和结果结构 |
-| [StorageManager](../../backend/app/services/storage_manager.py) | 连接配置、revision、驱动与认证实例、OAuth 会话、身份、互斥、偏好与目录服务生命周期 |
+| [StorageManager](../../backend/app/services/storage_manager.py) | 连接配置、revision、驱动与认证实例、OAuth 会话、身份、互斥和偏好。连接变更后使目录缓存失效 |
+| [app_settings](../../backend/app/services/app_settings.py)、[local_folder_picker](../../backend/app/services/local_folder_picker.py) | 编排恢复出厂设置和本地目录选择 |
 | [ProviderRegistry](../../backend/app/providers/registry.py)、[builtin.py](../../backend/app/providers/builtin.py) | Provider 定义、配置模型校验与显式注册内置 Provider |
-| [DirectoryService](../../backend/app/services/directory_service.py)、[DirectoryCache](../../backend/app/services/directory_cache.py)、[directory_metadata](../../backend/app/providers/directory_metadata.py) | 目录读取策略、并发请求合并、缓存与祖先索引、改名前后的缓存保护与更新 |
+| [DirectoryService](../../backend/app/services/directory_service.py)、[DirectoryCache](../../backend/app/services/directory_cache.py)、[directory_metadata](../../backend/app/providers/directory_metadata.py) | 目录读取、并发请求合并、缓存与代次、祖先索引、改名前后的缓存保护与更新 |
 | [PreviewService](../../backend/app/services/preview_service.py)、[PreviewStore](../../backend/app/services/preview_store.py) | 评估源项/规则/冲突，保存与释放有期限、绑定 revision 的预览快照 |
 | [RenameEngine](../../backend/app/services/rename_engine.py)、[rules](../../backend/app/rules) | 规则配置解析、顺序应用与带索引的 RuleContext |
 | [ExecuteService](../../backend/app/services/execute_service.py) | 批量实时复核、快照消费、分组调度、进度与结果汇总 |
@@ -26,31 +27,20 @@
 
 ## 依赖与对象装配
 
-路由通过 [`dependencies.py`](../../backend/app/api/dependencies.py) 获取进程内共享对象。图中的箭头从使用方指向依赖。
+[`dependencies.py`](../../backend/app/api/dependencies.py) 装配进程内共享的业务服务。下图展示主要调用，箭头从调用方指向被调用方。
 
 ```mermaid
-flowchart TB
-  Routes["FastAPI 路由"] --> Batch["ExecuteService"]
-  Routes --> Preview["PreviewService"]
-  Routes --> Single["SingleRenameService"]
-  Routes --> Manager["StorageManager"]
-  Batch --> Preview
-  Batch --> Snapshots["PreviewStore"]
-  Preview --> Snapshots
-  Preview --> Engine["RenameEngine"]
-  Engine --> Rules["RuleRegistry"]
-  Preview --> Manager
-  Batch --> Manager
-  Single --> Manager
-  Manager --> Providers["ProviderRegistry"]
-  Manager --> Directories["DirectoryService"]
-  Manager --> Repository["JsonStorageRepository"]
-  Manager -->|按 Provider 定义创建| Instances["StorageDriver 与可选的 StorageAuth"]
+flowchart LR
+  Batch["ExecuteService"] -->|复用评估| Preview["PreviewService"]
+  Preview -->|转换名称| Engine["RenameEngine"]
+  Preview --> Directories["DirectoryService"]
+  Directories -->|获取驱动| Manager["StorageManager"]
+  Directories -->|读取目录| Driver["StorageDriver"]
+  Batch -->|分批改名| Driver
+  Single["SingleRenameService"] -->|按 ID 改名| Driver
 ```
 
-- **重命名服务**共用一个 `StorageManager`，从中获取连接 revision、Provider 定义、驱动和目录服务。批量与单项执行共用连接级执行锁。预览和批量执行共用快照库，名称转换由 `RenameEngine` 应用已注册的规则。
-- **连接装配**显式注册内置 Provider，并通过 `ProviderRegistry` 校验连接配置。装配入口在首次启动时写入默认连接 `default-local`，后续启动时校验已保存的连接。默认连接定义也用于恢复出厂设置和删除保护。`JsonStorageRepository` 负责读取、结构校验和原子保存。应用退出时由 `StorageManager` 关闭驱动。
-- **OAuth 授权**由路由接收授权请求和回调，并交给 `StorageManager`。它把 Provider 返回的 `state` 绑定到连接和 revision，回调时一次性消费会话，然后检查有效期、revision 和忙碌状态。Provider 负责 PKCE 和令牌交换，路由负责 HTTP 响应和回调页。
+批量执行先通过 `DirectoryService` 读取实时目录，再复用预览评估。批量和单项改名共用 `StorageManager` 的连接锁，并通过 `DirectoryService` 协调写入前后的缓存更新。
 
 ## 预览与执行
 
@@ -132,7 +122,7 @@ flowchart TB
 
 目录列表以连接、revision、规范位置隔离，使用 cachetools 的过期/LRU 管理；祖先索引来自缓存列表，生命周期随列表维护。容量和 TTL 见[配置源](../../backend/app/core/config.py)与 [cache.toml](../../backend/cache.toml)，不另维护尺寸/默认值副本。
 
-缓存代次是每个连接的计数器。开始写入、强制刷新或实时导航时推进代次，只有当前代次的读取结果可以写入缓存。改名期间，旧列表留作更新缓存的依据，普通浏览请求直接读取存储。写入结束后，服务用已确认的元数据更新缓存。结果未知或文件位置不明时，使受影响的缓存失效。执行异常中断时，使该连接的目录缓存失效。修改此处时同时检查前端 Query 缓存失效和未知结果核对流程。
+缓存按连接保存代次。开始写入、强制刷新和实时导航会推进代次。连接变更触发缓存失效时，也会推进对应代次。只有当前代次的读取结果可以写入缓存。改名期间，旧列表留作更新缓存的依据，普通浏览请求直接读取存储。写入结束后，服务用已确认的元数据更新缓存。结果未知或文件位置不明时，使受影响的缓存失效。执行异常中断时，使该连接的目录缓存失效。修改此处时同时检查前端 Query 缓存失效和未知结果核对流程。
 
 ## 持久化与部署
 
@@ -147,4 +137,4 @@ flowchart TB
 | Rule | [RenameRule](../../backend/app/rules/base.py)、具体规则/配置、[RuleRegistry](../../backend/app/rules/registry.py)、[依赖装配](../../backend/app/api/dependencies.py) | [规则 API](../api/rules/index.md)、[前端 RuleFields](../../frontend/src/features/rules/RuleFields.tsx)及语言词条 |
 | Provider | [ProviderDefinition / Registry](../../backend/app/providers/registry.py)、[builtin](../../backend/app/providers/builtin.py)、具体配置/认证/Driver、[StorageDriver](../../backend/app/providers/base.py) | [Provider API](../api/providers/index.md)、前端字段/能力适配，必要时扩展浏览器导航适配器 |
 
-Rule 接收调用方给定的 RuleContext，不访问存储或自行排序；序列编号使用输入顺序。Provider 负责位置、完整分页、名称约束、认证、错误与读写策略；核心 Service 通过统一接口复用这些能力。接口扩展需要同步所有实现与直接调用方，跨端字段同步 Schema、[前端类型](../../frontend/src/types/index.ts)及[客户端](../../frontend/src/api/client.ts)。
+Rule 接收调用方给定的 RuleContext，不访问存储或自行排序。序列编号使用输入顺序。Provider 负责位置、完整分页、名称约束、认证、错误与读写策略，核心 Service 通过统一接口使用这些能力。Provider 定义通过内部字段 `accepts_client_secret` 声明是否接受 OAuth 客户端密钥，`config_fields` 描述表单字段及其提交位置。接口扩展需要同步所有实现与直接调用方，跨端字段同步 Schema、[前端类型](../../frontend/src/types/index.ts)及[客户端](../../frontend/src/api/client.ts)。

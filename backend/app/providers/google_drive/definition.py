@@ -30,6 +30,7 @@ def get_definition(settings: Settings) -> ProviderDefinition:
         lambda record, auth: GoogleDriveDriver(cast(StorageAuth, auth)),
         browser_navigation="google_drive_my_drive",
         cache_directories=True,
+        accepts_client_secret=True,
         config_fields=(
             StorageConfigField(
                 key="client_id", nullable=True,

@@ -8,7 +8,7 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from app.api.dependencies import build_storage_manager, get_storage_manager, get_preview_service, get_execute_service, get_preview_store
+from app.api.dependencies import build_storage_manager, get_directory_service, get_storage_manager, get_preview_service, get_execute_service, get_preview_store
 from app.api import storage_router
 from app.core.errors import AuthenticationError, ProviderError, StorageBusyError, StorageConnectionChangedError, ValidationError
 from app.core import config as app_config
@@ -20,6 +20,10 @@ from app.providers.registry import ProviderRegistry
 from app.schemas.rename import RenamePreviewRequest
 from app.schemas.rules import RuleSpec
 from app.schemas.storage import AppSettingsPatch, StorageConfigField, RootLocation, StorageCreate, StorageUpdate
+from app.services import local_folder_picker
+from app.services.app_settings import factory_reset
+from app.services.directory_cache import DirectoryCache
+from app.services.directory_service import DirectoryService
 from app.services.execute_service import ExecuteService
 from app.providers.onedrive.auth import OneDriveAuthService
 from app.services.preview_service import PreviewService
@@ -30,7 +34,9 @@ from app.rules.registry import RuleRegistry
 from app.rules.text_operations import ReplaceRule
 
 
-def make_manager(tmp_path: Path, *, local_root: Path | None = None) -> StorageManager:
+def make_manager(
+    tmp_path: Path, *, local_root: Path | None = None, directory_cache: DirectoryCache | None = None,
+) -> StorageManager:
     registry = ProviderRegistry()
     settings = app_config.Settings(
         _env_file=None, local_storage_root=local_root or tmp_path / "files",
@@ -39,22 +45,23 @@ def make_manager(tmp_path: Path, *, local_root: Path | None = None) -> StorageMa
     )
     registry.register(local_definition(settings))
     registry.register(onedrive_definition(settings))
-    return build_storage_manager(settings, registry)
+    cache = directory_cache if directory_cache is not None else DirectoryCache(settings.directory_cache.directory_listings)
+    return build_storage_manager(settings, registry, cache)
 
 
-def services(manager: StorageManager) -> tuple[PreviewService, ExecuteService]:
+def services(manager: StorageManager, directories: DirectoryService) -> tuple[PreviewService, ExecuteService]:
     rules = RuleRegistry()
     rules.register(ReplaceRule())
     store = PreviewStore()
-    preview = PreviewService(manager, RenameEngine(rules), store)
-    return preview, ExecuteService(manager, store, preview)
+    preview = PreviewService(manager, directories, RenameEngine(rules), store)
+    return preview, ExecuteService(manager, directories, store, preview)
 
 
 def test_provider_metadata_exposes_form_fields_without_connection_secrets(tmp_path: Path) -> None:
     manager = make_manager(tmp_path)
     definition = manager.registry.definition("onedrive")
     manager.registry.register(replace(
-        definition, provider_type="fixture_service", icon="computer", config_fields=(
+        definition, provider_type="fixture_service", icon="computer", accepts_client_secret=True, config_fields=(
             StorageConfigField(key="client_id", nullable=True),
             StorageConfigField(key="client_secret", input_type="password", target="client_secret"),
         ),
@@ -84,13 +91,11 @@ def test_provider_metadata_exposes_form_fields_without_connection_secrets(tmp_pa
 
 @pytest.mark.parametrize("provider_type", ["fixture_service", "google_drive"])
 @pytest.mark.parametrize("accepts_secret", [False, True])
-def test_client_secret_acceptance_follows_provider_fields(tmp_path: Path, provider_type: str, accepts_secret: bool) -> None:
+def test_client_secret_acceptance_follows_provider_capability(tmp_path: Path, provider_type: str, accepts_secret: bool) -> None:
     manager = make_manager(tmp_path)
     manager.registry.register(replace(
         manager.registry.definition("onedrive"), provider_type=provider_type,
-        config_fields=(StorageConfigField(
-            key="client_secret", target="client_secret", input_type="password",
-        ),) if accepts_secret else (),
+        accepts_client_secret=accepts_secret,
     ))
     app = create_app()
     app.dependency_overrides[get_storage_manager] = lambda: manager
@@ -186,7 +191,7 @@ def test_draft_folder_picker_does_not_modify_connections(tmp_path: Path, monkeyp
         assert initial == root
         return chosen if selected else None
 
-    monkeypatch.setattr(storage_router, "choose_local_directory", choose)
+    monkeypatch.setattr(local_folder_picker, "choose_local_directory", choose)
     app = FastAPI()
     app.include_router(storage_router.router)
     with TestClient(app) as client:
@@ -354,7 +359,8 @@ async def test_factory_reset_clears_connections_preferences_and_old_preview(tmp_
     from app.schemas.storage import AppSettingsPatch
     from app.core.errors import PreviewNotFoundError
 
-    manager = make_manager(tmp_path)
+    cache = DirectoryCache()
+    manager = make_manager(tmp_path, directory_cache=cache)
     source = tmp_path / "keep.txt"
     source.write_text("keep", encoding="utf-8")
     await manager.update("default-local", StorageUpdate(name="Edited", config={"root_path": str(tmp_path)}))
@@ -364,13 +370,13 @@ async def test_factory_reset_clears_connections_preferences_and_old_preview(tmp_
     auth = manager.auth(cloud.storage_id)
     session = manager.start_authorization(cloud.storage_id, "http://localhost/auth/storage/callback")
     manager.update_app_settings(AppSettingsPatch(language="en-US", theme="dark"))
-    preview, execute = services(manager)
+    preview, execute = services(manager, DirectoryService(manager, cache))
     snapshot = await preview.preview(RenamePreviewRequest(
         storage_id="default-local", location=RootLocation(), file_ids=["keep.txt"], rules=[],
     ))
     previous_revision = manager.record("default-local").revision
 
-    result = await manager.factory_reset(preview.store)
+    result = factory_reset(manager, preview.store)
 
     assert result.preferences.model_dump() == {
         "language": "auto", "theme": "system", "cloud_default_locations": {},
@@ -406,7 +412,7 @@ async def test_factory_reset_busy_and_failed_save_leave_state_untouched(tmp_path
     previews = PreviewStore()
     with manager.execution("default-local", manager.record("default-local").revision):
         with pytest.raises(StorageBusyError):
-            await manager.factory_reset(previews)
+            factory_reset(manager, previews)
     assert manager.state == before
     assert manager.repository.path.read_bytes() == disk
 
@@ -415,7 +421,7 @@ async def test_factory_reset_busy_and_failed_save_leave_state_untouched(tmp_path
 
     monkeypatch.setattr(manager.repository, "save", fail_save)
     with pytest.raises(ProviderError):
-        await manager.factory_reset(previews)
+        factory_reset(manager, previews)
     assert manager.state == before
     assert manager.repository.path.read_bytes() == disk
     assert manager.record(cloud.storage_id).credentials["refresh_token"] == "fixture-secret"
@@ -532,11 +538,12 @@ async def test_account_credentials_and_old_auth_objects_are_isolated(tmp_path: P
 @pytest.mark.asyncio
 @pytest.mark.parametrize("single_target", [False, True], ids=["rules", "single-target"])
 async def test_preview_rejects_changed_connection_even_with_matching_files(tmp_path: Path, single_target: bool) -> None:
-    manager = make_manager(tmp_path)
+    cache = DirectoryCache()
+    manager = make_manager(tmp_path, directory_cache=cache)
     root = Path(str(manager.record("default-local").config["root_path"]))
     (root / "a.txt").write_text("a", encoding="utf-8")
     (tmp_path / "a.txt").write_text("a", encoding="utf-8")
-    preview, execute = services(manager)
+    preview, execute = services(manager, DirectoryService(manager, cache))
     request = RenamePreviewRequest(
         storage_id="default-local", location=RootLocation(), file_ids=["a.txt"],
         target_name="b.txt" if single_target else None,
@@ -551,10 +558,13 @@ async def test_preview_rejects_changed_connection_even_with_matching_files(tmp_p
 
 
 def test_storage_api_and_secret_redaction(tmp_path: Path) -> None:
-    manager = make_manager(tmp_path)
-    preview, execute = services(manager)
+    cache = DirectoryCache()
+    manager = make_manager(tmp_path, directory_cache=cache)
+    directories = DirectoryService(manager, cache)
+    preview, execute = services(manager, directories)
     app = create_app()
     app.dependency_overrides[get_storage_manager] = lambda: manager
+    app.dependency_overrides[get_directory_service] = lambda: directories
     app.dependency_overrides[get_preview_service] = lambda: preview
     app.dependency_overrides[get_execute_service] = lambda: execute
     with TestClient(app) as client:

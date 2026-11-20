@@ -14,21 +14,19 @@ from app.providers.registry import ProviderDefinition, ProviderRegistry
 from app.repositories.storage_repository import JsonStorageRepository
 from app.schemas.storage import AppSettingsPatch, AppSettingsResponse, AuthorizationStart, StorageCreate, StorageInfo, StorageRecord, StorageState, StorageUpdate, validate_preferences_size
 from app.services.directory_cache import DirectoryCache
-from app.services.directory_service import DirectoryService
-from app.services.preview_store import PreviewStore
 
 
 class StorageManager:
     def __init__(
         self, registry: ProviderRegistry, repository: JsonStorageRepository, state: StorageState, *,
         default_connection: StorageRecord,
-        directory_cache: DirectoryCache | None = None,
+        directory_cache: DirectoryCache,
     ) -> None:
         self.registry = registry
         self.repository = repository
         self.state = state
         self._default_connection = default_connection
-        self.directories = DirectoryService(self, directory_cache if directory_cache is not None else DirectoryCache())
+        self._directory_cache = directory_cache
         self._drivers: dict[str, tuple[int, StorageDriver]] = {}
         self._auth: dict[str, StorageAuth] = {}
         self._busy: set[str] = set()
@@ -48,11 +46,26 @@ class StorageManager:
                            account_display_name=record.credentials.get("account_display_name"),
                            account_email=record.credentials.get("account_email"))
 
+    def list_connections(self) -> list[StorageInfo]:
+        return [self.info(storage_id) for storage_id in self.state.connections]
+
+    def provider_definitions(self) -> tuple[ProviderDefinition, ...]:
+        return tuple(self.registry.definitions.values())
+
     def validate_config(self, provider_type: str, config: dict[str, object]) -> dict[str, object]:
         return self.registry.validate_config(provider_type, config)
 
     def provider_definition(self, storage_id: str) -> ProviderDefinition:
         return self.registry.definition(self.record(storage_id).provider_type)
+
+    def revision(self, storage_id: str) -> int:
+        return self.record(storage_id).revision
+
+    def directory_cache_enabled(self, storage_id: str) -> bool:
+        if not self.provider_definition(storage_id).cache_directories:
+            return False
+        auth = self.auth(storage_id, required=False)
+        return auth is None or auth.status().connected
 
     def ensure_mutable(self, storage_id: str) -> None:
         if self.record(storage_id).storage_id in self._busy:
@@ -71,7 +84,7 @@ class StorageManager:
         self.repository.save(state)
         self.state = state
         if previous is not None and (record is None or record.revision != previous.revision):
-            self.directories.invalidate(storage_id)
+            self._directory_cache.invalidate_connection(storage_id)
 
     def app_settings(self) -> AppSettingsResponse:
         return AppSettingsResponse(preferences=self.state.preferences)
@@ -107,7 +120,7 @@ class StorageManager:
         self.state = state
         return self.app_settings()
 
-    async def factory_reset(self, previews: PreviewStore) -> AppSettingsResponse:
+    def reset(self) -> AppSettingsResponse:
         if self._busy:
             raise StorageBusyError("A storage is executing a rename; finish it before resetting")
         default = self._default_connection
@@ -120,8 +133,7 @@ class StorageManager:
         self.state = state
         self._authorization_sessions.clear()
         self._auth.clear()
-        previews.clear()
-        self.directories.invalidate()
+        self._directory_cache.invalidate_connection()
         drivers = self._drivers
         self._drivers = {}
         for _, driver in drivers.values():
@@ -165,8 +177,7 @@ class StorageManager:
     def _client_secret(self, provider_type: str, secret: SecretStr | None) -> str | None:
         if secret is None:
             return None
-        fields = self.registry.definition(provider_type).config_fields
-        if not any(field.target == "client_secret" for field in fields):
+        if not self.registry.definition(provider_type).accepts_client_secret:
             raise ValidationError("This storage does not accept an OAuth client secret")
         return secret.get_secret_value()
 

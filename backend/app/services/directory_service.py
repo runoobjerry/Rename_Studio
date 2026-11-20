@@ -3,7 +3,7 @@ import logging
 from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Literal
+from typing import Literal
 
 from app.core.errors import NotFoundError, PermissionDeniedError, StorageBusyError, StorageConnectionChangedError, ValidationError
 from app.core.log_context import request_id_context
@@ -12,9 +12,7 @@ from app.providers.directory_metadata import AncestorLookup, DirectoryAncestry, 
 from app.schemas.files import DirectoryListing, FileItem
 from app.schemas.storage import IdLocation, RootLocation, StorageLocation
 from app.services.directory_cache import DirectoryCache, DirectoryKey, RenameCacheScope
-
-if TYPE_CHECKING:
-    from app.services.storage_manager import StorageManager
+from app.services.storage_manager import StorageManager
 
 
 logger = logging.getLogger("rename_studio.directory")
@@ -39,39 +37,24 @@ class _Flight:
 
 
 class DirectoryService:
-    def __init__(self, manager: "StorageManager", cache: DirectoryCache) -> None:
+    def __init__(self, manager: StorageManager, cache: DirectoryCache) -> None:
         self._manager = manager
         self._cache = cache
-        self._generations: dict[str, int] = {}
         self._flights: dict[DirectoryKey, _Flight] = {}
         self._writing: set[str] = set()
 
-    def invalidate(self, storage_id: str | None = None) -> None:
-        self._cache.invalidate(storage_id)
-        if storage_id is None:
-            for known_storage in self._generations:
-                self._advance_generation(known_storage)
-        else:
-            self._advance_generation(storage_id)
-        logger.debug("directory cache invalidated storage_id=%s", storage_id)
-
     def invalidate_rename(self, storage_id: str, scope: RenameCacheScope) -> None:
         self._cache.invalidate_rename(storage_id, scope)
-        self._advance_generation(storage_id)
+        self._cache.advance_generation(storage_id)
         logger.debug("rename directories invalidated storage_id=%s", storage_id)
 
-    def _advance_generation(self, storage_id: str) -> int:
-        generation = self._generations.get(storage_id, 0) + 1
-        self._generations[storage_id] = generation
-        return generation
-
     def _can_publish(self, read: _Read) -> bool:
-        return not read.abandoned and read.generation == self._generations[read.key[0]]
+        return not read.abandoned and read.generation == self._cache.generation(read.key[0])
 
     @contextmanager
     def writing(self, storage_id: str, revision: int, scope: RenameCacheScope) -> Iterator[None]:
         # The caller holds the connection's execution lock through any write reconciliation.
-        self._advance_generation(storage_id)
+        self._cache.advance_generation(storage_id)
         self._writing.add(storage_id)
         try:
             yield
@@ -92,12 +75,8 @@ class DirectoryService:
         self, storage_id: str, location: StorageLocation, *, mode: DirectoryReadMode = "cached",
         parent_location: StorageLocation | None = None,
     ) -> DirectoryListing:
-        record = self._manager.record(storage_id)
-        key = (storage_id, record.revision, location)
-        cache_enabled = self._manager.provider_definition(storage_id).cache_directories
-        if cache_enabled:
-            auth = self._manager.auth(storage_id, required=False)
-            cache_enabled = auth is None or auth.status().connected
+        key = (storage_id, self._manager.revision(storage_id), location)
+        cache_enabled = self._manager.directory_cache_enabled(storage_id)
         # Leave old listings in place for reconciliation, hidden from reads during the write.
         if storage_id in self._writing and mode not in ("refresh", "navigate"):
             return await self._fetch(key, mode)
@@ -111,7 +90,7 @@ class DirectoryService:
         if listing is not None:
             logger.debug("directory cache hit storage_id=%s", storage_id)
             return listing
-        generation = self._generations.setdefault(storage_id, 0)
+        generation = self._cache.generation(storage_id)
         flight = self._flights.get(key)
         if flight is None or flight.read.generation != generation:
             logger.debug("directory cache miss storage_id=%s", storage_id)
@@ -168,7 +147,7 @@ class DirectoryService:
         return listing.model_copy(update={"storage_id": storage_id, "revision": revision})
 
     def _check_revision(self, key: DirectoryKey) -> None:
-        if self._manager.record(key[0]).revision != key[1]:
+        if self._manager.revision(key[0]) != key[1]:
             raise StorageConnectionChangedError("Storage changed while reading the directory")
 
     def _hint(self, key: DirectoryKey, parent_location: StorageLocation | None) -> DirectoryHint | None:
@@ -204,7 +183,7 @@ class DirectoryService:
             if read.borrowed:
                 self._cache.invalidate_rename(storage_id, RenameCacheScope(folder_ids=read.borrowed))
             # This read owns the invalidation and may publish its unhinted retry.
-            read.generation = self._advance_generation(storage_id)
+            read.generation = self._cache.advance_generation(storage_id)
 
     async def _fill(self, read: _Read, parent_location: StorageLocation | None) -> DirectoryListing:
         hint = self._hint(read.key, parent_location) if self._can_publish(read) else None
@@ -239,7 +218,7 @@ class DirectoryService:
             return await self._fetch(key, mode)
         storage_id = key[0]
         self._manager.ensure_mutable(storage_id)
-        read = _Read(key, self._advance_generation(storage_id))
+        read = _Read(key, self._cache.advance_generation(storage_id))
         try:
             listing = await self._fetch(key, mode, ancestor_lookup=self._ancestor_lookup(read)
                                         if mode == "navigate" and cache_enabled else None)
@@ -255,7 +234,7 @@ class DirectoryService:
         # Reconciliation, its generation boundary, and publication are synchronous.
         if cache_enabled:
             if mode == "refresh" and self._cache.reconcile_refresh(key, listing):
-                read.generation = self._advance_generation(storage_id)
+                read.generation = self._cache.advance_generation(storage_id)
             self._remember(read, listing)
         return listing
 

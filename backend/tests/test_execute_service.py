@@ -1,4 +1,4 @@
-from provider_fixtures import manager_for
+from provider_fixtures import storage_services_for
 import asyncio
 from pathlib import Path
 
@@ -59,12 +59,12 @@ class TrackingLocalDriver(LocalDriver):
 def build_services(
     root: Path, driver: LocalDriver | None = None
 ) -> tuple[PreviewService, ExecuteService]:
-    manager = manager_for({"local": driver or LocalDriver(root)})
+    manager, directories = storage_services_for({"local": driver or LocalDriver(root)})
     rules = RuleRegistry()
     rules.register(MappingRule())
     store = PreviewStore()
-    preview = PreviewService(manager, RenameEngine(rules), store)
-    execute = ExecuteService(manager, store, preview)
+    preview = PreviewService(manager, directories, RenameEngine(rules), store)
+    execute = ExecuteService(manager, directories, store, preview)
     return preview, execute
 
 

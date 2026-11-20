@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends
 
 from app.api.dependencies import get_preview_store, get_storage_manager
 from app.schemas.storage import AppSettingsPatch, AppSettingsResponse
+from app.services.app_settings import factory_reset as reset_application
 from app.services.preview_store import PreviewStore
 from app.services.storage_manager import StorageManager
 
@@ -26,4 +27,4 @@ async def patch_app_settings(request: AppSettingsPatch, manager: Manager) -> App
 async def factory_reset(
     manager: Manager, previews: Annotated[PreviewStore, Depends(get_preview_store)],
 ) -> AppSettingsResponse:
-    return await manager.factory_reset(previews)
+    return reset_application(manager, previews)

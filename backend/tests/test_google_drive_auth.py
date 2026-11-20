@@ -22,6 +22,8 @@ from app.schemas.storage import AppSettingsPatch, StorageCreate, StorageUpdate
 from app.providers.google_drive.auth import ABOUT_URL, SCOPE, TOKEN_URL, GoogleDriveAuthService
 from app.providers.onedrive.auth import GRAPH_ME_URL, TOKEN_URL as ONEDRIVE_TOKEN_URL, OneDriveAuthService
 from app.services import storage_manager
+from app.services.app_settings import factory_reset
+from app.services.directory_service import DirectoryService
 from app.services.preview_service import PreviewService
 from app.services.preview_store import PreviewStore
 from app.services.execute_service import ExecuteService
@@ -35,7 +37,7 @@ ASYNC_CLIENT = httpx.AsyncClient
 
 
 @pytest.fixture
-def manager(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> StorageManager:
+def storage_services(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[StorageManager, DirectoryService]:
     settings = Settings(
         _env_file=None, local_storage_root=tmp_path / "files",
         storage_state_file=tmp_path / "settings.json", storage_redirect_uri=REDIRECT_URI,
@@ -43,7 +45,17 @@ def manager(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> StorageManager:
     monkeypatch.setattr(dependencies, "get_settings", lambda: settings)
     monkeypatch.setattr(storage_router, "get_settings", lambda: settings)
     # Use production registrations, but do not initialize the cached user-state singleton.
-    return dependencies.get_storage_manager.__wrapped__()
+    return dependencies.get_storage_services.__wrapped__()
+
+
+@pytest.fixture
+def manager(storage_services: tuple[StorageManager, DirectoryService]) -> StorageManager:
+    return storage_services[0]
+
+
+@pytest.fixture
+def directories(storage_services: tuple[StorageManager, DirectoryService]) -> DirectoryService:
+    return storage_services[1]
 
 
 def google_connection(manager: StorageManager, client_id: str = "fixture-client") -> tuple[str, GoogleDriveAuthService]:
@@ -75,21 +87,22 @@ async def authorize(auth: GoogleDriveAuthService) -> None:
     await auth.finish_authorization("fixture-code", state)
 
 
-def api(manager: StorageManager) -> TestClient:
+def api(manager: StorageManager, directories: DirectoryService) -> TestClient:
     app = create_app()
     app.dependency_overrides[dependencies.get_storage_manager] = lambda: manager
+    app.dependency_overrides[dependencies.get_directory_service] = lambda: directories
     rules = RuleRegistry()
     rules.register(ReplaceRule())
-    preview = PreviewService(manager, RenameEngine(rules), PreviewStore())
+    preview = PreviewService(manager, directories, RenameEngine(rules), PreviewStore())
     app.dependency_overrides[dependencies.get_preview_service] = lambda: preview
     app.dependency_overrides[dependencies.get_preview_store] = lambda: preview.store
-    execute = ExecuteService(manager, preview.store, preview)
+    execute = ExecuteService(manager, directories, preview.store, preview)
     app.dependency_overrides[dependencies.get_execute_service] = lambda: execute
     return TestClient(app)
 
 
-def test_connection_api_separates_secret_and_advertises_rename_capability(manager: StorageManager) -> None:
-    with api(manager) as client:
+def test_connection_api_separates_secret_and_advertises_rename_capability(manager: StorageManager, directories: DirectoryService) -> None:
+    with api(manager, directories) as client:
         definitions = client.get("/storage-providers").json()
         assert [item["provider_type"] for item in definitions] == ["local", "onedrive", "google_drive"]
         definition = next(item for item in definitions if item["provider_type"] == "google_drive")
@@ -122,10 +135,10 @@ def test_connection_api_separates_secret_and_advertises_rename_capability(manage
     {"client_secret": " "},
     {"config": {"client_id": "fixture-client", "client_secret": CLIENT_SECRET}},
 ])
-def test_storage_validation_never_echoes_secret_bearing_input(manager: StorageManager, invalid: dict) -> None:
+def test_storage_validation_never_echoes_secret_bearing_input(manager: StorageManager, directories: DirectoryService, invalid: dict) -> None:
     storage_id, _ = google_connection(manager)
     body = {"provider_type": "google_drive", "name": "Google", "config": {"client_id": "fixture-client"}, **invalid}
-    with api(manager) as client:
+    with api(manager, directories) as client:
         for method, url, payload in (
             ("POST", "/storages", body),
             ("PUT", f"/storages/{storage_id}", {key: value for key, value in body.items() if key != "provider_type"}),
@@ -136,14 +149,14 @@ def test_storage_validation_never_echoes_secret_bearing_input(manager: StorageMa
 
 
 @pytest.mark.parametrize(("config", "secret"), [({"client_id": "fixture-client"}, None), ({}, CLIENT_SECRET)])
-def test_both_client_credentials_are_required_to_start(manager: StorageManager, config: dict, secret: str | None) -> None:
+def test_both_client_credentials_are_required_to_start(manager: StorageManager, directories: DirectoryService, config: dict, secret: str | None) -> None:
     info = manager.create(StorageCreate(provider_type="google_drive", name="Draft", config=config, client_secret=secret))
-    with api(manager) as client:
+    with api(manager, directories) as client:
         assert not client.get(f"/storages/{info.storage_id}/auth/status").json()["configured"]
         assert client.post(f"/storages/{info.storage_id}/auth/start").status_code == 422
 
 
-def test_callback_verifies_pkce_identity_and_commits_without_access_token(manager: StorageManager, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_callback_verifies_pkce_identity_and_commits_without_access_token(manager: StorageManager, directories: DirectoryService, monkeypatch: pytest.MonkeyPatch) -> None:
     storage_id, auth = google_connection(manager)
     query: dict[str, list[str]] = {}
 
@@ -164,7 +177,7 @@ def test_callback_verifies_pkce_identity_and_commits_without_access_token(manage
         return google_response(request)
 
     mock_google(monkeypatch, respond)
-    with api(manager) as client:
+    with api(manager, directories) as client:
         started = client.post(f"/storages/{storage_id}/auth/start").json()
         query.update(parse_qs(urlsplit(started["authorization_url"]).query))
         assert CLIENT_SECRET not in started["authorization_url"]
@@ -186,14 +199,14 @@ def test_callback_verifies_pkce_identity_and_commits_without_access_token(manage
 
 @pytest.mark.parametrize("failure", ["wrong_state", "expired", "cancelled"])
 def test_invalid_callback_never_commits_account(
-    manager: StorageManager, monkeypatch: pytest.MonkeyPatch, failure: str,
+    manager: StorageManager, directories: DirectoryService, monkeypatch: pytest.MonkeyPatch, failure: str,
 ) -> None:
     def reject_request(request: httpx.Request) -> httpx.Response:
         pytest.fail("Invalid callback reached Google Drive")
 
     mock_google(monkeypatch, reject_request)
     storage_id, auth = google_connection(manager)
-    with api(manager) as client:
+    with api(manager, directories) as client:
         started = client.post(f"/storages/{storage_id}/auth/start").json()
         state = parse_qs(urlsplit(started["authorization_url"]).query)["state"][0]
         params = {"state": state, "code": "fixture-code"}
@@ -281,7 +294,7 @@ async def test_restart_refresh_retains_or_rotates_refresh_token_without_changing
     mock_google(monkeypatch, google_response)
     await authorize(auth)
     revision = manager.record(storage_id).revision
-    restarted = dependencies.get_storage_manager.__wrapped__()
+    restarted, _ = dependencies.get_storage_services.__wrapped__()
     restored = cast(GoogleDriveAuthService, restarted.auth(storage_id))
     assert restored.status().connected and restored.status().account_id == "account-a"
     calls = 0
@@ -537,14 +550,14 @@ async def test_delete_and_reset_remove_google_client_secret(manager: StorageMana
     if action == "delete":
         await manager.delete(storage_id)
     else:
-        await manager.factory_reset(PreviewStore())
+        factory_reset(manager, PreviewStore())
     assert storage_id not in manager.state.connections
     assert CLIENT_SECRET not in manager.repository.path.read_text(encoding="utf-8")
 
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("change", [None, "source", "credentials"])
-async def test_google_api_executes_server_snapshot_or_rejects_changes(manager: StorageManager, monkeypatch: pytest.MonkeyPatch, change: str | None) -> None:
+async def test_google_api_executes_server_snapshot_or_rejects_changes(manager: StorageManager, directories: DirectoryService, monkeypatch: pytest.MonkeyPatch, change: str | None) -> None:
     from test_google_drive_provider import WritableDriveServer, drive_file
 
     storage_id, auth = google_connection(manager)
@@ -553,7 +566,7 @@ async def test_google_api_executes_server_snapshot_or_rejects_changes(manager: S
     server = WritableDriveServer([drive_file("file", "old.txt")])
     mock_google(monkeypatch, server)
     try:
-        async with ASYNC_CLIENT(transport=httpx.ASGITransport(app=api(manager).app), base_url="http://test") as client:
+        async with ASYNC_CLIENT(transport=httpx.ASGITransport(app=api(manager, directories).app), base_url="http://test") as client:
             response = await client.post(f"/storages/{storage_id}/files/list", json={"location": {"kind": "root"}})
             assert response.status_code == 200
             listing = response.json()
@@ -593,7 +606,7 @@ async def test_google_api_executes_server_snapshot_or_rejects_changes(manager: S
 
 @pytest.mark.asyncio
 async def test_directory_api_shares_previews_and_refreshes_then_disconnects(
-    manager: StorageManager, monkeypatch: pytest.MonkeyPatch,
+    manager: StorageManager, directories: DirectoryService, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     from test_google_drive_provider import WritableDriveServer, drive_file
 
@@ -604,7 +617,7 @@ async def test_directory_api_shares_previews_and_refreshes_then_disconnects(
     mock_google(monkeypatch, server)
     storage_url = f"/storages/{storage_id}"
     try:
-        async with ASYNC_CLIENT(transport=httpx.ASGITransport(app=api(manager).app), base_url="http://test") as client:
+        async with ASYNC_CLIENT(transport=httpx.ASGITransport(app=api(manager, directories).app), base_url="http://test") as client:
             for _ in range(2):
                 response = await client.post(f"{storage_url}/files/list", json={})
                 assert response.status_code == 200 and response.json()["items"][0]["name"] == "old.txt"
@@ -641,7 +654,7 @@ async def test_directory_api_shares_previews_and_refreshes_then_disconnects(
 
 @pytest.mark.asyncio
 async def test_directory_api_passes_a_parent_hint_only_for_cached_reads(
-    manager: StorageManager, monkeypatch: pytest.MonkeyPatch,
+    manager: StorageManager, directories: DirectoryService, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     from test_google_drive_provider import FOLDER_MIME, WritableDriveServer, drive_file
 
@@ -655,7 +668,7 @@ async def test_directory_api_passes_a_parent_hint_only_for_cached_reads(
     request = {"location": {"kind": "id", "value": "folder"}, "parent_location": {"kind": "root"}}
     url = f"/storages/{storage_id}/files/list"
     try:
-        async with ASYNC_CLIENT(transport=httpx.ASGITransport(app=api(manager).app), base_url="http://test") as client:
+        async with ASYNC_CLIENT(transport=httpx.ASGITransport(app=api(manager, directories).app), base_url="http://test") as client:
             assert (await client.post(url, json={})).status_code == 200
             server.requests.clear()
             opened = await client.post(url, json=request)

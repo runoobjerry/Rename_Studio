@@ -9,6 +9,7 @@ from app.core.errors import StorageConnectionChangedError, ValidationError
 from app.rules.base import RuleContext
 from app.schemas.files import FileItem
 from app.schemas.rename import PreviewItem, RenamePreviewRequest, RenamePreviewResponse
+from app.services.directory_service import DirectoryService
 from app.services.preview_store import PreviewStore
 from app.services.rename_engine import RenameEngine
 from app.services.storage_manager import StorageManager
@@ -35,21 +36,25 @@ class PreviewService:
     def __init__(
         self,
         manager: StorageManager,
+        directories: DirectoryService,
         engine: RenameEngine,
         store: PreviewStore | None = None,
     ) -> None:
         self.manager = manager
+        self.directories = directories
         self.engine = engine
         self.store = store or PreviewStore()
 
     async def preview(
         self, request: RenamePreviewRequest, *, previous_preview_id: str | None = None,
     ) -> RenamePreviewResponse:
-        revision = self.manager.record(request.storage_id).revision
+        if not self.manager.provider_definition(request.storage_id).can_rename:
+            raise ValidationError("This storage does not support rename previews")
+        revision = self.manager.revision(request.storage_id)
         request = request.model_copy(deep=True)
         with _timed_phase(request.storage_id, "evaluate", len(request.file_ids)):
             items, files, valid = await self.evaluate(request)
-        if self.manager.record(request.storage_id).revision != revision:
+        if self.manager.revision(request.storage_id) != revision:
             raise StorageConnectionChangedError("Storage changed while creating the preview")
         with _timed_phase(request.storage_id, "snapshot", len(files)):
             response = self.store.save(request, items, valid, files, revision)
@@ -66,7 +71,6 @@ class PreviewService:
         siblings: list[FileItem] | None = None,
     ) -> tuple[list[PreviewItem], list[FileItem], bool]:
         driver = self.manager.get_driver(request.storage_id)
-        directories = self.manager.directories
         supports_rename = self.manager.provider_definition(request.storage_id).can_rename
         if len(request.file_ids) != len(set(request.file_ids)):
             raise ValidationError(
@@ -81,7 +85,7 @@ class PreviewService:
         if files is None and request.location is not None:
             # 浏览器已知父目录时，一次目录读取即可同时提供源元数据和冲突集合。
             with _timed_phase(request.storage_id, "source_directory", len(request.file_ids)):
-                listing = await directories.list_directory(request.storage_id, request.location)
+                listing = await self.directories.list_directory(request.storage_id, request.location)
             prefetched_siblings = listing.items
             request.location = listing.location
             by_id = {item.id: item for item in prefetched_siblings}
@@ -125,7 +129,7 @@ class PreviewService:
                 siblings = (
                     prefetched_siblings
                     if prefetched_siblings is not None
-                    else await directories.list_siblings(request.storage_id, files[0])
+                    else await self.directories.list_siblings(request.storage_id, files[0])
                 )
         with _timed_phase(request.storage_id, "validation", len(files)):
             duplicate_targets = {

@@ -1,20 +1,22 @@
-import asyncio
 import json
-from pathlib import Path
 from typing import Annotated, cast
 
 from fastapi import APIRouter, Depends, Query, Response
 from fastapi.responses import HTMLResponse
 
-from app.api.dependencies import get_single_rename_service, get_preview_service, get_preview_store, get_storage_manager
+from app.api.dependencies import (
+    get_directory_service, get_preview_service, get_preview_store, get_single_rename_service, get_storage_manager,
+)
 from app.core.config import get_settings
-from app.core.errors import StorageConnectionChangedError, ValidationError
 from app.providers.auth import StorageAuth
 from app.schemas.files import DirectoryListing
-from app.schemas.storage import LocalFolderPickResponse
 from app.schemas.rename import RenamePreviewRequest, RenamePreviewResponse, SingleRenameExecuteRequest, SingleRenameExecuteResponse
-from app.schemas.storage import AuthorizationStatus, StorageAuthStartResponse, StorageCreate, StorageInfo, StorageListRequest, StoragePreviewRequest, StorageProviderInfo, StorageUpdate
-from app.services.local_folder_picker import choose_local_directory
+from app.schemas.storage import (
+    AuthorizationStatus, LocalFolderPickResponse, StorageAuthStartResponse, StorageCreate, StorageInfo,
+    StorageListRequest, StoragePreviewRequest, StorageProviderInfo, StorageUpdate,
+)
+from app.services.directory_service import DirectoryService
+from app.services.local_folder_picker import pick_connection_directory, pick_draft_directory
 from app.services.preview_service import PreviewService
 from app.services.preview_store import PreviewStore
 from app.services.single_rename_service import SingleRenameService
@@ -33,12 +35,12 @@ async def storage_providers(manager: Manager) -> list[StorageProviderInfo]:
              locations=definition.locations, can_rename=definition.can_rename,
              browser_auth=definition.auth_factory is not None, browser_navigation=definition.browser_navigation,
              local_picker=definition.local_picker)
-            for definition in manager.registry.definitions.values()]
+            for definition in manager.provider_definitions()]
 
 
 @router.get("/storages", response_model=list[StorageInfo])
 async def list_storages(manager: Manager) -> list[StorageInfo]:
-    return [manager.info(key) for key in manager.state.connections]
+    return manager.list_connections()
 
 
 @router.post("/storages", response_model=StorageInfo, status_code=201)
@@ -63,8 +65,11 @@ async def delete_storage(storage_id: str, manager: Manager) -> Response:
 
 
 @router.post("/storages/{storage_id}/files/list", response_model=DirectoryListing)
-async def list_files(storage_id: str, request: StorageListRequest, manager: Manager) -> DirectoryListing:
-    return await manager.directories.list_directory(
+async def list_files(
+    storage_id: str, request: StorageListRequest,
+    directories: Annotated[DirectoryService, Depends(get_directory_service)],
+) -> DirectoryListing:
+    return await directories.list_directory(
         storage_id, request.location,
         mode=("navigate" if request.reuse_ancestors else "refresh") if request.refresh else "cached",
         parent_location=request.parent_location,
@@ -73,27 +78,13 @@ async def list_files(storage_id: str, request: StorageListRequest, manager: Mana
 
 @router.post("/storages/{storage_id}/local/pick", response_model=LocalFolderPickResponse)
 async def pick_local(storage_id: str, manager: Manager) -> LocalFolderPickResponse:
-    manager.ensure_mutable(storage_id)
-    before = manager.record(storage_id)
-    if not manager.provider_definition(storage_id).local_picker:
-        raise ValidationError("This storage does not support a local folder picker")
-    root = Path(str(before.config["root_path"]))
-    selected = await asyncio.to_thread(choose_local_directory, root)
-    if manager.record(storage_id).revision != before.revision:
-        raise StorageConnectionChangedError("Storage changed while choosing a directory")
-    if selected is not None:
-        info = await manager.update(storage_id, StorageUpdate(config={"root_path": str(selected)}))
-        root = Path(str(info.config["root_path"]))
-    return LocalFolderPickResponse(root_path=str(root), selected=selected is not None)
+    return await pick_connection_directory(storage_id, manager)
 
 
 @router.post("/local/folder-picker", response_model=LocalFolderPickResponse)
 async def pick_local_draft() -> LocalFolderPickResponse:
     """Choose a directory for a new connection without writing connection state."""
-    root = get_settings().local_storage_root
-    selected = await asyncio.to_thread(choose_local_directory, root)
-    return LocalFolderPickResponse(root_path=str(selected if selected is not None else root),
-                                   selected=selected is not None)
+    return await pick_draft_directory(get_settings().local_storage_root)
 
 
 @router.get("/storages/{storage_id}/auth/status", response_model=AuthorizationStatus)
@@ -133,10 +124,8 @@ async def callback(manager: Manager, code: str | None = Query(default=None), sta
 
 
 @router.post("/storages/{storage_id}/rename/preview", response_model=RenamePreviewResponse)
-async def preview(storage_id: str, request: StoragePreviewRequest, manager: Manager,
+async def preview(storage_id: str, request: StoragePreviewRequest,
                   service: Annotated[PreviewService, Depends(get_preview_service)]) -> RenamePreviewResponse:
-    if not manager.provider_definition(storage_id).can_rename:
-        raise ValidationError("This storage does not support rename previews")
     return await service.preview(RenamePreviewRequest(storage_id=storage_id, location=request.location,
                                                       file_ids=request.file_ids, rules=request.rules,
                                                       target_name=request.target_name),

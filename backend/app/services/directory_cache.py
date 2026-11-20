@@ -1,5 +1,6 @@
-from dataclasses import dataclass, field, replace
+import logging
 from collections.abc import Callable
+from dataclasses import dataclass, field, replace
 from time import monotonic
 
 from cachetools import TLRUCache
@@ -12,6 +13,7 @@ from app.schemas.storage import IdLocation, RootLocation, StorageLocation
 
 
 type DirectoryKey = tuple[str, int, StorageLocation]
+logger = logging.getLogger("rename_studio.directory")
 
 
 @dataclass(frozen=True, slots=True)
@@ -86,6 +88,7 @@ class _ListingCache(TLRUCache):
 
 class DirectoryCache:
     def __init__(self, settings: DirectoryListingCacheSettings | None = None) -> None:
+        self._generations: dict[str, int] = {}
         settings = settings if settings is not None else DirectoryListingCacheSettings()
         self._ttl = settings.ttl
         self._empty_ttl = settings.empty_ttl
@@ -265,6 +268,23 @@ class DirectoryCache:
         deadline = min(now + ttl, expires_at) if expires_at is not None else now + ttl
         self._store(key, _Entry(payload, deadline, listing.directory_id,
                                 listing.parent_location, self._listing_ancestry(listing), now))
+
+    def generation(self, storage_id: str) -> int:
+        return self._generations.setdefault(storage_id, 0)
+
+    def advance_generation(self, storage_id: str) -> int:
+        generation = self._generations.get(storage_id, 0) + 1
+        self._generations[storage_id] = generation
+        return generation
+
+    def invalidate_connection(self, storage_id: str | None = None) -> None:
+        self.invalidate(storage_id)
+        if storage_id is None:
+            for known_storage in self._generations:
+                self.advance_generation(known_storage)
+        else:
+            self.advance_generation(storage_id)
+        logger.debug("directory cache invalidated storage_id=%s", storage_id)
 
     def invalidate(self, storage_id: str | None = None) -> None:
         self._entries.expire()

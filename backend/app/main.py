@@ -14,7 +14,7 @@ from fastapi.responses import JSONResponse
 from app.api.router import router
 from app.api.storage_router import router as storage_router
 from app.api.app_settings_router import router as app_settings_router
-from app.api.dependencies import get_preview_store, get_storage_manager
+from app.api.dependencies import get_preview_store, get_storage_services
 from app.core.config import get_settings
 from app.core.errors import AppError
 from app.core.log_context import request_id_context
@@ -42,8 +42,9 @@ def create_app() -> FastAPI:
             cleanup_task.cancel()
             with suppress(asyncio.CancelledError):
                 await cleanup_task
-            if get_storage_manager.cache_info().currsize:
-                await get_storage_manager().aclose()
+            if get_storage_services.cache_info().currsize:
+                manager, _ = get_storage_services()
+                await manager.aclose()
 
     app = FastAPI(title=settings.app_name, version="1.0.0-alpha4", lifespan=lifespan)
     app.add_middleware(

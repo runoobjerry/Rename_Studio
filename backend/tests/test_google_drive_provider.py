@@ -28,7 +28,7 @@ from app.services.single_rename_service import SingleRenameService
 from app.services.preview_service import PreviewService
 from app.services.preview_store import PreviewStore
 from app.services.rename_engine import RenameEngine
-from provider_fixtures import CooldownClock, manager_for
+from provider_fixtures import CooldownClock, storage_services_for
 
 
 STORAGE_ID = "google-drive-storage"
@@ -287,7 +287,7 @@ async def test_same_name_folders_and_separator_names_use_real_ancestor_ids(drive
     server = DriveServer([first, second, child])
     server.pages[None] = file_page([drive_file("file", "sample.txt", parent="child")])
     driver = driver_factory(server)
-    directories = manager_for({STORAGE_ID: driver}, cache_directories=True).directories
+    _, directories = storage_services_for({STORAGE_ID: driver}, cache_directories=True)
     location = IdLocation(value="child")
     listing = await directories.list_directory(STORAGE_ID, location)
     assert listing.path == "same/with/slash"
@@ -555,7 +555,7 @@ async def test_browsing_reuses_google_root_and_folders_from_completed_listings(d
         drive_file("file", "File", "d"),
     ])
     driver = driver_factory(server)
-    directories = manager_for({STORAGE_ID: driver}, cache_directories=True).directories
+    _, directories = storage_services_for({STORAGE_ID: driver}, cache_directories=True)
     ids = [IdLocation(value=key) for key in ("a", "b", "c", "d")]
     chain = [RootLocation(), *ids]
     for index, location in enumerate(chain):
@@ -574,7 +574,7 @@ async def test_browsing_reuses_google_root_and_folders_from_completed_listings(d
     server.files["g"] = drive_file("g", "G", "f", FOLDER_MIME)
     server.files["branch"] = drive_file("branch", "Branch", "a", FOLDER_MIME)
     for target, metadata_ids in (("c", ["c"]), ("f", ["f"]), ("g", ["g", "f"]), ("branch", ["branch"])):
-        directories.invalidate()
+        directories._cache.invalidate_connection()
         await directories.list_directory(STORAGE_ID, IdLocation(value="d"))
         server.requests.clear()
         opened = await directories.list_directory(STORAGE_ID, IdLocation(value=target), mode="navigate")
@@ -591,7 +591,7 @@ async def test_browsing_reuses_google_root_and_folders_from_completed_listings(d
 async def test_google_missing_target_does_not_retry_or_evict_the_root(driver_factory: Callable) -> None:
     server = WritableDriveServer([drive_file("folder", "Folder", mime=FOLDER_MIME)])
     driver = driver_factory(server)
-    directories = manager_for({STORAGE_ID: driver}, cache_directories=True).directories
+    _, directories = storage_services_for({STORAGE_ID: driver}, cache_directories=True)
     root = await directories.list_directory(STORAGE_ID, RootLocation())
     server.requests.clear()
     with pytest.raises(NotFoundError):
@@ -616,7 +616,7 @@ async def test_google_live_validation_does_not_accept_old_scope_or_permissions(d
         return server(request)
 
     driver = driver_factory(respond)
-    directories = manager_for({STORAGE_ID: driver}, cache_directories=True).directories
+    _, directories = storage_services_for({STORAGE_ID: driver}, cache_directories=True)
     folder = IdLocation(value="folder")
     await directories.list_directory(STORAGE_ID, RootLocation())
     if change == "move":
@@ -656,7 +656,7 @@ async def test_refresh_fences_a_child_read_using_old_breadcrumbs(driver_factory:
         return response
 
     driver = driver_factory(respond)
-    directories = manager_for({STORAGE_ID: driver}, cache_directories=True).directories
+    _, directories = storage_services_for({STORAGE_ID: driver}, cache_directories=True)
     root, a = RootLocation(), IdLocation(value="a")
     await directories.list_directory(STORAGE_ID, root)
     first = asyncio.create_task(directories.list_directory(STORAGE_ID, a, parent_location=root))
@@ -680,7 +680,7 @@ async def test_empty_google_folder_checks_live_permission_and_lists_once(
     server = WritableDriveServer([drive_file("folder", "Folder", mime=FOLDER_MIME,
                                             capabilities={"canListChildren": cached_capability})])
     driver = driver_factory(server)
-    directories = manager_for({STORAGE_ID: driver}, cache_directories=True).directories
+    _, directories = storage_services_for({STORAGE_ID: driver}, cache_directories=True)
     root = await directories.list_directory(STORAGE_ID, RootLocation())
     assert root.items[0].can_list_children is cached_capability
     server.files["folder"]["capabilities"] = {"canListChildren": True}
@@ -732,7 +732,7 @@ async def test_google_structural_conflict_invalidates_the_hint_and_retries_live(
         return response
 
     driver = driver_factory(respond)
-    directories = manager_for({STORAGE_ID: driver}, cache_directories=True).directories
+    _, directories = storage_services_for({STORAGE_ID: driver}, cache_directories=True)
     root = RootLocation()
     await directories.list_directory(STORAGE_ID, root)
     server.requests.clear()
@@ -981,7 +981,7 @@ async def test_unexpected_returned_name_is_reported_as_actual_name(driver_factor
         return response
 
     driver = driver_factory(respond)
-    result = await SingleRenameService(manager_for({STORAGE_ID: driver})).execute(STORAGE_ID, SingleRenameExecuteRequest(
+    result = await SingleRenameService(*storage_services_for({STORAGE_ID: driver})).execute(STORAGE_ID, SingleRenameExecuteRequest(
         operation_id=uuid4(), revision=1, file_id="a", original_name="A", target_name="AA",
     ))
     assert result.items[0].status == "failed"
@@ -1003,11 +1003,11 @@ class MappingRule(RenameRule[MappingConfig]):
 
 
 def rename_services(driver: GoogleDriveDriver, *, cache_directories: bool = False) -> tuple[PreviewService, ExecuteService]:
-    manager = manager_for({STORAGE_ID: driver}, cache_directories=cache_directories)
+    manager, directories = storage_services_for({STORAGE_ID: driver}, cache_directories=cache_directories)
     rules = RuleRegistry()
     rules.register(MappingRule())
-    preview = PreviewService(manager, RenameEngine(rules), PreviewStore())
-    return preview, ExecuteService(manager, preview.store, preview)
+    preview = PreviewService(manager, directories, RenameEngine(rules), PreviewStore())
+    return preview, ExecuteService(manager, directories, preview.store, preview)
 
 
 def rename_request(ids: list[str], names: dict[str, str]) -> RenamePreviewRequest:
@@ -1044,7 +1044,7 @@ async def test_execute_revalidates_google_snapshot_before_any_write(driver_facto
     ])
     driver = driver_factory(server)
     preview, execute = rename_services(driver, cache_directories=True)
-    directories = preview.manager.directories
+    directories = preview.directories
     await directories.list_directory(STORAGE_ID, RootLocation())
     await directories.list_directory(STORAGE_ID, folder, parent_location=RootLocation())
     snapshot = await preview.preview(RenamePreviewRequest(

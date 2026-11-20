@@ -13,6 +13,7 @@ from app.rules.registry import RuleRegistry
 from app.rules.serialize import SerializeRule
 from app.rules.text_operations import RemoveRule, ReplaceRule
 from app.services.directory_cache import DirectoryCache
+from app.services.directory_service import DirectoryService
 from app.services.execute_service import ExecuteService
 from app.services.single_rename_service import SingleRenameService
 from app.services.preview_service import PreviewService
@@ -21,14 +22,26 @@ from app.services.rename_engine import RenameEngine
 
 
 @lru_cache
-def get_storage_manager() -> StorageManager:
+def get_storage_services() -> tuple[StorageManager, DirectoryService]:
     settings = get_settings()
     registry = ProviderRegistry()
     register_builtin_providers(registry, settings)
-    return build_storage_manager(settings, registry)
+    cache = DirectoryCache(settings.directory_cache.directory_listings)
+    manager = build_storage_manager(settings, registry, cache)
+    return manager, DirectoryService(manager, cache)
 
 
-def build_storage_manager(settings: Settings, registry: ProviderRegistry) -> StorageManager:
+def get_storage_manager() -> StorageManager:
+    manager, _ = get_storage_services()
+    return manager
+
+
+def get_directory_service() -> DirectoryService:
+    _, directories = get_storage_services()
+    return directories
+
+
+def build_storage_manager(settings: Settings, registry: ProviderRegistry, directory_cache: DirectoryCache) -> StorageManager:
     repository = JsonStorageRepository(settings.storage_state_file)
     default = StorageRecord(
         storage_id="default-local", provider_type="local", name="Local Files",
@@ -54,7 +67,7 @@ def build_storage_manager(settings: Settings, registry: ProviderRegistry) -> Sto
             raise ProviderError("Storage state is invalid; restore its backup before starting") from exc
     return StorageManager(
         registry, repository, state, default_connection=default,
-        directory_cache=DirectoryCache(settings.directory_cache.directory_listings),
+        directory_cache=directory_cache,
     )
 
 
@@ -76,8 +89,10 @@ def get_preview_store() -> PreviewStore:
 
 @lru_cache
 def get_preview_service() -> PreviewService:
+    manager, directories = get_storage_services()
     return PreviewService(
-        get_storage_manager(),
+        manager,
+        directories,
         RenameEngine(get_rule_registry()),
         get_preview_store(),
     )
@@ -85,8 +100,10 @@ def get_preview_service() -> PreviewService:
 
 @lru_cache
 def get_execute_service() -> ExecuteService:
+    manager, directories = get_storage_services()
     return ExecuteService(
-        get_storage_manager(),
+        manager,
+        directories,
         get_preview_store(),
         get_preview_service(),
     )
@@ -94,4 +111,5 @@ def get_execute_service() -> ExecuteService:
 
 @lru_cache
 def get_single_rename_service() -> SingleRenameService:
-    return SingleRenameService(get_storage_manager())
+    manager, directories = get_storage_services()
+    return SingleRenameService(manager, directories)

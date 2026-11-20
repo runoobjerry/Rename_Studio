@@ -1,8 +1,32 @@
+import asyncio
 import sys
 from pathlib import Path
 from shutil import which
 
-from app.core.errors import ProviderError
+from app.core.errors import ProviderError, StorageConnectionChangedError, ValidationError
+from app.schemas.storage import LocalFolderPickResponse, StorageUpdate
+from app.services.storage_manager import StorageManager
+
+
+async def pick_connection_directory(storage_id: str, manager: StorageManager) -> LocalFolderPickResponse:
+    manager.ensure_mutable(storage_id)
+    before = manager.record(storage_id)
+    if not manager.provider_definition(storage_id).local_picker:
+        raise ValidationError("This storage does not support a local folder picker")
+    root = Path(str(before.config["root_path"]))
+    selected = await asyncio.to_thread(choose_local_directory, root)
+    if manager.revision(storage_id) != before.revision:
+        raise StorageConnectionChangedError("Storage changed while choosing a directory")
+    if selected is not None:
+        info = await manager.update(storage_id, StorageUpdate(config={"root_path": str(selected)}))
+        root = Path(str(info.config["root_path"]))
+    return LocalFolderPickResponse(root_path=str(root), selected=selected is not None)
+
+
+async def pick_draft_directory(root: Path) -> LocalFolderPickResponse:
+    selected = await asyncio.to_thread(choose_local_directory, root)
+    return LocalFolderPickResponse(root_path=str(selected if selected is not None else root),
+                                   selected=selected is not None)
 
 
 def choose_local_directory(initial_directory: Path) -> Path | None:
