@@ -12,14 +12,14 @@
 | [`api/router.py`](../../backend/app/api/router.py)、[storage_router.py](../../backend/app/api/storage_router.py)、[app_settings_router.py](../../backend/app/api/app_settings_router.py) | 共享、连接级和设置路由 |
 | [`api/dependencies.py`](../../backend/app/api/dependencies.py) | 单进程共享服务装配、内置 Rule 与 Provider 注册 |
 | [schemas](../../backend/app/schemas) | 输入输出、位置、配置、持久化状态和结果结构 |
-| [StorageManager](../../backend/app/services/storage_manager.py) | 连接配置、revision、驱动与认证实例、OAuth 会话、身份、互斥和偏好。连接变更后使目录缓存失效 |
-| [app_settings](../../backend/app/services/app_settings.py)、[local_folder_picker](../../backend/app/services/local_folder_picker.py) | 编排恢复出厂设置和本地目录选择 |
+| [StorageManager](../../backend/app/services/storage/storage_manager.py) | 连接配置、revision、驱动与认证实例、OAuth 会话、身份、互斥和偏好。连接变更后使目录缓存失效 |
+| [app_settings](../../backend/app/services/app_settings.py)、[local_folder_picker](../../backend/app/services/storage/local_folder_picker.py) | 编排恢复出厂设置和本地目录选择 |
 | [ProviderRegistry](../../backend/app/providers/registry.py)、[builtin.py](../../backend/app/providers/builtin.py) | Provider 定义、配置模型校验与显式注册内置 Provider |
-| [DirectoryService](../../backend/app/services/directory_service.py)、[DirectoryCache](../../backend/app/services/directory_cache.py)、[directory_metadata](../../backend/app/providers/shared/directory_metadata.py) | 目录读取、并发请求合并、缓存与代次、祖先索引、改名前后的缓存保护与更新 |
-| [PreviewService](../../backend/app/services/preview_service.py)、[PreviewStore](../../backend/app/services/preview_store.py) | 评估源项/规则/冲突，保存与释放有期限、绑定 revision 的预览快照 |
-| [RenameEngine](../../backend/app/services/rename_engine.py)、[rules](../../backend/app/rules) | 规则配置解析、顺序应用与带索引的 RuleContext |
-| [ExecuteService](../../backend/app/services/execute_service.py) | 批量实时复核、快照消费、分组调度、进度与结果汇总 |
-| [SingleRenameService](../../backend/app/services/single_rename_service.py)、[rename_write](../../backend/app/services/rename_write.py) | 单项直接执行、共享结果核对、写入取消后的收尾 |
+| [DirectoryService](../../backend/app/services/directory/directory_service.py)、[DirectoryCache](../../backend/app/services/directory/directory_cache.py)、[directory_metadata](../../backend/app/providers/shared/directory_metadata.py) | 目录读取、并发请求合并、缓存与代次、祖先索引、改名前后的缓存保护与更新 |
+| [PreviewService](../../backend/app/services/rename/preview_service.py)、[PreviewStore](../../backend/app/services/rename/preview_store.py) | 评估源项/规则/冲突，保存与释放有期限、绑定 revision 的预览快照 |
+| [RenameEngine](../../backend/app/services/rename/rename_engine.py)、[rules](../../backend/app/rules) | 规则配置解析、顺序应用与带索引的 RuleContext |
+| [ExecuteService](../../backend/app/services/rename/batch_execute_service.py) | 批量实时复核、快照消费、分组调度、进度与结果汇总 |
+| [SingleRenameService](../../backend/app/services/rename/single_rename_service.py)、[write_outcome](../../backend/app/services/rename/write_outcome.py) | 单项直接执行、共享结果核对、写入取消后的收尾 |
 | [StorageDriver](../../backend/app/providers/base.py)、[StorageAuth](../../backend/app/providers/auth.py)、[local](../../backend/app/providers/local)、[onedrive](../../backend/app/providers/onedrive)、[google_drive](../../backend/app/providers/google_drive) | 统一存储与授权接口及各 Provider 实现 |
 | [core/errors](../../backend/app/core/errors.py)、[http_errors](../../backend/app/providers/shared/http_errors.py)、[request_policy](../../backend/app/providers/shared/request_policy.py) | 应用错误、第三方 HTTP 诊断辅助、重试预算和连接级限流等待 |
 | [JsonStorageRepository](../../backend/app/repositories/storage_repository.py)、[core/config](../../backend/app/core/config.py)、[core/paths](../../backend/app/core/paths.py) | JSON 原子保存、环境/缓存配置、本地路径边界 |

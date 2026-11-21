@@ -3,8 +3,8 @@ import pytest
 from app.core.errors import AppError, NotFoundError, ProviderError, RenameOutcomeUnknownError
 from app.schemas.files import DirectoryBreadcrumb, DirectoryListing, FileItem, RenameFile
 from app.schemas.storage import IdLocation, RootLocation, StorageLocation
-from app.services import directory_cache
-from app.services.directory_cache import DirectoryCache, DirectoryKey, RenameCacheScope
+from app.services.directory import directory_cache
+from app.services.directory.directory_cache import DirectoryCache, DirectoryKey, RenameCacheScope
 
 
 def cache_listing(

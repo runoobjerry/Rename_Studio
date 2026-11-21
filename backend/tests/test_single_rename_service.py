@@ -10,7 +10,7 @@ from app.providers.base import StorageDriver
 from app.providers.shared.name_validation import NameValidationIssue
 from app.schemas.files import FileItem
 from app.schemas.rename import SingleRenameExecuteRequest
-from app.services.single_rename_service import SingleRenameService
+from app.services.rename.single_rename_service import SingleRenameService
 from provider_fixtures import storage_services_for
 
 

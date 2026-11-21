@@ -44,10 +44,6 @@ class StorageDriver(ABC):
     def parent_directory(item: FileItem) -> StorageLocation:
         return item.parent_location or PathLocation(value=item.parent_path)
 
-    @staticmethod
-    def parent_key(item: FileItem) -> str:
-        return item.parent_location.model_dump_json() if item.parent_location else item.parent_path
-
     @abstractmethod
     async def list_files(self, path: str) -> list[FileItem]:
         raise NotImplementedError

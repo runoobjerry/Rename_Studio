@@ -5,10 +5,10 @@ from app.core.errors import AppError, ValidationError
 from app.providers.base import RenameRequest, StorageDriver
 from app.schemas.files import RenameFile
 from app.schemas.rename import SingleExecuteItem, SingleRenameExecuteRequest, SingleRenameExecuteResponse
-from app.services.directory_cache import RenameCacheScope
-from app.services.directory_service import DirectoryService
-from app.services.rename_write import RenameObserver, drain_writes, rename_failure_status, resolve_rename_outcome
-from app.services.storage_manager import StorageManager
+from app.services.directory.directory_cache import RenameCacheScope
+from app.services.directory.directory_service import DirectoryService
+from app.services.rename.write_outcome import RenameObserver, drain_writes, rename_failure_status, resolve_rename_outcome
+from app.services.storage.storage_manager import StorageManager
 
 
 logger = logging.getLogger("rename_studio.rename")

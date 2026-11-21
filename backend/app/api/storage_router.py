@@ -15,12 +15,12 @@ from app.schemas.storage import (
     AuthorizationStatus, LocalFolderPickResponse, StorageAuthStartResponse, StorageCreate, StorageInfo,
     StorageListRequest, StoragePreviewRequest, StorageProviderInfo, StorageUpdate,
 )
-from app.services.directory_service import DirectoryService
-from app.services.local_folder_picker import pick_connection_directory, pick_draft_directory
-from app.services.preview_service import PreviewService
-from app.services.preview_store import PreviewStore
-from app.services.single_rename_service import SingleRenameService
-from app.services.storage_manager import StorageManager
+from app.services.directory.directory_service import DirectoryService
+from app.services.storage.local_folder_picker import pick_connection_directory, pick_draft_directory
+from app.services.rename.preview_service import PreviewService
+from app.services.rename.preview_store import PreviewStore
+from app.services.rename.single_rename_service import SingleRenameService
+from app.services.storage.storage_manager import StorageManager
 
 
 router = APIRouter(tags=["storages"])

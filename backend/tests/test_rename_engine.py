@@ -8,7 +8,7 @@ from app.rules.padding import PaddingRule
 from app.rules.registry import RuleRegistry
 from app.rules.text_operations import RemoveRule, ReplaceRule
 from app.schemas.rules import RuleSpec
-from app.services.rename_engine import RenameEngine
+from app.services.rename.rename_engine import RenameEngine
 
 
 class PrefixConfig(BaseModel):

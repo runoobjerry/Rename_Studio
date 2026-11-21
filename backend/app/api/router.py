@@ -7,7 +7,7 @@ from app.rules.registry import RuleRegistry
 from app.schemas.common import HealthResponse
 from app.schemas.rename import RenameExecuteRequest, RenameExecuteResponse, RenameProgress
 from app.schemas.rules import RuleDefinition
-from app.services.execute_service import ExecuteService
+from app.services.rename.batch_execute_service import ExecuteService
 
 
 router = APIRouter()

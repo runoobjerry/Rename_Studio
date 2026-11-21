@@ -9,9 +9,9 @@ from app.providers.base import StorageDriver
 from app.providers.registry import ProviderDefinition, ProviderRegistry
 from app.repositories.storage_repository import JsonStorageRepository
 from app.schemas.storage import StorageRecord, StorageState
-from app.services.directory_cache import DirectoryCache
-from app.services.directory_service import DirectoryService
-from app.services.storage_manager import StorageManager
+from app.services.directory.directory_cache import DirectoryCache
+from app.services.directory.directory_service import DirectoryService
+from app.services.storage.storage_manager import StorageManager
 
 
 class TestProviderConfig(BaseModel):

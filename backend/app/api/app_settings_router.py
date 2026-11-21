@@ -5,8 +5,8 @@ from fastapi import APIRouter, Depends
 from app.api.dependencies import get_preview_store, get_storage_manager
 from app.schemas.storage import AppSettingsPatch, AppSettingsResponse
 from app.services.app_settings import factory_reset as reset_application
-from app.services.preview_store import PreviewStore
-from app.services.storage_manager import StorageManager
+from app.services.rename.preview_store import PreviewStore
+from app.services.storage.storage_manager import StorageManager
 
 
 router = APIRouter(tags=["app-settings"])

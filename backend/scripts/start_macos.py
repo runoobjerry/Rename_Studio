@@ -28,7 +28,7 @@ SESSION = RUNTIME / "session.json"
 PAGE_URL = "http://localhost:8000"
 
 DEPENDENCY_CHECK = """
-import fastapi, httpx, pydantic_settings, sqlalchemy, uvicorn
+import fastapi, httpx, pydantic_settings, uvicorn
 from importlib.metadata import version
 from pathlib import Path
 import sys

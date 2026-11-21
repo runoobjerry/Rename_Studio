@@ -20,16 +20,16 @@ from app.providers.registry import ProviderRegistry
 from app.schemas.rename import RenamePreviewRequest
 from app.schemas.rules import RuleSpec
 from app.schemas.storage import AppSettingsPatch, StorageConfigField, RootLocation, StorageCreate, StorageUpdate
-from app.services import local_folder_picker
+from app.services.storage import local_folder_picker
 from app.services.app_settings import factory_reset
-from app.services.directory_cache import DirectoryCache
-from app.services.directory_service import DirectoryService
-from app.services.execute_service import ExecuteService
+from app.services.directory.directory_cache import DirectoryCache
+from app.services.directory.directory_service import DirectoryService
+from app.services.rename.batch_execute_service import ExecuteService
 from app.providers.onedrive.auth import OneDriveAuthService
-from app.services.preview_service import PreviewService
-from app.services.preview_store import PreviewStore
-from app.services.rename_engine import RenameEngine
-from app.services.storage_manager import StorageManager
+from app.services.rename.preview_service import PreviewService
+from app.services.rename.preview_store import PreviewStore
+from app.services.rename.rename_engine import RenameEngine
+from app.services.storage.storage_manager import StorageManager
 from app.rules.registry import RuleRegistry
 from app.rules.text_operations import ReplaceRule
 

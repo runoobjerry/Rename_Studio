@@ -21,14 +21,14 @@ from app.rules.text_operations import ReplaceRule
 from app.schemas.storage import AppSettingsPatch, StorageCreate, StorageUpdate
 from app.providers.google_drive.auth import ABOUT_URL, SCOPE, TOKEN_URL, GoogleDriveAuthService
 from app.providers.onedrive.auth import GRAPH_ME_URL, TOKEN_URL as ONEDRIVE_TOKEN_URL, OneDriveAuthService
-from app.services import storage_manager
+from app.services.storage import storage_manager
 from app.services.app_settings import factory_reset
-from app.services.directory_service import DirectoryService
-from app.services.preview_service import PreviewService
-from app.services.preview_store import PreviewStore
-from app.services.execute_service import ExecuteService
-from app.services.rename_engine import RenameEngine
-from app.services.storage_manager import StorageManager
+from app.services.directory.directory_service import DirectoryService
+from app.services.rename.preview_service import PreviewService
+from app.services.rename.preview_store import PreviewStore
+from app.services.rename.batch_execute_service import ExecuteService
+from app.services.rename.rename_engine import RenameEngine
+from app.services.storage.storage_manager import StorageManager
 
 
 REDIRECT_URI = "http://localhost:8000/auth/storage/callback"

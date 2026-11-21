@@ -24,11 +24,11 @@ from app.rules.registry import RuleRegistry
 from app.schemas.rename import RenamePreviewRequest, SingleRenameExecuteRequest
 from app.schemas.rules import RuleSpec
 from app.schemas.storage import AuthorizationStart, AuthorizationStatus, IdLocation, PathLocation, RootLocation
-from app.services.execute_service import ExecuteService
-from app.services.single_rename_service import SingleRenameService
-from app.services.preview_service import PreviewService
-from app.services.preview_store import PreviewStore
-from app.services.rename_engine import RenameEngine
+from app.services.rename.batch_execute_service import ExecuteService
+from app.services.rename.single_rename_service import SingleRenameService
+from app.services.rename.preview_service import PreviewService
+from app.services.rename.preview_store import PreviewStore
+from app.services.rename.rename_engine import RenameEngine
 from provider_fixtures import CooldownClock, storage_services_for
 
 

@@ -227,7 +227,7 @@ try {
         Save-JsonFile $savedEnvironment $environmentFile
     }
 
-    $checkCode = "import fastapi,httpx,pydantic_settings,sqlalchemy,uvicorn; from importlib.metadata import version; from pathlib import Path; import sys; pins=[line.split('==') for line in Path(sys.argv[1]).read_text().splitlines() if line and not line.startswith('#')]; sys.exit(0 if all(version(name)==required for name,required in pins) else 1)"
+    $checkCode = "import fastapi,httpx,pydantic_settings,uvicorn; from importlib.metadata import version; from pathlib import Path; import sys; pins=[line.split('==') for line in Path(sys.argv[1]).read_text().splitlines() if line and not line.startswith('#')]; sys.exit(0 if all(version(name)==required for name,required in pins) else 1)"
     $dependenciesHealthy = $false
     if (-not $needsInstall) {
         $dependenciesHealthy = ((Invoke-PythonTask $venvPython @('-c', $checkCode, $requirements) 'dependencies') -eq 0)

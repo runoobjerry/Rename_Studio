@@ -12,10 +12,10 @@ from app.schemas.files import DirectoryListing, FileItem
 from app.schemas.rename import RenamePreviewRequest
 from app.schemas.rules import RuleSpec
 from app.schemas.storage import IdLocation, RootLocation, StorageLocation
-from app.services.execute_service import ExecuteService
-from app.services.preview_service import PreviewService
-from app.services.preview_store import PreviewStore
-from app.services.rename_engine import RenameEngine
+from app.services.rename.batch_execute_service import ExecuteService
+from app.services.rename.preview_service import PreviewService
+from app.services.rename.preview_store import PreviewStore
+from app.services.rename.rename_engine import RenameEngine
 
 
 class MappingConfig(BaseModel):

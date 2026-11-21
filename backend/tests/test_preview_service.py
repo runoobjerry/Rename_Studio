@@ -13,9 +13,9 @@ from app.rules.registry import RuleRegistry
 from app.schemas.files import FileItem
 from app.schemas.rename import PreviewItem, RenamePreviewRequest
 from app.schemas.rules import RuleSpec
-from app.services.preview_service import PreviewService
-from app.services.preview_store import PreviewStore
-from app.services.rename_engine import RenameEngine
+from app.services.rename.preview_service import PreviewService
+from app.services.rename.preview_store import PreviewStore
+from app.services.rename.rename_engine import RenameEngine
 
 
 class ConstantConfig(BaseModel):

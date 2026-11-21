@@ -20,7 +20,7 @@ from app.providers.google_drive.client import GoogleDriveClient
 from app.providers.shared.directory_metadata import AncestorLookup, DirectoryHint, DirectoryMetadata, DirectoryMetadataConflict, resolve_ancestry
 from app.providers.shared.name_validation import NameValidationIssue
 from app.providers.shared.request_policy import RetryBudget
-from app.schemas.files import DirectoryBreadcrumb, DirectoryListing, FileItem, RenameFile
+from app.schemas.files import DirectoryListing, FileItem, RenameFile
 from app.schemas.storage import IdLocation, PathLocation, RootLocation, StorageLocation
 
 

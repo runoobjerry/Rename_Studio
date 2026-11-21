@@ -30,7 +30,7 @@ flowchart LR
 | [前端工作台](../frontend/src/WorkspaceApp.tsx) | 布局、导航与 Hook 协调 | 不重复实现后端重命名规则或结果判定 |
 | [API](../backend/app/api)、[Schema](../backend/app/schemas) | HTTP 契约、输入输出、依赖注入 | 不承载核心业务算法 |
 | [Service](../backend/app/services) | 预览、执行、连接、授权与目录流程 | 跨 Provider 依赖统一接口，避免类型分支复制业务 |
-| [Rule](../backend/app/rules)、[RenameEngine](../backend/app/services/rename_engine.py) | 按规则顺序转换文件名 | 不访问文件系统或云盘；顺序由输入决定 |
+| [Rule](../backend/app/rules)、[RenameEngine](../backend/app/services/rename/rename_engine.py) | 按规则顺序转换文件名 | 不访问文件系统或云盘；顺序由输入决定 |
 | [Provider](../backend/app/providers)、[StorageDriver](../backend/app/providers/base.py) | 配置、认证、存储读写和名称约束 | 不实现重命名规则，不向 UI 泄露供应商细节来决定业务状态 |
 | [Repository](../backend/app/repositories/storage_repository.py) | 状态加载与原子保存 | 不承担业务决策 |
 | [发布入口](../backend/app/release.py)、[启动器](../backend/app/launcher.py) | 预构建 WebUI 与 API 服务生命周期 | 发布包使用单进程，源码开发使用独立开发入口 |
@@ -41,7 +41,7 @@ flowchart LR
 
 | 状态 | 所属位置 | 生命周期 |
 | --- | --- | --- |
-| 连接配置、凭据、应用偏好 | 后端 [StorageManager](../backend/app/services/storage_manager.py) + JSON Repository | 保存到本地状态文件，路径由[配置](../backend/app/core/config.py)决定 |
+| 连接配置、凭据、应用偏好 | 后端 [StorageManager](../backend/app/services/storage/storage_manager.py) + JSON Repository | 保存到本地状态文件，路径由[配置](../backend/app/core/config.py)决定 |
 | 预览快照、执行进度、连接互斥、目录缓存 | 后端进程内服务 | 单进程内共享，重启后清空；执行前实时复核源状态 |
 | 服务端数据与查询缓存 | 前端 TanStack Query | 页面内存；隔离连接、revision 与目录上下文 |
 | 选择、规则、最近修改记录、待核对信息 | 前端 [Zustand Store](../frontend/src/stores/useRenameStore.ts)与工作流 Hook | 页面内存；不同状态有独立清理时机 |

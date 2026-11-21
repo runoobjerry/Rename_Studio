@@ -12,12 +12,12 @@ from app.schemas.rename import (
     RenameExecuteResponse,
     RenameProgress,
 )
-from app.services.directory_cache import RenameCacheScope
-from app.services.directory_service import DirectoryService
-from app.services.preview_service import PreviewService
-from app.services.preview_store import PreviewSnapshot, PreviewStore
-from app.services.rename_write import RenameObserver, drain_writes, rename_failure_status, resolve_rename_outcome
-from app.services.storage_manager import StorageManager
+from app.services.directory.directory_cache import RenameCacheScope
+from app.services.directory.directory_service import DirectoryService
+from app.services.rename.preview_service import PreviewService
+from app.services.rename.preview_store import PreviewSnapshot, PreviewStore
+from app.services.rename.write_outcome import RenameObserver, drain_writes, rename_failure_status, resolve_rename_outcome
+from app.services.storage.storage_manager import StorageManager
 
 
 logger = logging.getLogger("rename_studio.rename")

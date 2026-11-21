@@ -10,11 +10,11 @@ from provider_fixtures import storage_services_for
 from app.api.dependencies import get_directory_service, get_execute_service, get_rule_registry, get_single_rename_service, get_storage_manager, get_preview_service, get_preview_store
 from app.main import create_app
 from app.providers.local.driver import LocalDriver
-from app.services.execute_service import ExecuteService
-from app.services.single_rename_service import SingleRenameService
-from app.services.preview_service import PreviewService
-from app.services.preview_store import PreviewStore
-from app.services.rename_engine import RenameEngine
+from app.services.rename.batch_execute_service import ExecuteService
+from app.services.rename.single_rename_service import SingleRenameService
+from app.services.rename.preview_service import PreviewService
+from app.services.rename.preview_store import PreviewStore
+from app.services.rename.rename_engine import RenameEngine
 
 
 @pytest.mark.parametrize("single", [False, True])

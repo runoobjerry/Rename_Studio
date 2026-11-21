@@ -5,7 +5,7 @@ from shutil import which
 
 from app.core.errors import ProviderError, StorageConnectionChangedError, ValidationError
 from app.schemas.storage import LocalFolderPickResponse, StorageUpdate
-from app.services.storage_manager import StorageManager
+from app.services.storage.storage_manager import StorageManager
 
 
 async def pick_connection_directory(storage_id: str, manager: StorageManager) -> LocalFolderPickResponse:

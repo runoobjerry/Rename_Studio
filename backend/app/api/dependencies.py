@@ -6,19 +6,19 @@ from app.providers.builtin import register_builtin_providers
 from app.providers.registry import ProviderRegistry
 from app.repositories.storage_repository import JsonStorageRepository
 from app.schemas.storage import StorageRecord, StorageState
-from app.services.storage_manager import StorageManager
+from app.services.storage.storage_manager import StorageManager
 from app.rules.insert import InsertRule
 from app.rules.padding import PaddingRule
 from app.rules.registry import RuleRegistry
 from app.rules.serialize import SerializeRule
 from app.rules.text_operations import RemoveRule, ReplaceRule
-from app.services.directory_cache import DirectoryCache
-from app.services.directory_service import DirectoryService
-from app.services.execute_service import ExecuteService
-from app.services.single_rename_service import SingleRenameService
-from app.services.preview_service import PreviewService
-from app.services.preview_store import PreviewStore
-from app.services.rename_engine import RenameEngine
+from app.services.directory.directory_cache import DirectoryCache
+from app.services.directory.directory_service import DirectoryService
+from app.services.rename.batch_execute_service import ExecuteService
+from app.services.rename.single_rename_service import SingleRenameService
+from app.services.rename.preview_service import PreviewService
+from app.services.rename.preview_store import PreviewStore
+from app.services.rename.rename_engine import RenameEngine
 
 
 @lru_cache

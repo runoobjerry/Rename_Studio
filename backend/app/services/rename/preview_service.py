@@ -9,10 +9,10 @@ from app.core.errors import StorageConnectionChangedError, ValidationError
 from app.rules.base import RuleContext
 from app.schemas.files import FileItem
 from app.schemas.rename import PreviewItem, RenamePreviewRequest, RenamePreviewResponse
-from app.services.directory_service import DirectoryService
-from app.services.preview_store import PreviewStore
-from app.services.rename_engine import RenameEngine
-from app.services.storage_manager import StorageManager
+from app.services.directory.directory_service import DirectoryService
+from app.services.rename.preview_store import PreviewStore
+from app.services.rename.rename_engine import RenameEngine
+from app.services.storage.storage_manager import StorageManager
 
 
 logger = logging.getLogger("rename_studio.preview")

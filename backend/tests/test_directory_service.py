@@ -11,13 +11,13 @@ from app.rules.registry import RuleRegistry
 from app.schemas.files import DirectoryBreadcrumb, DirectoryListing, FileItem, RenameFile
 from app.schemas.rename import RenamePreviewRequest, SingleRenameExecuteRequest
 from app.schemas.storage import IdLocation, PathLocation, RootLocation, StorageLocation
-from app.services import directory_cache
-from app.services.directory_cache import DirectoryCache, RenameCacheScope
-from app.services.execute_service import ExecuteService
-from app.services.preview_service import PreviewService
-from app.services.preview_store import PreviewStore
-from app.services.rename_engine import RenameEngine
-from app.services.single_rename_service import SingleRenameService
+from app.services.directory import directory_cache
+from app.services.directory.directory_cache import DirectoryCache, RenameCacheScope
+from app.services.rename.batch_execute_service import ExecuteService
+from app.services.rename.preview_service import PreviewService
+from app.services.rename.preview_store import PreviewStore
+from app.services.rename.rename_engine import RenameEngine
+from app.services.rename.single_rename_service import SingleRenameService
 from provider_fixtures import storage_services_for
 
 

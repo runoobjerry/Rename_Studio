@@ -11,8 +11,8 @@ from app.providers.base import StorageDriver
 from app.providers.shared.directory_metadata import AncestorLookup, DirectoryAncestry, DirectoryHint, DirectoryMetadataConflict
 from app.schemas.files import DirectoryListing, FileItem
 from app.schemas.storage import IdLocation, RootLocation, StorageLocation
-from app.services.directory_cache import DirectoryCache, DirectoryKey, RenameCacheScope
-from app.services.storage_manager import StorageManager
+from app.services.directory.directory_cache import DirectoryCache, DirectoryKey, RenameCacheScope
+from app.services.storage.storage_manager import StorageManager
 
 
 logger = logging.getLogger("rename_studio.directory")
