@@ -45,16 +45,3 @@ def validate_portable_name(name: str) -> NameValidationIssue | None:
     if len(name) > _MAX_NAME_LENGTH:
         return NameValidationIssue("NAME_TOO_LONG", f"Filename is longer than {_MAX_NAME_LENGTH} characters", {"max_length": _MAX_NAME_LENGTH})
     return None
-
-
-def validate_onedrive_name(name: str) -> NameValidationIssue | None:
-    portable_error = validate_portable_name(name)
-    if portable_error is not None:
-        return portable_error
-    lowered = name.casefold()
-    invalid_prefixes = (" ", "~$")
-    if name.startswith(invalid_prefixes):
-        return NameValidationIssue("ONEDRIVE_NAME_INVALID_PREFIX", "OneDrive filename cannot start with a space or '~$'", {"prefixes": list(invalid_prefixes)})
-    if lowered in {".lock", "desktop.ini"} or "_vti_" in lowered:
-        return NameValidationIssue("NAME_RESERVED_ONEDRIVE", "Filename is reserved by OneDrive")
-    return None

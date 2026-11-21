@@ -9,7 +9,7 @@ from urllib.parse import urlencode
 
 import httpx
 
-from app.providers.errors import auth_response_error
+from app.providers.shared.http_errors import auth_response_error
 from app.core.errors import AuthenticationError, ProviderError, StorageConnectionChangedError, ValidationError
 from app.schemas.storage import AuthorizationStart, AuthorizationStatus
 

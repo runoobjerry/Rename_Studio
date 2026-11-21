@@ -7,7 +7,7 @@ from cachetools import TLRUCache
 
 from app.core.config import DirectoryListingCacheSettings
 from app.core.errors import AppError, NotFoundError, RenameOutcomeUnknownError
-from app.providers.directory_metadata import DirectoryAncestry
+from app.providers.shared.directory_metadata import DirectoryAncestry
 from app.schemas.files import DirectoryBreadcrumb, DirectoryListing, FileItem, RenameFile
 from app.schemas.storage import IdLocation, RootLocation, StorageLocation
 

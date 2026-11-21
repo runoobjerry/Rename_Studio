@@ -47,7 +47,7 @@ class CooldownClock:
     """Advance cooldown time explicitly while real asyncio tasks remain independently scheduled."""
 
     def __init__(self, monkeypatch) -> None:
-        from app.providers import cooldown
+        from app.providers.shared import request_policy
 
         self.now = 0.0
         self.waiting: asyncio.Queue[float] = asyncio.Queue()
@@ -59,9 +59,9 @@ class CooldownClock:
             def now(cls, tz=None):
                 return datetime.fromtimestamp(1793318400 + clock.now, tz=tz)
 
-        monkeypatch.setattr(cooldown, "monotonic", lambda: self.now)
-        monkeypatch.setattr(cooldown, "sleep", self.sleep)
-        monkeypatch.setattr(cooldown, "datetime", ClockDateTime)
+        monkeypatch.setattr(request_policy, "monotonic", lambda: self.now)
+        monkeypatch.setattr(request_policy, "sleep", self.sleep)
+        monkeypatch.setattr(request_policy, "datetime", ClockDateTime)
 
     async def sleep(self, delay: float) -> None:
         deadline = self.now + delay

@@ -11,22 +11,17 @@ import httpx
 from app.core.log_context import request_id_context
 from app.core.errors import (
     AppError,
-    AuthenticationError,
-    NotFoundError,
-    PermissionDeniedError,
     ProviderError,
-    RateLimitError,
-    RenameConflictError,
     ValidationError,
     RenameOutcomeUnknownError,
 )
 from app.providers.auth import StorageAuth
-from app.providers.errors import http_error_details, read_error_payload
-from app.providers.retry import RetryBudget
 from app.providers.base import RenameRequest, StorageDriver
-from app.providers.directory_metadata import AncestorLookup, DirectoryHint, DirectoryMetadata, DirectoryMetadataConflict, resolve_ancestry
-from app.providers.cooldown import ConnectionCooldown, retry_after_delay
-from app.providers.name_validation import NameValidationIssue, validate_onedrive_name
+from app.providers.onedrive.client import OneDriveClient
+from app.providers.onedrive.name_validation import validate_onedrive_name, validate_onedrive_name_in_context
+from app.providers.shared.directory_metadata import AncestorLookup, DirectoryHint, DirectoryMetadata, DirectoryMetadataConflict, resolve_ancestry
+from app.providers.shared.name_validation import NameValidationIssue
+from app.providers.shared.request_policy import RetryBudget
 from app.schemas.files import DirectoryListing, FileItem
 from app.schemas.storage import IdLocation, PathLocation, RootLocation, StorageLocation
 
@@ -41,41 +36,6 @@ WRITE_BATCH_CONCURRENCY = 2
 DRIVE_ITEM_SELECT = "id,name,parentReference,folder,root,size,lastModifiedDateTime"
 
 
-def _extract_graph_codes(payload: object) -> list[str]:
-    codes: list[str] = []
-    error = payload.get("error") if isinstance(payload, dict) else None
-    while isinstance(error, dict):
-        code = error.get("code")
-        if isinstance(code, str):
-            codes.append(code)
-        error = error.get("innerError") or error.get("innererror")
-    return codes
-
-
-def _map_graph_error(status: int, codes: list[str]) -> AppError:
-    details = {**http_error_details("onedrive", status, codes), "graph_status": status}
-    if status == 401:
-        return AuthenticationError("OneDrive authorization failed", details=details)
-    if status == 403:
-        return PermissionDeniedError("OneDrive permission denied", details=details)
-    if status == 404:
-        return NotFoundError("OneDrive item was not found", details=details)
-    if status == 412 or (status in {400, 409} and "resourceModified" in codes):
-        return RenameConflictError(
-            "OneDrive item changed before the request could be applied",
-            details={**details, "reason": "SOURCE_CHANGED"},
-        )
-    if status in {400, 409} and "nameAlreadyExists" in codes:
-        return RenameConflictError("An item with the target name already exists in OneDrive", details=details)
-    if status == 409:
-        return RenameConflictError("OneDrive rename conflict", details=details)
-    if status == 429:
-        return RateLimitError("Microsoft Graph rate limit reached", details=details)
-    if status == 400:
-        return ValidationError("Microsoft Graph rejected the request", details=details)
-    return ProviderError("Microsoft Graph request failed", details=details)
-
-
 class OneDriveDriver(StorageDriver):
     provider_type = "onedrive"
     execution_batch_concurrency = WRITE_BATCH_CONCURRENCY
@@ -87,11 +47,7 @@ class OneDriveDriver(StorageDriver):
         timeout: float = 30.0,
         client: httpx.AsyncClient | None = None,
     ) -> None:
-        self.auth = auth
-        self.timeout = timeout
-        self._client = client
-        self._owns_client = client is None
-        self._cooldown = ConnectionCooldown()
+        self._client = OneDriveClient(auth, timeout=timeout, client=client)
 
     async def list_directory(self, location: StorageLocation) -> DirectoryListing:
         return await self.read_directory(location)
@@ -175,7 +131,7 @@ class OneDriveDriver(StorageDriver):
                                 parent_location=parent, items=items, breadcrumbs=breadcrumbs, root_id=root.id)
 
     async def _read_root(self) -> DirectoryMetadata:
-        payload = await self._request_json("GET", f"{GRAPH_ROOT}/me/drive/root")
+        payload = await self._client.request_json("GET", f"{GRAPH_ROOT}/me/drive/root")
         item = self._to_item(payload)
         if not item.is_directory:
             raise ValidationError("Selected location is not a directory")
@@ -184,7 +140,7 @@ class OneDriveDriver(StorageDriver):
         return DirectoryMetadata(item.id, item.name, None, drive_id=drive_id if isinstance(drive_id, str) and drive_id else None)
 
     async def _load_folder(self, directory_id: str, *, ancestor: bool = False) -> DirectoryMetadata:
-        payload = await self._request_json("GET", f"{GRAPH_ROOT}/me/drive/items/{quote(directory_id, safe='')}")
+        payload = await self._client.request_json("GET", f"{GRAPH_ROOT}/me/drive/items/{quote(directory_id, safe='')}")
         item = self._to_item(payload)
         if item.id != directory_id or isinstance(item.location, RootLocation):
             raise DirectoryMetadataConflict("Microsoft Graph returned invalid directory identity")
@@ -239,7 +195,7 @@ class OneDriveDriver(StorageDriver):
             visited.add(url)
             page += 1
             page_started = perf_counter()
-            payload = await self._request_json("GET", url)
+            payload = await self._client.request_json("GET", url)
             raw_items = payload.get("value")
             if not isinstance(raw_items, list):
                 raise DirectoryMetadataConflict(
@@ -265,7 +221,7 @@ class OneDriveDriver(StorageDriver):
 
     async def get_metadata(self, file_id: str) -> FileItem:
         encoded_id = quote(file_id, safe="")
-        payload = await self._request_json(
+        payload = await self._client.request_json(
             "GET", f"{GRAPH_ROOT}/me/drive/items/{encoded_id}"
         )
         return self._to_item(payload)
@@ -311,12 +267,12 @@ class OneDriveDriver(StorageDriver):
                 for index, file_id in enumerate(file_ids)
             ]
         }
-        payload = await self._request_json("POST", f"{GRAPH_ROOT}/$batch", json=body, budget=budget)
+        payload = await self._client.request_json("POST", f"{GRAPH_ROOT}/$batch", json=body, budget=budget)
         raw_responses = payload.get("responses")
         if not isinstance(raw_responses, list):
             raise ProviderError("Microsoft Graph returned an invalid batch response")
         attempt = budget.used - 1
-        self._record_batch_throttle(raw_responses, attempt)
+        self._client.record_batch_throttle(raw_responses, attempt)
         by_index = {
             str(response.get("id")): response
             for response in raw_responses
@@ -341,23 +297,23 @@ class OneDriveDriver(StorageDriver):
                 )
             elif 200 <= status < 300 and isinstance(response_body, dict):
                 results[file_id] = self._to_item(response_body)
-            elif self._is_retryable(status) and budget.available:
+            elif self._client.retryable(status) and budget.available:
                 retry.append(file_id)
                 if status != 429:
                     headers = response.get("headers")
                     value = httpx.Headers(headers).get("Retry-After") if isinstance(headers, dict) else None
-                    retry_after = max(retry_after, self._retry_delay(value, attempt))
+                    retry_after = max(retry_after, self._client.retry_delay(value, attempt))
             elif status == 401 and budget.available:
                 retry.append(file_id)
                 retry_auth = True
                 retry_after = max(retry_after, min(2**attempt, 8))
             else:
-                results[file_id] = self._graph_error(status, response_body)
+                results[file_id] = self._client.graph_error(status, response_body)
         if retry:
             if retry_after:
                 await asyncio.sleep(retry_after)
             if retry_auth:
-                await self.auth.access_token(force_refresh=True)
+                await self._client.auth.access_token(force_refresh=True)
             results.update(await self._metadata_batch(retry, budget=budget))
         return results
 
@@ -366,7 +322,7 @@ class OneDriveDriver(StorageDriver):
         if validation_error is not None:
             raise ValidationError(validation_error.message, details={"new_name": new_name, **validation_error.details})
         encoded_id = quote(file_id, safe="")
-        payload = await self._request_json(
+        payload = await self._client.request_json(
             "PATCH",
             f"{GRAPH_ROOT}/me/drive/items/{encoded_id}",
             json={"name": new_name},
@@ -425,7 +381,7 @@ class OneDriveDriver(StorageDriver):
             ]
         }
         try:
-            payload = await self._request_json("POST", f"{GRAPH_ROOT}/$batch", json=body, budget=budget)
+            payload = await self._client.request_json("POST", f"{GRAPH_ROOT}/$batch", json=body, budget=budget)
         except AppError as exc:
             return {**invalid, **{request.file_id: exc for request in valid}}
         raw_responses = payload.get("responses")
@@ -433,7 +389,7 @@ class OneDriveDriver(StorageDriver):
             return {**invalid, **{request.file_id: RenameOutcomeUnknownError("Microsoft Graph returned an invalid write batch response") for request in valid}}
 
         attempt = budget.used - 1
-        self._record_batch_throttle(raw_responses, attempt)
+        self._client.record_batch_throttle(raw_responses, attempt)
         by_index = {
             str(response.get("id")): response
             for response in raw_responses
@@ -468,17 +424,17 @@ class OneDriveDriver(StorageDriver):
                 except ProviderError:
                     results[request.file_id] = RenameOutcomeUnknownError("Microsoft Graph returned incomplete write metadata")
             elif status == 408 or status >= 500:
-                results[request.file_id] = RenameOutcomeUnknownError("Remote write outcome is unknown", details=self._graph_error(status, response_body).details)
+                results[request.file_id] = RenameOutcomeUnknownError("Remote write outcome is unknown", details=self._client.graph_error(status, response_body).details)
             elif status == 429 and budget.available:
-                results[request.file_id] = self._graph_error(status, response_body)
+                results[request.file_id] = self._client.graph_error(status, response_body)
                 retry.append(request)
             elif status == 401 and budget.available:
-                results[request.file_id] = self._graph_error(status, response_body)
+                results[request.file_id] = self._client.graph_error(status, response_body)
                 retry.append(request)
                 retry_auth = True
                 retry_after = max(retry_after, min(2**attempt, 8))
             else:
-                results[request.file_id] = self._graph_error(status, response_body)
+                results[request.file_id] = self._client.graph_error(status, response_body)
 
         if retry and not any(isinstance(outcome, RenameOutcomeUnknownError) for outcome in results.values()):
             # An uncertain part goes to reconciliation before any more writes are sent.
@@ -487,119 +443,23 @@ class OneDriveDriver(StorageDriver):
                 await asyncio.sleep(retry_after)
             try:
                 if retry_auth:
-                    await self.auth.access_token(force_refresh=True)
+                    await self._client.auth.access_token(force_refresh=True)
                 results.update(await self._rename_batch(retry, budget=budget))
             except AppError as exc:
                 results.update({request.file_id: exc for request in retry})
         return results
 
     def validate_name(self, name: str) -> NameValidationIssue | None:
-        # OneDrive 同样会同步到 Windows，本阶段沿用更严格的跨平台文件名规则。
         return validate_onedrive_name(name)
 
     def validate_target_name(self, item: FileItem, name: str) -> NameValidationIssue | None:
         error = self.validate_name(name)
         if error is not None:
             return error
-        reserved_root_name = "forms"
-        if item.parent_path == "" and name.casefold() == reserved_root_name:
-            return NameValidationIssue("NAME_RESERVED_IN_ROOT", "'forms' is reserved at the OneDrive root", {"name": reserved_root_name})
-        invalid_folder_prefixes = ("゛", "ဧ")
-        if item.is_directory and name.startswith(invalid_folder_prefixes):
-            return NameValidationIssue("ONEDRIVE_FOLDER_INVALID_PREFIX", "OneDrive folder name starts with a restricted character", {"prefixes": list(invalid_folder_prefixes)})
-        decoded_path = f"{item.parent_path}/{name}".strip("/")
-        max_path_length = 400
-        if len(decoded_path) > max_path_length:
-            return NameValidationIssue("ONEDRIVE_PATH_TOO_LONG", f"OneDrive path is longer than {max_path_length} characters", {"max_length": max_path_length})
-        return None
-
-    async def _request_json(
-        self,
-        method: str,
-        url: str,
-        *,
-        json: dict[str, object] | None = None,
-        budget: RetryBudget | None = None,
-    ) -> dict[str, object]:
-        budget = budget if budget is not None else RetryBudget()
-        force_refresh = False
-        writing = method == "PATCH" or (method == "POST" and json is not None and any(
-            request["method"] == "PATCH" for request in json["requests"]
-        ))
-        while True:
-            attempt = budget.used
-            await self._cooldown.wait()
-            token = await self.auth.access_token(force_refresh=force_refresh)
-            force_refresh = False
-            # Token refresh can yield while another response extends the cooldown.
-            await self._cooldown.wait()
-            attempt_started = perf_counter()
-            budget.used += 1
-            try:
-                response = await self._http_client().request(
-                    method,
-                    url,
-                    headers={"Authorization": f"Bearer {token}"},
-                    json=json,
-                )
-            except httpx.HTTPError as exc:
-                logger.info(
-                    "graph_request provider=onedrive request_id=%s method=%s attempt=%s status=transport_error duration_ms=%.2f",
-                    request_id_context.get(), method, attempt + 1, (perf_counter() - attempt_started) * 1000,
-                )
-                if writing:
-                    raise RenameOutcomeUnknownError("Remote write outcome is unknown; metadata must be checked", details={"provider_type": "onedrive"}) from exc
-                if budget.available:
-                    await asyncio.sleep(min(2**attempt, 8))
-                    continue
-                raise ProviderError("Microsoft Graph request failed", details={"provider_type": "onedrive"}) from exc
-
-            logger.info(
-                "graph_request provider=onedrive request_id=%s method=%s attempt=%s status=%s duration_ms=%.2f",
-                request_id_context.get(), method, attempt + 1, response.status_code, (perf_counter() - attempt_started) * 1000,
-            )
-            if response.status_code == 429:
-                self._cooldown.defer(self._retry_delay(response.headers.get("Retry-After"), attempt))
-                if budget.available:
-                    continue
-                raise self._graph_error(429, read_error_payload(response))
-            if response.status_code == 401 and budget.available:
-                force_refresh = True
-                continue
-            if writing and (response.status_code == 408 or response.status_code >= 500):
-                raise RenameOutcomeUnknownError("Remote write outcome is unknown; metadata must be checked", details=self._graph_error(response.status_code, read_error_payload(response)).details)
-            if self._is_retryable(response.status_code) and budget.available:
-                await asyncio.sleep(
-                    self._retry_delay(response.headers.get("Retry-After"), attempt)
-                )
-                continue
-            if response.is_error:
-                raise self._graph_error(response.status_code, read_error_payload(response))
-            try:
-                payload = response.json()
-            except ValueError as exc:
-                if writing:
-                    raise RenameOutcomeUnknownError("Microsoft Graph returned an unreadable write response") from exc
-                raise ProviderError("Microsoft Graph returned invalid data", details={"provider_type": "onedrive"}) from exc
-            if not isinstance(payload, dict):
-                if writing:
-                    raise RenameOutcomeUnknownError("Microsoft Graph returned an unreadable write response")
-                raise ProviderError("Microsoft Graph returned invalid data")
-            return payload
-
-    def _http_client(self) -> httpx.AsyncClient:
-        if self._client is None or self._client.is_closed:
-            self._client = httpx.AsyncClient(timeout=self.timeout)
-            self._owns_client = True
-        return self._client
+        return validate_onedrive_name_in_context(item, name)
 
     async def aclose(self) -> None:
-        if (
-            self._owns_client
-            and self._client is not None
-            and not self._client.is_closed
-        ):
-            await self._client.aclose()
+        await self._client.aclose()
 
     @staticmethod
     async def _run_bounded[InputT, ResultT](
@@ -656,22 +516,3 @@ class OneDriveDriver(StorageDriver):
         if not isinstance(path, str) or "root:" not in path:
             return ""
         return path.split("root:", maxsplit=1)[1].strip("/")
-
-    @staticmethod
-    def _is_retryable(status: int) -> bool:
-        return status in {429, 500, 502, 503, 504}
-
-    def _record_batch_throttle(self, responses: list[object], attempt: int) -> None:
-        for response in responses:
-            if isinstance(response, dict) and response.get("status") == 429:
-                headers = response.get("headers")
-                value = httpx.Headers(headers).get("Retry-After") if isinstance(headers, dict) else None
-                self._cooldown.defer(self._retry_delay(value, attempt))
-
-    @staticmethod
-    def _retry_delay(value: str | None, attempt: int) -> float:
-        return retry_after_delay(value, min(2**attempt, 8))
-
-    @staticmethod
-    def _graph_error(status: int, payload: object) -> AppError:
-        return _map_graph_error(status, _extract_graph_codes(payload))

@@ -6,7 +6,7 @@ import pytest
 from app.core.config import DirectoryListingCacheSettings
 from app.core.errors import NotFoundError, ProviderError, StorageBusyError, StorageConnectionChangedError
 from app.providers.base import StorageDriver
-from app.providers.name_validation import NameValidationIssue
+from app.providers.shared.name_validation import NameValidationIssue
 from app.rules.registry import RuleRegistry
 from app.schemas.files import DirectoryBreadcrumb, DirectoryListing, FileItem, RenameFile
 from app.schemas.rename import RenamePreviewRequest, SingleRenameExecuteRequest

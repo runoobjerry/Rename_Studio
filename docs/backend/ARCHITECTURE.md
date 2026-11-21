@@ -2,7 +2,7 @@
 
 [文档索引](../README.md) · [系统架构](../ARCHITECTURE.md) · [后端 Agent 指令](../../backend/AGENTS.md) · [前端架构](../frontend/ARCHITECTURE.md) · [测试与验收](TEST.md) · [API](../api/README.md)
 
-章节：[代码地图](#代码地图) · [依赖与对象装配](#依赖与对象装配) · [预览与执行](#预览与执行) · [目录读取与缓存](#目录读取与缓存) · [持久化与部署](#持久化与部署) · [扩展入口](#扩展入口)
+章节：[代码地图](#代码地图) · [依赖与对象装配](#依赖与对象装配) · [Provider 组织](#provider-组织) · [预览与执行](#预览与执行) · [目录读取与缓存](#目录读取与缓存) · [持久化与部署](#持久化与部署) · [扩展入口](#扩展入口)
 
 ## 代码地图
 
@@ -15,13 +15,13 @@
 | [StorageManager](../../backend/app/services/storage_manager.py) | 连接配置、revision、驱动与认证实例、OAuth 会话、身份、互斥和偏好。连接变更后使目录缓存失效 |
 | [app_settings](../../backend/app/services/app_settings.py)、[local_folder_picker](../../backend/app/services/local_folder_picker.py) | 编排恢复出厂设置和本地目录选择 |
 | [ProviderRegistry](../../backend/app/providers/registry.py)、[builtin.py](../../backend/app/providers/builtin.py) | Provider 定义、配置模型校验与显式注册内置 Provider |
-| [DirectoryService](../../backend/app/services/directory_service.py)、[DirectoryCache](../../backend/app/services/directory_cache.py)、[directory_metadata](../../backend/app/providers/directory_metadata.py) | 目录读取、并发请求合并、缓存与代次、祖先索引、改名前后的缓存保护与更新 |
+| [DirectoryService](../../backend/app/services/directory_service.py)、[DirectoryCache](../../backend/app/services/directory_cache.py)、[directory_metadata](../../backend/app/providers/shared/directory_metadata.py) | 目录读取、并发请求合并、缓存与代次、祖先索引、改名前后的缓存保护与更新 |
 | [PreviewService](../../backend/app/services/preview_service.py)、[PreviewStore](../../backend/app/services/preview_store.py) | 评估源项/规则/冲突，保存与释放有期限、绑定 revision 的预览快照 |
 | [RenameEngine](../../backend/app/services/rename_engine.py)、[rules](../../backend/app/rules) | 规则配置解析、顺序应用与带索引的 RuleContext |
 | [ExecuteService](../../backend/app/services/execute_service.py) | 批量实时复核、快照消费、分组调度、进度与结果汇总 |
 | [SingleRenameService](../../backend/app/services/single_rename_service.py)、[rename_write](../../backend/app/services/rename_write.py) | 单项直接执行、共享结果核对、写入取消后的收尾 |
 | [StorageDriver](../../backend/app/providers/base.py)、[StorageAuth](../../backend/app/providers/auth.py)、[local](../../backend/app/providers/local)、[onedrive](../../backend/app/providers/onedrive)、[google_drive](../../backend/app/providers/google_drive) | 统一存储与授权接口及各 Provider 实现 |
-| [core/errors](../../backend/app/core/errors.py)、[providers/errors](../../backend/app/providers/errors.py)、[retry](../../backend/app/providers/retry.py)、[cooldown](../../backend/app/providers/cooldown.py) | 应用错误、第三方诊断解析、重试预算和连接级限流等待 |
+| [core/errors](../../backend/app/core/errors.py)、[http_errors](../../backend/app/providers/shared/http_errors.py)、[request_policy](../../backend/app/providers/shared/request_policy.py) | 应用错误、第三方 HTTP 诊断辅助、重试预算和连接级限流等待 |
 | [JsonStorageRepository](../../backend/app/repositories/storage_repository.py)、[core/config](../../backend/app/core/config.py)、[core/paths](../../backend/app/core/paths.py) | JSON 原子保存、环境/缓存配置、本地路径边界 |
 | [release.py](../../backend/app/release.py)、[launcher.py](../../backend/app/launcher.py) | 静态资源组装、发布服务启动和退出 |
 
@@ -41,6 +41,23 @@ flowchart LR
 ```
 
 批量执行先通过 `DirectoryService` 读取实时目录，再复用预览评估。批量和单项改名共用 `StorageManager` 的连接锁，并通过 `DirectoryService` 协调写入前后的缓存更新。
+
+## Provider 组织
+
+下图展示 `providers/` 的目录归属。顶层提供统一的驱动与授权接口，以及内置 Provider 的注册入口。
+
+```mermaid
+flowchart TB
+  Providers["providers/"]
+  Providers --- Entry["顶层接口与注册<br/>base.py · auth.py · registry.py · builtin.py"]
+  Providers --- Shared["shared/<br/>目录元数据 · 通用名称校验 · HTTP 错误辅助 · 请求策略"]
+  Providers --- Local["local/<br/>definition.py · driver.py"]
+  Providers --- Cloud["第三方云盘目录（示例）<br/>definition.py · driver.py · auth.py · client.py"]
+```
+
+驱动负责目录读取、文件元数据转换和改名结果处理。支持批处理的云盘由驱动组装批次并选择可重试的子项，客户端负责发送 HTTP 请求、映射服务商错误、处理请求级重试和关闭网络资源。同一驱动的单次请求和批次子项共用客户端的限流等待。写入结果未知时，业务服务按文件 ID 核对。
+
+新增 Provider 时实现 `StorageDriver`，由 `definition.py` 声明配置、能力和工厂，再在 `builtin.py` 显式注册。授权和请求客户端按接入需求组织。公共模块可按需复用，服务商专属协议与约束放在各自的 Provider 目录。
 
 ## 预览与执行
 

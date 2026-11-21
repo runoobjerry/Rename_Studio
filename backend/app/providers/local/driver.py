@@ -13,7 +13,7 @@ from app.core.errors import (
     ValidationError,
 )
 from app.providers.base import StorageDriver
-from app.providers.name_validation import NameValidationIssue, validate_portable_name
+from app.providers.shared.name_validation import NameValidationIssue, validate_portable_name
 from app.schemas.files import FileItem
 from app.schemas.storage import PathLocation, RootLocation
 

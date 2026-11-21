@@ -5,8 +5,8 @@ from app.core.errors import AppError
 from app.schemas.files import DirectoryListing, FileItem, RenameFile
 from app.schemas.storage import PathLocation, RootLocation, StorageLocation
 from app.core.paths import normalize_storage_path
-from app.providers.name_validation import NameValidationIssue
-from app.providers.directory_metadata import AncestorLookup, DirectoryHint
+from app.providers.shared.directory_metadata import AncestorLookup, DirectoryHint
+from app.providers.shared.name_validation import NameValidationIssue
 
 
 @dataclass(frozen=True, slots=True)

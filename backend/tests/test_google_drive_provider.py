@@ -15,6 +15,7 @@ from pydantic import BaseModel
 
 from app.core.errors import AuthenticationError, NotFoundError, PermissionDeniedError, PreviewExpiredError, ProviderError, RateLimitError, RenameOutcomeUnknownError, ValidationError
 from app.providers.base import RenameRequest
+from app.providers.google_drive.client import GoogleDriveClient
 from app.providers.google_drive.driver import BATCH_URL, FOLDER_MIME, READ_BATCH_SIZE, SHORTCUT_MIME, GoogleDriveDriver
 
 
@@ -45,7 +46,7 @@ STORAGE_ID = "google-drive-storage"
     (503, "backendError", ProviderError),
 ])
 def test_http_classification_keeps_vendor_reasons_as_diagnostics(status: int, reason: str, error_type: type[Exception]) -> None:
-    error = GoogleDriveDriver._response_error(httpx.Response(status, json={
+    error = GoogleDriveClient._response_error(httpx.Response(status, json={
         "error": {
             "errors": [{"reason": 123}, None, {"reason": reason}],
             "message": "must-not-escape",
@@ -62,7 +63,7 @@ def test_http_classification_keeps_vendor_reasons_as_diagnostics(status: int, re
     httpx.Response(403, json={"error": {"errors": {"reason": "rateLimitExceeded"}}}),
 ])
 def test_unreadable_google_error_reasons_fall_back_to_http_status(response: httpx.Response) -> None:
-    error = GoogleDriveDriver._response_error(response)
+    error = GoogleDriveClient._response_error(response)
 
     assert isinstance(error, PermissionDeniedError)
     assert error.details == {"provider_type": "google_drive", "provider_status": 403, "google_status": 403}

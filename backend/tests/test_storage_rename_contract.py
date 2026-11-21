@@ -5,7 +5,7 @@ import pytest
 
 from app.core.errors import NotFoundError, ProviderError, RenameOutcomeUnknownError
 from app.providers.base import RenameRequest, StorageDriver
-from app.providers.name_validation import NameValidationIssue
+from app.providers.shared.name_validation import NameValidationIssue
 from app.rules.base import RenameRule, RuleContext
 from app.rules.registry import RuleRegistry
 from app.schemas.files import DirectoryListing, FileItem

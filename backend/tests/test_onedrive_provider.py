@@ -21,11 +21,11 @@ from app.core.errors import (
     RenameOutcomeUnknownError,
     ValidationError,
 )
-from app.providers.retry import RetryBudget
 from app.providers.base import RenameRequest
 from app.providers.registry import ProviderDefinition, ProviderRegistry
 from app.providers.onedrive.definition import OneDriveConfig
 from app.providers.onedrive.driver import GRAPH_ROOT, OneDriveDriver
+from app.providers.shared.request_policy import RetryBudget
 from app.repositories.storage_repository import JsonStorageRepository
 from app.schemas.files import DirectoryListing, FileItem
 from app.rules.registry import RuleRegistry
@@ -83,6 +83,7 @@ def drive_item(item_id: str, name: str, *, folder: bool = False) -> dict[str, An
 class StubOneDriveDriver(OneDriveDriver):
     def __init__(self, responses: list[dict[str, object]]) -> None:
         super().__init__(OneDriveAuthService("http://localhost/callback", initial_state={}, persist=lambda payload: None))
+        self._client.request_json = self._request_json
         self.responses = responses
         self.calls: list[tuple[str, str, dict[str, object] | None]] = []
 

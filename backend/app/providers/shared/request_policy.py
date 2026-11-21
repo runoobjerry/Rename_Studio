@@ -1,8 +1,23 @@
+"""Retry budgets and connection-level throttling for cloud requests."""
+
 from asyncio import sleep
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from email.utils import parsedate_to_datetime
 from math import isfinite
 from time import monotonic
+
+
+MAX_RETRIES = 3
+
+
+@dataclass
+class RetryBudget:
+    used: int = 0
+
+    @property
+    def available(self) -> bool:
+        return self.used < MAX_RETRIES + 1
 
 
 class ConnectionCooldown:
