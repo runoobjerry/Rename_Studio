@@ -36,5 +36,5 @@ class JsonStorageRepository:
             try:
                 temporary.unlink(missing_ok=True)
             except OSError:
-                logging.getLogger(__name__).warning("Could not remove temporary storage state file")
+                logging.getLogger("rename_studio.storage").warning("Could not remove temporary storage state file")
             raise ProviderError("Could not save storage state") from exc

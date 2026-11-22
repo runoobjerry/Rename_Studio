@@ -13,7 +13,6 @@ import httpx
 from pydantic import BaseModel, Field, ValidationError as ModelValidationError
 
 from app.core.errors import AppError, NotFoundError, PermissionDeniedError, ProviderError, RateLimitError, RenameOutcomeUnknownError, ValidationError
-from app.core.log_context import request_id_context
 from app.providers.auth import StorageAuth
 from app.providers.base import RenameRequest, StorageDriver
 from app.providers.google_drive.client import GoogleDriveClient
@@ -380,11 +379,7 @@ class GoogleDriveDriver(StorageDriver):
             response = await self._client.request("POST", BATCH_URL, content=content, headers={"Content-Type": f"multipart/mixed; boundary={boundary}"}, budget=budget)
             responses = self._batch_responses(response, len(pending))
             attempt = budget.used - 1
-            # Classify all failures before processing can stop on another item.
-            errors = {
-                index: self._client.classify_error(outcome, attempt)
-                for index, outcome in enumerate(responses) if not outcome.is_success
-            }
+            errors = self._client.classify_batch_errors(responses, attempt)
             retry: list[str] = []
             retry_delay = 0.0
             refresh = False
@@ -403,6 +398,8 @@ class GoogleDriveDriver(StorageDriver):
                 retry.append(file_id)
             if not retry:
                 return results
+            logger.debug("Retrying provider metadata group item_count=%s retry_after_ms=%.0f",
+                         len(retry), retry_delay * 1000)
             if refresh:
                 await self._client.auth.access_token(force_refresh=True)
                 refreshed = True
@@ -541,11 +538,7 @@ class GoogleDriveDriver(StorageDriver):
                 break
 
             attempt = budget.used - 1
-            # Classify all failures before processing can stop on another item.
-            errors = {
-                index: self._client.classify_error(outcome, attempt)
-                for index, outcome in enumerate(responses) if not outcome.is_success
-            }
+            errors = self._client.classify_batch_errors(responses, attempt)
             retry: list[RenameRequest] = []
             refresh = False
             for index, (request, outcome) in enumerate(zip(pending, responses, strict=True)):
@@ -585,6 +578,8 @@ class GoogleDriveDriver(StorageDriver):
                     results.update({request.file_id: exc for request in retry})
                     break
                 refreshed = True
+            if retry:
+                logger.debug("Retrying explicitly refused provider writes item_count=%s", len(retry))
             pending = retry
         return results
 

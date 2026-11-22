@@ -1,10 +1,13 @@
 import asyncio
 import logging
+from time import perf_counter
 
 from app.core.errors import AppError, ValidationError
+from app.core.log_config import terminal_logger
+from app.core.log_context import log_operation
 from app.providers.base import RenameRequest, StorageDriver
 from app.schemas.files import RenameFile
-from app.schemas.rename import SingleExecuteItem, SingleRenameExecuteRequest, SingleRenameExecuteResponse
+from app.schemas.rename import RenameExecutionStatus, SingleExecuteItem, SingleRenameExecuteRequest, SingleRenameExecuteResponse
 from app.services.directory.directory_cache import RenameCacheScope
 from app.services.directory.directory_service import DirectoryService
 from app.services.rename.write_outcome import RenameObserver, drain_writes, rename_failure_status, resolve_rename_outcome
@@ -21,15 +24,20 @@ class SingleRenameService:
 
     async def execute(self, storage_id: str, request: SingleRenameExecuteRequest) -> SingleRenameExecuteResponse:
         # StorageManager also guards batch execution and connection changes.
-        with self.manager.execution(storage_id, request.revision):
+        operation_id = str(request.operation_id)
+        with self.manager.execution(storage_id, request.revision), log_operation(operation_id, storage_id):
             driver = self.manager.get_driver(storage_id)
             if not self.manager.provider_definition(storage_id).can_rename:
                 raise ValidationError("This storage does not support renaming")
+            storage_name = self.manager.record(storage_id).name
+            started = perf_counter()
+            logger.info("Single rename started provider=%s", driver.provider_type)
             result = SingleExecuteItem(
                 file_id=request.file_id, original_name=request.original_name,
                 new_name=request.target_name, status="failed",
             )
             scope = RenameCacheScope(folder_ids={request.file_id})
+            terminal_logger.info("%r 正在重命名", storage_name, extra={"terminal_progress": True})
             with self.directories.writing(storage_id, request.revision, scope):
                 task = asyncio.create_task(self._rename(
                     driver, RenameRequest(request.file_id, request.target_name),
@@ -41,24 +49,30 @@ class SingleRenameService:
                     outcome = await asyncio.shield(task)
                 except asyncio.CancelledError:
                     await drain_writes([task])
+                    terminal_logger.info("%r 重命名结果待核对", storage_name)
                     raise
+            duration_ms = (perf_counter() - started) * 1000
+            execution_status: RenameExecutionStatus
             if isinstance(outcome, AppError):
                 result.status = rename_failure_status(outcome)
                 result.error = outcome.message
                 result.error_code = outcome.code
                 result.details = outcome.details or None
                 result.actual_name = outcome.details.get("actual_name")
+                logger.warning("Single rename incomplete status=%s error_code=%s duration_ms=%.2f",
+                               result.status, result.error_code, duration_ms)
+                status_label = "结果待核对" if result.status == "unknown" else "失败"
+                terminal_logger.error("%r 重命名%s（%s）", storage_name, status_label, result.error_code)
+                execution_status = "incomplete"
             else:
                 result.status = "renamed"
                 result.current_file = outcome
                 result.actual_name = outcome.name
-            logger.info(
-                "single rename storage_id=%s operation=%s file_id=%s status=%s error_code=%s",
-                storage_id, request.operation_id, request.file_id, result.status, result.error_code,
-            )
+                logger.info("Single rename completed duration_ms=%.2f", duration_ms)
+                terminal_logger.info("%r 重命名成功", storage_name)
+                execution_status = "completed"
             return SingleRenameExecuteResponse(
-                operation_id=str(request.operation_id),
-                status="completed" if result.status == "renamed" else "incomplete", items=[result],
+                operation_id=operation_id, status=execution_status, items=[result],
             )
 
     @staticmethod

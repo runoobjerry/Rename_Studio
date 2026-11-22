@@ -16,7 +16,7 @@
 cd backend
 python -m venv .venv
 .\.venv\Scripts\python -m pip install -e ".[dev]"
-.\.venv\Scripts\python -m uvicorn app.main:app --reload
+.\.venv\Scripts\python -m uvicorn app.main:app --reload --no-access-log
 ```
 
 macOS 使用 `python3` 创建环境，并将虚拟环境解释器路径替换为 `.venv/bin/python`。API 默认位于 `http://127.0.0.1:8000`，交互文档位于 [/docs](http://127.0.0.1:8000/docs)。
@@ -30,6 +30,14 @@ npm run dev
 ```
 
 访问 [开发页面](http://localhost:5173)。Vite 将 `/api` 代理到后端并移除前缀；开发模式无需构建产物。可复制 `.env.example` 为根目录 `.env`，环境变量含义见[具体配置说明](https://github.com/runoobjerry/Rename_Studio/wiki/Configuration)。
+
+后端每次启动或重载都会创建日志会话，并在终端显示路径。开发启动只清理已结束的旧会话。普通与调试日志内容见[模式对照](LAUNCHER.md#模式对照)。
+
+需要关闭日志输出时，在 `backend/` 目录通过 PowerShell 运行以下命令。需要 DEBUG 文件日志时，用 `--debug` 替换 `--no-log`。macOS 使用 `.venv/bin/python`。
+
+```powershell
+.\.venv\Scripts\python -m app.main --reload --no-log
+```
 
 ## 版本管理
 
@@ -51,7 +59,7 @@ python scripts/set_version.py v1.0.0 --check
 4. 工作流成功后，在 Release 草稿中核对版本、更新说明、Windows/macOS ZIP 与 `SHA256SUMS.txt`。下载目标平台附件，核对校验和并按[启动说明](LAUNCHER.md)验证；用文件副本完成相关改名及云盘业务验证。
 5. 维护者确认后手动公开 Release；预发布版本保留 **Pre-release** 标记。GitHub 自动附带的 Source code ZIP 不含前端构建产物，用户应下载带系统名称的发布附件。
 
-自动发布检查平台为 Windows x64 与 macOS ARM64，使用 Python 3.12，覆盖前端构建及解压包的运行依赖、页面/API 与退出。Vitest、pytest、真实浏览器、OAuth 和文件改名由用户按相关 TEST 文档验证；其他系统和架构在目标环境单独验收。
+自动发布检查平台为 Windows x64 与 macOS ARM64，使用 Python 3.12，覆盖前端构建及解压包的运行依赖、页面/API、后端调试日志与退出。Vitest、pytest、真实浏览器、OAuth 和文件改名由用户按相关 TEST 文档验证。启动器参数在目标系统的交互式终端验收。
 
 ## 本地组包与检查
 

@@ -1,6 +1,7 @@
 import asyncio
 import base64
 import hashlib
+import logging
 import secrets
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -19,6 +20,7 @@ AUTHORIZE_URL = "https://accounts.google.com/o/oauth2/v2/auth"
 TOKEN_URL = "https://oauth2.googleapis.com/token"
 ABOUT_URL = "https://www.googleapis.com/drive/v3/about"
 SCOPE = "https://www.googleapis.com/auth/drive.metadata"
+logger = logging.getLogger("rename_studio.auth")
 
 
 class _TokenResponse(BaseModel):
@@ -173,6 +175,7 @@ class GoogleDriveAuthService:
         return self._require_session().access_token
 
     async def _refresh_access_token(self, previous: _Session) -> None:
+        logger.debug("Refreshing provider authorization provider=google_drive")
         client_id, client_secret = self._require_client_credentials()
         generation = self._generation
         try:
@@ -194,6 +197,7 @@ class GoogleDriveAuthService:
             scope=SCOPE, account_id=previous.account_id,
             display_name=previous.display_name, email=previous.email,
         ))
+        logger.debug("Provider authorization refreshed provider=google_drive")
 
     async def _token_request(self, form: dict[str, str]) -> _TokenResponse:
         try:

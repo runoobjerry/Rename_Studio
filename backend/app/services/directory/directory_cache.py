@@ -13,7 +13,7 @@ from app.schemas.storage import IdLocation, RootLocation, StorageLocation
 
 
 type DirectoryKey = tuple[str, int, StorageLocation]
-logger = logging.getLogger("rename_studio.directory")
+logger = logging.getLogger("rename_studio.cache")
 
 
 @dataclass(frozen=True, slots=True)
@@ -284,7 +284,8 @@ class DirectoryCache:
                 self.advance_generation(known_storage)
         else:
             self.advance_generation(storage_id)
-        logger.debug("directory cache invalidated storage_id=%s", storage_id)
+        logger.debug("Connection directory cache invalidated scope=%s", "connection" if storage_id else "all",
+                     extra={"storage_id": storage_id})
 
     def invalidate(self, storage_id: str | None = None) -> None:
         self._entries.expire()

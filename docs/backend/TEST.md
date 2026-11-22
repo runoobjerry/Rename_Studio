@@ -11,6 +11,7 @@
 | 修改范围 | 测试入口 |
 | --- | --- |
 | API、Schema 与跨端结果 | [test_api](../../backend/tests/test_api.py)、[存储改名契约](../../backend/tests/test_storage_rename_contract.py) |
+| 文件日志格式、级别、脱敏与操作关联 | [test_logging](../../backend/tests/test_logging.py) |
 | 预览、冲突与快照 | [test_preview_service](../../backend/tests/test_preview_service.py) |
 | 批量复核、部分/未知结果与取消 | [test_execute_service](../../backend/tests/test_execute_service.py) |
 | 单项直接执行 | [test_single_rename_service](../../backend/tests/test_single_rename_service.py) |
@@ -42,6 +43,7 @@ Provider 场景共用 [provider_fixtures](../../backend/tests/provider_fixtures.
 | 目录 / 缓存 | 核对根目录、子目录、真实 ID、完整分页、手动刷新和改名后缓存协调；执行前复核不使用旧缓存 |
 | 未知结果 / 取消 | 优先用自动化边界模拟核对响应丢失、按 ID 确认、停止补组与已提交写入收尾；真实环境只记录实际遇到的故障并核对文件，不直接重放请求 |
 | 发布启动 | 按[启动说明](../LAUNCHER.md)和[发布流程](../DEVELOPMENT.md#发布流程)检查目标平台的页面/API、退出与状态保留；前端检查入口见[前端 TEST](../frontend/TEST.md) |
+| 后端日志 | 在 Windows 和 macOS 分别用普通和调试模式启动，触发目录读取、预览和改名。按终端显示的路径打开 `app.log`，对照[模式表](../LAUNCHER.md#模式对照)检查级别和关联字段。 |
 
 ## 验收记录
 

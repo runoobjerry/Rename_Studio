@@ -1,4 +1,5 @@
 import json
+import logging
 from typing import Annotated, cast
 
 from fastapi import APIRouter, Depends, Query, Response
@@ -24,6 +25,7 @@ from app.services.storage.storage_manager import StorageManager
 
 
 router = APIRouter(tags=["storages"])
+auth_logger = logging.getLogger("rename_studio.auth")
 Manager = Annotated[StorageManager, Depends(get_storage_manager)]
 
 
@@ -102,6 +104,7 @@ async def auth_start(storage_id: str, manager: Manager) -> StorageAuthStartRespo
 @router.delete("/storages/{storage_id}/auth/session", status_code=204)
 async def disconnect(storage_id: str, manager: Manager) -> Response:
     cast(StorageAuth, manager.auth(storage_id)).disconnect()
+    auth_logger.info("Storage authorization removed", extra={"storage_id": storage_id})
     return Response(status_code=204)
 
 
@@ -111,9 +114,11 @@ async def callback(manager: Manager, code: str | None = Query(default=None), sta
     storage_id, failure = await manager.finish_authorization(code, state, error)
     success = failure is None
     if failure is None:
+        auth_logger.info("Storage authorization completed", extra={"storage_id": storage_id})
         message = "Storage connected. You can close this window."
         error_code, details = None, {}
     else:
+        auth_logger.warning("Storage authorization failed error_code=%s", failure.code, extra={"storage_id": storage_id})
         message, error_code, details = failure.message, failure.code, failure.details
     payload = json.dumps({"type": "storage-auth", "storage_id": storage_id, "status": "connected" if success else "failed", "message": message, "error_code": error_code, "details": details}).replace("<", "\\u003c")
     origin = json.dumps(get_settings().frontend_origin)

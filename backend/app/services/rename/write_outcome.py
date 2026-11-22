@@ -1,4 +1,5 @@
 import asyncio
+import logging
 from collections.abc import Awaitable, Callable, Iterable
 from typing import Literal, TypeVar
 
@@ -8,6 +9,7 @@ from app.schemas.files import RenameFile
 
 
 T = TypeVar("T")
+logger = logging.getLogger("rename_studio.rename")
 type RenameObserver[FileT: RenameFile] = Callable[[str, FileT | AppError, bool], None]
 
 
@@ -26,9 +28,11 @@ async def resolve_rename_outcome[FileT: RenameFile](
     unknown = outcome if isinstance(outcome, RenameOutcomeUnknownError) else None
     if unknown is not None:
         # A lost response must be checked by ID, never replayed.
+        logger.debug("Checking metadata after an uncertain write")
         try:
             outcome = await read_metadata(request.file_id)
-        except AppError:
+        except AppError as exc:
+            logger.debug("Write metadata could not be verified error_code=%s", exc.code)
             outcome = unknown
 
     target_confirmed = not isinstance(outcome, AppError) and outcome.name == request.new_name

@@ -1,6 +1,7 @@
 from collections import Counter
 from collections.abc import Sequence
 from datetime import datetime
+from functools import cached_property
 from typing import Any, Literal
 from uuid import UUID
 
@@ -83,8 +84,9 @@ class RenameExecuteResponse(BaseModel):
     items: list[ExecuteItem]
 
     @computed_field
-    @property
+    @cached_property
     def counts(self) -> RenameResultCounts:
+        # Batch execution finalizes the items before logging and serializing the response.
         return RenameResultCounts.from_items(self.items)
 
 

@@ -8,7 +8,6 @@ from urllib.parse import quote, urlsplit
 
 import httpx
 
-from app.core.log_context import request_id_context
 from app.core.errors import (
     AppError,
     ProviderError,
@@ -26,7 +25,7 @@ from app.schemas.files import DirectoryListing, FileItem
 from app.schemas.storage import IdLocation, PathLocation, RootLocation, StorageLocation
 
 
-logger = logging.getLogger("rename_studio.onedrive_performance")
+logger = logging.getLogger("rename_studio.onedrive")
 
 
 GRAPH_ROOT = "https://graph.microsoft.com/v1.0"
@@ -204,9 +203,9 @@ class OneDriveDriver(StorageDriver):
             if any(not isinstance(item, dict) for item in raw_items):
                 raise DirectoryMetadataConflict("Microsoft Graph returned an invalid directory item")
             items.extend(self._to_item(item) for item in raw_items)
-            logger.info(
-                "directory_page provider=onedrive request_id=%s page=%s item_count=%s duration_ms=%.2f",
-                request_id_context.get(), page, len(raw_items), (perf_counter() - page_started) * 1000,
+            logger.debug(
+                "Provider directory page received page=%s item_count=%s duration_ms=%.2f",
+                page, len(raw_items), (perf_counter() - page_started) * 1000,
             )
             next_link = payload.get("@odata.nextLink")
             if next_link is not None and (not isinstance(next_link, str) or not next_link):
@@ -310,6 +309,8 @@ class OneDriveDriver(StorageDriver):
             else:
                 results[file_id] = self._client.graph_error(status, response_body)
         if retry:
+            logger.debug("Retrying provider metadata group item_count=%s retry_after_ms=%.0f",
+                         len(retry), retry_after * 1000)
             if retry_after:
                 await asyncio.sleep(retry_after)
             if retry_auth:
@@ -439,6 +440,8 @@ class OneDriveDriver(StorageDriver):
         if retry and not any(isinstance(outcome, RenameOutcomeUnknownError) for outcome in results.values()):
             # An uncertain part goes to reconciliation before any more writes are sent.
             # Graph 批处理需单独重试被限流的子请求，而不是重放已成功的项目。
+            logger.debug("Retrying explicitly refused provider writes item_count=%s retry_after_ms=%.0f",
+                         len(retry), retry_after * 1000)
             if retry_after:
                 await asyncio.sleep(retry_after)
             try:

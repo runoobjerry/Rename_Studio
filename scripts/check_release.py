@@ -47,6 +47,8 @@ def check_release(archive: Path) -> None:
         local_root = scratch / "local-files"
         local_root.mkdir()
         stop_file = scratch / "service.stop"
+        log_session = package / ".runtime/logs/session-smoke"
+        log_session.mkdir(parents=True)
         environment = os.environ.copy()
         environment.pop("PYTHONPATH", None)
         environment.update({
@@ -58,7 +60,8 @@ def check_release(archive: Path) -> None:
         with (scratch / "service.log").open("w+", encoding="utf-8") as log:
             process = subprocess.Popen(
                 [sys.executable, "-m", "app.launcher", "--stop-file", str(stop_file),
-                 "--parent-pid", str(os.getpid()), "--instance-id", instance_id],
+                 "--parent-pid", str(os.getpid()), "--instance-id", instance_id,
+                 "--log-dir", str(log_session), "--debug"],
                 cwd=package / "backend", env=environment, stdout=log, stderr=log,
             )
             try:
@@ -104,11 +107,18 @@ def check_release(archive: Path) -> None:
                         raise RuntimeError("Release check service did not stop gracefully") from exc
                 if process.returncode != 0:
                     raise RuntimeError(f"Release service exited with code {process.returncode}")
+                app_log = (log_session / "app.log").read_text(encoding="utf-8")
+                if "DEBUG [App] Application lifecycle initialized" not in app_log:
+                    raise RuntimeError("Release debug log was not written")
+                if app_log.count("[API] HTTP request completed method=GET route=/rules status=200") != 1:
+                    raise RuntimeError("Release request logging did not write exactly one access record")
+                if "route=/health status=200" in app_log or "/api/not-a-real-route" in app_log:
+                    raise RuntimeError("Release request logging exposed a quiet or unmatched URL")
             except (OSError, ValueError, RuntimeError):
                 log.seek(0)
                 print(log.read(), file=sys.stderr)
                 raise
-    print("Release smoke check passed: dependencies, page, static resources, APIs, shutdown")
+    print("Release smoke check passed: dependencies, page, static resources, APIs, logs, shutdown")
 
 
 def main() -> None:

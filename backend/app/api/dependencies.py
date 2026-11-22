@@ -1,4 +1,5 @@
 from functools import lru_cache
+import logging
 
 from app.core.config import Settings, get_settings
 from app.core.errors import ProviderError
@@ -19,6 +20,9 @@ from app.services.rename.single_rename_service import SingleRenameService
 from app.services.rename.preview_service import PreviewService
 from app.services.rename.preview_store import PreviewStore
 from app.services.rename.rename_engine import RenameEngine
+
+
+logger = logging.getLogger("rename_studio.storage")
 
 
 @lru_cache
@@ -65,6 +69,7 @@ def build_storage_manager(settings: Settings, registry: ProviderRegistry, direct
                 record.config = registry.validate_config(record.provider_type, record.config)
         except (OSError, KeyError, ValueError) as exc:
             raise ProviderError("Storage state is invalid; restore its backup before starting") from exc
+    logger.info("Storage connections loaded connection_count=%s", len(state.connections))
     return StorageManager(
         registry, repository, state, default_connection=default,
         directory_cache=directory_cache,

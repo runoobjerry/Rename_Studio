@@ -1,9 +1,9 @@
+import argparse
 import asyncio
 import logging
+import os
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager, suppress
-from time import perf_counter
-from uuid import uuid4
 
 from fastapi import FastAPI, Request
 from fastapi.encoders import jsonable_encoder
@@ -17,13 +17,14 @@ from app.api.app_settings_router import router as app_settings_router
 from app.api.dependencies import get_preview_store, get_storage_services
 from app.core.config import get_settings
 from app.core.errors import AppError
-from app.core.log_context import request_id_context
+from app.core.log_dev import DEV_LOG_LEVEL_ENV, development_log_session
+from app.core.log_http import LoggingMiddleware
 
 
-logger = logging.getLogger("rename_studio.api")
+app_logger = logging.getLogger("rename_studio.app")
 
 
-def create_app() -> FastAPI:
+def create_app(*, instance_id: str | None = None, development_logs: bool = False) -> FastAPI:
     settings = get_settings()
 
     @asynccontextmanager
@@ -36,17 +37,29 @@ def create_app() -> FastAPI:
 
         # 无后续请求时也回收过期快照；退出时先停止清理任务。
         cleanup_task = asyncio.create_task(clean_previews())
+        app_logger.debug("Application lifecycle initialized")
         try:
             yield
         finally:
-            cleanup_task.cancel()
-            with suppress(asyncio.CancelledError):
-                await cleanup_task
-            if get_storage_services.cache_info().currsize:
-                manager, _ = get_storage_services()
-                await manager.aclose()
+            try:
+                cleanup_task.cancel()
+                with suppress(asyncio.CancelledError):
+                    await cleanup_task
+                if get_storage_services.cache_info().currsize:
+                    manager, _ = get_storage_services()
+                    await manager.aclose()
+            except Exception:
+                app_logger.exception("Application shutdown failed")
+                raise
 
-    app = FastAPI(title=settings.app_name, version="1.0.0-alpha4", lifespan=lifespan)
+    @asynccontextmanager
+    async def development_lifespan(app: FastAPI) -> AsyncIterator[None]:
+        with development_log_session(app.version):
+            async with lifespan(app):
+                yield
+
+    app = FastAPI(title=settings.app_name, version="1.0.0-alpha4",
+                  lifespan=development_lifespan if development_logs else lifespan)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=[settings.frontend_origin],
@@ -55,30 +68,14 @@ def create_app() -> FastAPI:
         allow_headers=["Content-Type"],
     )
 
-    @app.middleware("http")
-    async def add_request_context(request: Request, call_next):
-        request_id = request.headers.get("x-request-id") or str(uuid4())
-        request.state.request_id = request_id
-        started_at = perf_counter()
-        context_token = request_id_context.set(request_id)
-        try:
-            response = await call_next(request)
-        finally:
-            request_id_context.reset(context_token)
-        duration_ms = round((perf_counter() - started_at) * 1000, 2)
-        response.headers["x-request-id"] = request_id
-        logger.info(
-            "request completed method=%s path=%s status=%s request_id=%s duration_ms=%s",
-            request.method,
-            request.url.path,
-            response.status_code,
-            request_id,
-            duration_ms,
-        )
-        return response
+    app.add_middleware(LoggingMiddleware, instance_id=instance_id, app_version=app.version)
 
     @app.exception_handler(AppError)
-    async def handle_app_error(_request: Request, exc: AppError) -> JSONResponse:
+    async def handle_app_error(request: Request, exc: AppError) -> JSONResponse:
+        request.state.error_code = exc.code
+        request.state.operation_id = exc.log_operation_id
+        request.state.storage_id = exc.log_storage_id
+        request.state.execution_started = exc.details.get("execution_started")
         return JSONResponse(
             status_code=exc.status_code,
             content={
@@ -94,6 +91,7 @@ def create_app() -> FastAPI:
     async def handle_request_validation(
         request: Request, exc: RequestValidationError
     ) -> JSONResponse:
+        request.state.error_code = "REQUEST_VALIDATION_ERROR"
         errors = exc.errors()
         if request.scope["route"].path in ("/app-settings", "/storages", "/storages/{storage_id}"):
             # Storage bodies may contain a secret even when another field fails validation.
@@ -110,31 +108,33 @@ def create_app() -> FastAPI:
             },
         )
 
-    @app.exception_handler(Exception)
-    async def handle_unexpected_error(
-        request: Request, exc: Exception
-    ) -> JSONResponse:
-        request_id = getattr(request.state, "request_id", None)
-        logger.error(
-            "unhandled error request_id=%s",
-            request_id,
-            exc_info=(type(exc), exc, exc.__traceback__),
-        )
-        return JSONResponse(
-            status_code=500,
-            content={
-                "error": {
-                    "code": "INTERNAL_ERROR",
-                    "message": "An unexpected error occurred",
-                    "details": {"request_id": request_id},
-                }
-            },
-        )
-
     app.include_router(router)
     app.include_router(storage_router)
     app.include_router(app_settings_router)
     return app
 
 
-app = create_app()
+def main() -> None:
+    import uvicorn
+
+    parser = argparse.ArgumentParser(description="Start the Rename Studio development API.")
+    parser.add_argument("--reload", action="store_true", help="Restart the server after source changes.")
+    logging_options = parser.add_mutually_exclusive_group()
+    logging_options.add_argument("--debug", action="store_true", help="Include debug messages in the log file.")
+    logging_options.add_argument("--no-log", action="store_true", help="Disable development log output.")
+    args = parser.parse_args()
+
+    if args.no_log:
+        os.environ[DEV_LOG_LEVEL_ENV] = "OFF"
+    elif args.debug:
+        os.environ[DEV_LOG_LEVEL_ENV] = "DEBUG"
+    uvicorn.run(
+        "app.main:app", reload=args.reload, access_log=False,
+        log_level=logging.CRITICAL + 1 if args.no_log else "info",
+    )
+
+
+if __name__ == "__main__":
+    main()
+else:
+    app = create_app(development_logs=True)

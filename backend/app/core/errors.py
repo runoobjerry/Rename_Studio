@@ -11,6 +11,9 @@ class AppError(Exception):
 
     code = "APPLICATION_ERROR"
     status_code = 400
+    # Internal correlation fields stay outside the API error body.
+    log_operation_id: str | None = None
+    log_storage_id: str | None = None
 
     def __init__(self, message: str, *, details: dict[str, Any] | None = None) -> None:
         super().__init__(message)

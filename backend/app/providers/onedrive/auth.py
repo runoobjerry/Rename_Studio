@@ -1,6 +1,7 @@
 import asyncio
 import base64
 import hashlib
+import logging
 import secrets
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -21,6 +22,7 @@ GRAPH_ME_URL = (
     "?$select=id,displayName,mail,userPrincipalName"
 )
 SCOPES = "offline_access Files.ReadWrite User.Read"
+logger = logging.getLogger("rename_studio.auth")
 
 
 @dataclass(slots=True)
@@ -198,6 +200,7 @@ class OneDriveAuthService:
         return self._tokens.access_token
 
     async def _refresh_access_token(self) -> None:
+        logger.debug("Refreshing provider authorization provider=onedrive")
         if self._tokens is None or not self._tokens.refresh_token:
             # 提前刷新也可能发生在到期前；缺少刷新凭据本身不能证明授权已过期。
             reason = ("ACCOUNT_NOT_CONNECTED" if self._tokens is None else
@@ -223,6 +226,7 @@ class OneDriveAuthService:
         if generation != self._generation:
             raise StorageConnectionChangedError("Storage changed during token refresh")
         self._store_tokens(payload, fallback_refresh_token=previous_refresh_token)
+        logger.debug("Provider authorization refreshed provider=onedrive")
 
     def _expire_session(self) -> None:
         # Provider-detected revocation can occur during execution; user edits remain blocked.

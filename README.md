@@ -48,9 +48,11 @@
 bash "/项目完整路径/Start.sh"
 ```
 
-保持终端打开，输入 **Q 后按 Enter**，或按 **Ctrl+C** 退出。
+保持终端打开，按 **Q** 或 **Ctrl+C** 安全退出。
 
-> 脚本创建独立的 `.runtime/venv` 并按需安装依赖，随后打开 [本地页面](http://localhost:8000)。服务仅监听 `127.0.0.1:8000`，关闭浏览器不会停止后端。启动失败可先查看 `.runtime/logs`，再查阅[常见问题](https://github.com/runoobjerry/Rename_Studio/wiki/FAQ)。
+调试命令和后端日志位置见[发布包启动与日志](https://github.com/runoobjerry/Rename_Studio/blob/main/docs/LAUNCHER.md)。
+
+> 脚本创建独立的 `.runtime/venv` 并按需安装依赖，随后打开 [本地页面](http://localhost:8000)。服务仅监听 `127.0.0.1:8000`，关闭浏览器不会停止后端。其他问题见[常见问题](https://github.com/runoobjerry/Rename_Studio/wiki/FAQ)。
 
 ### 预览并执行
 

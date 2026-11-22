@@ -1,4 +1,5 @@
 import asyncio
+import logging
 from collections.abc import Iterator
 from contextlib import contextmanager
 from datetime import UTC, datetime, timedelta
@@ -14,6 +15,11 @@ from app.providers.registry import ProviderDefinition, ProviderRegistry
 from app.repositories.storage_repository import JsonStorageRepository
 from app.schemas.storage import AppSettingsPatch, AppSettingsResponse, AuthorizationStart, StorageCreate, StorageInfo, StorageRecord, StorageState, StorageUpdate, validate_preferences_size
 from app.services.directory.directory_cache import DirectoryCache
+
+
+logger = logging.getLogger("rename_studio.storage")
+app_logger = logging.getLogger("rename_studio.app")
+auth_logger = logging.getLogger("rename_studio.auth")
 
 
 class StorageManager:
@@ -118,6 +124,7 @@ class StorageManager:
         state.preferences = preferences
         self.repository.save(state)
         self.state = state
+        app_logger.info("Application preferences updated")
         return self.app_settings()
 
     def reset(self) -> AppSettingsResponse:
@@ -140,6 +147,7 @@ class StorageManager:
             task = asyncio.create_task(driver.aclose())
             self._closing.add(task)
             task.add_done_callback(self._closing.discard)
+        logger.info("Application settings reset")
         return self.app_settings()
 
     def create(self, request: StorageCreate) -> StorageInfo:
@@ -149,6 +157,8 @@ class StorageManager:
                                name=request.name, config=config,
                                credentials={"client_secret": secret} if secret is not None else {})
         self._commit(record, record.storage_id)
+        logger.info("Storage connection created provider=%s", record.provider_type,
+                    extra={"storage_id": record.storage_id})
         return self.info(record.storage_id)
 
     async def update(self, storage_id: str, request: StorageUpdate) -> StorageInfo:
@@ -172,6 +182,8 @@ class StorageManager:
         self._commit(record, record.storage_id)
         if changed:
             await self._invalidate(record.storage_id)
+        logger.info("Storage connection updated provider=%s revision=%s", record.provider_type, record.revision,
+                    extra={"storage_id": record.storage_id})
         return self.info(record.storage_id)
 
     def _client_secret(self, provider_type: str, secret: SecretStr | None) -> str | None:
@@ -188,6 +200,8 @@ class StorageManager:
             raise ValidationError("The default storage connection cannot be deleted", details={"reason": "DEFAULT_CONNECTION_DELETE_FORBIDDEN", "params": {}})
         self._commit(None, record.storage_id)
         await self._invalidate(record.storage_id)
+        logger.info("Storage connection deleted provider=%s", record.provider_type,
+                    extra={"storage_id": record.storage_id})
 
     def start_authorization(self, storage_id: str, redirect_uri: str) -> AuthorizationStart:
         self.ensure_mutable(storage_id)
@@ -199,6 +213,7 @@ class StorageManager:
             if session[0] != storage_id and session[2] > now
         }
         self._authorization_sessions[result.state] = (storage_id, revision, now + timedelta(minutes=10))
+        auth_logger.info("Storage authorization started", extra={"storage_id": storage_id})
         return result
 
     async def finish_authorization(

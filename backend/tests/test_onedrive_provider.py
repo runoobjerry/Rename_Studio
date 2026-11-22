@@ -481,9 +481,8 @@ async def directory_graph(tmp_path: Path) -> AsyncIterator[tuple[StorageManager,
 
 
 @pytest.mark.asyncio
-async def test_browsing_and_repeated_breadcrumb_jumps_share_existing_listings(directory_graph, caplog) -> None:
+async def test_browsing_and_repeated_breadcrumb_jumps_share_existing_listings(directory_graph) -> None:
     _, directories, graph = directory_graph
-    caplog.set_level("DEBUG", logger="rename_studio.directory")
     chain = [("root", RootLocation()), ("A", IdLocation(value="a")), ("B", IdLocation(value="b")),
              ("C", IdLocation(value="c")), ("D", IdLocation(value="d"))]
     for index, (_, location) in enumerate(chain):
@@ -495,13 +494,11 @@ async def test_browsing_and_repeated_breadcrumb_jumps_share_existing_listings(di
         ("GET", f"items/{key}/children") for key in ("a", "b", "c", "d")
     ]
     count = len(graph.requests)
-    caplog.clear()
     a, b = listing.breadcrumbs[1:3]
     d = listing.breadcrumbs[-1]
     for target in (a, d, b, d, a):
         opened = await directories.list_directory("drive", target.location)
         assert opened.location == target.location
-    assert sum(record.message == "directory cache hit storage_id=drive" for record in caplog.records) == 5
     assert len(graph.requests) == count
 
 

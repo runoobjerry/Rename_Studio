@@ -4,7 +4,6 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from time import perf_counter
 
-from app.core.log_context import request_id_context
 from app.core.errors import StorageConnectionChangedError, ValidationError
 from app.rules.base import RuleContext
 from app.schemas.files import FileItem
@@ -25,10 +24,10 @@ def _timed_phase(storage_id: str, phase: str, item_count: int) -> Iterator[None]
         yield
     finally:
         # 失败阶段也记录耗时；不记录文件名、规则内容或授权数据。
-        logger.info(
-            "preview phase=%s storage_id=%s request_id=%s item_count=%s duration_ms=%.2f",
-            phase, storage_id, request_id_context.get(), item_count,
-            (perf_counter() - started) * 1000,
+        logger.debug(
+            "Preview phase finished phase=%s item_count=%s duration_ms=%.2f",
+            phase, item_count, (perf_counter() - started) * 1000,
+            extra={"storage_id": storage_id},
         )
 
 
@@ -48,6 +47,7 @@ class PreviewService:
     async def preview(
         self, request: RenamePreviewRequest, *, previous_preview_id: str | None = None,
     ) -> RenamePreviewResponse:
+        started = perf_counter()
         if not self.manager.provider_definition(request.storage_id).can_rename:
             raise ValidationError("This storage does not support rename previews")
         revision = self.manager.revision(request.storage_id)
@@ -61,7 +61,13 @@ class PreviewService:
             # 新快照保存成功后才释放旧快照；替代 ID 不属于执行快照内容。
             if previous_preview_id is not None:
                 self.store.release(previous_preview_id, request.storage_id)
-            return response
+        logger.info(
+            "Rename preview generated item_count=%s changed=%s conflicts=%s valid=%s duration_ms=%.2f",
+            len(items), sum(item.changed for item in items), sum(item.conflict for item in items), valid,
+            (perf_counter() - started) * 1000,
+            extra={"storage_id": request.storage_id, "operation_id": response.preview_id},
+        )
+        return response
 
     async def evaluate(
         self,
@@ -103,6 +109,8 @@ class PreviewService:
                 files = await driver.get_metadata_many(request.file_ids)
 
         # 配置仅在本轮评估中解析一次；执行前重新评估时仍会重新校验。
+        logger.debug("Calculating rename candidates rule_count=%s", len(request.rules),
+                     extra={"storage_id": request.storage_id})
         with _timed_phase(request.storage_id, "rules", len(files)):
             if request.target_name is not None:
                 # 请求模型保证单项且不混用规则；后续校验、快照与执行重校验共用原流程。

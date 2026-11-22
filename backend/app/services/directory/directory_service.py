@@ -3,10 +3,10 @@ import logging
 from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass, field
+from time import perf_counter
 from typing import Literal
 
 from app.core.errors import NotFoundError, PermissionDeniedError, StorageBusyError, StorageConnectionChangedError, ValidationError
-from app.core.log_context import request_id_context
 from app.providers.base import StorageDriver
 from app.providers.shared.directory_metadata import AncestorLookup, DirectoryAncestry, DirectoryHint, DirectoryMetadataConflict
 from app.schemas.files import DirectoryListing, FileItem
@@ -16,6 +16,7 @@ from app.services.storage.storage_manager import StorageManager
 
 
 logger = logging.getLogger("rename_studio.directory")
+cache_logger = logging.getLogger("rename_studio.cache")
 type DirectoryReadMode = Literal["cached", "refresh", "verify", "navigate"]
 _DIRECTORY_FAILURES = (DirectoryMetadataConflict, NotFoundError, PermissionDeniedError, ValidationError)
 
@@ -46,7 +47,7 @@ class DirectoryService:
     def invalidate_rename(self, storage_id: str, scope: RenameCacheScope) -> None:
         self._cache.invalidate_rename(storage_id, scope)
         self._cache.advance_generation(storage_id)
-        logger.debug("rename directories invalidated storage_id=%s", storage_id)
+        cache_logger.debug("Rename directory entries invalidated", extra={"storage_id": storage_id})
 
     def _can_publish(self, read: _Read) -> bool:
         return not read.abandoned and read.generation == self._cache.generation(read.key[0])
@@ -61,6 +62,7 @@ class DirectoryService:
         except BaseException:
             # An interrupted execution may have submitted writes without collecting all outcomes.
             self._cache.invalidate(storage_id)
+            cache_logger.debug("Directory entries invalidated after interrupted write", extra={"storage_id": storage_id})
             raise
         else:
             self._cache.finish_rename(storage_id, revision, scope)
@@ -88,19 +90,19 @@ class DirectoryService:
         # Only the Provider's canonical location is cached. Aliases are resolved on each read.
         listing = self._cache.get(key)
         if listing is not None:
-            logger.debug("directory cache hit storage_id=%s", storage_id)
+            cache_logger.debug("Directory cache hit", extra={"storage_id": storage_id})
             return listing
         generation = self._cache.generation(storage_id)
         flight = self._flights.get(key)
         if flight is None or flight.read.generation != generation:
-            logger.debug("directory cache miss storage_id=%s", storage_id)
+            cache_logger.debug("Directory cache miss", extra={"storage_id": storage_id})
             read = _Read(key, generation)
             task = asyncio.create_task(self._fill(read, parent_location))
             flight = _Flight(read, task)
             self._flights[key] = flight
             task.add_done_callback(lambda done: self._finish_fill(key, flight, done))
         else:
-            logger.debug("directory read joined storage_id=%s", storage_id)
+            cache_logger.debug("Joined an in-flight directory read", extra={"storage_id": storage_id})
         listing = await self._wait_read(key, flight)
         # Authorization can change between the shared task finishing and this waiter resuming.
         self._check_revision(key)
@@ -122,11 +124,14 @@ class DirectoryService:
             if not self._can_publish(read):
                 return None
             result = self._cache.ancestor(read.key[0], read.key[1], folder_id)
-            if result is not None and result.expires_at is not None:
+            if result is None:
+                return None
+            if result.expires_at is not None:
                 read.expires_at = (min(read.expires_at, result.expires_at) if read.expires_at is not None
                                    else result.expires_at)
-            if result is not None and not isinstance(folder_id, RootLocation):
+            if not isinstance(folder_id, RootLocation):
                 read.borrowed.add(result.chain[-1][0])
+            cache_logger.debug("Reused a cached directory ancestor", extra={"storage_id": read.key[0]})
             return result
         return lookup
 
@@ -135,8 +140,7 @@ class DirectoryService:
         ancestor_lookup: AncestorLookup | None = None,
     ) -> DirectoryListing:
         storage_id, revision, location = key
-        logger.info("directory provider read storage_id=%s mode=%s request_id=%s",
-                    storage_id, mode, request_id_context.get())
+        started = perf_counter()
         listing = await self._manager.get_driver(storage_id).read_directory(
             location, hint=hint,
             ancestor_lookup=ancestor_lookup,
@@ -144,6 +148,12 @@ class DirectoryService:
             verify=mode == "verify",
         )
         self._check_revision(key)
+        logger.log(
+            logging.DEBUG if mode == "verify" else logging.INFO,
+            "Directory loaded successfully mode=%s item_count=%s duration_ms=%.2f",
+            mode, len(listing.items), (perf_counter() - started) * 1000,
+            extra={"storage_id": storage_id},
+        )
         return listing.model_copy(update={"storage_id": storage_id, "revision": revision})
 
     def _check_revision(self, key: DirectoryKey) -> None:

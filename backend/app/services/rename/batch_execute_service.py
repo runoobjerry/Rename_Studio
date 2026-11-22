@@ -4,7 +4,8 @@ from collections.abc import Callable
 from time import monotonic
 
 from app.core.errors import AppError, NotFoundError, PreviewExpiredError, ValidationError, RenameOutcomeUnknownError, ProviderError
-from app.core.log_context import request_id_context
+from app.core.log_config import terminal_logger
+from app.core.log_context import log_operation
 from app.providers.base import RenameRequest, StorageDriver
 from app.schemas.files import FileItem
 from app.schemas.rename import (
@@ -54,7 +55,10 @@ class ExecuteService:
         # 单进程内串行执行，避免两个批次同时争用相同目录中的目标名称。
         async with self._lock:
             snapshot = self.previews.get(preview_id)
-            with self.manager.execution(snapshot.request.storage_id, snapshot.connection_revision):
+            storage_id = snapshot.request.storage_id
+            with self.manager.execution(storage_id, snapshot.connection_revision), log_operation(snapshot.preview_id, storage_id):
+                storage_name = self.manager.record(storage_id).name
+                started = monotonic()
                 self._purge_progress()
                 progress = RenameProgress(
                     preview_id=preview_id,
@@ -63,31 +67,53 @@ class ExecuteService:
                 )
                 # 活跃批次不超时清除；完成后保留十分钟供界面读取最终状态。
                 self._progress[preview_id] = (float("inf"), progress)
+                logger.info("Batch rename started item_count=%s", progress.total)
+                terminal_logger.info("%r 批量重命名正在复核 %s 项", storage_name, progress.total,
+                                     extra={"terminal_progress": True})
                 try:
+                    logger.debug("Batch rename revalidation started")
                     try:
                         sources = await self._revalidate(snapshot)
                     except AppError as exc:
                         # 复核只读取状态，失败时可明确告知客户端尚未开始写入。
                         exc.details["execution_started"] = False
+                        exc.log_operation_id = snapshot.preview_id
+                        exc.log_storage_id = storage_id
                         raise
+                    logger.debug("Batch rename revalidation completed item_count=%s", len(sources))
                     self.previews.consume(preview_id)
-                    response = await self._execute_snapshot(snapshot, sources, progress)
+                    response = await self._execute_snapshot(snapshot, sources, progress, storage_name)
+                    processed = progress.processed
                     progress.processed = progress.total
                     progress.phase = "finished"
                 except (Exception, asyncio.CancelledError) as exc:
                     progress.phase = "failed"
                     progress.error = exc.message if isinstance(exc, AppError) else "Rename execution interrupted"
+                    if isinstance(exc, asyncio.CancelledError):
+                        logger.warning("Batch rename was cancelled processed=%s", progress.processed)
+                        terminal_logger.info("%r 批量重命名 %s/%s，已取消，请核对结果",
+                                             storage_name, progress.processed, progress.total)
+                    else:
+                        error_code = exc.code if isinstance(exc, AppError) else "INTERNAL_ERROR"
+                        terminal_logger.error("%r 批量重命名 %s/%s，中断（%s）",
+                                              storage_name, progress.processed, progress.total, error_code)
                     raise
                 finally:
                     self._progress[preview_id] = (monotonic() + 600, progress)
-                for item in response.items:
-                    logger.info(
-                        "rename execution storage_id=%s file_id=%s status=%s error=%s",
-                        snapshot.request.storage_id,
-                        item.file_id,
-                        item.status,
-                        item.error,
-                    )
+                counts = response.counts
+                errors = sorted({item.error_code for item in response.items if item.error_code})
+                logger.log(
+                    logging.WARNING if response.status == "incomplete" else logging.INFO,
+                    "Batch rename completed succeeded=%s failed=%s unknown=%s skipped=%s not_attempted=%s error_codes=%s duration_ms=%.2f",
+                    counts.renamed, counts.failed, counts.unknown, counts.skipped,
+                    counts.not_attempted, ",".join(errors) or "none", (monotonic() - started) * 1000,
+                )
+                terminal_logger.log(
+                    logging.ERROR if response.status == "incomplete" else logging.INFO,
+                    "%r 批量重命名 %s/%s，成功 %s，失败 %s，结果未知 %s，跳过 %s，未尝试 %s",
+                    storage_name, processed, progress.total, counts.renamed, counts.failed, counts.unknown,
+                    counts.skipped, counts.not_attempted,
+                )
                 return response
 
     async def _revalidate(self, snapshot: PreviewSnapshot) -> list[FileItem]:
@@ -142,8 +168,8 @@ class ExecuteService:
     async def _rename_in_batches(
         driver: StorageDriver,
         requests: list[RenameRequest],
-        progress: RenameProgress | None = None,
         *,
+        on_processed: Callable[[int], None] | None = None,
         observe: RenameObserver[FileItem] | None = None,
     ) -> dict[str, FileItem | AppError]:
         outcomes: dict[str, FileItem | AppError] = {}
@@ -159,17 +185,17 @@ class ExecuteService:
             nonlocal active
             active += 1
             started = monotonic()
-            logger.info(
-                "write_batch event=start provider=%s request_id=%s group=%s item_count=%s in_flight=%s",
-                driver.provider_type, request_id_context.get(), index, len(batch), active,
+            logger.debug(
+                "Rename group started provider=%s group=%s item_count=%s in_flight=%s",
+                driver.provider_type, index, len(batch), active,
             )
             try:
                 return await ExecuteService._safe_rename_many(driver, batch, on_unknown=on_unknown, observe=observe)
             finally:
                 active -= 1
-                logger.info(
-                    "write_batch event=finish provider=%s request_id=%s group=%s item_count=%s in_flight=%s duration_ms=%.2f",
-                    driver.provider_type, request_id_context.get(), index, len(batch), active, (monotonic() - started) * 1000,
+                logger.debug(
+                    "Rename group finished provider=%s group=%s item_count=%s in_flight=%s duration_ms=%.2f",
+                    driver.provider_type, index, len(batch), active, (monotonic() - started) * 1000,
                 )
 
         if concurrency == 1:
@@ -183,8 +209,8 @@ class ExecuteService:
                     await drain_writes([task])
                     raise
                 outcomes.update(batch_outcomes)
-                if progress is not None:
-                    progress.processed += len(batch)
+                if on_processed is not None:
+                    on_processed(len(batch))
                 if any(isinstance(outcome, RenameOutcomeUnknownError) for outcome in batch_outcomes.values()):
                     for request in requests[offset + len(batch):]:
                         outcomes[request.file_id] = ProviderError(
@@ -218,8 +244,8 @@ class ExecuteService:
                     del pending[task]
                     reconciling.discard(index)
                     outcomes.update(batch_outcomes)
-                    if progress is not None:
-                        progress.processed += len(batch)
+                    if on_processed is not None:
+                        on_processed(len(batch))
                     stopped |= any(isinstance(outcome, RenameOutcomeUnknownError) for outcome in batch_outcomes.values())
                 start_batches()
         finally:
@@ -252,6 +278,7 @@ class ExecuteService:
         snapshot: PreviewSnapshot,
         sources: list[FileItem],
         progress: RenameProgress,
+        storage_name: str,
     ) -> RenameExecuteResponse:
         driver = self.manager.get_driver(snapshot.request.storage_id)
         results = {
@@ -280,9 +307,17 @@ class ExecuteService:
                 target_confirmed=target_confirmed,
             )
 
+        def record_progress(count: int) -> None:
+            progress.processed += count
+            terminal_logger.info(
+                "%r 批量重命名 %s/%s", storage_name, progress.processed, progress.total,
+                extra={"terminal_progress": True},
+            )
+
         progress.phase = "renaming"
+        record_progress(0)
         with self.directories.writing(snapshot.request.storage_id, snapshot.connection_revision, scope):
-            outcomes = await self._rename_in_batches(driver, requests, progress, observe=observe)
+            outcomes = await self._rename_in_batches(driver, requests, on_processed=record_progress, observe=observe)
         for item in changed:
             outcome = outcomes[item.file_id]
             if isinstance(outcome, AppError):

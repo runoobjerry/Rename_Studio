@@ -15,7 +15,6 @@ from app.core.errors import (
     RenameOutcomeUnknownError,
     ValidationError,
 )
-from app.core.log_context import request_id_context
 from app.providers.auth import StorageAuth
 from app.providers.shared.http_errors import http_error_details, read_error_payload
 from app.providers.shared.request_policy import ConnectionCooldown, RetryBudget, retry_after_delay
@@ -75,25 +74,35 @@ class GoogleDriveClient:
             try:
                 response = await self._http_client().request(method, url, params=params, content=content, headers={**(headers or {}), "Authorization": f"Bearer {token}"})
             except httpx.HTTPError as exc:
-                logger.info("drive_request provider=google_drive request_id=%s method=%s writing=%s status=transport_error duration_ms=%.2f", request_id_context.get(), method, writing, (perf_counter() - started) * 1000)
+                logger.debug(
+                    "Provider request transport failed method=%s writing=%s attempt=%s duration_ms=%.2f",
+                    method, writing, attempt + 1, (perf_counter() - started) * 1000, exc_info=exc,
+                )
                 if writing:
                     raise RenameOutcomeUnknownError("Google Drive write outcome is unknown; verify metadata before continuing", details={"provider_type": "google_drive"}) from exc
                 if budget.available:
-                    await asyncio.sleep(min(2**attempt + random.random(), 8))
+                    delay = min(2**attempt + random.random(), 8)
+                    logger.debug("Retrying provider read after transport failure retry_after_ms=%.0f", delay * 1000)
+                    await asyncio.sleep(delay)
                     continue
                 raise ProviderError("Google Drive is unavailable", details={"provider_type": "google_drive"}) from exc
-            logger.info("drive_request provider=google_drive request_id=%s method=%s writing=%s status=%s duration_ms=%.2f", request_id_context.get(), method, writing, response.status_code, (perf_counter() - started) * 1000)
+            logger.debug(
+                "Provider responded method=%s writing=%s attempt=%s status=%s duration_ms=%.2f",
+                method, writing, attempt + 1, response.status_code, (perf_counter() - started) * 1000,
+            )
             if response.is_success:
                 return response
             if writing and (response.status_code == 408 or response.status_code >= 500):
                 raise RenameOutcomeUnknownError("Google Drive write outcome is unknown; verify metadata before continuing", details=self._response_error(response).details)
             error = self.classify_error(response, attempt)
             if response.status_code == 401 and not refreshed and budget.available:
+                logger.debug("Retrying provider request after refreshing authorization status=401")
                 await self.auth.access_token(force_refresh=True)
                 refreshed = True
                 continue
             # Read batches can be replayed; write batches only retry explicit auth/throttle refusals.
             if self.retryable(response, error) and budget.available:
+                logger.debug("Retrying provider request status=%s error_code=%s", response.status_code, error.code)
                 if not isinstance(error, RateLimitError):
                     await asyncio.sleep(self.retry_delay(response, attempt))
                 continue
@@ -107,12 +116,29 @@ class GoogleDriveClient:
     def retryable(response: httpx.Response, error: AppError) -> bool:
         return isinstance(error, RateLimitError) or response.status_code >= 500
 
-    def classify_error(self, response: httpx.Response, attempt: int) -> AppError:
+    def classify_error(self, response: httpx.Response, attempt: int, *, batch_item: bool = False) -> AppError:
         """Classify once and record throttling before the caller handles the error."""
         error = self._response_error(response)
         if isinstance(error, RateLimitError):
-            self._cooldown.defer(self.retry_delay(response, attempt))
+            delay = self.retry_delay(response, attempt)
+            self._cooldown.defer(delay)
+            logger.log(
+                logging.DEBUG if batch_item else logging.WARNING,
+                "Rate limit reached status=%s retry_after_ms=%.0f error_code=%s",
+                response.status_code, delay * 1000, error.code,
+            )
         return error
+
+    def classify_batch_errors(self, responses: list[httpx.Response], attempt: int) -> dict[int, AppError]:
+        # Record throttling across the envelope before handling individual failures.
+        errors = {
+            index: self.classify_error(response, attempt, batch_item=True)
+            for index, response in enumerate(responses) if not response.is_success
+        }
+        throttled = sum(isinstance(error, RateLimitError) for error in errors.values())
+        if throttled:
+            logger.warning("Provider group throttled item_count=%s error_code=RATE_LIMIT_ERROR", throttled)
+        return errors
 
     @staticmethod
     def retry_delay(response: httpx.Response, attempt: int) -> float:
