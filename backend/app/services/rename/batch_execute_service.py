@@ -68,8 +68,10 @@ class ExecuteService:
                 # 活跃批次不超时清除；完成后保留十分钟供界面读取最终状态。
                 self._progress[preview_id] = (float("inf"), progress)
                 logger.info("Batch rename started item_count=%s", progress.total)
-                terminal_logger.info("%r 批量重命名正在复核 %s 项", storage_name, progress.total,
-                                     extra={"terminal_progress": True})
+                terminal_logger.info(
+                    "%r Batch rename: verifying items (%s total)", storage_name, progress.total,
+                    extra={"terminal_progress": True},
+                )
                 try:
                     logger.debug("Batch rename revalidation started")
                     try:
@@ -91,11 +93,11 @@ class ExecuteService:
                     progress.error = exc.message if isinstance(exc, AppError) else "Rename execution interrupted"
                     if isinstance(exc, asyncio.CancelledError):
                         logger.warning("Batch rename was cancelled processed=%s", progress.processed)
-                        terminal_logger.info("%r 批量重命名 %s/%s，已取消，请核对结果",
+                        terminal_logger.info("%r Batch rename: %s/%s, canceled. Verify the results.",
                                              storage_name, progress.processed, progress.total)
                     else:
                         error_code = exc.code if isinstance(exc, AppError) else "INTERNAL_ERROR"
-                        terminal_logger.error("%r 批量重命名 %s/%s，中断（%s）",
+                        terminal_logger.error("%r Batch rename: %s/%s, interrupted (%s)",
                                               storage_name, progress.processed, progress.total, error_code)
                     raise
                 finally:
@@ -110,7 +112,7 @@ class ExecuteService:
                 )
                 terminal_logger.log(
                     logging.ERROR if response.status == "incomplete" else logging.INFO,
-                    "%r 批量重命名 %s/%s，成功 %s，失败 %s，结果未知 %s，跳过 %s，未尝试 %s",
+                    "%r Batch rename: %s/%s, %s succeeded, %s failed, %s unknown, %s skipped, %s not attempted",
                     storage_name, processed, progress.total, counts.renamed, counts.failed, counts.unknown,
                     counts.skipped, counts.not_attempted,
                 )
@@ -310,7 +312,7 @@ class ExecuteService:
         def record_progress(count: int) -> None:
             progress.processed += count
             terminal_logger.info(
-                "%r 批量重命名 %s/%s", storage_name, progress.processed, progress.total,
+                "%r Batch rename: %s/%s", storage_name, progress.processed, progress.total,
                 extra={"terminal_progress": True},
             )
 

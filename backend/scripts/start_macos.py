@@ -68,7 +68,7 @@ class StartupDisplay:
         self.refresh()
 
     def refresh(self) -> None:
-        print(f"\r\033[2K{self.frames[self.frame]} {self.step}", end="", flush=True)
+        print(f"\r\033[2K{self.frames[self.frame]} \033[90m{self.step}\033[0m", end="", flush=True)
         self.frame = (self.frame + 1) % len(self.frames)
 
     def finish(self, symbol: str, result: str) -> None:
@@ -77,9 +77,14 @@ class StartupDisplay:
 
     @staticmethod
     def write(symbol: str, step: str, result: str) -> None:
-        line = f"{symbol} {step}  {result}"
         if symbol == "✗":
-            line = f"\033[31m{line}\033[0m"
+            line = f"\033[31m{symbol} {step}  {result}\033[0m"
+        elif symbol == "!":
+            line = f"\033[33m{symbol} {step}  {result}\033[0m"
+        else:
+            if symbol == "✓":
+                symbol = f"\033[32m{symbol}\033[0m"
+            line = f"{symbol} \033[90m{step}\033[0m  {result}"
         print(f"\r\033[2K{line}", flush=True)
 
 
@@ -115,18 +120,18 @@ class Launcher:
         if not self.no_browser:
             result = subprocess.run(["/usr/bin/open", PAGE_URL], capture_output=True)
             if result.returncode:
-                self.display.write("!", "打开浏览器", f"无法自动打开，请手动访问 {PAGE_URL}")
+                self.display.write("!", "Open browser", f"Could not open the browser. Open {PAGE_URL} manually.")
 
     def healthy(self, instance_id: str) -> bool:
         try:
             for path in ("/api/health", "/"):
                 with self.http.open(f"http://127.0.0.1:8000{path}", timeout=2) as response:
                     if response.status != 200 or response.headers.get("x-rename-studio-instance") != instance_id:
-                        self.last_probe_error = "响应不属于本次服务或状态异常。"
+                        self.last_probe_error = "Unexpected response status or service instance."
                         return False
                     if path == "/api/health":
                         if json.load(response) != {"status": "ok"}:
-                            self.last_probe_error = "健康检查响应异常。"
+                            self.last_probe_error = "Unexpected health check response."
                             return False
                         self.version = response.headers.get("x-rename-studio-version", "")
             return True
@@ -158,7 +163,7 @@ class Launcher:
 
     def prepare_environment(self) -> None:
         display = self.display
-        display.start("准备虚拟环境")
+        display.start("Prepare virtual environment")
         identity = {
             "project_root": str(ROOT), "python_executable": sys.executable,
             "python_version": sys.version.split()[0],
@@ -167,32 +172,37 @@ class Launcher:
         saved = json.loads(ENVIRONMENT.read_text(encoding="utf-8-sig")) if ENVIRONMENT.exists() else None
         if VENV.exists():
             if not saved or any(saved[key] != value for key, value in identity.items()) or not VENV_PYTHON.is_file():
-                raise RuntimeError("运行环境不可用、Python 已变化或项目已移动。请退出后移走或删除 .runtime/venv，再重新启动。")
+                raise RuntimeError(
+                    "The virtual environment is unavailable, Python has changed, or the project has moved. "
+                    "Exit, move or delete .runtime/venv, then restart."
+                )
             version_check = "import sys; sys.exit(0 if sys.version.split()[0] == sys.argv[1] else 1)"
             code = self.task(VENV_PYTHON, ["-c", version_check, identity["python_version"]])
             if code:
-                raise RuntimeError(f"虚拟环境 Python 不可用（exit_code={code}）。请退出后重建 .runtime/venv。")
-            display.finish("−", "环境已存在")
+                raise RuntimeError(
+                    f"Could not verify the virtual environment's Python (exit_code={code}). Recreate .runtime/venv."
+                )
+            display.finish("−", "Reusing existing environment")
         else:
             code = self.task(Path(sys.executable), ["-m", "venv", str(VENV)])
             if code:
-                raise RuntimeError(f"创建失败（exit_code={code}）。请移走 .runtime/venv 后重试。")
+                raise RuntimeError(f"Could not create the environment (exit_code={code}). Move .runtime/venv aside and try again.")
             saved = {**identity, "fingerprint": ""}
             save_json(ENVIRONMENT, saved)
-            display.finish("✓", "已创建")
+            display.finish("✓", "Created")
 
         self.check_cancel()
         check_args = ["-c", DEPENDENCY_CHECK, str(REQUIREMENTS)]
         if saved["fingerprint"] == fingerprint:
-            display.start("检查运行依赖")
+            display.start("Check runtime dependencies")
             code = self.task(VENV_PYTHON, check_args)
             if code == 0:
-                display.finish("✓", "通过")
-                display.write("−", "安装运行依赖", "无需安装")
+                display.finish("✓", "Passed")
+                display.write("−", "Install runtime dependencies", "Already installed")
                 return
-            display.finish("!", f"检查未通过（exit_code={code}），将重新安装")
+            display.finish("!", f"Check failed (exit_code={code}). Reinstalling dependencies.")
 
-        display.start("安装运行依赖")
+        display.start("Install runtime dependencies")
         if saved["fingerprint"] != "":
             saved["fingerprint"] = ""
             save_json(ENVIRONMENT, saved)
@@ -201,27 +211,29 @@ class Launcher:
                           "--force-reinstall", "-r", str(REQUIREMENTS)],
         )
         if install_exit_code:
-            raise RuntimeError(f"安装失败（exit_code={install_exit_code}）。请检查网络或 pip 配置后重试。")
-        display.finish("✓", "安装完成")
-        display.start("检查运行依赖")
+            raise RuntimeError(
+                f"Installation failed (exit_code={install_exit_code}). Check your network or pip settings and try again."
+            )
+        display.finish("✓", "Installed")
+        display.start("Check runtime dependencies")
         code = self.task(VENV_PYTHON, check_args) or self.task(
             VENV_PYTHON, ["-m", "pip", "--disable-pip-version-check", "check"],
         )
         if code:
-            raise RuntimeError(f"检查未通过（exit_code={code}）。")
+            raise RuntimeError(f"Check failed (exit_code={code}).")
         self.check_cancel()
         saved["fingerprint"] = fingerprint
         save_json(ENVIRONMENT, saved)
-        display.finish("✓", "通过")
+        display.finish("✓", "Passed")
 
     def start_service(self) -> None:
         display = self.display
         try:
             self.log_session = prepare_log_session(RUNTIME)
         except OSError as exc:
-            display.write("!", "准备日志", f"无法创建日志目录，继续启动服务（{exc}）")
-        log_path = self.log_session / "app.log" if self.log_session is not None else "不可用"
-        display.start("启动服务")
+            display.write("!", "Prepare log", f"Could not create the log directory ({exc}). Continuing startup.")
+        log_path = self.log_session.relative_to(ROOT) / "app.log" if self.log_session is not None else "Unavailable"
+        display.start("Start service")
         instance_id = uuid4().hex
         self.stop_file = RUNTIME / f"{instance_id}.stop"
         arguments = [str(VENV_PYTHON), "-u", "-m", "app.launcher", "--stop-file", str(self.stop_file),
@@ -240,46 +252,48 @@ class Launcher:
             self.check_cancel()
             code = self.service.poll()
             if code is not None:
-                raise RuntimeError(f"进程已退出（exit_code={code}）。日志地址：{log_path}")
+                raise RuntimeError(f"Process exited (exit_code={code}). Log file: {log_path}")
             if self.healthy(instance_id):
                 break
             time.sleep(0.1)
             display.refresh()
         else:
-            raise RuntimeError(f"服务在 30 秒内未就绪。{self.last_probe_error} 日志地址：{log_path}")
-        display.finish("✓", "已就绪")
+            raise RuntimeError(f"Service was not ready within 30 seconds. {self.last_probe_error} Log file: {log_path}")
+        display.finish("✓", "Ready")
         self.open_browser()
+        separator = "-" * 40
         self.status(
-            f"\nRename Studio {self.version} 已启动\n\n浏览器打开：{PAGE_URL}\n\n"
-            f"日志地址：{log_path}\n\n按 Q 或 Ctrl+C 安全退出。\n"
+            f"\n{separator}\n\033[32mRename Studio {self.version}\033[0m is running\n\n"
+            f"\033[90mOpen in browser:\033[0m {PAGE_URL}\n\n"
+            f"\033[90mLog file:\033[0m {log_path}\n\nPress Q or Ctrl+C to exit safely.\n{separator}\n"
         )
         while self.service.poll() is None:
             self.check_cancel()
             time.sleep(0.25)
-        raise RuntimeError(f"服务意外退出（exit_code={self.service.returncode}）。日志地址：{log_path}")
+        raise RuntimeError(f"Service exited unexpectedly (exit_code={self.service.returncode}). Log file: {log_path}")
 
     def run_locked(self) -> None:
         display = self.display
-        display.write("✓", "检查 Python", f"Python {sys.version.split()[0]}")
-        display.start("检查发布包")
+        display.write("✓", "Check Python", f"Python {sys.version.split()[0]}")
+        display.start("Check release package")
         for path in (REQUIREMENTS, BACKEND / "app" / "launcher.py",
                      BACKEND / "app" / "release.py", ROOT / "frontend" / "dist" / "index.html"):
             if not path.is_file():
-                raise RuntimeError(f"发布包缺少文件：{path}。请获取完整发布包。")
-        display.finish("✓", "文件完整")
-        display.start("检查端口")
+                raise RuntimeError(f"Missing file: {path}. Download and extract the complete release package.")
+        display.finish("✓", "All required files present")
+        display.start("Check port")
         # Inspect listeners on both IPv4 and IPv6; never kill or change their port.
         listeners = subprocess.run(
             ["/usr/sbin/lsof", "-nP", "-iTCP:8000", "-sTCP:LISTEN"], capture_output=True, text=True,
         )
         if listeners.returncode not in (0, 1):
-            raise RuntimeError(f"端口检查失败：{listeners.stderr.strip()}")
+            raise RuntimeError(f"Port check failed: {listeners.stderr.strip()}")
         if listeners.stdout.strip():
-            raise RuntimeError(f"端口 8000 已被占用。请关闭占用端口的程序后重试。\n{listeners.stdout.strip()}")
+            raise RuntimeError(f"Port 8000 is in use. Close the program using it and try again.\n{listeners.stdout.strip()}")
         # Check bind permission/occupancy too; Uvicorn still reports any later race.
         with socket.socket() as probe:
             probe.bind(("127.0.0.1", 8000))
-        display.finish("✓", "8000 未占用")
+        display.finish("✓", "Port 8000 available")
         self.check_cancel()
         self.prepare_environment()
         self.check_cancel()
@@ -287,22 +301,22 @@ class Launcher:
 
     def stop_service(self) -> None:
         if self.service is not None and self.service.poll() is None:
-            self.status("正在等待当前请求完成。请在服务停止后关闭窗口。")
+            self.status("Waiting for active requests to finish. Close the window after the service stops.")
             self.stop_file.write_text("stop", encoding="utf-8")
             # No timeout kill: in-flight renames must reconcile before clients close.
             code = self.service.wait()
             if code:
-                raise RuntimeError(f"服务停止失败（exit_code={code}）。请查看 app.log。")
-            self.status("服务已停止。")
+                raise RuntimeError(f"Service failed to stop cleanly (exit_code={code}). See app.log.")
+            self.status("Service stopped.")
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Start.sh 的 macOS 启动控制器")
+    parser = argparse.ArgumentParser(description="macOS launcher for Rename Studio")
     parser.add_argument("--no-browser", action="store_true")
     parser.add_argument("--debug", action="store_true")
     args = parser.parse_args()
     if not sys.stdin.isatty() or not sys.stdout.isatty():
-        parser.error("请通过 Start.sh 在交互式终端中启动。")
+        parser.error("Run Start.sh in an interactive terminal.")
     launcher = Launcher(args.no_browser, args.debug)
     for signum in (signal.SIGINT, signal.SIGTERM, signal.SIGHUP):
         signal.signal(signum, launcher.request_stop)
@@ -319,7 +333,7 @@ def main() -> int:
             try:
                 fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
             except BlockingIOError:
-                launcher.display.write("−", "启动服务", "启动中或运行中")
+                launcher.display.write("−", "Start service", "Already starting or running")
                 if SESSION.exists():
                     session = json.loads(SESSION.read_text(encoding="utf-8"))
                     if launcher.healthy(session["instance_id"]):
@@ -329,9 +343,9 @@ def main() -> int:
                 launcher.run_locked()
             except Cancelled:
                 if launcher.display.step:
-                    launcher.display.finish("−", "已取消")
+                    launcher.display.finish("−", "Canceled")
                 else:
-                    launcher.status("正在退出。")
+                    launcher.status("Exiting.")
             except Exception as exc:
                 code = 1
                 launcher.display.finish("✗", str(exc))
@@ -353,7 +367,7 @@ def main() -> int:
         termios.tcsetattr(input_fd, termios.TCSADRAIN, input_mode)
     if code:
         try:
-            input("按 Enter 关闭")
+            input("Press Enter to close")
         except EOFError:
             pass
     return code

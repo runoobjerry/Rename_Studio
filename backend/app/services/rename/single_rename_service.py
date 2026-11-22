@@ -37,7 +37,7 @@ class SingleRenameService:
                 new_name=request.target_name, status="failed",
             )
             scope = RenameCacheScope(folder_ids={request.file_id})
-            terminal_logger.info("%r 正在重命名", storage_name, extra={"terminal_progress": True})
+            terminal_logger.info("%r Rename in progress", storage_name, extra={"terminal_progress": True})
             with self.directories.writing(storage_id, request.revision, scope):
                 task = asyncio.create_task(self._rename(
                     driver, RenameRequest(request.file_id, request.target_name),
@@ -49,7 +49,7 @@ class SingleRenameService:
                     outcome = await asyncio.shield(task)
                 except asyncio.CancelledError:
                     await drain_writes([task])
-                    terminal_logger.info("%r 重命名结果待核对", storage_name)
+                    terminal_logger.info("%r Rename outcome needs verification", storage_name)
                     raise
             duration_ms = (perf_counter() - started) * 1000
             execution_status: RenameExecutionStatus
@@ -61,15 +61,15 @@ class SingleRenameService:
                 result.actual_name = outcome.details.get("actual_name")
                 logger.warning("Single rename incomplete status=%s error_code=%s duration_ms=%.2f",
                                result.status, result.error_code, duration_ms)
-                status_label = "结果待核对" if result.status == "unknown" else "失败"
-                terminal_logger.error("%r 重命名%s（%s）", storage_name, status_label, result.error_code)
+                status_label = "outcome needs verification" if result.status == "unknown" else "failed"
+                terminal_logger.error("%r Rename %s (%s)", storage_name, status_label, result.error_code)
                 execution_status = "incomplete"
             else:
                 result.status = "renamed"
                 result.current_file = outcome
                 result.actual_name = outcome.name
                 logger.info("Single rename completed duration_ms=%.2f", duration_ms)
-                terminal_logger.info("%r 重命名成功", storage_name)
+                terminal_logger.info("%r Rename succeeded", storage_name)
                 execution_status = "completed"
             return SingleRenameExecuteResponse(
                 operation_id=operation_id, status=execution_status, items=[result],

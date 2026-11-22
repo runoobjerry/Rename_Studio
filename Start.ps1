@@ -52,15 +52,25 @@ function Write-Status([string]$Message) {
 
 function Write-Step([string]$Symbol, [string]$Name, [string]$Result) {
     Clear-TransientLine
-    $message = '{0} {1}  {2}' -f $Symbol, $Name, $Result
-    if ($Symbol -eq '✗') { Write-Host $message -ForegroundColor Red }
-    else { Write-Host $message }
+    if ($Symbol -eq '✗') {
+        Write-Host "$Symbol $Name  $Result" -ForegroundColor Red
+        return
+    }
+    if ($Symbol -eq '!') {
+        Write-Host "$Symbol $Name  $Result" -ForegroundColor Yellow
+        return
+    }
+    if ($Symbol -eq '✓') { Write-Host $Symbol -ForegroundColor Green -NoNewline }
+    else { Write-Host $Symbol -NoNewline }
+    Write-Host " $Name" -ForegroundColor DarkGray -NoNewline
+    Write-Host "  $Result"
 }
 
 function Update-Step {
     if ([Console]::IsOutputRedirected) { return }
     [Console]::CursorLeft = 0
-    Write-Host ('{0} {1}' -f $spinnerFrames[$script:spinnerFrame], $script:startupStep) -NoNewline
+    Write-Host $spinnerFrames[$script:spinnerFrame] -NoNewline
+    Write-Host " $script:startupStep" -ForegroundColor DarkGray -NoNewline
     $script:spinnerFrame = ($script:spinnerFrame + 1) % $spinnerFrames.Length
     $script:transientLineVisible = $true
 }
@@ -119,7 +129,7 @@ function New-AppLogSession([string]$Executable) {
     Push-Location -LiteralPath $backendRoot
     try {
         $name = & $Executable @logArguments 2>$null
-        if ($LASTEXITCODE -ne 0) { throw '无法创建日志会话。' }
+        if ($LASTEXITCODE -ne 0) { throw 'Could not create a log session.' }
     }
     finally { Pop-Location }
     return (Join-Path (Join-Path $runtimeRoot 'logs') $name)
@@ -163,7 +173,7 @@ function Find-Python {
                     }
                 }
             }
-            catch { Write-Step '!' '查找 Python' '无法读取 Python launcher 列表，将检查 PATH。' }
+            catch { Write-Step '!' 'Check Python' 'Could not list Python installations. Checking PATH.' }
         }
         $pythonCommand = Get-Command python.exe -ErrorAction SilentlyContinue
         if ($pythonCommand -and $pythonCommand.Source -notlike '*\Microsoft\WindowsApps\*') {
@@ -174,7 +184,7 @@ function Find-Python {
         $info = Get-PythonInfo $candidate
         if ($info -and $info.major -eq 3 -and $info.minor -ge 12) { return $info }
     }
-    throw '未找到可用的 Python 3.12+。请安装 Python，或用 -PythonPath 指定 python.exe 的完整路径。'
+    throw 'No supported Python installation found. Install Python 3.12 or later, or use -PythonPath with the full path to python.exe.'
 }
 
 function Invoke-PythonTask([string]$Executable, [string[]]$Arguments) {
@@ -186,12 +196,12 @@ function Invoke-PythonTask([string]$Executable, [string[]]$Arguments) {
     # Cache the handle to read ExitCode even after the process exits.
     $null = $script:setupProcess.Handle
     while (-not $script:setupProcess.WaitForExit(100)) {
-        if (Test-StopKey) { throw [OperationCanceledException]::new('启动已取消。') }
+        if (Test-StopKey) { throw [OperationCanceledException]::new('Startup canceled.') }
         Update-Step
     }
     $result = $script:setupProcess.ExitCode
     if ($null -eq $result) {
-        throw '无法读取进程的 exit_code。'
+        throw 'Could not read the process exit code.'
     }
     $script:setupProcess.Dispose()
     $script:setupProcess = $null
@@ -217,7 +227,7 @@ function Test-Healthy([string]$InstanceId, [switch]$IncludePage) {
     # A readiness probe can fail while binding/starting. The caller retries within
     # 30 seconds, or reports the existing launch as not ready, without trusting it.
     catch {
-        $script:lastReadinessError = '{0}：{1}' -f $probeUrl, $_.Exception.Message
+        $script:lastReadinessError = '{0}: {1}' -f $probeUrl, $_.Exception.Message
         return $false
     }
 }
@@ -233,13 +243,13 @@ function Save-JsonFile([object]$Value, [string]$Path) {
 function Open-WebUI {
     if (-not $NoBrowser) {
         try { Start-Process -FilePath $pageUrl | Out-Null }
-        catch { Write-Step '!' '打开浏览器' ('无法自动打开，请手动访问 {0}' -f $pageUrl) }
+        catch { Write-Step '!' 'Open browser' ('Could not open the browser. Open {0} manually.' -f $pageUrl) }
     }
 }
 
 try {
     if ($env:OS -ne 'Windows_NT' -or [Console]::IsInputRedirected) {
-        throw '请在 Windows PowerShell 终端中运行本脚本。'
+        throw 'Run this script in an interactive PowerShell terminal on Windows.'
     }
     New-Item -ItemType Directory -Path $runtimeRoot -Force | Out-Null
     try {
@@ -249,7 +259,7 @@ try {
     catch [IO.IOException] {
         # Only a sharing violation means another launcher owns this project.
         if (($_.Exception.HResult -band 0xffff) -notin @(32, 33)) { throw }
-        Write-Step '−' '启动服务' '启动中或运行中'
+        Write-Step '−' 'Start service' 'Already starting or running'
         if (Test-Path -LiteralPath $sessionFile) {
             $session = Get-Content -LiteralPath $sessionFile -Raw | ConvertFrom-Json
             if (Test-Healthy $session.instance_id) { Open-WebUI }
@@ -257,31 +267,31 @@ try {
         return
     }
 
-    Start-Step '检查 Python'
+    Start-Step 'Check Python'
     $python = Find-Python
     Finish-Step '✓' ('Python {0}' -f $python.version)
     $previousControlC = [Console]::TreatControlCAsInput
     [Console]::TreatControlCAsInput = $true
     $consoleChanged = $true
 
-    Start-Step '检查发布包'
+    Start-Step 'Check release package'
     foreach ($requiredFile in @($requirements, (Join-Path $backendRoot 'app\launcher.py'),
         (Join-Path $backendRoot 'app\release.py'),
         (Join-Path $projectRoot 'frontend\dist\index.html'))) {
         if (-not (Test-Path -LiteralPath $requiredFile -PathType Leaf)) {
-            throw ('发布包缺少文件：{0}。请获取完整发布包。' -f $requiredFile)
+            throw ('Missing file: {0}. Download and extract the complete release package.' -f $requiredFile)
         }
     }
-    Finish-Step '✓' '文件完整'
-    Start-Step '检查端口'
+    Finish-Step '✓' 'All required files present'
+    Start-Step 'Check port'
     $occupied = @(Get-NetTCPConnection -LocalPort 8000 -State Listen -ErrorAction SilentlyContinue)
     if ($occupied.Count) {
         $owners = ($occupied.OwningProcess | Select-Object -Unique) -join ', '
-        throw ('端口 8000 已被占用（PID: {0}）。请关闭占用端口的程序后重试。' -f $owners)
+        throw ('Port 8000 is in use (PID: {0}). Close the program using it and try again.' -f $owners)
     }
-    Finish-Step '✓' '8000 未占用'
+    Finish-Step '✓' 'Port 8000 available'
 
-    Start-Step '准备虚拟环境'
+    Start-Step 'Prepare virtual environment'
     $fingerprint = (Get-FileHash -LiteralPath $requirements -Algorithm SHA256).Hash
     $savedEnvironment = $null
     if (Test-Path -LiteralPath $environmentFile) {
@@ -295,35 +305,35 @@ try {
             $savedEnvironment.python_executable -ne $python.executable -or
             $savedEnvironment.python_version -ne $python.version -or
             $venvInfo.version -ne $python.version) {
-            throw '运行环境不可用、Python 已变化或项目已移动。请退出后移走或删除 .runtime\venv，再重新启动。'
+            throw 'The virtual environment is unavailable, Python has changed, or the project has moved. Exit, move or delete .runtime\venv, then restart.'
         }
         $needsInstall = ($savedEnvironment.fingerprint -ne $fingerprint)
-        Finish-Step '−' '环境已存在'
+        Finish-Step '−' 'Reusing existing environment'
     }
     else {
         $taskExit = Invoke-PythonTask $python.executable @('-m', 'venv', $venvRoot)
         if ($taskExit -ne 0) {
-            throw ('创建失败（exit_code={0}）。' -f $taskExit)
+            throw ('Could not create the environment (exit_code={0}).' -f $taskExit)
         }
         $savedEnvironment = [pscustomobject]@{
             project_root = $projectRoot; python_executable = $python.executable;
             python_version = $python.version; fingerprint = ''
         }
         Save-JsonFile $savedEnvironment $environmentFile
-        Finish-Step '✓' '已创建'
+        Finish-Step '✓' 'Created'
     }
 
     $checkCode = "import fastapi,httpx,pydantic_settings,uvicorn; from importlib.metadata import version; from pathlib import Path; import sys; pins=[line.split('==') for line in Path(sys.argv[1]).read_text().splitlines() if line and not line.startswith('#')]; sys.exit(0 if all(version(name)==required for name,required in pins) else 1)"
     $dependenciesHealthy = $false
     if (-not $needsInstall) {
-        Start-Step '检查运行依赖'
+        Start-Step 'Check runtime dependencies'
         $taskExit = Invoke-PythonTask $venvPython @('-c', $checkCode, $requirements)
         $dependenciesHealthy = ($taskExit -eq 0)
-        if ($dependenciesHealthy) { Finish-Step '✓' '通过' }
-        else { Finish-Step '!' ('检查未通过（exit_code={0}），将重新安装' -f $taskExit) }
+        if ($dependenciesHealthy) { Finish-Step '✓' 'Passed' }
+        else { Finish-Step '!' ('Check failed (exit_code={0}). Reinstalling dependencies.' -f $taskExit) }
     }
     if ($needsInstall -or -not $dependenciesHealthy) {
-        Start-Step '安装运行依赖'
+        Start-Step 'Install runtime dependencies'
         if ($savedEnvironment.fingerprint -ne '') {
             $savedEnvironment.fingerprint = ''
             Save-JsonFile $savedEnvironment $environmentFile
@@ -331,30 +341,30 @@ try {
         $pipArguments = @('-m', 'pip', '--disable-pip-version-check', 'install', '--force-reinstall', '-r', $requirements)
         $taskExit = Invoke-PythonTask $venvPython $pipArguments
         if ($taskExit -ne 0) {
-            throw ('安装失败（exit_code={0}）。请检查网络或 pip 配置后重试。' -f $taskExit)
+            throw ('Installation failed (exit_code={0}). Check your network or pip settings and try again.' -f $taskExit)
         }
-        Finish-Step '✓' '安装完成'
-        Start-Step '检查运行依赖'
+        Finish-Step '✓' 'Installed'
+        Start-Step 'Check runtime dependencies'
         $taskExit = Invoke-PythonTask $venvPython @('-c', $checkCode, $requirements)
         if ($taskExit -eq 0) {
             $taskExit = Invoke-PythonTask $venvPython @('-m', 'pip', '--disable-pip-version-check', 'check')
         }
         if ($taskExit -ne 0) {
-            throw ('检查未通过（exit_code={0}）。' -f $taskExit)
+            throw ('Check failed (exit_code={0}).' -f $taskExit)
         }
         $savedEnvironment.fingerprint = $fingerprint
         Save-JsonFile $savedEnvironment $environmentFile
-        Finish-Step '✓' '通过'
+        Finish-Step '✓' 'Passed'
     }
-    else { Write-Step '−' '安装运行依赖' '无需安装' }
+    else { Write-Step '−' 'Install runtime dependencies' 'Already installed' }
 
-    $logPath = '不可用'
+    $logPath = 'Unavailable'
     try {
         $logSession = New-AppLogSession $python.executable
-        $logPath = Join-Path $logSession 'app.log'
+        $logPath = '.runtime\logs\{0}\app.log' -f (Split-Path -Leaf $logSession)
     }
-    catch { Write-Step '!' '准备日志' ('无法创建日志目录，继续启动服务（{0}）' -f $_.Exception.Message) }
-    Start-Step '启动服务'
+    catch { Write-Step '!' 'Prepare log' ('Could not create the log directory ({0}). Continuing startup.' -f $_.Exception.Message) }
+    Start-Step 'Start service'
     $instanceId = [Guid]::NewGuid().ToString('N')
     $stopFile = Join-Path $runtimeRoot ($instanceId + '.stop')
     $arguments = '-m app.launcher --terminal-relay --stop-file "{0}" --parent-pid {1} --instance-id {2}' -f $stopFile, $PID, $instanceId
@@ -377,8 +387,8 @@ try {
     $ready = $false
     while ([DateTime]::UtcNow -lt $deadline) {
         Read-ServiceOutput
-        if ($serviceProcess.HasExited) { throw ('进程已退出（exit_code={0}）。日志地址：{1}' -f $serviceProcess.ExitCode, $logPath) }
-        if (Test-StopKey) { throw [OperationCanceledException]::new('启动已取消。') }
+        if ($serviceProcess.HasExited) { throw ('Process exited (exit_code={0}). Log file: {1}' -f $serviceProcess.ExitCode, $logPath) }
+        if (Test-StopKey) { throw [OperationCanceledException]::new('Startup canceled.') }
         if (Test-Healthy $instanceId -IncludePage) {
             $ready = $true
             break
@@ -387,20 +397,28 @@ try {
         Start-Sleep -Milliseconds 100
     }
     if (-not $ready) {
-        throw ('服务在 30 秒内未就绪。{0} 日志地址：{1}' -f $script:lastReadinessError, $logPath)
+        throw ('Service was not ready within 30 seconds. {0} Log file: {1}' -f $script:lastReadinessError, $logPath)
     }
-    Finish-Step '✓' '已就绪'
+    Finish-Step '✓' 'Ready'
     Open-WebUI
-    Write-Status ("`nRename Studio {0} 已启动`n`n浏览器打开：{1}`n`n日志地址：{2}`n`n按 Q 或 Ctrl+C 安全退出。`n" -f $script:serviceVersion, $pageUrl, $logPath)
+    $separator = '-' * 40
+    Write-Host "`n$separator"
+    Write-Host "Rename Studio $script:serviceVersion" -ForegroundColor Green -NoNewline
+    Write-Host " is running`n"
+    Write-Host 'Open in browser:' -ForegroundColor DarkGray -NoNewline
+    Write-Host " $pageUrl`n"
+    Write-Host 'Log file:' -ForegroundColor DarkGray -NoNewline
+    Write-Host " $logPath`n"
+    Write-Host "Press Q or Ctrl+C to exit safely.`n$separator`n"
     while (-not $serviceProcess.HasExited) {
         Read-ServiceOutput
         if (Test-StopKey) { break }
         Start-Sleep -Milliseconds 250
     }
-    if ($serviceProcess.HasExited) { throw ('服务意外退出（exit_code={0}）。请查看本次 app.log。' -f $serviceProcess.ExitCode) }
+    if ($serviceProcess.HasExited) { throw ('Service exited unexpectedly (exit_code={0}). Log file: {1}' -f $serviceProcess.ExitCode, $logPath) }
 }
 catch [OperationCanceledException] {
-    Finish-Step '−' '已取消'
+    Finish-Step '−' 'Canceled'
 }
 catch {
     $exitCode = 1
@@ -413,7 +431,7 @@ finally {
     }
     if ($serviceProcess) {
         if (-not $serviceProcess.HasExited) {
-            Write-Status '正在等待当前请求完成。请在服务停止后关闭窗口。'
+            Write-Status 'Waiting for active requests to finish. Close the window after the service stops.'
             [IO.File]::WriteAllText($stopFile, 'stop')
             # No timeout kill: an in-flight rename must be allowed to reconcile its result.
             while (-not $serviceProcess.HasExited) {
@@ -425,9 +443,9 @@ finally {
         Read-ServiceOutput -Wait
         if ($serviceProcess.ExitCode -ne 0 -and $exitCode -eq 0) {
             $exitCode = 1
-            Write-Step '✗' '停止服务' ('exit_code={0}。日志地址：{1}' -f $serviceProcess.ExitCode, $logPath)
+            Write-Step '✗' 'Stop service' ('exit_code={0}. Log file: {1}' -f $serviceProcess.ExitCode, $logPath)
         }
-        elseif ($exitCode -eq 0) { Write-Status '服务已停止。' }
+        elseif ($exitCode -eq 0) { Write-Status 'Service stopped.' }
         $serviceProcess.Dispose()
     }
     if ($lockStream) {
@@ -443,6 +461,6 @@ finally {
 }
 
 if ($exitCode -ne 0 -and -not [Console]::IsInputRedirected) {
-    Read-Host '按 Enter 关闭' | Out-Null
+    Read-Host 'Press Enter to close' | Out-Null
 }
 exit $exitCode
