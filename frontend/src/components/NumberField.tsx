@@ -45,7 +45,6 @@ export function NumberField({ id, label, value, min, max, onChange }: NumberFiel
         bgcolor: "action.hover",
         "&:focus-within": {
           borderColor: "primary.main",
-          boxShadow: (theme) => `0 0 0 3px ${theme.palette.action.selected}`,
         },
         "& .MuiIconButton-root": {
           borderRadius: 0,

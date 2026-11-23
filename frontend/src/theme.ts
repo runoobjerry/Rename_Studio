@@ -122,9 +122,6 @@ export function createAppTheme(mode: PaletteMode, locale = "en-US") {
             "&:hover .MuiOutlinedInput-notchedOutline": {
               borderColor: textSecondary,
             },
-            "&.Mui-focused": {
-              boxShadow: `0 0 0 3px ${alpha(primaryMain, dark ? 0.14 : 0.12)}`,
-            },
             "&.Mui-focused .MuiOutlinedInput-notchedOutline": {
               borderColor: primaryMain,
             },

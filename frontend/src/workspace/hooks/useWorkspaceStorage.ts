@@ -68,7 +68,7 @@ export function useWorkspaceStorage({ pauseFileQueries, onLocalRootSelected, dir
     if (initialSession.unavailable) warnSessionUnavailable();
   }, [initialSession.unavailable, warnSessionUnavailable]);
 
-  const storages = useQuery({ queryKey: ["storages"], queryFn: fetchStorages, refetchInterval: 3000 });
+  const storages = useQuery({ queryKey: ["storages"], queryFn: fetchStorages });
   const activeStorage = storages.data?.find((storage) => storage.storage_id === storageId);
   const providerType = activeStorage?.provider_type ?? "";
   const providerDefinitions = useQuery({ queryKey: ["storage-providers"], queryFn: fetchStorageProviders });
