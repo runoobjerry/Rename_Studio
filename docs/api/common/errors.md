@@ -75,7 +75,7 @@
 
 | `error_code` | `details.reason` | 语义 |
 | --- | --- | --- |
-| `PROVIDER_ERROR` | `RENAME_NOT_ATTEMPTED` | 配合 `status: not_attempted` 表示本项尚未发出写请求。`stop_reason: RENAME_OUTCOME_UNKNOWN` 表示另一项未知导致停止。 |
+| `PROVIDER_ERROR` | `RENAME_NOT_ATTEMPTED` | 配合 `status: skipped` 表示因批次停止而跳过本项，尚未发出写请求。`stop_reason: RENAME_OUTCOME_UNKNOWN` 表示因另一项写入结果未知而停止。 |
 | `RENAME_CONFLICT` | `SOURCE_CHANGED` | Provider 报告源状态或前置条件已变化，刷新目录后重新预览或重新输入。Graph `412` 产生此原因。 |
 
 已提交但被明确拒绝的项目返回 `failed`。

@@ -13,11 +13,11 @@ logger = logging.getLogger("rename_studio.rename")
 type RenameObserver[FileT: RenameFile] = Callable[[str, FileT | AppError, bool], None]
 
 
-def rename_failure_status(error: AppError) -> Literal["failed", "unknown", "not_attempted"]:
+def rename_failure_status(error: AppError) -> Literal["failed", "unknown", "skipped"]:
     if isinstance(error, RenameOutcomeUnknownError):
         return "unknown"
     if error.details.get("reason") == "RENAME_NOT_ATTEMPTED":
-        return "not_attempted"
+        return "skipped"
     return "failed"
 
 

@@ -1,5 +1,6 @@
 import { useTranslation } from "react-i18next";
 import { executionItemMessage } from "./resultMessages";
+import { isRenameNotAttempted } from "./renameRecord";
 import { errorMessage } from "../../i18n/messages";
 import type { TFunction } from "i18next";
 import { memo, useMemo, useState } from "react";
@@ -74,7 +75,8 @@ export const PreviewPanel = memo(function PreviewPanel({
       const newName = needsVerification ? t("files:preview.needsVerification")
         : !result ? item.new_name
         : currentName ?? (result.status === "renamed" ? result.new_name
-          : result.status === "skipped" ? result.original_name : t("files:preview.currentNameUnavailable"));
+          : result.status === "skipped" && status.isUnchanged
+            ? result.original_name : t("files:preview.currentNameUnavailable"));
       return { item, status, newName };
     });
     return { rows, pendingCount, unchangedCount };
@@ -184,23 +186,20 @@ function statusFor(item: PreviewResponse["items"][number], result: ExecuteRespon
   // 已修改项保留原预览分类；失败和跳过的执行结果覆盖分类。
   let category: Exclude<StatusFilter, "all"> = item.error || !item.valid || item.conflict ? "error"
     : item.changed ? "pending" : "unchanged";
+  const unchangedSkip = result?.status === "skipped" && !isRenameNotAttempted(result);
   let label: string;
   let color: "success" | "warning" | "error" | "default";
   if (result?.status === "renamed") {
     label = t("files:preview.filters.renamed");
     color = "success";
-  } else if (result?.status === "not_attempted") {
-    category = "error";
-    label = t("files:preview.notModified");
-    color = "warning";
   } else if (result?.status === "failed") {
     category = "error";
     label = executionItemMessage(result, t);
     color = "error";
   } else if (result?.status === "skipped") {
-    category = "unchanged";
-    label = t("files:preview.filters.unchanged");
-    color = "default";
+    category = unchangedSkip ? "unchanged" : "error";
+    label = t(unchangedSkip ? "files:preview.filters.unchanged" : "files:preview.notModified");
+    color = unchangedSkip ? "default" : "warning";
   } else if (item.error || !item.valid || item.conflict) {
     label = !item.error && !item.details?.reason ? t(item.conflict ? "files:preview.conflict" : "files:preview.invalid")
       : item.conflict && !item.details?.reason ? t("errors:renameStatus.duplicateNames")
@@ -214,7 +213,7 @@ function statusFor(item: PreviewResponse["items"][number], result: ExecuteRespon
     category, label, color, renamed: result?.status === "renamed",
     // 副标题统计独立于筛选分类：有效变更且尚无执行结果才计为待修改。
     isPendingChange: item.changed && item.valid && !result,
-    isUnchanged: !item.changed || result?.status === "skipped",
+    isUnchanged: !item.changed || unchangedSkip,
   };
 }
 

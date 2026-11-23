@@ -106,15 +106,15 @@ class ExecuteService:
                 errors = sorted({item.error_code for item in response.items if item.error_code})
                 logger.log(
                     logging.WARNING if response.status == "incomplete" else logging.INFO,
-                    "Batch rename completed succeeded=%s failed=%s unknown=%s skipped=%s not_attempted=%s error_codes=%s duration_ms=%.2f",
+                    "Batch rename completed succeeded=%s failed=%s unknown=%s skipped=%s error_codes=%s duration_ms=%.2f",
                     counts.renamed, counts.failed, counts.unknown, counts.skipped,
-                    counts.not_attempted, ",".join(errors) or "none", (monotonic() - started) * 1000,
+                    ",".join(errors) or "none", (monotonic() - started) * 1000,
                 )
                 terminal_logger.log(
                     logging.ERROR if response.status == "incomplete" else logging.INFO,
-                    "%r Batch rename: %s/%s, %s succeeded, %s failed, %s unknown, %s skipped, %s not attempted",
+                    "%r Batch rename: %s/%s, %s succeeded, %s failed, %s unknown, %s skipped",
                     storage_name, processed, progress.total, counts.renamed, counts.failed, counts.unknown,
-                    counts.skipped, counts.not_attempted,
+                    counts.skipped,
                 )
                 return response
 
@@ -289,6 +289,7 @@ class ExecuteService:
                 original_name=item.original_name,
                 new_name=item.new_name,
                 status="skipped" if not item.changed else "failed",
+                actual_name=item.original_name if not item.changed else None,
             )
             for item in snapshot.response.items
         }
@@ -337,9 +338,8 @@ class ExecuteService:
             if item.status == "renamed":
                 item.actual_name = item.new_name
                 item.error_code = None
-            elif item.status == "skipped":
-                item.actual_name = item.original_name
-        incomplete = any(item.status in {"failed", "unknown", "not_attempted"} for item in items)
+        # A skipped write still makes a batch incomplete when it carries the stop error.
+        incomplete = any(item.error_code is not None for item in items)
         return RenameExecuteResponse(
             preview_id=preview_id,
             status="incomplete" if incomplete else "completed",

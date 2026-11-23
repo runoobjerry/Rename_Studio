@@ -38,7 +38,7 @@ describe("API client", () => {
   it("submits a single rename directly without requesting a preview", async () => {
     const operationId = "00000000-0000-4000-8000-000000000001";
     const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ operation_id: operationId, status: "completed",
-      counts: { renamed: 0, skipped: 0, failed: 0, unknown: 0, not_attempted: 0 },
+      counts: { renamed: 0, skipped: 0, failed: 0, unknown: 0 },
       items: [] })));
     vi.stubGlobal("fetch", fetchMock);
     const result = await executeStorageSingleRename("connection/id", {
@@ -53,7 +53,7 @@ describe("API client", () => {
       }),
     });
     expect(result).toEqual({ operation_id: operationId, status: "completed",
-      counts: { renamed: 0, skipped: 0, failed: 0, unknown: 0, not_attempted: 0 },
+      counts: { renamed: 0, skipped: 0, failed: 0, unknown: 0 },
       items: [] });
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });

@@ -20,7 +20,7 @@ const directoryKey = ["files", "default-local", 1, { kind: "root" }];
 
 function renamed(file: FileItem, current: FileItem, operationId = "single-operation") {
   return { operation_id: operationId, status: "completed" as const,
-    counts: { renamed: 1, skipped: 0, failed: 0, unknown: 0, not_attempted: 0 },
+    counts: { renamed: 1, skipped: 0, failed: 0, unknown: 0 },
     items: [{
     file_id: file.id, original_name: file.name, new_name: current.name,
     status: "renamed" as const, error: null, current_file: current,
@@ -58,7 +58,7 @@ describe("single rename workflow", () => {
         parent_location: kind === "cloud" ? { kind: "id", value: "other-folder" }
           : { kind: "path", value: "other-folder" } }), path: null, parent_path: null };
       vi.mocked(api.executeStorageSingleRename).mockResolvedValueOnce({ operation_id: "moved", status: "completed",
-        counts: { renamed: 1, skipped: 0, failed: 0, unknown: 0, not_attempted: 0 },
+        counts: { renamed: 1, skipped: 0, failed: 0, unknown: 0 },
         items: [{ ...renamed(listing(2).items[0], fileItem("new.txt")).items[0], current_file: current }] });
       act(() => hook.result.current.workflow.openSingleRename("file-0.txt"));
       act(() => hook.result.current.workflow.applySingleRename("new", ".txt"));
@@ -163,7 +163,7 @@ describe("single rename workflow", () => {
     const other = fileItem("other.txt");
     vi.mocked(api.executePreview).mockResolvedValueOnce({
       preview_id: "task-preview", status: "completed",
-      counts: { renamed: 2, skipped: 0, failed: 0, unknown: 0, not_attempted: 0 },
+      counts: { renamed: 2, skipped: 0, failed: 0, unknown: 0 },
       items: [
         renamed(files[0], first).items[0], renamed(files[1], other).items[0],
       ],
@@ -273,7 +273,7 @@ describe("single rename workflow", () => {
     if (kind === "lost") vi.mocked(api.executeStorageSingleRename).mockRejectedValueOnce(new Error("Response lost"));
     else vi.mocked(api.executeStorageSingleRename).mockResolvedValueOnce({
       operation_id: "single-operation", status: kind === "unconfirmed" ? "completed" : "incomplete",
-      counts: { renamed: kind === "unconfirmed" ? 1 : 0, skipped: 0, failed: 0, unknown: kind === "unknown" ? 1 : 0, not_attempted: 0 },
+      counts: { renamed: kind === "unconfirmed" ? 1 : 0, skipped: 0, failed: 0, unknown: kind === "unknown" ? 1 : 0 },
       items: kind === "missing" ? [] : [{
         file_id: source.id, original_name: source.name, new_name: "new.txt",
         status: kind === "unconfirmed" ? "renamed" : "unknown", error: kind === "unconfirmed" ? null : "Unknown write",
@@ -316,7 +316,7 @@ describe("single rename workflow", () => {
     const source = listing(1).items[0];
 
     vi.mocked(api.executeStorageSingleRename).mockResolvedValueOnce({ operation_id: "single-operation", status: "incomplete",
-      counts: { renamed: 0, skipped: 0, failed: 1, unknown: 0, not_attempted: 0 },
+      counts: { renamed: 0, skipped: 0, failed: 1, unknown: 0 },
       items: [{
       file_id: source.id, original_name: source.name, new_name: "new.txt", status: "failed",
       error: message, error_code: code, actual_name: source.name,
@@ -342,7 +342,7 @@ describe("single rename workflow", () => {
     const hook = await setupWorkspace(2);
     act(() => hook.result.current.workflow.selectAllFiles(["file-0.txt"]));
     vi.mocked(api.executeStorageSingleRename).mockResolvedValueOnce({ operation_id: "missing-file", status: "incomplete",
-      counts: { renamed: 0, skipped: 0, failed: 1, unknown: 0, not_attempted: 0 },
+      counts: { renamed: 0, skipped: 0, failed: 1, unknown: 0 },
       items: [{
       file_id: "file-0.txt", original_name: "file-0.txt", new_name: "new.txt", status: "failed",
       error: "Missing file", error_code: "NOT_FOUND",

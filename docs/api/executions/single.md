@@ -47,7 +47,7 @@ Content-Type: application/json
 {
   "operation_id":"72ec54b8-8818-42ec-9ca1-7ae217976c53",
   "status":"completed",
-  "counts":{"renamed":1,"skipped":0,"failed":0,"unknown":0,"not_attempted":0},
+  "counts":{"renamed":1,"skipped":0,"failed":0,"unknown":0},
   "items":[
     {
       "file_id":"IMG_1.jpg",
@@ -82,7 +82,7 @@ Content-Type: application/json
 {
   "operation_id":"72ec54b8-8818-42ec-9ca1-7ae217976c53",
   "status":"incomplete",
-  "counts":{"renamed":0,"skipped":0,"failed":1,"unknown":0,"not_attempted":0},
+  "counts":{"renamed":0,"skipped":0,"failed":1,"unknown":0},
   "items":[
     {
       "file_id":"IMG_1.jpg",
@@ -105,7 +105,7 @@ Content-Type: application/json
 {
   "operation_id":"72ec54b8-8818-42ec-9ca1-7ae217976c53",
   "status":"incomplete",
-  "counts":{"renamed":0,"skipped":0,"failed":0,"unknown":1,"not_attempted":0},
+  "counts":{"renamed":0,"skipped":0,"failed":0,"unknown":1},
   "items":[
     {
       "file_id":"IMG_1.jpg",

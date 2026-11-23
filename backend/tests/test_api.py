@@ -44,7 +44,7 @@ def test_execution_api_preserves_unknown_status_after_committed_write(
     assert response.status_code == 200
     result = response.json()
     assert result["status"] == "incomplete"
-    assert result["counts"] == {"renamed": 0, "skipped": 0, "failed": 0, "unknown": 1, "not_attempted": 0}
+    assert result["counts"] == {"renamed": 0, "skipped": 0, "failed": 0, "unknown": 1}
     assert result["items"][0]["status"] == "unknown"
     assert result["items"][0]["error_code"] == "RENAME_OUTCOME_UNKNOWN"
     assert result["items"][0]["actual_name"] is None

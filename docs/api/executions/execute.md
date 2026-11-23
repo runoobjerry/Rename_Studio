@@ -25,7 +25,7 @@ Google Drive 可能以成功的空列表隐藏不存在或无权访问的目录�
 
 #### Returns
 
-HTTP 200，返回 [RenameExecuteResponse](index.md#对象renameexecuteresponse)。`completed` 表示全部完成，`incomplete` 表示未全部完成。通过 `counts` 和[逐项状态](index.md#execution-outcomes)区分部分完成、失败、未知和未执行。
+HTTP 200，返回 [RenameExecuteResponse](index.md#对象renameexecuteresponse)。`completed` 表示全部完成，`incomplete` 表示未全部完成。`counts` 汇总成功、跳过、失败和结果未知的数量。跳过原因见[逐项结果](index.md#execution-outcomes)。
 
 #### Request / Response 示例
 
@@ -40,7 +40,7 @@ Content-Type: application/json
 {
   "preview_id":"4db956a6-c583-47af-bcde-9ea71312fc36",
   "status":"completed",
-  "counts":{"renamed":1,"skipped":0,"failed":0,"unknown":0,"not_attempted":0},
+  "counts":{"renamed":1,"skipped":0,"failed":0,"unknown":0},
   "items":[
     {
       "file_id":"IMG_1.jpg",

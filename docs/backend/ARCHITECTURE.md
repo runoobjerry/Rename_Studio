@@ -107,7 +107,7 @@ flowchart TB
   Drain --> Result
 ```
 
-复核用 `mode="verify"` 实时读取原目录的全部直接子项。复核失败标记 `execution_started: false`。即使请求取消，执行保护也会保留到已发出的写入收尾。成功项保留，因未知结果而未提交的项目标记为 `not_attempted`。逐项状态与进度见[执行 API](../api/executions/index.md#execution-outcomes)。
+复核用 `mode="verify"` 实时读取原目录的全部直接子项。复核失败标记 `execution_started: false`。即使请求取消，执行保护也会保留到已发出的写入收尾。成功项保留，因未知结果而未提交的项目返回 `skipped`，原因是 `RENAME_NOT_ATTEMPTED`。逐项状态与进度见[执行 API](../api/executions/index.md#execution-outcomes)。
 
 ### 单项直接执行
 

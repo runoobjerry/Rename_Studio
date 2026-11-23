@@ -23,13 +23,13 @@
 | --- | --- | --- | --- | --- |
 | `preview_id` | string | 是 | 否 | 执行的预览标识。 |
 | `status` | string | 是 | 否 | `completed` 或 `incomplete`，含义见下表。 |
-| `counts` | RenameResultCounts | 是 | 否 | 五种逐项状态的数量，按本次响应的 `items` 计算。 |
+| `counts` | RenameResultCounts | 是 | 否 | 四种逐项状态的数量，按本次响应的 `items` 计算。 |
 | `items` | array of ExecuteItem | 是 | 否 | 按预览顺序返回；实际完成顺序可能不同。 |
 
 | `status` | 含义 |
 | --- | --- |
-| `completed` | 每项均为已确认重命名或无需修改，包括全部跳过的情况。 |
-| `incomplete` | 未全部完成：至少一项为 `failed`、`unknown` 或 `not_attempted`；已确认成功项仍保留。 |
+| `completed` | 每项均已确认重命名或无需修改。 |
+| `incomplete` | 至少一项失败、结果未知，或因批次停止而未提交。已确认成功项仍保留。 |
 
 ### 对象：SingleRenameExecuteResponse
 
@@ -41,22 +41,21 @@
 | --- | --- | --- | --- | --- |
 | `operation_id` | string | 是 | 否 | 请求 UUID 的标准字符串形式。 |
 | `status` | string | 是 | 否 | `completed` 或 `incomplete`；单项成功为 `completed`，失败或未知为 `incomplete`。 |
-| `counts` | RenameResultCounts | 是 | 否 | 五种逐项状态的数量，按本次响应的 `items` 计算。 |
+| `counts` | RenameResultCounts | 是 | 否 | 四种逐项状态的数量，按本次响应的 `items` 计算。 |
 | `items` | array of SingleExecuteItem | 是 | 否 | 当前固定为 1 个结果项。 |
 
 ### 对象：RenameResultCounts
 
-表示本次响应中五种逐项状态的数量；字段均必定返回、不可空，无默认值，合计等于 `items` 长度。
+表示本次响应中四种逐项状态的数量。字段均必定返回、不可空，无默认值，合计等于 `items` 长度。
 
 #### Attributes
 
 | 字段 | 类型 | 必含 | 可空 | 说明 |
 | --- | --- | --- | --- | --- |
 | `renamed` | integer | 是 | 否 | 已确认重命名项数，≥ 0。 |
-| `skipped` | integer | 是 | 否 | 无需修改项数，≥ 0。 |
+| `skipped` | integer | 是 | 否 | 跳过项数，包括无需修改和因批次停止而未提交的项目，≥ 0。 |
 | `failed` | integer | 是 | 否 | 已确认未达到目标的项数，≥ 0。 |
 | `unknown` | integer | 是 | 否 | 最终结果无法确认的项数，≥ 0。 |
-| `not_attempted` | integer | 是 | 否 | 尚未发出写请求的项数，≥ 0。 |
 
 <a id="execution-items"></a>
 ### 对象：ExecuteItem 与 SingleExecuteItem
@@ -70,11 +69,11 @@
 | `file_id` | string | 是 | 否 | 原请求 ID，不因重命名后的身份变化而改写。 |
 | `original_name` | string | 是 | 否 | 预览原名或单项请求携带的原名。 |
 | `new_name` | string | 是 | 否 | 最终目标名。 |
-| `status` | string | 是 | 否 | `renamed`、`skipped`、`failed`、`unknown` 或 `not_attempted`；单项当前返回 `renamed`、`failed` 或 `unknown`。 |
+| `status` | string | 是 | 否 | `renamed`、`skipped`、`failed` 或 `unknown`。单项当前返回 `renamed`、`failed` 或 `unknown`。 |
 | `error` | string | 是 | 是 | 诊断信息，默认 `null`。 |
 | `error_code` | string | 是 | 是 | [统一错误码](../common/errors.md#errors)，默认 `null`。 |
 | `details` | object | 是 | 是 | 附加详情，包括[校验原因](../common/errors.md#validation-reasons)，默认 `null`。 |
-| `actual_name` | string | 是 | 是 | 成功为已确认名称，跳过为预览原名；失败时为已核实名称或 `null`，未知和未执行不猜测名称；默认 `null`。 |
+| `actual_name` | string | 是 | 是 | 成功时为已确认名称，无需修改时为预览原名，失败时为已核实名称或 `null`。结果未知或因批次停止而未提交时为 `null`。默认 `null`。 |
 | `current_file` | FileItem / RenameFile | 是 | 是 | 成功写入后确认的元数据；默认 `null`；写入结果见 `status`。 |
 
 <a id="execution-outcomes"></a>
@@ -85,16 +84,15 @@
 | `status` | 含义 |
 | --- | --- |
 | `renamed` | 已确认达到目标名。 |
-| `skipped` | 无需修改而跳过。 |
+| `skipped` | 无需修改，或因批次停止而跳过写入。后一种情况的 `details.reason` 为 `RENAME_NOT_ATTEMPTED`。 |
 | `failed` | 已确认未达到目标；当前名称可能是原名或其他名称，已核实时由 `actual_name` 返回。 |
 | `unknown` | 最终结果无法确认，需核对真实文件。 |
-| `not_attempted` | 尚未发出本项写请求。 |
 
 总体 `status` 表示本次操作是否全部完成，客户端使用 `counts` 和逐项状态展示各类结果。存在未知或缺失结果时，优先提示待核对；`details.stop_reason` 说明停止提交的原因。
 
 `actual_name` 是已确认的当前名称，`new_name` 始终是请求目标。`current_file` 提供确认元数据；使用其返回 ID 更新文件身份。名称或元数据为 `null` 时，继续按 `status` 处理结果，按需重新读取文件信息。
 
-同组出现未知写入时，先按 ID 核实。确认目标已达到则返回 `renamed`，确认其他名称则返回 `failed`；核实不了则保留 `unknown` 并停止提交后续组。未提交项返回 `not_attempted`，已确认成功项保留，不自动回滚。
+同组出现未知写入时，先按 ID 核实。确认目标已达到则返回 `renamed`，确认其他名称则返回 `failed`。无法核实时保留 `unknown`，停止提交后续组。未提交项返回 `skipped`，并带有 `details.reason: RENAME_NOT_ATTEMPTED`。已确认成功项保留，不自动回滚。
 
 客户端收到 `unknown`、缺失结果项或丢失整个执行响应时，不自动重发。向发起操作的连接和目录发出 `refresh: true` 并成功读取后解除待核对保护，恢复单项改名和批量预览。旧预览作废。切换目录清理当前选择和预览，最近修改记录与待核对保护继续保留。
 
@@ -105,7 +103,7 @@
   "file_id": "file-3",
   "original_name": "C.txt",
   "new_name": "Z.txt",
-  "status": "not_attempted",
+  "status": "skipped",
   "error": "Rename was not attempted after an unknown write outcome",
   "error_code": "PROVIDER_ERROR",
   "details": {"reason": "RENAME_NOT_ATTEMPTED", "stop_reason": "RENAME_OUTCOME_UNKNOWN"},

@@ -23,16 +23,16 @@ const validPreview = {
 };
 
 describe("PreviewPanel", () => {
-  it("shows unsubmitted items by status even when their diagnostic is translated or absent", () => {
+  it("shows unsubmitted items by skip reason even when their diagnostic is translated or absent", () => {
     const items = ["stopped", "not-started", "legacy"].map((file_id) => ({ ...validPreview.items[0], file_id }));
     render(<PreviewPanel preview={{ ...validPreview, items }} execution={{
       preview_id: validPreview.preview_id, status: "incomplete",
-      counts: { renamed: 0, skipped: 0, failed: 1, unknown: 0, not_attempted: 2 },
+      counts: { renamed: 0, skipped: 2, failed: 1, unknown: 0 },
       items: [
-        { file_id: "stopped", original_name: "one.txt", new_name: "renamed.txt", status: "not_attempted",
+        { file_id: "stopped", original_name: "one.txt", new_name: "renamed.txt", status: "skipped",
           error: "后续组未提交", error_code: "PROVIDER_ERROR",
           details: { reason: "RENAME_NOT_ATTEMPTED", stop_reason: "RENAME_OUTCOME_UNKNOWN" } },
-        { file_id: "not-started", original_name: "one.txt", new_name: "renamed.txt", status: "not_attempted",
+        { file_id: "not-started", original_name: "one.txt", new_name: "renamed.txt", status: "skipped",
           error: null, error_code: "PROVIDER_ERROR", details: { reason: "RENAME_NOT_ATTEMPTED" } },
         { file_id: "legacy", original_name: "one.txt", new_name: "renamed.txt", status: "failed",
           error: "Rename was not attempted", error_code: "PROVIDER_ERROR" },
@@ -57,7 +57,7 @@ describe("PreviewPanel", () => {
     };
     const { rerender } = render(<PreviewPanel preview={{ ...validPreview, items }} unknownExecution={unknownExecution} executeError="Execution response lost" execution={{
       preview_id: validPreview.preview_id, status: "incomplete",
-      counts: { renamed: 1, skipped: 2, failed: 1, unknown: 1, not_attempted: 0 },
+      counts: { renamed: 1, skipped: 2, failed: 1, unknown: 1 },
       items: [
         { file_id: "renamed", original_name: "renamed.txt", new_name: "new-renamed.txt", status: "renamed", error: null },
         { file_id: "unknown", original_name: "unknown.txt", new_name: "new-unknown.txt", status: "unknown", error: "Unknown outcome", error_code: "RENAME_OUTCOME_UNKNOWN" },

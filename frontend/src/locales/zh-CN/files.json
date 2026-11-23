@@ -54,9 +54,7 @@
     "executeFailed": "执行失败：{{message}}",
     "unknownOutcome": "部分重命名结果尚未确认。请刷新目录，或前往对应的云盘或本地目录核对。",
     "needsVerification": "待核对",
-    "unknown": "修改结果无法确认",
-    "notAttempted": "因其他项目的修改结果待核对，本项目未执行",
-    "notAttemptedOther": "本项目尚未执行"
+    "unknown": "修改结果无法确认"
   },
   "rename": {
     "phases": {
@@ -90,10 +88,9 @@
     "ended": "本次修改结束：{{results}}。",
     "resultSeparator": "，",
     "renamedCount": "{{count}} 项已修改",
-    "skippedCount": "{{count}} 项无需修改",
+    "skippedCount": "{{count}} 项已跳过",
     "failedCount": "{{count}} 项失败",
-    "unknownCount": "{{count}} 项待核对",
-    "notAttemptedCount": "{{count}} 项未执行"
+    "unknownCount": "{{count}} 项待核对"
   },
   "location": {
     "title": "目录位置",

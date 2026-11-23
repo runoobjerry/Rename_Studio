@@ -12,7 +12,7 @@ from app.schemas.rename_input import RenamePreviewInput
 from app.schemas.storage import RootLocation, StorageLocation
 
 
-RenameItemStatus = Literal["renamed", "skipped", "failed", "unknown", "not_attempted"]
+RenameItemStatus = Literal["renamed", "skipped", "failed", "unknown"]
 RenameExecutionStatus = Literal["completed", "incomplete"]
 
 
@@ -67,14 +67,13 @@ class RenameResultCounts(BaseModel):
     skipped: int
     failed: int
     unknown: int
-    not_attempted: int
 
     @classmethod
     def from_items(cls, items: Sequence[RenameItemResult]) -> "RenameResultCounts":
         counts = Counter(item.status for item in items)
         return cls(
             renamed=counts["renamed"], skipped=counts["skipped"], failed=counts["failed"],
-            unknown=counts["unknown"], not_attempted=counts["not_attempted"],
+            unknown=counts["unknown"],
         )
 
 

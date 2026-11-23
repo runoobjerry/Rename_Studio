@@ -75,7 +75,7 @@ describe("workspace workflow wiring", () => {
     const current = fileItem("provider-new-id", { name: "资料.txt", path: "资料.txt" });
     vi.mocked(api.fetchStorageFiles).mockResolvedValue({ ...listing(1), items: [current] });
     await act(async () => execution.resolve({ operation_id: "single-ui", status: "completed",
-      counts: { renamed: 1, skipped: 0, failed: 0, unknown: 0, not_attempted: 0 },
+      counts: { renamed: 1, skipped: 0, failed: 0, unknown: 0 },
       items: [{
       file_id: "file-0.txt", original_name: "file-0.txt", new_name: "资料.txt",
       status: "renamed", error: null, current_file: current,
@@ -133,7 +133,7 @@ describe("workspace workflow wiring", () => {
     fireEvent.click(invertSelection);
     expect(useRenameStore.getState().selectedIds).toEqual(items.map((item) => item.id));
     await act(async () => resolveExecution.resolve({ preview_id: "task-preview", status: "completed",
-      counts: { renamed: items.length, skipped: 0, failed: 0, unknown: 0, not_attempted: 0 },
+      counts: { renamed: items.length, skipped: 0, failed: 0, unknown: 0 },
       items: items.map((file) => ({
       file_id: file.id, original_name: file.name, new_name: `renamed-${file.name}`, status: "renamed", error: null,
     })) }));

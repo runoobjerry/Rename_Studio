@@ -3,7 +3,7 @@ import { ApiError, executePreview } from "../../api/client";
 import { useNotification } from "../../components/NotificationProvider";
 import { useRenameStore } from "../../stores/useRenameStore";
 import { useTranslation } from "react-i18next";
-import type { PendingRenameRecord } from "./renameRecord";
+import { isRenameNotAttempted, type PendingRenameRecord } from "./renameRecord";
 import type { DirectoryListing, PreviewItem } from "../../types";
 
 type BatchExecutionInput = {
@@ -43,11 +43,11 @@ export function useRenameExecution(isCurrentSession: (session: string) => boolea
         .map((item) => [item.file_id, item.current_file!]));
       queryClient.setQueryData<DirectoryListing>(input.directoryKey, (listing) =>
         listing && { ...listing, items: listing.items.map((item) => confirmed.get(item.id) ?? item) });
-      const { renamed, skipped, failed: failedCount, not_attempted: notAttempted } = result.counts;
+      const { renamed, skipped, failed: failedCount } = result.counts;
       if (result.status === "completed" && unknown.length === 0) {
         notify({ key: "files:notifications.completed", values: { count: renamed } }, "success");
       } else {
-        const counts = [["renamed", renamed], ["skipped", skipped], ["failed", failedCount], ["unknown", unknown.length], ["notAttempted", notAttempted]] as const;
+        const counts = [["renamed", renamed], ["skipped", skipped], ["failed", failedCount], ["unknown", unknown.length]] as const;
         const results = counts.filter(([, count]) => count > 0)
           .map(([key, count]) => t(`files:notifications.${key}Count`, { count }))
           .join(t("files:notifications.resultSeparator"));
@@ -57,8 +57,8 @@ export function useRenameExecution(isCurrentSession: (session: string) => boolea
         );
       }
       // 保留明确失败和未提交项的选择；成功文件可重新选择并创建新预览。
-      const failed = new Set(result.items.filter((item) => (item.status === "failed" || item.status === "not_attempted")).map((item) => item.file_id));
-      setSelectedIds(useRenameStore.getState().selectedIds.filter((id) => failed.has(id)).map((id) => confirmed.get(id)?.id ?? id));
+      const retainedIds = new Set(result.items.filter((item) => item.status === "failed" || isRenameNotAttempted(item)).map((item) => item.file_id));
+      setSelectedIds(useRenameStore.getState().selectedIds.filter((id) => retainedIds.has(id)).map((id) => confirmed.get(id)?.id ?? id));
     },
     onError: (error, input) => {
       // 服务端确认复核未写入，或在读取预览、获取文件来源执行权时拒绝了请求。

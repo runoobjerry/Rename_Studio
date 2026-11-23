@@ -28,6 +28,10 @@ export type RenameRecord = Omit<PendingRenameRecord, "items"> & {
   readonly items: readonly Readonly<RenameRecordItem>[];
 };
 
+export function isRenameNotAttempted(item: SingleExecuteItem) {
+  return item.details?.reason === "RENAME_NOT_ATTEMPTED";
+}
+
 export function finishRenameRecord(record: PendingRenameRecord, outcomes: readonly SingleExecuteItem[]): RenameRecord {
   const byId = new Map(outcomes.map((item) => [item.file_id, item]));
   return { ...record, items: record.items.map((item) => {

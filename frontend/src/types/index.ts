@@ -128,7 +128,7 @@ export interface ErrorContext extends Record<string, unknown> {
   actual_name?: string;
 }
 
-export type RenameItemStatus = "renamed" | "skipped" | "failed" | "unknown" | "not_attempted";
+export type RenameItemStatus = "renamed" | "skipped" | "failed" | "unknown";
 export type RenameExecutionStatus = "completed" | "incomplete";
 export type RenameResultCounts = Record<RenameItemStatus, number>;
 

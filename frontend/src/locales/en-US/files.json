@@ -54,9 +54,7 @@
     "executeFailed": "Execution failed: {{message}}",
     "unknownOutcome": "Some rename results are unconfirmed. Refresh the directory or verify the files in the corresponding cloud drive or local folder.",
     "needsVerification": "Needs verification",
-    "unknown": "This item could not be confirmed.",
-    "notAttempted": "Not attempted because another item’s rename result needs verification.",
-    "notAttemptedOther": "This item was not attempted."
+    "unknown": "This item could not be confirmed."
   },
   "rename": {
     "phases": {
@@ -90,10 +88,9 @@
     "ended": "Renaming finished: {{results}}.",
     "resultSeparator": ", ",
     "renamedCount": "{{count}} renamed",
-    "skippedCount": "Unchanged: {{count}}",
+    "skippedCount": "{{count}} skipped",
     "failedCount": "{{count}} failed",
-    "unknownCount": "{{count}} need verification",
-    "notAttemptedCount": "{{count}} not attempted"
+    "unknownCount": "{{count}} need verification"
   },
   "location": {
     "title": "Directory location",

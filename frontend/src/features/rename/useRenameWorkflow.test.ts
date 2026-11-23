@@ -89,7 +89,7 @@ describe("rename workflow", () => {
     await preview(hook);
     const response: Awaited<ReturnType<typeof api.executePreview>> = {
       preview_id: "task-preview", status: "incomplete",
-      counts: { renamed: 1, skipped: 0, failed: 1, unknown: 0, not_attempted: 0 },
+      counts: { renamed: 1, skipped: 0, failed: 1, unknown: 0 },
       items: listing().items.map((file, index) => ({
         file_id: file.id, original_name: file.name, new_name: `renamed-${file.name}`,
         status: index === 0 ? "failed" : "renamed", error: index === 0 ? "Write failed" : null,
@@ -133,7 +133,7 @@ describe("rename workflow", () => {
     await preview(hook);
     if (outcome === "success") vi.mocked(api.executePreview).mockResolvedValue({
       preview_id: "task-preview", status: "completed",
-      counts: { renamed: 2, skipped: 0, failed: 0, unknown: 0, not_attempted: 0 },
+      counts: { renamed: 2, skipped: 0, failed: 0, unknown: 0 },
       items: listing().items.map((file) => ({
         file_id: file.id, original_name: file.name, new_name: `renamed-${file.name}`, status: "renamed", error: null,
         current_file: { ...file, id: `renamed-${file.id}`, name: `renamed-${file.name}`, path: `renamed-${file.path}` },
@@ -180,7 +180,7 @@ describe("rename workflow", () => {
     const renamed = fileItem("single-confirmed.txt");
     vi.mocked(api.executeStorageSingleRename).mockResolvedValueOnce({
       operation_id: "previous-single", status: "completed",
-      counts: { renamed: 1, skipped: 0, failed: 0, unknown: 0, not_attempted: 0 },
+      counts: { renamed: 1, skipped: 0, failed: 0, unknown: 0 },
       items: [{ file_id: source.id, original_name: source.name, new_name: renamed.name,
         status: "renamed", error: null, current_file: renamed }],
     });
@@ -259,7 +259,7 @@ describe("rename workflow", () => {
     const confirmed = { ...files[0], id: "opaque-new-id", name: "renamed-file-0.txt" };
     const response: ExecuteResponse = {
       preview_id: "task-preview", status: "incomplete",
-      counts: { renamed: 1, skipped: 1, failed: 1, unknown: outcome === "unknown-result" ? 1 : 0, not_attempted: 1 },
+      counts: { renamed: 1, skipped: 2, failed: 1, unknown: outcome === "unknown-result" ? 1 : 0 },
       items: [
         { file_id: files[0].id, original_name: files[0].name, new_name: confirmed.name,
           status: "renamed", error: null, current_file: confirmed },
@@ -270,7 +270,8 @@ describe("rename workflow", () => {
         { file_id: files[2].id, original_name: files[2].name, new_name: "renamed-file-2.txt",
           status: "failed", error: "Conflict", actual_name: files[2].name },
         { file_id: files[3].id, original_name: files[3].name, new_name: "renamed-file-3.txt",
-          status: "not_attempted", error: "Batch stopped" },
+          status: "skipped", error: "Batch stopped", error_code: "PROVIDER_ERROR",
+          details: { reason: "RENAME_NOT_ATTEMPTED", stop_reason: "RENAME_OUTCOME_UNKNOWN" } },
         { file_id: files[4].id, original_name: files[4].name, new_name: files[4].name,
           status: "skipped", error: null, actual_name: files[4].name },
       ],
@@ -285,11 +286,11 @@ describe("rename workflow", () => {
       { status: "renamed", after: confirmed },
       { status: "unknown", after: null, actualName: null },
       { status: "failed", after: null, actualName: files[2].name },
-      { status: "not_attempted", after: null, actualName: null },
+      { status: "skipped", after: null, actualName: null, details: { reason: "RENAME_NOT_ATTEMPTED" } },
       { status: "skipped", after: null, actualName: files[4].name, targetName: files[4].name },
     ]);
     expect(notify).toHaveBeenLastCalledWith({
-      key: "files:notifications.ended", values: { results: "1 项已修改，1 项无需修改，1 项失败，1 项待核对，1 项未执行" },
+      key: "files:notifications.ended", values: { results: "1 项已修改，2 项已跳过，1 项失败，1 项待核对" },
     }, "warning");
     expect(useRenameStore.getState().unknownExecution?.items.map((item) => item.file_id)).toEqual([files[1].id]);
     expect(useRenameStore.getState().selectedIds).toEqual([files[2].id, files[3].id]);
@@ -307,7 +308,7 @@ describe("rename workflow", () => {
     const confirmed = fileItem("renamed-file-0.txt");
     const response = {
       status: "completed" as const,
-      counts: { renamed: 1, skipped: 0, failed: 0, unknown: 0, not_attempted: 0 },
+      counts: { renamed: 1, skipped: 0, failed: 0, unknown: 0 },
       items: [{ file_id: source.id, original_name: source.name, new_name: confirmed.name,
         status: "renamed" as const, error: null, current_file: confirmed }],
     };
@@ -371,7 +372,7 @@ describe("rename workflow", () => {
       const previewId = hook.result.current.workflow.previewData!.preview_id;
       const next = { ...current, id: newId, name: newId, path: newId };
       vi.mocked(api.executePreview).mockResolvedValueOnce({ preview_id: previewId, status: "completed",
-        counts: { renamed: 1, skipped: 0, failed: 0, unknown: 0, not_attempted: 0 },
+        counts: { renamed: 1, skipped: 0, failed: 0, unknown: 0 },
         items: [{
         file_id: current.id, original_name: current.name, new_name: newId,
         status: "renamed", error: null, current_file: next,

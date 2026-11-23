@@ -569,7 +569,7 @@ class GoogleDriveDriver(StorageDriver):
                 results[request.file_id] = error
                 retry.append(request)
             if any(isinstance(outcome, RenameOutcomeUnknownError) for outcome in results.values()):
-                # Refused requests were attempted; preserve their real error, not not_attempted.
+                # Refused requests were attempted; preserve their real error.
                 break
             if refresh:
                 try:
