@@ -11,7 +11,6 @@ import {
   ThemeProvider,
   Typography,
   useMediaQuery,
-  useTheme,
 } from "@mui/material";
 import { useQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
@@ -23,7 +22,7 @@ import { StorageSidebar } from "./workspace/components/StorageSidebar";
 import { StorageLocationPanel } from "./workspace/components/StorageLocationPanel";
 import { useWorkspaceStorage } from "./workspace/hooks/useWorkspaceStorage";
 import { useBrowserNavigation } from "./integrations/browser/useBrowserNavigation";
-import { FileBrowser } from "./features/files/FileBrowser";
+import { FileBrowser, FileBrowserHeading } from "./features/files/FileBrowser";
 import { defaultFileSort, type FileSort } from "./features/files/fileSort";
 import { useRenameWorkflow } from "./features/rename/useRenameWorkflow";
 import { PreviewPanel } from "./features/rename/PreviewPanel";
@@ -91,8 +90,7 @@ function Workspace({ preference, setPreference, settingsError, hasSettings }: {
   const changeTheme = (next: ThemePreference) => {
     void setPreference(next).catch((error: Error) => notify(settingsFailureMessage(error, "theme"), "error"));
   };
-  const theme = useTheme();
-  const compactNavigation = useMediaQuery(theme.breakpoints.down("md"));
+  const compactNavigation = useMediaQuery("(max-width: 950px)");
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [view, setView] = useState<AppView>("workspace");
   const [fileSort, setFileSort] = useState<FileSort>(defaultFileSort);
@@ -187,20 +185,8 @@ function Workspace({ preference, setPreference, settingsError, hasSettings }: {
           open={compactNavigation ? mobileNavOpen : true}
           onClose={() => setMobileNavOpen(false)}
           ModalProps={{ keepMounted: true }}
-          sx={{
-            width: drawerWidth,
-            flexShrink: 0,
-            "& .MuiDrawer-paper": {
-              width: `calc(${drawerWidth}px - 16px)`,
-              height: "calc(100% - 16px)",
-              m: 1,
-              border: 1,
-              borderColor: "divider",
-              borderRadius: "14px",
-              boxSizing: "border-box",
-              overflow: "hidden",
-            },
-          }}
+          slotProps={{ paper: { sx: { width: drawerWidth } } }}
+          sx={{ width: drawerWidth, flexShrink: 0 }}
         >
           <StorageSidebar
             storages={storages.data ?? []}
@@ -221,7 +207,7 @@ function Workspace({ preference, setPreference, settingsError, hasSettings }: {
         <Box
           component="main"
           className="app-main"
-          sx={{ ml: compactNavigation ? 0 : `${drawerWidth - 8}px`, minHeight: "100vh" }}
+          sx={{ ml: compactNavigation ? 0 : `${drawerWidth}px`, minHeight: "100vh" }}
         >
           <Box
             className={view === "workspace" ? "workspace-page" : undefined}
@@ -246,25 +232,24 @@ function Workspace({ preference, setPreference, settingsError, hasSettings }: {
 
             {view === "workspace" && (
               <>
-                <StorageLocationPanel
-                  compactNavigation={compactNavigation}
-                  listing={locationReady ? files.data : undefined}
-                  rootLabel={storageName}
-                  requiresAuth={metadataReady && requiresAuth}
-                  supportsLocalPicker={supportsLocalPicker}
-                  navigationDisabled={externalPending || directoryBusy || !locationReady || !activeStorage || isExecuting || pickLocalRoot.isPending || activeStorage.busy}
-                  defaultPathDisabled={!cloudAccountId || !cloudReady || !files.isSuccess || files.isFetching || Boolean(files.error) || cloudStatus.isError}
-                  browseDisabled={!activeStorage || pickLocalRoot.isPending || isExecuting || activeStorage.busy}
-                  isPickingFolder={pickLocalRoot.isPending}
-                  pickerError={pickLocalRoot.error}
-                  onOpenNavigation={() => setMobileNavOpen(true)}
-                  onNavigate={navigateLocation}
-                  onSetDefaultPath={setDefaultCloudPath}
-                  onBrowse={() => pickLocalRoot.mutate()}
-                />
-
                 <div className="workspace-grid">
                   <div className="workspace-primary">
+                    <StorageLocationPanel
+                      compactNavigation={compactNavigation}
+                      listing={locationReady ? files.data : undefined}
+                      rootLabel={storageName}
+                      requiresAuth={metadataReady && requiresAuth}
+                      supportsLocalPicker={supportsLocalPicker}
+                      navigationDisabled={externalPending || directoryBusy || !locationReady || !activeStorage || isExecuting || pickLocalRoot.isPending || activeStorage.busy}
+                      defaultPathDisabled={!cloudAccountId || !cloudReady || !files.isSuccess || files.isFetching || Boolean(files.error) || cloudStatus.isError}
+                      browseDisabled={!activeStorage || pickLocalRoot.isPending || isExecuting || activeStorage.busy}
+                      isPickingFolder={pickLocalRoot.isPending}
+                      pickerError={pickLocalRoot.error}
+                      onOpenNavigation={() => setMobileNavOpen(true)}
+                      onNavigate={navigateLocation}
+                      onSetDefaultPath={setDefaultCloudPath}
+                      onBrowse={() => pickLocalRoot.mutate()}
+                    />
                     {files.data && locationReady ? (
                       <FileBrowser
                         onNavigateLocation={navigateLocation}
@@ -287,31 +272,34 @@ function Workspace({ preference, setPreference, settingsError, hasSettings }: {
                         onInvertSelection={invertFiles}
                       />
                     ) : (
-                      <section className="panel">
-                        {files.error ? (
-                          <Alert severity="error" sx={{ m: 2 }} action={
-                            <Button color="inherit" size="small" disabled={directoryBusy} onClick={refreshFiles}>
-                              {t("common:retry")}
-                            </Button>
-                          }>
-                            {t("files:workspace.directoryFailed", { message: errorMessage(files.error, t, "directory") })}
-                          </Alert>
-                        ) : (
-                          settingsLoading || files.isFetching ? (
-                            <Box sx={{ p: 2 }} aria-busy="true">
-                              <Typography role="status" variant="body2" sx={{ mb: 1 }}>
-                                {settingsLoading ? t("files:workspace.loadingStorages") : t("files:workspace.loadingDirectory")}
-                              </Typography>
-                              {[0, 1, 2, 3].map((row) => <Skeleton key={row} height={38} />)}
-                            </Box>
+                      <section className="browser" aria-labelledby="files-title">
+                        <FileBrowserHeading loading={!files.error && (settingsLoading || files.isFetching)} />
+                        <div className="panel file-table-wrap">
+                          {files.error ? (
+                            <Alert severity="error" sx={{ m: 2 }} action={
+                              <Button color="inherit" size="small" disabled={directoryBusy} onClick={refreshFiles}>
+                                {t("common:retry")}
+                              </Button>
+                            }>
+                              {t("files:workspace.directoryFailed", { message: errorMessage(files.error, t, "directory") })}
+                            </Alert>
                           ) : (
-                            <p className="empty-state">
-                              {metadataReady && requiresAuth && cloudStatus.isSuccess && !cloudStatus.data.connected
-                                ? t("files:workspace.authorizeToBrowse", { service: t(`providers:${providerType}.name`, { defaultValue: providerType }) })
-                                : t("files:workspace.unavailable")}
-                            </p>
-                          )
-                        )}
+                            settingsLoading || files.isFetching ? (
+                              <Box sx={{ p: 2 }} aria-busy="true">
+                                <Typography role="status" variant="body2" sx={{ mb: 1 }}>
+                                  {settingsLoading ? t("files:workspace.loadingStorages") : t("files:workspace.loadingDirectory")}
+                                </Typography>
+                                {[0, 1, 2, 3].map((row) => <Skeleton key={row} height="var(--app-table-row-height)" />)}
+                              </Box>
+                            ) : (
+                              <p className="empty-state">
+                                {metadataReady && requiresAuth && cloudStatus.isSuccess && !cloudStatus.data.connected
+                                  ? t("files:workspace.authorizeToBrowse", { service: t(`providers:${providerType}.name`, { defaultValue: providerType }) })
+                                  : t("files:workspace.unavailable")}
+                              </p>
+                            )
+                          )}
+                        </div>
                       </section>
                     )}
                     <PreviewPanel

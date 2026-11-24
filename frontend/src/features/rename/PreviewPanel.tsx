@@ -3,7 +3,7 @@ import { executionItemMessage } from "./resultMessages";
 import { isRenameNotAttempted } from "./renameRecord";
 import { errorMessage } from "../../i18n/messages";
 import type { TFunction } from "i18next";
-import { memo, useMemo, useState } from "react";
+import { memo, useMemo, useRef, useState } from "react";
 import Alert from "@mui/material/Alert";
 import Chip, { type ChipProps } from "@mui/material/Chip";
 import CheckCircleIcon from "@mui/icons-material/CheckCircle";
@@ -15,12 +15,17 @@ import TableCell from "@mui/material/TableCell";
 import TableContainer from "@mui/material/TableContainer";
 import TableHead from "@mui/material/TableHead";
 import TableRow from "@mui/material/TableRow";
+import Tooltip from "@mui/material/Tooltip";
+import Typography from "@mui/material/Typography";
 
 import type { UnknownExecution } from "../../stores/useRenameStore";
 import type { ExecuteResponse, PreviewResponse } from "../../types";
 import { useVirtualTable } from "../../hooks/useVirtualTable";
+import { FileNameTooltip, isFileNameTruncated } from "../../components/FileNameTooltip";
 import { VirtualTableSpacer } from "../../components/VirtualTableSpacer";
+import { PanelActionGroup, PanelSummary } from "../../components/PanelHeadingControls";
 import { RadioFilterMenu } from "../../components/RadioFilterMenu";
+import { TableColumnResizeHandle, type ResizedTableColumns } from "../../components/TableColumnResizeHandle";
 
 const statusFilters = [
   { value: "all", labelKey: "files:filters.all" },
@@ -29,6 +34,8 @@ const statusFilters = [
   { value: "pending", labelKey: "files:preview.filters.pending" },
 ] as const;
 type StatusFilter = typeof statusFilters[number]["value"];
+const minNameColumnWidth = 160;
+const minStatusColumnWidth = 256;
 
 interface PreviewPanelProps {
   preview?: PreviewResponse;
@@ -61,14 +68,16 @@ export const PreviewPanel = memo(function PreviewPanel({
     !preview || preview.preview_id === unknownExecution?.previewId
       ? unknownExecution?.items.map((item) => item.file_id) : [],
   ), [preview?.preview_id, unknownExecution]);
-  const { rows, pendingCount, unchangedCount } = useMemo(() => {
+  const { rows, pendingCount, unchangedCount, columnValues } = useMemo(() => {
     let pendingCount = 0;
     let unchangedCount = 0;
+    const statusLabels = new Set<string>();
     // 预览展示被清理后，待核对记录仍保留原始项目供检查。
     const rows = (preview?.items ?? unknownExecution?.items ?? []).map((item) => {
       const result = executionById.get(item.file_id);
       const needsVerification = unknownIds.has(item.file_id) || result?.status === "unknown";
       const status = statusFor(item, result, needsVerification, t);
+      statusLabels.add(status.label);
       if (status.isPendingChange) pendingCount++;
       if (status.isUnchanged) unchangedCount++;
       const currentName = result?.actual_name ?? result?.current_file?.name;
@@ -79,54 +88,76 @@ export const PreviewPanel = memo(function PreviewPanel({
             ? result.original_name : t("files:preview.currentNameUnavailable"));
       return { item, status, newName };
     });
-    return { rows, pendingCount, unchangedCount };
+    return { rows, pendingCount, unchangedCount, columnValues: [null, null, [...statusLabels]] };
   }, [preview?.items, unknownExecution?.items, unknownIds, executionById, t]);
   const visibleItems = useMemo(() => rows.filter(({ status }) =>
     filter === "all" || filter === status.category), [rows, filter]);
   const scrollKey = useMemo(() => [preview?.preview_id, filter], [preview?.preview_id, filter]);
-  const columnValues = useMemo(() => [visibleItems.map(({ item }) => item.original_name), visibleItems.map(({ newName }) => newName),
-    visibleItems.map(({ status }) => status.label)], [visibleItems]);
   const virtual = useVirtualTable(visibleItems.length, scrollKey, columnValues);
+  const statusColumnWidth = Math.max(minStatusColumnWidth, virtual.columnWidths?.[2] ?? 0);
+  const [resizedColumns, setResizedColumns] = useState<ResizedTableColumns>();
+  const columnWidths = [
+    resizedColumns?.widths[0] ?? minNameColumnWidth,
+    resizedColumns?.widths[1] ?? minNameColumnWidth,
+    Math.max(statusColumnWidth, resizedColumns?.widths[2] ?? 0),
+  ];
+  const tableWidth = columnWidths.reduce((total, width) => total + width, 0);
+  const fillColumn = resizedColumns?.fillColumn;
+  const explicitWidths = columnWidths.map((width, index) =>
+    index === fillColumn || (!resizedColumns && index < 2) ? undefined : width);
+  const originalColumnLabel = t("files:preview.original");
+  const newColumnLabel = t("files:preview.new");
+  const statusColumnLabel = t("common:status");
 
   return (
-    <section className="panel preview" aria-labelledby="preview-title">
+    <section className="preview" aria-labelledby="preview-title">
       <div className="panel-heading">
         <div className="panel-title-line">
           <h2 id="preview-title">{t("files:preview.title")}</h2>
-          {(preview || unknownExecution) && <p className="panel-summary">
+          {(preview || unknownExecution) && <PanelSummary>
             {t("files:preview.summary", { pending: pendingCount, unchanged: unchangedCount })}
             {filter !== "all" && t("files:showing", { count: visibleItems.length })}
-          </p>}
+          </PanelSummary>}
         </div>
-        <RadioFilterMenu label={t("files:preview.filter")} options={filterOptions} selected={filter} onChange={setFilter} />
+        <PanelActionGroup labelledBy="preview-title">
+          <RadioFilterMenu label={t("files:preview.filter")} options={filterOptions} selected={filter} onChange={setFilter} />
+        </PanelActionGroup>
       </div>
 
       {error && <Alert severity="error" sx={{ m: 2, whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{error}</Alert>}
       {!preview && !unknownExecution && !error && (
-        <p className="empty-state">{t("files:preview.empty", { storageName: storageName ?? t("files:preview.currentStorage") })}</p>
+        <div className="panel preview-empty">
+          <p className="empty-state">{t("files:preview.empty", { storageName: storageName ?? t("files:preview.currentStorage") })}</p>
+        </div>
       )}
       {(preview || unknownExecution) && (
-        <TableContainer ref={virtual.containerRef} onScroll={virtual.onScroll} onKeyDown={virtual.onKeyDown} tabIndex={0} className="preview-table-wrap" sx={{ minWidth: 0, maxWidth: "100%" }}>
+        <TableContainer ref={virtual.containerRef} onScroll={virtual.onScroll} onKeyDown={virtual.onKeyDown} tabIndex={0} className="panel preview-table-wrap" sx={{ minWidth: 0, maxWidth: "100%" }}>
           <Table
             stickyHeader
             aria-rowcount={visibleItems.length + 1}
             size="small"
             aria-label={t("files:preview.title")}
-            sx={{
-              // 文件名列紧贴内容，状态列吸收剩余空间；长内容仍可撑开表格。
-              width: "100%",
-              tableLayout: "auto",
-              "& th, & td": { whiteSpace: "nowrap" },
-              "& th:nth-of-type(-n+2), & td:nth-of-type(-n+2)": { width: "1%" },
-            }}
+            style={{ width: `max(100%, ${tableWidth}px)` }}
+            sx={{ tableLayout: "fixed" }}
           >
-            {virtual.columnWidths && <colgroup>{virtual.columnWidths.map((width, index) =>
-              <col key={index} style={index < 2 ? { width } : undefined} />)}</colgroup>}
+            <colgroup>{explicitWidths.map((width, index) => <col key={index} style={{ width }} />)}</colgroup>
             <TableHead>
               <TableRow>
-                <TableCell>{t("files:preview.original")}</TableCell>
-                <TableCell>{t("files:preview.new")}</TableCell>
-                <TableCell sx={{ minWidth: virtual.columnWidths?.[2] }}>{t("common:status")}</TableCell>
+                <TableCell aria-label={originalColumnLabel}>
+                  {originalColumnLabel}
+                  <TableColumnResizeHandle label={originalColumnLabel} minimumWidth={minNameColumnWidth}
+                    width={explicitWidths[0]} onResize={setResizedColumns} />
+                </TableCell>
+                <TableCell aria-label={newColumnLabel}>
+                  {newColumnLabel}
+                  <TableColumnResizeHandle label={newColumnLabel} minimumWidth={minNameColumnWidth}
+                    width={explicitWidths[1]} onResize={setResizedColumns} />
+                </TableCell>
+                <TableCell aria-label={statusColumnLabel}>
+                  {statusColumnLabel}
+                  <TableColumnResizeHandle label={statusColumnLabel} minimumWidth={statusColumnWidth}
+                    width={explicitWidths[2]} onResize={setResizedColumns} />
+                </TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
@@ -162,18 +193,45 @@ export const PreviewPanel = memo(function PreviewPanel({
 const PreviewRow = memo(function PreviewRow({ item, newName, label, statusColor, pending, renamed, rowIndex }: {
   item: PreviewResponse["items"][number]; newName: string; label: string; statusColor: ChipProps["color"]; pending: boolean; renamed: boolean; rowIndex: number;
 }) {
+  const originalNameRef = useRef<HTMLSpanElement>(null);
+  const newNameRef = useRef<HTMLSpanElement>(null);
+  const [truncatedNames, setTruncatedNames] = useState<string[]>([]);
   const icon = statusColor === "success" ? <CheckCircleIcon />
     : statusColor === "default" ? (pending ? <CheckCircleIcon /> : <InfoIcon />) : <ErrorIcon />;
-  return <TableRow data-row-index={rowIndex} aria-rowindex={rowIndex + 2} tabIndex={0}>
-    <TableCell>{item.original_name}</TableCell>
-    <TableCell className={renamed ? "renamed-name" : undefined}>{newName}</TableCell>
-    <TableCell>
-      <Chip size="small" variant="outlined" label={label} color={statusColor} icon={icon}
-        sx={{ fontSize: "12px", ...(statusColor === "default" && {
-          color: "text.secondary", "& .MuiChip-icon": { color: "inherit" },
-        }) }} />
-    </TableCell>
-  </TableRow>;
+  return <Tooltip describeChild disableHoverListener disableTouchListener open={truncatedNames.length > 0}
+    onOpen={() => setTruncatedNames([
+      ...(isFileNameTruncated(originalNameRef.current) ? [item.original_name] : []),
+      ...(isFileNameTruncated(newNameRef.current) ? [newName] : []),
+    ])}
+    onClose={() => setTruncatedNames([])}
+    slotProps={{ tooltip: { sx: { overflowWrap: "anywhere", whiteSpace: "pre-wrap" } } }}
+    title={truncatedNames.map((name, index) => <div key={index}>{name}</div>)}>
+    <TableRow data-row-index={rowIndex} aria-rowindex={rowIndex + 2} tabIndex={0}>
+      <TableCell>
+        <FileNameTooltip name={item.original_name} nameRef={originalNameRef}>
+          <Typography ref={originalNameRef} component="span" variant="inherit" noWrap sx={{ display: "block" }}>
+            {item.original_name}
+          </Typography>
+        </FileNameTooltip>
+      </TableCell>
+      <TableCell className={renamed ? "renamed-name" : undefined}>
+        <FileNameTooltip name={newName} nameRef={newNameRef}>
+          <Typography ref={newNameRef} component="span" variant="inherit" noWrap sx={{ display: "block" }}>
+            {newName}
+          </Typography>
+        </FileNameTooltip>
+      </TableCell>
+      <TableCell>
+        <Chip size="small" variant="outlined" label={label} color={statusColor} icon={icon}
+          sx={{
+            fontSize: "12px",
+            maxWidth: "none",
+            "& .MuiChip-label": { overflow: "visible" },
+            ...(statusColor === "default" && { color: "text.secondary", "& .MuiChip-icon": { color: "inherit" } }),
+          }} />
+      </TableCell>
+    </TableRow>
+  </Tooltip>;
 });
 
 function statusFor(item: PreviewResponse["items"][number], result: ExecuteResponse["items"][number] | undefined, needsVerification: boolean, t: TFunction) {

@@ -1,4 +1,5 @@
-import { memo, useCallback, useEffect, useMemo, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import EditRoundedIcon from "@mui/icons-material/EditRounded";
 import FolderRoundedIcon from "@mui/icons-material/FolderRounded";
@@ -7,9 +8,11 @@ import RefreshRoundedIcon from "@mui/icons-material/RefreshRounded";
 import {
   Alert,
   Box,
+  Button,
   ButtonBase,
   Checkbox,
   LinearProgress,
+  Skeleton,
   Table,
   TableBody,
   TableCell,
@@ -21,19 +24,42 @@ import {
 } from "@mui/material";
 
 import type { DirectoryListing, FileItem, StorageLocation } from "../../types";
+import { FileNameTooltip } from "../../components/FileNameTooltip";
+import { PanelActionGroup, PanelSummary } from "../../components/PanelHeadingControls";
 import { PanelIconButton } from "../../components/PanelIconButton";
+import { TableColumnResizeHandle, type ResizedTableColumns } from "../../components/TableColumnResizeHandle";
 import { useVirtualTable } from "../../hooks/useVirtualTable";
 import { VirtualTableSpacer } from "../../components/VirtualTableSpacer";
 import selectInverseIcon from "../../assets/icon/select-inverse.svg";
 import type { FileSort } from "./fileSort";
 import { FileFilterMenu, type FileFilterType } from "./FileFilterMenu";
 
-const fixedColumnWidths = [44] as const;
+const checkboxColumnWidth = 36;
+const minimumNameWidth = 112;
+const defaultExtensionWidth = 96;
+const defaultModifiedWidth = 160;
+
+export function FileBrowserHeading({ summary, actions, loading = false }: {
+  summary?: ReactNode; actions?: ReactNode; loading?: boolean;
+}) {
+  const { t } = useTranslation();
+  return (
+    <div className="panel-heading">
+      <div className="panel-title-line">
+        <h2 id="files-title">{t("files:title")}</h2>
+        {loading ? <Skeleton className="panel-summary" variant="rounded" width={100} height={30} aria-hidden /> : summary}
+      </div>
+      {loading ? <Skeleton variant="rounded" width={106} height={30} aria-hidden
+        sx={{ flexShrink: 0, marginInlineStart: "auto" }} /> : actions}
+    </div>
+  );
+}
 // 直接约束控件，避免 MUI 自身内边距或表格列宽改变其 20px 几何。
 const fileCheckboxSx = {
   width: 20, minWidth: 20, maxWidth: 20, height: 20, p: 0,
   "& .MuiSvgIcon-root": { width: 20, height: 20, fontSize: 20 },
 };
+const fileTextCellSx = { overflow: "hidden", textOverflow: "ellipsis" };
 
 interface FileBrowserProps {
   listing: DirectoryListing;
@@ -103,6 +129,8 @@ export const FileBrowser = memo(function FileBrowser({
   const selectedCount = useMemo(() => panelItems.filter((item) => selectedSet.has(item.id)).length, [panelItems, selectedSet]);
   const visibleSelectedCount = useMemo(() => visibleItems.filter((item) => selectedSet.has(item.id)).length, [visibleItems, selectedSet]);
   const selectableIds = useMemo(() => visibleItems.filter((item) => item.can_rename !== false).map((item) => item.id), [visibleItems]);
+  const allSelected = useMemo(() => selectableIds.length > 0 && selectableIds.every((id) => selectedSet.has(id)),
+    [selectableIds, selectedSet]);
   const [selectionAnchor, setSelectionAnchor] = useState<string | null>(null);
   useEffect(() => {
     setSelectionAnchor(null);
@@ -121,48 +149,58 @@ export const FileBrowser = memo(function FileBrowser({
   }, [selectionAnchor, selectedSet, selectableIds, onSelectAll]);
   const scrollKey = useMemo(() => [listing.items, filterType, extensions, searchKeyword, sort],
     [listing.items, filterType, extensions, searchKeyword, sort]);
+  const [resizedColumns, setResizedColumns] = useState<ResizedTableColumns>();
+  const hasResizedColumns = resizedColumns !== undefined;
   const columnValues = useMemo(() => {
+    if (hasResizedColumns) return null;
     // 按完整筛选结果测量，未挂载的行也参与列宽计算。
-    const names: string[] = [];
-    const extensions: string[] = [];
+    const extensionLabels = new Set<string>();
     const modifiedDates: string[] = [];
     const folderLabel = t("files:types.folder");
     for (const item of visibleItems) {
-      names.push(item.name);
-      extensions.push(item.is_directory ? folderLabel : getExtension(item.name) || "—");
+      extensionLabels.add(item.is_directory ? folderLabel : getExtension(item.name) || "—");
       modifiedDates.push(formatModifiedAt(item.modified_at, modifiedAtFormatter));
     }
-    return [[], names, extensions, modifiedDates];
-  }, [visibleItems, modifiedAtFormatter, t]);
-  const virtual = useVirtualTable(visibleItems.length, scrollKey, columnValues, fixedColumnWidths);
-  const allSelected = selectableIds.length > 0 && selectableIds.every((id) => selectedSet.has(id));
+    return [null, null, [...extensionLabels], modifiedDates];
+  }, [hasResizedColumns, visibleItems, modifiedAtFormatter, t]);
+  const virtual = useVirtualTable(visibleItems.length, scrollKey, columnValues);
+  const columnWidths = [
+    checkboxColumnWidth,
+    resizedColumns?.widths[1] ?? minimumNameWidth,
+    resizedColumns?.widths[2] ?? Math.max(defaultExtensionWidth, virtual.columnWidths?.[2] ?? 0),
+    resizedColumns?.widths[3] ?? Math.max(defaultModifiedWidth, virtual.columnWidths?.[3] ?? 0),
+  ];
+  const fillColumn = resizedColumns?.fillColumn ?? 1;
+  const explicitWidths = columnWidths.map((width, index) => index === fillColumn ? undefined : width);
+  const tableWidth = columnWidths.reduce((total, width) => total + width, 0);
+  const nameColumnLabel = t("files:columns.name");
+  const extensionColumnLabel = t("files:columns.extension");
+  const modifiedColumnLabel = t("files:columns.modified");
   return (
-    <section className="panel browser" aria-labelledby="files-title" aria-busy={isRefreshing}>
-      <div className="panel-heading">
-        <div className="panel-title-line">
-          <h2 id="files-title">{t("files:title")}</h2>
-          <p className="panel-summary">
-            {t("files:summary", { total: totalCount, selected: selectedCount })}
-            {(filterType !== "all" || searchKeyword.length > 0) && t("files:showing", { count: visibleItems.length })}
-          </p>
-        </div>
-        <div className="browser-heading-actions">
+    <section className="browser" aria-labelledby="files-title" aria-busy={isRefreshing}>
+      <FileBrowserHeading summary={(
+        <PanelSummary>
+          {selectedCount > 0
+            ? t("files:summary", { total: totalCount, selected: selectedCount })
+            : t("files:summaryTotal", { total: totalCount })}
+          {(filterType !== "all" || searchKeyword.length > 0) && t("files:showing", { count: visibleItems.length })}
+        </PanelSummary>
+      )} actions={(
+        <PanelActionGroup labelledBy="files-title">
           <Tooltip title={isRefreshing ? t("common:refreshing") : t("common:refresh")} arrow>
             <span>
-              <PanelIconButton
-                size="small"
+              <Button
                 aria-label={isRefreshing ? t("common:refreshing") : t("common:refresh")}
                 onClick={onRefresh}
                 disabled={disabled || !onRefresh || isRefreshing}
               >
                 <RefreshRoundedIcon fontSize="small" />
-              </PanelIconButton>
+              </Button>
             </span>
           </Tooltip>
           <Tooltip title={t("files:invert")} arrow>
             <span>
-              <PanelIconButton
-                size="small"
+              <Button
                 aria-label={t("files:invert")}
                 onClick={() => onInvertSelection(selectableIds)}
                 disabled={disabled || selectableIds.length === 0}
@@ -178,32 +216,35 @@ export const FileBrowser = memo(function FileBrowser({
                     WebkitMask: `url("${selectInverseIcon}") center / contain no-repeat`,
                   }}
                 />
-              </PanelIconButton>
+              </Button>
             </span>
           </Tooltip>
           <FileFilterMenu type={filterType} keyword={keyword} extensions={extensions} disabled={disabled}
             onTypeChange={setFilterType} onKeywordChange={setKeyword} onExtensionsChange={setExtensions} />
-        </div>
-      </div>
-      {isRefreshing && <LinearProgress aria-label={t("files:refreshingDirectory")} sx={{ flexShrink: 0 }} />}
+        </PanelActionGroup>
+      )} />
       {refreshError && (
         <Alert severity="error">{t("files:refreshFailed", { message: refreshError })}</Alert>
       )}
 
-      <TableContainer className="file-table-wrap" ref={virtual.containerRef} onScroll={virtual.onScroll}
+      <TableContainer className="panel file-table-wrap" ref={virtual.containerRef} onScroll={virtual.onScroll}
         onKeyDown={virtual.onKeyDown} tabIndex={0}>
         <Table
           stickyHeader
           aria-rowcount={visibleItems.length + 1}
           size="small"
           aria-label={t("files:listLabel", { storageName })}
+          style={{ width: `max(100%, ${tableWidth}px)` }}
           sx={{
-            "& .MuiTableCell-paddingCheckbox": { width: fixedColumnWidths[0], px: 1 },
+            tableLayout: "fixed",
+            "& .MuiTableCell-paddingCheckbox": { width: checkboxColumnWidth, px: 0, textAlign: "center" },
           }}
         >
-          {virtual.columnWidths && <colgroup>{virtual.columnWidths.map((width, index) =>
-            <col key={index} style={index === 1 ? undefined : { width }} />)}</colgroup>}
-          <TableHead>
+          <colgroup>{explicitWidths.map((width, index) => <col key={index} style={{ width }} />)}</colgroup>
+          <TableHead sx={{ position: "sticky", top: 0, zIndex: 2,
+            "& .MuiTableCell-stickyHeader": { position: "relative", zIndex: "auto" },
+            "& .MuiTableCell-paddingCheckbox": { position: "static" },
+          }}>
             <TableRow>
               <TableCell padding="checkbox">
                 <Checkbox
@@ -215,23 +256,33 @@ export const FileBrowser = memo(function FileBrowser({
                   onChange={() => (allSelected ? onClearSelection?.() : onSelectAll(selectableIds))}
                   slotProps={{ input: { "aria-label": t("files:selectAll") } }}
                 />
+                {isRefreshing && <LinearProgress aria-label={t("files:refreshingDirectory")}
+                  sx={{ position: "absolute", bottom: 0, insetInline: 0, height: 3, zIndex: 1 }} />}
               </TableCell>
-              <TableCell sortDirection={sort.field === "name" ? sort.direction : false}>
+              <TableCell aria-label={nameColumnLabel} sortDirection={sort.field === "name" ? sort.direction : false}>
                 <TableSortLabel active={sort.field === "name"} direction={sort.field === "name" ? sort.direction : "asc"}
                   slotProps={{ icon: { sx: { fontSize: 16 } } }}
                   disabled={disabled} onClick={() => onSortChange({ field: "name",
                     direction: sort.field === "name" && sort.direction === "asc" ? "desc" : "asc" })}>
-                  {t("files:columns.name")}
+                  {nameColumnLabel}
                 </TableSortLabel>
+                <TableColumnResizeHandle label={nameColumnLabel} minimumWidth={minimumNameWidth}
+                  width={explicitWidths[1]} onResize={setResizedColumns} />
               </TableCell>
-              <TableCell className="file-extension-column">{t("files:columns.extension")}</TableCell>
-              <TableCell className="file-modified-column" sortDirection={sort.field === "modified_at" ? sort.direction : false}>
+              <TableCell aria-label={extensionColumnLabel}>
+                {extensionColumnLabel}
+                <TableColumnResizeHandle label={extensionColumnLabel} minimumWidth={defaultExtensionWidth}
+                  width={explicitWidths[2]} onResize={setResizedColumns} />
+              </TableCell>
+              <TableCell aria-label={modifiedColumnLabel} sortDirection={sort.field === "modified_at" ? sort.direction : false}>
                 <TableSortLabel active={sort.field === "modified_at"} direction={sort.field === "modified_at" ? sort.direction : "asc"}
                   slotProps={{ icon: { sx: { fontSize: 16 } } }}
                   disabled={disabled} onClick={() => onSortChange({ field: "modified_at",
                     direction: sort.field === "modified_at" && sort.direction === "asc" ? "desc" : "asc" })}>
-                  {t("files:columns.modified")}
+                  {modifiedColumnLabel}
                 </TableSortLabel>
+                <TableColumnResizeHandle label={modifiedColumnLabel} minimumWidth={128}
+                  width={explicitWidths[3]} onResize={setResizedColumns} />
               </TableCell>
             </TableRow>
           </TableHead>
@@ -282,6 +333,7 @@ const FileBrowserRow = memo(function FileBrowserRow({ item, rowIndex, selected, 
   showRename, renameDisabled, onRename, onToggle, onSelectRow, onNavigate, onNavigateLocation, parentLocation }: FileBrowserRowProps) {
   const { t } = useTranslation();
   const modifiedAt = formatModifiedAt(item.modified_at, modifiedAtFormatter);
+  const nameRef = useRef<HTMLSpanElement>(null);
   return <TableRow hover selected={selected} data-row-index={rowIndex} aria-rowindex={rowIndex + 2} tabIndex={-1}
     onClick={(event) => { if (!disabled) onSelectRow(item.id, event.shiftKey); }}
     onMouseDown={(event) => { if (!disabled && event.shiftKey) event.preventDefault(); }}
@@ -293,20 +345,22 @@ const FileBrowserRow = memo(function FileBrowserRow({ item, rowIndex, selected, 
     </TableCell>
     <TableCell>
       <div className="file-name-actions">
-        <Tooltip title={item.name} placement="top-start">
-          {item.is_directory ? <ButtonBase className="directory-name" disabled={navigationDisabled}
-            onClick={(event) => {
-              event.stopPropagation();
-              if (item.location && onNavigateLocation) onNavigateLocation(item.location, parentLocation);
-              else onNavigate(item.path);
-            }}>
-            <FolderRoundedIcon className="file-icon" fontSize="small" />
-            <span className="file-name">{item.name}</span>
-          </ButtonBase> : <span className="file-name-cell">
-            <InsertDriveFileOutlinedIcon className="file-icon" fontSize="small" />
-            <span className="file-name">{item.name}</span>
-          </span>}
-        </Tooltip>
+        <FileNameTooltip name={item.name} nameRef={nameRef}>
+          <span className="file-name-cell">
+            {item.is_directory ? <ButtonBase className="directory-name" disabled={navigationDisabled}
+              onClick={(event) => {
+                event.stopPropagation();
+                if (item.location && onNavigateLocation) onNavigateLocation(item.location, parentLocation);
+                else onNavigate(item.path);
+              }}>
+              <FolderRoundedIcon className="file-icon" fontSize="small" />
+              <span ref={nameRef} className="file-name">{item.name}</span>
+            </ButtonBase> : <>
+              <InsertDriveFileOutlinedIcon className="file-icon" fontSize="small" />
+              <span ref={nameRef} className="file-name">{item.name}</span>
+            </>}
+          </span>
+        </FileNameTooltip>
         {showRename && onRename ? <Tooltip title={t("files:quickRename.title")} arrow>
           <span className="file-rename-action" onClick={(event) => event.stopPropagation()}
             onMouseDown={(event) => event.stopPropagation()}>
@@ -319,7 +373,7 @@ const FileBrowserRow = memo(function FileBrowserRow({ item, rowIndex, selected, 
         </Tooltip> : onRename && <span className="file-rename-action" aria-hidden="true" />}
       </div>
     </TableCell>
-    <TableCell>{item.is_directory ? t("files:types.folder") : getExtension(item.name) || "—"}</TableCell>
-    <TableCell>{modifiedAt}</TableCell>
+    <TableCell sx={fileTextCellSx}>{item.is_directory ? t("files:types.folder") : getExtension(item.name) || "—"}</TableCell>
+    <TableCell sx={fileTextCellSx}>{modifiedAt}</TableCell>
   </TableRow>;
 });

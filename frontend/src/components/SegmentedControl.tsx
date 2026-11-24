@@ -48,7 +48,7 @@ export function SegmentedControl<T extends string>({
         p: "4px",
         border: "1px solid",
         borderColor: "divider",
-        borderRadius: "999px",
+        borderRadius: 1,
         bgcolor: "action.hover",
       }}
     >
@@ -61,7 +61,7 @@ export function SegmentedControl<T extends string>({
           bottom: 4,
           left: 4,
           width: `calc((100% - 8px) / ${options.length})`,
-          borderRadius: "999px",
+          borderRadius: 1,
           bgcolor: "primary.main",
           boxShadow: theme.shadows[1],
           pointerEvents: "none",
@@ -95,7 +95,7 @@ export function SegmentedControl<T extends string>({
           "& .MuiToggleButtonGroup-grouped": {
             margin: "0 !important",
             border: "0 !important",
-            borderRadius: "999px !important",
+            borderRadius: 1,
           },
           "& .MuiToggleButton-root": {
             position: "relative",

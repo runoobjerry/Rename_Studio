@@ -20,15 +20,10 @@
   overflow: hidden;
 }
 
-.location-panel {
-  flex: 0 0 auto;
-  margin-bottom: 12px;
-}
-
 .panel {
   overflow: hidden;
   border: 1px solid var(--app-border);
-  border-radius: 14px;
+  border-radius: var(--app-corner-radius);
   color: var(--app-text);
   background: var(--app-surface);
   box-shadow: 0 8px 28px rgba(6, 25, 17, 0.05);
@@ -47,53 +42,38 @@
 .panel-heading h2 {
   margin: 0;
   font-family: inherit;
-  font-size: 17px;
-  font-weight: 760;
+  font-size: 18px;
+  font-weight: 700;
 }
 
 .panel-title-line {
   display: flex;
-  align-items: baseline;
-  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px 12px;
   min-width: 0;
 }
 
-.panel-summary {
-  margin: 0;
-  color: var(--app-text-muted);
-  font-size: 12px;
-  white-space: nowrap;
-}
-
 .location-toolbar {
+  --location-toolbar-height: 40px;
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  min-height: 44px;
   gap: 8px;
-  padding: 8px 12px;
+}
+
+.location-toolbar > .MuiButtonGroup-root .MuiButtonGroup-grouped {
+  height: var(--location-toolbar-height);
+  padding-inline: 10px;
 }
 
 .location-navigation {
   display: flex;
   flex: 1 1 0;
   min-width: 0;
+  height: var(--location-toolbar-height);
   align-items: center;
   gap: 8px;
-}
-
-.location-navigation > .MuiButton-root {
-  flex-shrink: 0;
-}
-
-.location-feedback:empty {
-  display: none;
-}
-
-.location-feedback:not(:empty) {
-  display: grid;
-  gap: 8px;
-  padding: 0 14px 10px;
+  padding: 0 12px;
 }
 
 .workspace-grid {
@@ -107,7 +87,7 @@
 
 .workspace-primary {
   display: grid;
-  grid-template-rows: minmax(0, 1.1fr) minmax(0, 0.82fr);
+  grid-template-rows: auto minmax(0, max-content) minmax(min(140px, 25%), 1fr);
   min-width: 0;
   min-height: 0;
   height: 100%;
@@ -125,37 +105,85 @@
 
 .browser,
 .preview,
-.rule-editor-panel {
+.rule-editor-panel,
+.rule-editor-content {
   display: flex;
   flex-direction: column;
   min-height: 0;
 }
 
-.browser-heading-actions {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  gap: 8px;
+.browser,
+.preview,
+.rule-editor-panel {
+  min-width: 0;
 }
 
-.browser .panel-heading {
+.browser > .panel-heading,
+.preview > .panel-heading,
+.rule-editor-heading {
   flex-wrap: wrap;
+  gap: 8px 12px;
+  margin-bottom: 8px;
+  padding-block: 0;
+  padding-inline: 13px 0;
+  border-bottom: 0;
+}
+
+.browser > .panel-heading {
+  min-height: 30px;
 }
 
 .file-table-wrap,
-.preview-table-wrap {
+.preview-table-wrap,
+.preview-empty {
   flex: 1 1 auto;
   min-height: 0;
   overflow: auto;
 }
 
-.file-extension-column {
-  width: 96px;
+.file-table-wrap {
+  /* 表头和 10 行文件，加上面板的上下边框。 */
+  --file-table-height: calc(11 * var(--app-table-row-height) + 2px);
+  height: var(--file-table-height);
+  max-height: var(--file-table-height);
 }
 
-.file-modified-column {
-  width: 160px;
+.table-column-resize {
+  position: absolute;
+  inset-block: 4px;
+  inset-inline-end: 0;
+  inline-size: 12px;
+  color: var(--app-border);
+  cursor: col-resize;
+  touch-action: none;
+  user-select: none;
+}
+
+.table-column-resize::after {
+  position: absolute;
+  inset-block: 3px;
+  inset-inline-end: 2px;
+  inline-size: 1px;
+  border-radius: 1px;
+  background: currentColor;
+  content: "";
+}
+
+.table-column-resize:hover,
+.table-column-resize:active,
+.table-column-resize:focus-visible {
+  color: var(--accent-text);
+}
+
+.table-column-resize:focus-visible {
+  outline: 1px solid currentColor;
+  outline-offset: -1px;
+}
+
+.table-column-resize:hover::after,
+.table-column-resize:active::after,
+.table-column-resize:focus-visible::after {
+  inline-size: 2px;
 }
 
 .file-name-actions,
@@ -178,19 +206,20 @@
 .directory-name {
   max-width: 100%;
   color: inherit;
+  border-radius: var(--app-corner-radius);
   text-align: left;
 }
 
-.file-name-cell .file-name,
-.directory-name .file-name {
+.file-name-cell .file-name {
   overflow: hidden;
-  max-width: min(32vw, 420px);
+  min-width: 0;
   font-weight: 650;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .file-icon {
+  flex-shrink: 0;
   color: var(--accent-text);
 }
 
@@ -209,7 +238,7 @@
 .notice {
   padding: 20px;
   border: 1px dashed var(--app-border);
-  border-radius: 16px;
+  border-radius: var(--app-corner-radius);
   background: var(--app-surface-muted);
 }
 
@@ -222,8 +251,8 @@
   font-size: 14px;
 }
 
-.rule-editor-panel {
-  overflow: hidden;
+.rule-editor-content {
+  flex: 1 1 auto;
 }
 
 .rule-heading-actions,
@@ -237,6 +266,11 @@
 
 .rule-heading-actions {
   gap: 8px;
+  margin-inline-start: auto;
+}
+
+.rule-heading-actions > .MuiButton-root {
+  height: 30px;
 }
 
 .rule-list {
@@ -250,7 +284,7 @@
 .rule-card {
   padding: 12px;
   border: 1px solid var(--app-border);
-  border-radius: 16px;
+  border-radius: var(--app-corner-radius);
   color: var(--app-text-muted);
   background: var(--app-surface-muted);
 }
@@ -302,7 +336,7 @@
 .rename-action-bar {
   padding: 10px;
   border: 1px solid var(--app-border);
-  border-radius: 14px;
+  border-radius: var(--app-corner-radius);
   background: var(--app-surface);
   box-shadow: 0 8px 28px rgba(6, 25, 17, 0.05);
 }
@@ -343,7 +377,7 @@
   background-clip: padding-box;
 }
 
-@media (max-width: 900px) {
+@media (max-width: 850px) {
   .workspace-page {
     display: block;
     height: auto;
@@ -359,7 +393,10 @@
     height: auto;
   }
 
-  .browser,
+  .workspace-primary {
+    grid-template-rows: auto auto auto;
+  }
+
   .preview,
   .rule-editor-panel {
     max-height: 420px;
@@ -371,28 +408,17 @@
     padding-bottom: 32px;
   }
 
-  .panel-heading {
-    align-items: flex-start;
-    flex-direction: column;
+  .browser > .panel-heading,
+  .preview > .panel-heading {
+    flex-wrap: nowrap;
   }
 
-  .location-navigation {
-    flex: auto;
-    width: 100%;
-  }
-
-  .panel-title-line {
-    align-items: flex-start;
-    flex-direction: column;
-    gap: 2px;
+  .panel-title-line > .panel-summary {
+    display: none;
   }
 
   .rule-fields {
     grid-template-columns: 1fr;
-  }
-
-  .rule-heading-actions {
-    width: 100%;
   }
 
 }

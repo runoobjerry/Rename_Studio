@@ -41,7 +41,7 @@ export function NumberField({ id, label, value, min, max, onChange }: NumberFiel
         overflow: "hidden",
         border: 1,
         borderColor: "divider",
-        borderRadius: "9px",
+        borderRadius: 1,
         bgcolor: "action.hover",
         "&:focus-within": {
           borderColor: "primary.main",

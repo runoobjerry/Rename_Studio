@@ -140,7 +140,7 @@ export function RuleEditor({ definitions, rules, onChange, isLoading = false }: 
   }
 
   return (
-    <section className="panel rule-editor-panel" aria-labelledby="rules-title">
+    <section className="rule-editor-panel" aria-labelledby="rules-title">
       <div className="panel-heading rule-editor-heading">
         <h2 id="rules-title">{t("rules:editor.title")}</h2>
         <div className="rule-heading-actions">
@@ -151,7 +151,6 @@ export function RuleEditor({ definitions, rules, onChange, isLoading = false }: 
             startIcon={<DeleteSweepRoundedIcon />}
             onClick={() => onChange([])}
             disabled={rules.length === 0}
-            sx={{ flex: { xs: 1, sm: "initial" } }}
           >
             {t("rules:editor.clear")}
           </Button>
@@ -165,7 +164,6 @@ export function RuleEditor({ definitions, rules, onChange, isLoading = false }: 
             aria-controls={anchor ? `${menuId}-menu` : undefined}
             onClick={(event) => setAnchor(event.currentTarget)}
             disabled={isLoading || availableRules.length === 0}
-            sx={{ flex: { xs: 1, sm: "initial" } }}
           >
             {t("rules:editor.add")}
           </Button>
@@ -201,96 +199,98 @@ export function RuleEditor({ definitions, rules, onChange, isLoading = false }: 
           </Tooltip>
         ))}
       </Menu>
-      {isLoading ? (
-        <div className="notice" role="status" aria-label={t("rules:editor.loading")}>
-          <Skeleton height={28} />
-          <Skeleton width="70%" height={28} />
-        </div>
-      ) : availableRules.length === 0 ? (
-        <div className="notice">
-          <strong>{t("rules:editor.unavailable")}</strong>
-          <p>{t("rules:editor.checkRegistry")}</p>
-        </div>
-      ) : rules.length === 0 ? (
-        <p className="empty-state">{t("rules:editor.empty")}</p>
-      ) : null}
+      <div className="panel rule-editor-content">
+        {isLoading ? (
+          <div className="notice" role="status" aria-label={t("rules:editor.loading")}>
+            <Skeleton height={28} />
+            <Skeleton width="70%" height={28} />
+          </div>
+        ) : availableRules.length === 0 ? (
+          <div className="notice">
+            <strong>{t("rules:editor.unavailable")}</strong>
+            <p>{t("rules:editor.checkRegistry")}</p>
+          </div>
+        ) : rules.length === 0 ? (
+          <p className="empty-state">{t("rules:editor.empty")}</p>
+        ) : null}
 
-      <div className="rule-list">
-        {rules.map((rule, index) => (
-          <article className="rule-card" key={ruleKey(rule)}>
-            <div className="rule-card-heading">
-              <label className="rule-enabled-control">
-                <Switch
-                  size="small"
-                  checked={rule.enabled}
-                  onChange={(event) =>
-                    updateRule(index, { ...rule, enabled: event.target.checked })
-                  }
-                  slotProps={{ input: { "aria-label": t("rules:editor.enabledLabel", { name: ruleName(rule.type) }) } }}
-                />
-                <strong>
-                  {index + 1}. {ruleName(rule.type)}
-                </strong>
-              </label>
-              <div className="rule-actions">
-                <Tooltip title={t("rules:editor.moveUp")}>
-                  <span>
-                    <IconButton
-                      size="small"
-                      disabled={index === 0}
-                      onClick={() => moveRule(index, -1)}
-                      aria-label={t("rules:editor.moveUp")}
-                      sx={ruleActionSx}
-                    >
-                      <ArrowUpwardRoundedIcon fontSize="small" />
-                    </IconButton>
-                  </span>
-                </Tooltip>
-                <Tooltip title={t("rules:editor.moveDown")}>
-                  <span>
-                    <IconButton
-                      size="small"
-                      disabled={index === rules.length - 1}
-                      onClick={() => moveRule(index, 1)}
-                      aria-label={t("rules:editor.moveDown")}
-                      sx={ruleActionSx}
-                    >
-                      <ArrowDownwardRoundedIcon fontSize="small" />
-                    </IconButton>
-                  </span>
-                </Tooltip>
-                <Tooltip title={t("rules:editor.copy")}>
-                  <IconButton
+        <div className="rule-list">
+          {rules.map((rule, index) => (
+            <article className="rule-card" key={ruleKey(rule)}>
+              <div className="rule-card-heading">
+                <label className="rule-enabled-control">
+                  <Switch
                     size="small"
-                    onClick={() => onChange([...rules, cloneRule(rule)])}
-                    aria-label={t("rules:editor.copy")}
-                    sx={ruleActionSx}
-                  >
-                    <ContentCopyRoundedIcon fontSize="small" />
-                  </IconButton>
-                </Tooltip>
-                <Tooltip title={t("rules:editor.remove")}>
-                  <IconButton
-                    size="small"
-                    color="error"
-                    onClick={() =>
-                      onChange(rules.filter((_, itemIndex) => itemIndex !== index))
+                    checked={rule.enabled}
+                    onChange={(event) =>
+                      updateRule(index, { ...rule, enabled: event.target.checked })
                     }
-                    aria-label={t("rules:editor.remove")}
-                    sx={ruleActionSx}
-                  >
-                    <DeleteOutlineRoundedIcon fontSize="small" />
-                  </IconButton>
-                </Tooltip>
+                    slotProps={{ input: { "aria-label": t("rules:editor.enabledLabel", { name: ruleName(rule.type) }) } }}
+                  />
+                  <strong>
+                    {index + 1}. {ruleName(rule.type)}
+                  </strong>
+                </label>
+                <div className="rule-actions">
+                  <Tooltip title={t("rules:editor.moveUp")}>
+                    <span>
+                      <IconButton
+                        size="small"
+                        disabled={index === 0}
+                        onClick={() => moveRule(index, -1)}
+                        aria-label={t("rules:editor.moveUp")}
+                        sx={ruleActionSx}
+                      >
+                        <ArrowUpwardRoundedIcon fontSize="small" />
+                      </IconButton>
+                    </span>
+                  </Tooltip>
+                  <Tooltip title={t("rules:editor.moveDown")}>
+                    <span>
+                      <IconButton
+                        size="small"
+                        disabled={index === rules.length - 1}
+                        onClick={() => moveRule(index, 1)}
+                        aria-label={t("rules:editor.moveDown")}
+                        sx={ruleActionSx}
+                      >
+                        <ArrowDownwardRoundedIcon fontSize="small" />
+                      </IconButton>
+                    </span>
+                  </Tooltip>
+                  <Tooltip title={t("rules:editor.copy")}>
+                    <IconButton
+                      size="small"
+                      onClick={() => onChange([...rules, cloneRule(rule)])}
+                      aria-label={t("rules:editor.copy")}
+                      sx={ruleActionSx}
+                    >
+                      <ContentCopyRoundedIcon fontSize="small" />
+                    </IconButton>
+                  </Tooltip>
+                  <Tooltip title={t("rules:editor.remove")}>
+                    <IconButton
+                      size="small"
+                      color="error"
+                      onClick={() =>
+                        onChange(rules.filter((_, itemIndex) => itemIndex !== index))
+                      }
+                      aria-label={t("rules:editor.remove")}
+                      sx={ruleActionSx}
+                    >
+                      <DeleteOutlineRoundedIcon fontSize="small" />
+                    </IconButton>
+                  </Tooltip>
+                </div>
               </div>
-            </div>
 
-            <RuleFields
-              rule={rule}
-              onChange={(values) => updateConfig(index, values)}
-            />
-          </article>
-        ))}
+              <RuleFields
+                rule={rule}
+                onChange={(values) => updateConfig(index, values)}
+              />
+            </article>
+          ))}
+        </div>
       </div>
     </section>
   );

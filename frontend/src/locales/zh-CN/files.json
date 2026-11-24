@@ -22,6 +22,7 @@
   },
   "refreshingDirectory": "正在刷新目录",
   "selectAll": "选择当前显示且可修改名称的全部项目",
+  "resizeColumn": "调整「{{column}}」列宽",
   "columns": {
     "name": "文件名",
     "extension": "扩展名",
@@ -110,6 +111,7 @@
     "authorizeToBrowse": "请在设置中登录并授权 {{service}} 账号，以浏览云端文件。"
   },
   "summary": "共 {{total}} 项 · 已选择 {{selected}} 项",
+  "summaryTotal": "共 {{total}} 项",
   "showing": " · 显示 {{count}} 项",
   "refreshFailed": "目录刷新失败，当前显示上次读取的内容：{{message}}",
   "listLabel": "{{storageName}} 文件列表",

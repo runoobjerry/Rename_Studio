@@ -105,7 +105,7 @@ export function SettingsPage({ preference, onPreferenceChange, onBack, executing
           <Card variant="outlined">
             <Stack direction={{ xs: "column", sm: "row" }} sx={{ alignItems: { xs: "flex-start", sm: "center" }, justifyContent: "space-between", gap: 2, p: { xs: 2, sm: 2.5 } }}>
               <Stack direction="row" spacing={1.25} sx={{ alignItems: "center", minWidth: 0 }}>
-                <Box component="img" src={brandMark} alt="" width={36} height={36} sx={{ display: "block", flexShrink: 0 }} />
+                <Box component="img" src={brandMark} alt="" width={28} height={28} sx={{ display: "block", flexShrink: 0 }} />
                 <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>Rename Studio</Typography>
               </Stack>
               <Box sx={{ flexShrink: 0, textAlign: { xs: "left", sm: "right" } }}>
@@ -117,7 +117,7 @@ export function SettingsPage({ preference, onPreferenceChange, onBack, executing
             <Button fullWidth color="inherit" href="https://github.com/runoobjerry/Rename_Studio"
               target="_blank" rel="noopener noreferrer" aria-label={t("sourceAria")}
               endIcon={<GitHubIcon />}
-              sx={{ borderRadius: 0, typography: "body2", fontWeight: 500, justifyContent: "space-between", textAlign: "left", px: { xs: 2, sm: 2.5 }, py: 2 }}>
+              sx={{ typography: "body2", fontWeight: 500, justifyContent: "space-between", textAlign: "left", px: { xs: 2, sm: 2.5 }, py: 2 }}>
               {t("source")}
             </Button>
             <Divider />

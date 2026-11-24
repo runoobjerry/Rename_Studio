@@ -7,6 +7,7 @@ import SearchIcon from "@mui/icons-material/Search";
 import {
   Autocomplete,
   Box,
+  Button,
   Divider,
   FormControl,
   FormControlLabel,
@@ -20,8 +21,6 @@ import {
   TextField,
   Tooltip,
 } from "@mui/material";
-
-import { PanelIconButton } from "../../components/PanelIconButton";
 
 const fileTypes = [
   { value: "all", labelKey: "files:filters.all" },
@@ -54,19 +53,20 @@ export function FileFilterMenu({ type, keyword, extensions, disabled = false,
     <Tooltip title={t("common:filterState", {
       label: t("files:filterItems"), state: t(active ? "common:enabled" : "common:disabled"),
     })} arrow>
-      <PanelIconButton
-        id={`${id}-button`}
-        size="small"
-        disabled={disabled}
-        aria-label={t("files:filterItems")}
-        aria-haspopup="dialog"
-        aria-expanded={Boolean(anchor)}
-        aria-controls={anchor ? `${id}-panel` : undefined}
-        onClick={(event) => setAnchor(event.currentTarget)}
-        sx={active ? { color: "primary.main" } : undefined}
-      >
-        {active ? <FilterList /> : <FilterListOff />}
-      </PanelIconButton>
+      <span>
+        <Button
+          id={`${id}-button`}
+          disabled={disabled}
+          aria-label={t("files:filterItems")}
+          aria-haspopup="dialog"
+          aria-expanded={Boolean(anchor)}
+          aria-controls={anchor ? `${id}-panel` : undefined}
+          onClick={(event) => setAnchor(event.currentTarget)}
+          sx={active ? { color: "primary.main" } : undefined}
+        >
+          {active ? <FilterList /> : <FilterListOff />}
+        </Button>
+      </span>
     </Tooltip>
     <Popover
       anchorEl={anchor}
@@ -76,7 +76,7 @@ export function FileFilterMenu({ type, keyword, extensions, disabled = false,
       transformOrigin={{ vertical: "top", horizontal: "right" }}
       slotProps={{ paper: {
         id: `${id}-panel`, role: "dialog", "aria-labelledby": `${id}-button`,
-        sx: { width: "max-content", maxWidth: "calc(100vw - 32px)", p: 1.5, mt: 0.5, borderRadius: "10px",
+        sx: { width: "max-content", maxWidth: "calc(100vw - 32px)", p: 1.5, mt: 0.5,
           display: "grid", gridTemplateColumns: "minmax(0, max-content)", gap: 1,
           border: 1, borderColor: "divider", backgroundImage: "none",
           "& .MuiInputBase-root": { minHeight: 38, fontSize: 13 },

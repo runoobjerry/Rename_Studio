@@ -2,8 +2,7 @@ import { useTranslation } from "react-i18next";
 import { useId, useState } from "react";
 import FilterList from "@mui/icons-material/FilterList";
 import FilterListOff from "@mui/icons-material/FilterListOff";
-import { FormControl, FormControlLabel, FormLabel, Popover, Radio, RadioGroup, Tooltip } from "@mui/material";
-import { PanelIconButton } from "./PanelIconButton";
+import { Button, FormControl, FormControlLabel, FormLabel, Popover, Radio, RadioGroup, Tooltip } from "@mui/material";
 
 interface RadioFilterMenuProps<T extends string> {
   label: string;
@@ -23,9 +22,8 @@ export function RadioFilterMenu<T extends string>({
   return (
     <>
       <Tooltip title={t("common:filterState", { label, state: t(active ? "common:enabled" : "common:disabled") })} arrow>
-        <PanelIconButton
+        <Button
           id={`${id}-button`}
-          size="small"
           disabled={disabled}
           aria-label={label}
           aria-haspopup="dialog"
@@ -34,8 +32,8 @@ export function RadioFilterMenu<T extends string>({
           onClick={(event) => setAnchor(event.currentTarget)}
           sx={active ? { color: "primary.main" } : undefined}
         >
-          {active ? <FilterList sx={{ fontSize: 20 }} /> : <FilterListOff sx={{ fontSize: 20 }} />}
-        </PanelIconButton>
+          {active ? <FilterList /> : <FilterListOff />}
+        </Button>
       </Tooltip>
       <Popover
         id={`${id}-menu`}
@@ -46,7 +44,7 @@ export function RadioFilterMenu<T extends string>({
         transformOrigin={{ vertical: "top", horizontal: "right" }}
         slotProps={{
           paper: { role: "dialog", "aria-labelledby": `${id}-button`,
-            sx: { display: "flex", flexDirection: "column", p: 1.5, pb: "6px", mt: 0.5, borderRadius: "10px",
+            sx: { display: "flex", flexDirection: "column", p: 1.5, pb: "6px", mt: 0.5,
               border: 1, borderColor: "divider", backgroundImage: "none" } },
         }}
       >

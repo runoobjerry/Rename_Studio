@@ -3,6 +3,7 @@ import type { PaletteMode } from "@mui/material";
 import * as muiLocales from "@mui/material/locale";
 
 const accent = "#00ff9d";
+const cornerRadius = 12;
 
 // 菜单共享几何参数；有可见条数限制的菜单也按这些值计算滚动高度。
 export const MENU_METRICS = { itemHeight: 34, inset: 4, gap: 2 } as const;
@@ -66,7 +67,7 @@ export function createAppTheme(mode: PaletteMode, locale = "en-US") {
       },
       divider,
     },
-    shape: { borderRadius: 14 },
+    shape: { borderRadius: cornerRadius },
     typography: {
       fontFamily: 'Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
       h4: { fontWeight: 760, letterSpacing: "-0.035em" },
@@ -76,8 +77,10 @@ export function createAppTheme(mode: PaletteMode, locale = "en-US") {
     components: {
       MuiButton: {
         defaultProps: { disableElevation: true },
+      },
+      MuiIconButton: {
         styleOverrides: {
-          root: { borderRadius: 10 },
+          root: { borderRadius: cornerRadius },
         },
       },
       MuiCard: {
@@ -86,11 +89,6 @@ export function createAppTheme(mode: PaletteMode, locale = "en-US") {
             backgroundImage: "none",
             borderColor: divider,
           },
-        },
-      },
-      MuiAlert: {
-        styleOverrides: {
-          root: { borderRadius: 10 },
         },
       },
       MuiChip: {
@@ -132,6 +130,7 @@ export function createAppTheme(mode: PaletteMode, locale = "en-US") {
       MuiListItemButton: {
         styleOverrides: {
           root: {
+            borderRadius: cornerRadius,
             color: textSecondary,
             "&.Mui-selected": { color: textPrimary },
           },
@@ -147,7 +146,6 @@ export function createAppTheme(mode: PaletteMode, locale = "en-US") {
           paper: {
             marginTop: 4,
             padding: 0,
-            borderRadius: 10,
             border: `1px solid ${divider}`,
             backgroundImage: "none",
           },
@@ -171,7 +169,7 @@ export function createAppTheme(mode: PaletteMode, locale = "en-US") {
             // 覆盖 MenuItem 的默认 6px/16px 留白，确保紧凑菜单的预期尺寸。
             "&.MuiMenuItem-root": { padding: "4px 12px", minHeight: MENU_METRICS.itemHeight },
             gap: 6,
-            borderRadius: 8,
+            borderRadius: cornerRadius,
             fontSize: 13,
           },
         },
@@ -179,7 +177,7 @@ export function createAppTheme(mode: PaletteMode, locale = "en-US") {
       MuiTableCell: {
         styleOverrides: {
           root: {
-            height: 38,
+            height: "var(--app-table-row-height)",
             padding: "6px 12px",
             borderColor: divider,
             color: textSecondary,
@@ -213,6 +211,8 @@ export function createAppTheme(mode: PaletteMode, locale = "en-US") {
             "--app-surface": dark ? "#101a16" : "#ffffff",
             "--app-surface-muted": surfaceMuted,
             "--app-border": divider,
+            "--app-corner-radius": `${cornerRadius}px`,
+            "--app-table-row-height": "38px",
             "--app-text": textPrimary,
             "--app-text-muted": textSecondary,
             "--app-text-disabled": textDisabled,

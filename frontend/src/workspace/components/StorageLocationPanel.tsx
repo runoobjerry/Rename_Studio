@@ -1,8 +1,10 @@
+import { useId } from "react";
 import { useTranslation } from "react-i18next";
 import { errorMessage } from "../../i18n/messages";
-import MenuRoundedIcon from "@mui/icons-material/MenuRounded";
-import { Alert, Button, IconButton } from "@mui/material";
-import { LocationBreadcrumbs, locationButtonSx } from "../../features/files/LocationBreadcrumbs";
+import { Alert, Box, Button, IconButton } from "@mui/material";
+import sidebarIcon from "../../assets/icon/sidebar.svg";
+import { PanelActionGroup } from "../../components/PanelHeadingControls";
+import { LocationBreadcrumbs } from "../../features/files/LocationBreadcrumbs";
 import type { DirectoryListing, StorageLocation } from "../../types";
 
 interface StorageLocationPanelProps {
@@ -29,50 +31,47 @@ export function StorageLocationPanel({
   onNavigate, onSetDefaultPath, onBrowse,
 }: StorageLocationPanelProps) {
   const { t } = useTranslation();
+  const locationId = useId();
   return (
-    <section className="panel location-panel" aria-label={t("files:location.title")}>
+    <section id={locationId} aria-label={t("files:location.title")}>
       <div className="location-toolbar">
-        {compactNavigation && (
-          <IconButton onClick={onOpenNavigation} aria-label={t("files:location.openNavigation")} sx={{ p: "4px" }}>
-            <MenuRoundedIcon sx={{ fontSize: 20 }} />
-          </IconButton>
-        )}
-        <div className="location-navigation">
+        <div className="panel location-navigation">
+          {compactNavigation && (
+            <IconButton onClick={onOpenNavigation} aria-label={t("files:location.openNavigation")} sx={{ p: "4px" }}>
+              <Box component="span" aria-hidden="true" sx={{
+                width: 20, height: 20, bgcolor: "currentColor",
+                mask: `url("${sidebarIcon}") center / contain no-repeat`,
+                WebkitMask: `url("${sidebarIcon}") center / contain no-repeat`,
+              }} />
+            </IconButton>
+          )}
           <LocationBreadcrumbs
             listing={listing}
             rootLabel={rootLabel}
             disabled={navigationDisabled}
             onNavigate={onNavigate}
           />
-          {requiresAuth && (
-            <Button
-              type="button"
-              variant="outlined"
-              onClick={onSetDefaultPath}
-              disabled={defaultPathDisabled}
-              sx={{ ...locationButtonSx, px: "10px" }}
-            >
-              {t("files:location.setDefault")}
-            </Button>
-          )}
-          {supportsLocalPicker && (
-            <Button
-              type="button"
-              variant="outlined"
-              onClick={onBrowse}
-              disabled={browseDisabled}
-              sx={{ ...locationButtonSx, px: "10px" }}
-            >
-              {isPickingFolder ? t("files:location.picking") : t("files:location.browse")}
-            </Button>
-          )}
         </div>
-      </div>
-      <div className="location-feedback">
-        {supportsLocalPicker && pickerError && (
-          <Alert severity="error">{t("files:location.pickerFailed", { message: errorMessage(pickerError, t) })}</Alert>
+        {(requiresAuth || supportsLocalPicker) && (
+          <PanelActionGroup labelledBy={locationId}>
+            {requiresAuth && (
+              <Button onClick={onSetDefaultPath} disabled={defaultPathDisabled}>
+                {t("files:location.setDefault")}
+              </Button>
+            )}
+            {supportsLocalPicker && (
+              <Button onClick={onBrowse} disabled={browseDisabled}>
+                {isPickingFolder ? t("files:location.picking") : t("files:location.browse")}
+              </Button>
+            )}
+          </PanelActionGroup>
         )}
       </div>
+      {supportsLocalPicker && pickerError && (
+        <Alert severity="error" sx={{ mt: 1 }}>
+          {t("files:location.pickerFailed", { message: errorMessage(pickerError, t) })}
+        </Alert>
+      )}
     </section>
   );
 }

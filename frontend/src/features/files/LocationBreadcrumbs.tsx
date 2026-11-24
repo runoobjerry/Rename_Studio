@@ -13,13 +13,9 @@ interface LocationBreadcrumbsProps {
   onNavigate: (location: StorageLocation, parent?: StorageLocation) => void;
 }
 
-export const locationButtonSx = {
-  minWidth: 0, height: 30, px: "5px", py: "4px", fontSize: 13, lineHeight: 1.5,
-  borderRadius: "8px", whiteSpace: "nowrap",
-} as const;
-
 const buttonSx = {
-  ...locationButtonSx,
+  minWidth: 0, height: 30, px: "5px", py: "4px", fontSize: 13, lineHeight: 1.5,
+  whiteSpace: "nowrap",
   color: "text.secondary", flexShrink: 0,
 } as const;
 
@@ -50,6 +46,11 @@ export function LocationBreadcrumbs({ listing, rootLabel, disabled, onNavigate }
       })),
     ];
   }, [listing, rootLabel]);
+  const displayedLabels = entries.map(({ label }, index) => {
+    const limit = index === entries.length - 1 ? 21 : 11;
+    const characters = Array.from(label);
+    return characters.length > limit ? `${characters.slice(0, limit - 1).join("")}…` : label;
+  });
 
   const navigate = (index: number) => {
     const { location } = entries[index];
@@ -83,7 +84,7 @@ export function LocationBreadcrumbs({ listing, rootLabel, disabled, onNavigate }
   return (
     <Box ref={container} sx={{ flex: "1 1 0", minWidth: 0, width: "100%", position: "relative" }}>
       <Box ref={measurement} aria-hidden="true" sx={{ display: "flex", position: "absolute", width: "max-content", visibility: "hidden", pointerEvents: "none" }}>
-        {entries.map((entry, index) => <Button key={index} tabIndex={-1} sx={buttonSx}>{entry.label}</Button>)}
+        {displayedLabels.map((label, index) => <Button key={index} tabIndex={-1} sx={buttonSx}>{label}</Button>)}
       </Box>
       <Breadcrumbs aria-label={t("files:breadcrumbs.label")} separator={<ChevronRightIcon sx={{ fontSize: 18 }} />}
         maxItems={entries.length + 1}
@@ -98,13 +99,16 @@ export function LocationBreadcrumbs({ listing, rootLabel, disabled, onNavigate }
           </Tooltip>
         )}
         {entries.slice(hiddenCount).map((entry, offset) => {
-          const current = hiddenCount + offset === entries.length - 1;
-          return <Tooltip key={hiddenCount + offset} title={entry.label}>
-            <Button disabled={disabled} aria-current={current ? "page" : undefined}
-              onClick={() => navigate(hiddenCount + offset)}
-              sx={{ ...buttonSx, ...(current && { flexShrink: 1, overflow: "hidden", color: "text.primary" }) }}>
-              <Box component="span" sx={{ overflow: "hidden", textOverflow: "ellipsis" }}>{entry.label}</Box>
-            </Button>
+          const index = hiddenCount + offset;
+          const current = index === entries.length - 1;
+          return <Tooltip key={index} title={entry.label}>
+            <Box component="span" sx={{ display: "flex", minWidth: 0 }}>
+              <Button disabled={disabled} aria-label={entry.label} aria-current={current ? "page" : undefined}
+                onClick={() => navigate(index)}
+                sx={{ ...buttonSx, ...(current && { flexShrink: 1, overflow: "hidden", color: "text.primary" }) }}>
+                <Box component="span" sx={{ overflow: "hidden", textOverflow: "ellipsis" }}>{displayedLabels[index]}</Box>
+              </Button>
+            </Box>
           </Tooltip>;
         })}
       </Breadcrumbs>

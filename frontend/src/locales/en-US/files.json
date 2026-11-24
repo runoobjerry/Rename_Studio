@@ -22,6 +22,7 @@
   },
   "refreshingDirectory": "Refreshing directory",
   "selectAll": "Select all displayed items that can be renamed",
+  "resizeColumn": "Resize {{column}} column",
   "columns": {
     "name": "File name",
     "extension": "Extension",
@@ -95,7 +96,7 @@
   "location": {
     "title": "Directory location",
     "openNavigation": "Open navigation",
-    "setDefault": "Set as default",
+    "setDefault": "Set default",
     "picking": "Waiting for selection…",
     "browse": "Browse…",
     "pickerFailed": "Could not open the folder picker: {{message}}"
@@ -110,6 +111,7 @@
     "authorizeToBrowse": "Sign in and authorize your {{service}} account in Settings to browse cloud files."
   },
   "summary": "Total: {{total}} · Selected: {{selected}}",
+  "summaryTotal": "Total: {{total}}",
   "showing": " · {{count}} shown",
   "refreshFailed": "Could not refresh the directory. Showing the last loaded contents: {{message}}",
   "listLabel": "{{storageName}} file list",

@@ -5,7 +5,7 @@ import ComputerRoundedIcon from "@mui/icons-material/ComputerRounded";
 import StorageRoundedIcon from "@mui/icons-material/StorageRounded";
 import SettingsRoundedIcon from "@mui/icons-material/SettingsRounded";
 import { Box, Divider, List, ListItemButton, ListItemIcon, ListItemText, Skeleton, Stack, Tooltip, Typography } from "@mui/material";
-import { useLayoutEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import type { StorageInfo, StorageProviderDefinition } from "../../types";
 
 interface StorageSidebarProps {
@@ -25,17 +25,13 @@ function StorageName({ storageName, service, email }: { storageName: string; ser
   const nameRef = useRef<HTMLSpanElement>(null);
   const [isOverflowing, setIsOverflowing] = useState(false);
 
-  useLayoutEffect(() => {
+  const measureOverflow = () => {
     const element = nameRef.current!;
-    const updateOverflow = () => setIsOverflowing(element.scrollWidth > element.clientWidth);
-    updateOverflow();
-    const observer = new ResizeObserver(updateOverflow);
-    observer.observe(element);
-    return () => observer.disconnect();
-  }, [storageName]);
+    setIsOverflowing(element.scrollWidth > element.clientWidth);
+  };
 
   return (
-    <Tooltip placement="right" title={
+    <Tooltip placement="right" onOpen={measureOverflow} title={
       <Box sx={{ overflowWrap: "anywhere" }}>
         {isOverflowing && <Typography component="div" variant="caption">{storageName}</Typography>}
         <Typography component="div" variant="caption">{email ? `${service} · ${email}` : service}</Typography>
@@ -59,7 +55,6 @@ export function StorageSidebar({ storages, providerDefinitions, isLoading, disab
         flexDirection: "column",
         height: "100%",
         p: 1.5,
-        "& .MuiListItemButton-root": { borderRadius: "14px" },
       }}
     >
       <Stack
@@ -67,7 +62,7 @@ export function StorageSidebar({ storages, providerDefinitions, isLoading, disab
         spacing={1.25}
         sx={{ alignItems: "center", px: 1, py: 1.25, mb: 1 }}
       >
-        <Box component="img" src={brandMark} alt="" width={36} height={36} sx={{ display: "block", flexShrink: 0 }} />
+        <Box component="img" src={brandMark} alt="" width={28} height={28} sx={{ display: "block", flexShrink: 0 }} />
         <Box>
           <Typography variant="subtitle1" sx={{ fontWeight: 600, lineHeight: 1.1 }}>
             Rename Studio

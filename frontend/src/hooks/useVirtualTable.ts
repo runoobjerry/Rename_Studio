@@ -5,59 +5,49 @@ const overscan = 8;
 const virtualizationThreshold = 100;
 
 // 两张表均为单行内容；测量真实行高，保留主题的复选框和单元格几何。
-export function useVirtualTable(count: number, resetKey: unknown, columnValues: readonly (readonly string[])[],
-  fixedColumnWidths?: readonly number[]) {
+export function useVirtualTable(count: number, resetKey: unknown, columnValues: readonly (readonly string[] | null)[] | null) {
   const [container, setContainer] = useState<HTMLDivElement | null>(null);
   const [range, setRange] = useState({ start: 0, end: 24, rowHeight: 38 });
   const frame = useRef<number>();
   const focusFrame = useRef<number>();
   const focusedIndex = useRef(0);
   const widthContext = useRef<CanvasRenderingContext2D | null>(null);
-  const [columnWidths, setColumnWidths] = useState<number[]>();
+  const [columnWidths, setColumnWidths] = useState<(number | undefined)[]>();
   const enabled = count > virtualizationThreshold;
+  const hasRows = count > 0;
   useLayoutEffect(() => {
-    if (!container || !enabled) { setColumnWidths(undefined); return; }
+    if (!container || !hasRows || !columnValues) { setColumnWidths(undefined); return; }
     const context = widthContext.current ??= document.createElement("canvas").getContext("2d");
-    if (!context) return; // 浏览器无法创建绘图上下文时仍可使用原生自动列宽。
-    const updateWidths = () => {
-      const cells = container.querySelectorAll<HTMLElement>("tr[data-row-index]:first-of-type > td");
-      // 顶部占位行存在时，数据行并非 first-of-type。
-      const dataCells = cells.length ? cells : container.querySelector<HTMLElement>("tr[data-row-index]")?.children;
-      const headers = container.querySelectorAll<HTMLElement>("thead th");
-      if (!dataCells) return;
-      const widths = columnValues.map((values, index) => {
-        // 选择等固定操作列不从当前 DOM 反推宽度，避免布局结果回写列宽。
-        const fixedWidth = fixedColumnWidths?.[index];
-        if (fixedWidth !== undefined) return fixedWidth;
-        const cell = dataCells[index] as HTMLElement;
-        const text = cell.querySelector<HTMLElement>(".file-name, .MuiChip-label") ?? cell;
-        const style = getComputedStyle(text);
-        context.font = style.font;
-        const letterSpacing = parseFloat(style.letterSpacing) || 0;
-        let width = values.reduce((max, value) => Math.max(max, context.measureText(value).width + value.length * letterSpacing), 0);
-        if (text.classList.contains("file-name")) width = Math.min(width, innerWidth * 0.32, 420) + 28;
-        const chip = cell.querySelector<HTMLElement>(".MuiChip-root");
-        // Chip 的图标及内边距也参与完整数据列宽测量。
-        if (chip) width += chip.getBoundingClientRect().width - text.getBoundingClientRect().width
-          + parseFloat(style.paddingLeft) + parseFloat(style.paddingRight);
-        const headerStyle = getComputedStyle(headers[index]);
-        context.font = headerStyle.font;
-        const sortIcon = headers[index].querySelector(".MuiTableSortLabel-icon");
-        const sortIconStyle = sortIcon ? getComputedStyle(sortIcon) : null;
-        const sortIconWidth = sortIcon && sortIconStyle ? sortIcon.getBoundingClientRect().width
-          + parseFloat(sortIconStyle.marginLeft) + parseFloat(sortIconStyle.marginRight) : 0;
-        width = Math.max(width, context.measureText(headers[index].textContent ?? "").width + sortIconWidth);
-        const cellStyle = getComputedStyle(cell);
-        return Math.ceil(width + parseFloat(cellStyle.paddingLeft) + parseFloat(cellStyle.paddingRight) + 1);
-      });
-      setColumnWidths((current) => current?.every((width, index) => width === widths[index]) ? current : widths);
-    };
-    // 按完整数据测量文本，未挂载的长名称也参与列宽，滚动时不会随视口内容伸缩。
-    updateWidths();
-    const observer = new ResizeObserver(updateWidths);
-    observer.observe(container);
-    return () => observer.disconnect();
-  }, [container, enabled, columnValues, fixedColumnWidths]);
+    if (!context) return;
+    const cells = container.querySelectorAll<HTMLElement>("tr[data-row-index]:first-of-type > td");
+    // 顶部占位行存在时，数据行并非 first-of-type。
+    const dataCells = cells.length ? cells : container.querySelector<HTMLElement>("tr[data-row-index]")?.children;
+    const headers = container.querySelectorAll<HTMLElement>("thead th");
+    if (!dataCells) return;
+    const widths = columnValues.map((values, index) => {
+      if (values === null) return undefined;
+      const cell = dataCells[index] as HTMLElement;
+      const text = cell.querySelector<HTMLElement>(".MuiChip-label") ?? cell;
+      const style = getComputedStyle(text);
+      context.font = style.font;
+      const letterSpacing = parseFloat(style.letterSpacing) || 0;
+      let width = values.reduce((max, value) => Math.max(max, context.measureText(value).width + value.length * letterSpacing), 0);
+      const chip = cell.querySelector<HTMLElement>(".MuiChip-root");
+      // Chip 的图标及内边距也参与完整数据列宽测量。
+      if (chip) width += chip.getBoundingClientRect().width - text.getBoundingClientRect().width
+        + parseFloat(style.paddingLeft) + parseFloat(style.paddingRight);
+      const headerStyle = getComputedStyle(headers[index]);
+      context.font = headerStyle.font;
+      const sortIcon = headers[index].querySelector(".MuiTableSortLabel-icon");
+      const sortIconStyle = sortIcon ? getComputedStyle(sortIcon) : null;
+      const sortIconWidth = sortIcon && sortIconStyle ? sortIcon.getBoundingClientRect().width
+        + parseFloat(sortIconStyle.marginLeft) + parseFloat(sortIconStyle.marginRight) : 0;
+      width = Math.max(width, context.measureText(headers[index].textContent ?? "").width + sortIconWidth);
+      const cellStyle = getComputedStyle(cell);
+      return Math.ceil(width + parseFloat(cellStyle.paddingLeft) + parseFloat(cellStyle.paddingRight) + 1);
+    });
+    setColumnWidths((current) => current?.every((width, index) => width === widths[index]) ? current : widths);
+  }, [container, hasRows, columnValues]);
   const measure = useCallback(() => {
     if (!container) return;
     const rowHeight = container.querySelector<HTMLElement>("tr[data-row-index]")?.getBoundingClientRect().height || 38;
