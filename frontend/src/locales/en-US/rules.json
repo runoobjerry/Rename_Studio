@@ -43,6 +43,18 @@
     "anchor": "Specified text",
     "fromRight": "Right to left"
   },
+  "delete": {
+    "from": "From",
+    "until": "Until",
+    "delimiter": "Delimiter",
+    "fromDelimiter": "Starting delimiter",
+    "untilDelimiter": "Ending delimiter",
+    "count": "Count",
+    "end": "End of name",
+    "currentName": "Delete current name",
+    "fromRight": "Right to left",
+    "keepDelimiters": "Do not remove delimiters"
+  },
   "serialize": {
     "numberingSystem": "Numbering system",
     "systems": {
@@ -79,6 +91,10 @@
     "insert": {
       "name": "Insert",
       "description": "Insert text at the start, end, a character position, or next to specified text"
+    },
+    "delete": {
+      "name": "Delete",
+      "description": "Delete characters in a specified range"
     },
     "serialize": {
       "name": "Serialize",

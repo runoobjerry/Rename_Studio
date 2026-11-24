@@ -43,6 +43,18 @@
     "anchor": "指定文本",
     "fromRight": "从右往左计数"
   },
+  "delete": {
+    "from": "起始",
+    "until": "直到",
+    "delimiter": "分隔符",
+    "fromDelimiter": "起点分隔符",
+    "untilDelimiter": "终点分隔符",
+    "count": "字符数",
+    "end": "直到末尾",
+    "currentName": "删除当前名称",
+    "fromRight": "从右到左",
+    "keepDelimiters": "不移除分隔符"
+  },
   "serialize": {
     "numberingSystem": "编号方式",
     "systems": {
@@ -79,6 +91,10 @@
     "insert": {
       "name": "插入",
       "description": "在前缀、后缀、字符位置或指定文本旁插入内容"
+    },
+    "delete": {
+      "name": "删除",
+      "description": "删除名称中指定范围的字符"
     },
     "serialize": {
       "name": "序列编号",

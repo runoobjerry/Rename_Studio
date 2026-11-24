@@ -19,7 +19,7 @@
 
 | 字段 | 类型 | 可空 | 说明 |
 | --- | --- | --- | --- |
-| `type` | string | 否 | 稳定类型。当前为 `padding`、`replace`、`remove`、`insert`、`serialize`。 |
+| `type` | string | 否 | 稳定类型。当前为 `padding`、`replace`、`remove`、`insert`、`delete`、`serialize`。 |
 | `config_schema` | object | 否 | 配置的 JSON Schema。 |
 
 规则名称和说明由前端按 `type` 查找翻译。
@@ -82,6 +82,29 @@
 | `index` | integer | 否 | 否 | 默认 `1`，1–255；仅 `index` 位置使用。从左数的字符间隙索引，越界时插在末尾。 |
 | `from_right` | boolean | 否 | 否 | 默认 `false`；仅 `index` 位置使用。为 `true` 时距末尾 `index` 个字符，越界时插在开头。 |
 | `anchor` | string | 否 | 否 | 默认 `""`，最长 255 字符；相对文本位置使用首个区分大小写的字面匹配，为空或未找到时跳过。 |
+
+#### delete
+
+删除规则链计算到当前位置的名称中的一段字符。所有配置字段均可省略。
+
+| 字段 | 类型 | 默认值 | 有效值 |
+| --- | --- | --- | --- |
+| `from_mode` | string | `position` | `position`、`delimiter`。 |
+| `from_position` | integer | `1` | `1` 至 `255`，从选定方向的第 1 个字符开始计数。仅 `from_mode: "position"` 使用。 |
+| `from_delimiter` | string | `""` | 最长 255 个字符。仅 `from_mode: "delimiter"` 使用。 |
+| `until_mode` | string | `count` | `count` 删除指定数量的字符，`delimiter` 删除至分隔符处，`end` 删除至选定方向的末尾。 |
+| `until_count` | integer | `1` | `1` 至 `255`，仅 `until_mode: "count"` 使用。剩余字符不足时删除到末尾。 |
+| `until_delimiter` | string | `""` | 最长 255 个字符。仅 `until_mode: "delimiter"` 使用。 |
+| `delete_current_name` | boolean | `false` | 为 `true` 时清空处理范围内的名称，优先于范围、方向和分隔符配置。 |
+| `ignore_extension` | boolean | `true` | 为 `true` 时只处理文件主名称，为 `false` 时处理完整文件名。文件夹始终处理完整名称。 |
+| `from_right` | boolean | `false` | 为 `true` 时从右往左计数、查找和删除。 |
+| `keep_delimiters` | boolean | `false` | 为 `true` 时保留用来定位范围的分隔符。 |
+
+分隔符按区分大小写的字面文本匹配。使用起点分隔符时，沿选定方向取首个匹配，并从其后查找终点分隔符。使用字符位置时，从该位置开始查找终点分隔符。起始位置超出名称，或需要的分隔符为空或未匹配时，跳过此规则。
+
+按字符数删除时，从起始位置或起点分隔符的首个字符开始计数。保留分隔符时，从起点分隔符之后开始计数。按终点分隔符删除时，删除范围包含终点分隔符，保留分隔符时范围止于该分隔符之前。「之后」和「之前」均按选定方向理解。
+
+后续规则仍可使用删除后的名称。整条规则链的最终结果接受原有名称校验和冲突检测。规则选项参照 [ReNamer Delete rule](https://www.den4b.com/docs/books/renamer/page/delete-rule)。
 
 #### serialize
 

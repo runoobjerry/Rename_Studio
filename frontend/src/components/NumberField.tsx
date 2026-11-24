@@ -11,10 +11,11 @@ interface NumberFieldProps {
   value: number;
   min: number;
   max: number;
+  disabled?: boolean;
   onChange: (value: number) => void;
 }
 
-export function NumberField({ id, label, value, min, max, onChange }: NumberFieldProps) {
+export function NumberField({ id, label, value, min, max, disabled = false, onChange }: NumberFieldProps) {
   const { t } = useTranslation();
   const [draft, setDraft] = useState<{ text: string; value: number } | null>(null);
   const text = draft?.value === value ? draft.text : String(value);
@@ -77,12 +78,17 @@ export function NumberField({ id, label, value, min, max, onChange }: NumberFiel
           m: 0,
           appearance: "none",
         },
+        "& input:disabled": {
+          color: "text.disabled",
+          WebkitTextFillColor: "currentColor",
+          opacity: 1,
+        },
       }}
     >
       <IconButton
         type="button"
         size="small"
-        disabled={value <= min}
+        disabled={disabled || value <= min}
         onClick={() => updateValue(value - 1)}
         aria-label={t("common:numberField.decrease", { label })}
       >
@@ -95,6 +101,7 @@ export function NumberField({ id, label, value, min, max, onChange }: NumberFiel
         max={max}
         step={1}
         inputMode="numeric"
+        disabled={disabled}
         value={text}
         onChange={(event) => {
           const nextText = event.target.value;
@@ -115,7 +122,7 @@ export function NumberField({ id, label, value, min, max, onChange }: NumberFiel
       <IconButton
         type="button"
         size="small"
-        disabled={value >= max}
+        disabled={disabled || value >= max}
         onClick={() => updateValue(value + 1)}
         aria-label={t("common:numberField.increase", { label })}
       >

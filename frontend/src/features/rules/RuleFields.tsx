@@ -253,6 +253,112 @@ function InsertFields({ rule, onChange }: RuleFieldsProps) {
   );
 }
 
+const deleteBoundaries = [
+  {
+    modeKey: "from_mode",
+    label: "rules:delete.from",
+    numericMode: "position",
+    numericLabel: "rules:fields.index",
+    numberKey: "from_position",
+    delimiterLabel: "rules:delete.fromDelimiter",
+    delimiterKey: "from_delimiter",
+    options: { position: "rules:fields.indexPosition", delimiter: "rules:delete.delimiter" },
+  },
+  {
+    modeKey: "until_mode",
+    label: "rules:delete.until",
+    numericMode: "count",
+    numericLabel: "rules:delete.count",
+    numberKey: "until_count",
+    delimiterLabel: "rules:delete.untilDelimiter",
+    delimiterKey: "until_delimiter",
+    options: { count: "rules:delete.count", delimiter: "rules:delete.delimiter", end: "rules:delete.end" },
+  },
+] as const;
+
+function DeleteFields({ rule, onChange }: RuleFieldsProps) {
+  const { t } = useTranslation();
+  const deleteCurrentName = Boolean(rule.config.delete_current_name ?? false);
+  const options = [
+    { key: "delete_current_name", label: "rules:delete.currentName", defaultValue: false, disabled: false },
+    { key: "ignore_extension", label: "rules:fields.ignoreExtension", defaultValue: true, disabled: false },
+    { key: "from_right", label: "rules:delete.fromRight", defaultValue: false, disabled: deleteCurrentName },
+    { key: "keep_delimiters", label: "rules:delete.keepDelimiters", defaultValue: false, disabled: deleteCurrentName },
+  ] as const;
+
+  return (
+    <>
+      <Box sx={{ display: "grid", gap: 1.5 }}>
+        {deleteBoundaries.map((boundary) => {
+          const mode = valueAsString(rule, boundary.modeKey, boundary.numericMode);
+          return (
+            <Box key={boundary.modeKey} className="rule-fields" sx={ruleFieldsSx}>
+              <label>
+                {t(boundary.label)}
+                <TextField
+                  select
+                  fullWidth
+                  size="small"
+                  value={mode}
+                  disabled={deleteCurrentName}
+                  onChange={(event) => onChange({ [boundary.modeKey]: event.target.value })}
+                  slotProps={{ select: { inputProps: { "aria-label": t(boundary.label) } } }}
+                >
+                  {Object.entries(boundary.options).map(([value, label]) => (
+                    <MenuItem key={value} value={value}>{t(label)}</MenuItem>
+                  ))}
+                </TextField>
+              </label>
+              {mode === boundary.numericMode && (
+                <Box sx={{ alignSelf: "end", minWidth: 0 }}>
+                  <NumberField
+                    label={t(boundary.numericLabel)}
+                    value={Number(rule.config[boundary.numberKey] ?? 1)}
+                    min={1}
+                    max={255}
+                    disabled={deleteCurrentName}
+                    onChange={(value) => onChange({ [boundary.numberKey]: value })}
+                  />
+                </Box>
+              )}
+              {mode === "delimiter" && (
+                <TextField
+                  fullWidth
+                  size="small"
+                  sx={{ alignSelf: "end" }}
+                  value={valueAsString(rule, boundary.delimiterKey, "")}
+                  disabled={deleteCurrentName}
+                  onChange={(event) => onChange({ [boundary.delimiterKey]: event.target.value })}
+                  slotProps={{ htmlInput: { "aria-label": t(boundary.delimiterLabel) } }}
+                />
+              )}
+            </Box>
+          );
+        })}
+      </Box>
+      <div className="rule-options">
+        {options.map(({ key, label, defaultValue, disabled }) => (
+          <FormControlLabel
+            key={key}
+            className="option-toggle"
+            sx={{ m: 0 }}
+            label={t(label)}
+            slotProps={{ typography: { variant: "caption", sx: { fontWeight: 700 } } }}
+            disabled={disabled}
+            control={
+              <Checkbox
+                size="small"
+                checked={Boolean(rule.config[key] ?? defaultValue)}
+                onChange={(event) => onChange({ [key]: event.target.checked })}
+              />
+            }
+          />
+        ))}
+      </div>
+    </>
+  );
+}
+
 const maxSequenceInput = 99_999_999;
 const numberingSystems = {
   decimal: { labelKey: "rules:serialize.systems.decimal", min: -maxSequenceInput, max: maxSequenceInput },
@@ -400,6 +506,7 @@ export function RuleFields(props: RuleFieldsProps) {
     return <TextOperationFields {...props} />;
   }
   if (props.rule.type === "insert") return <InsertFields {...props} />;
+  if (props.rule.type === "delete") return <DeleteFields {...props} />;
   if (props.rule.type === "serialize") return <SerializeFields {...props} />;
   return <Alert severity="error">{t("rules:unsupported", { type: props.rule.type })}</Alert>;
 }

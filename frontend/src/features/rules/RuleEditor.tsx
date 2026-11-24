@@ -72,6 +72,22 @@ export const DEFAULT_RULES: Record<string, RuleSpec> = {
       anchor: "",
     },
   },
+  delete: {
+    type: "delete",
+    enabled: true,
+    config: {
+      from_mode: "position",
+      from_position: 1,
+      from_delimiter: "",
+      until_mode: "count",
+      until_count: 1,
+      until_delimiter: "",
+      delete_current_name: false,
+      ignore_extension: true,
+      from_right: false,
+      keep_delimiters: false,
+    },
+  },
   serialize: {
     type: "serialize",
     enabled: true,

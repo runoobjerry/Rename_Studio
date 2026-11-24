@@ -107,7 +107,9 @@ def test_rules_metadata_contains_identifiers_and_validation_schema(api_client: T
     response = api_client.get("/rules")
     assert response.status_code == 200
     definitions = response.json()
-    assert {item["type"] for item in definitions} == {"padding", "replace", "remove", "insert", "serialize"}
+    assert {item["type"] for item in definitions} == {
+        "padding", "replace", "remove", "insert", "delete", "serialize",
+    }
     assert all(set(item) == {"type", "config_schema"} for item in definitions)
     padding = next(item["config_schema"] for item in definitions if item["type"] == "padding")
     assert padding["type"] == "object"
@@ -120,6 +122,29 @@ def test_rules_metadata_contains_identifiers_and_validation_schema(api_client: T
     }
     assert serialize["properties"]["reset_every"]["default"] is None
     assert serialize["properties"]["ignore_extension"]["default"] is True
+
+
+def test_delete_current_name_can_be_followed_by_insert(tmp_path: Path, api_client: TestClient) -> None:
+    source = tmp_path / "raw.name.txt"
+    source.touch()
+    delete = {"type": "delete", "config": {"delete_current_name": True, "ignore_extension": False}}
+    url = "/storages/local/rename/preview"
+
+    response = api_client.post(url, json={"file_ids": [source.name], "rules": [delete]})
+    assert response.status_code == 200
+    preview = response.json()
+    assert preview["valid"] is False
+    assert preview["items"][0]["new_name"] == ""
+
+    response = api_client.post(url, json={
+        "file_ids": [source.name],
+        "rules": [delete, {"type": "insert", "config": {"text": "renamed.txt"}}],
+    })
+    assert response.status_code == 200
+    preview = response.json()
+    assert preview["valid"] is True
+    assert preview["items"][0]["new_name"] == "renamed.txt"
+    assert list(tmp_path.iterdir()) == [source]
 
 
 def test_serialize_uses_request_order_in_preview_and_execution(tmp_path: Path, api_client: TestClient) -> None:

@@ -96,6 +96,26 @@ GET /rules
     }
   },
   {
+    "type":"delete",
+    "config_schema":{
+      "additionalProperties":false,
+      "properties":{
+        "from_mode":{"default":"position","enum":["position","delimiter"],"title":"From Mode","type":"string"},
+        "from_position":{"default":1,"maximum":255,"minimum":1,"title":"From Position","type":"integer"},
+        "from_delimiter":{"default":"","maxLength":255,"title":"From Delimiter","type":"string"},
+        "until_mode":{"default":"count","enum":["count","delimiter","end"],"title":"Until Mode","type":"string"},
+        "until_count":{"default":1,"maximum":255,"minimum":1,"title":"Until Count","type":"integer"},
+        "until_delimiter":{"default":"","maxLength":255,"title":"Until Delimiter","type":"string"},
+        "delete_current_name":{"default":false,"title":"Delete Current Name","type":"boolean"},
+        "ignore_extension":{"default":true,"title":"Ignore Extension","type":"boolean"},
+        "from_right":{"default":false,"title":"From Right","type":"boolean"},
+        "keep_delimiters":{"default":false,"title":"Keep Delimiters","type":"boolean"}
+      },
+      "title":"DeleteConfig",
+      "type":"object"
+    }
+  },
+  {
     "type":"serialize",
     "config_schema":{
       "additionalProperties":false,
@@ -120,4 +140,4 @@ GET /rules
 
 </details>
 
-各编号方式的取值范围和补齐限制见[序列编号配置](index.md#serialize)。
+删除范围、方向和分隔符的行为见[删除规则配置](index.md#delete)。各编号方式的取值范围和补齐限制见[序列编号配置](index.md#serialize)。
