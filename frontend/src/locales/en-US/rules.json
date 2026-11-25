@@ -1,7 +1,7 @@
 {
   "editor": {
     "title": "Rule editor",
-    "clear": "Clear rules",
+    "clear": "Clear",
     "add": "Add",
     "loading": "Loading rules",
     "unavailable": "No rules available",

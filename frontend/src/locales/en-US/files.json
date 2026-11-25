@@ -66,8 +66,8 @@
       "submitting": "Submitting rename request"
     },
     "refreshing": "Refreshing…",
-    "preview": "Refresh preview",
-    "start": "Start renaming",
+    "preview": "Refresh",
+    "start": "Rename",
     "progress": "Rename progress",
     "returnedError": "An error was returned: {{message}}. Try refreshing the file directory.",
     "progressUnavailable": "Progress is temporarily unavailable: {{message}}. The execution request is still in progress; do not submit it again.",

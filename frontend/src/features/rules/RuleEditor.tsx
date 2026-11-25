@@ -243,20 +243,26 @@ export function RuleEditor({ definitions, rules, onChange, isLoading = false }: 
         <div className="rule-list">
           {rules.map((rule, index) => (
             <article className="rule-card" key={ruleKey(rule)}>
-              <div className="rule-card-heading">
-                <label className="rule-enabled-control">
-                  <Switch
-                    size="small"
-                    checked={rule.enabled}
-                    onChange={(event) =>
-                      updateRule(index, { ...rule, enabled: event.target.checked })
-                    }
-                    slotProps={{ input: { "aria-label": t("rules:editor.enabledLabel", { name: ruleName(rule.type) }) } }}
-                  />
-                  <strong>
-                    {index + 1}. {ruleName(rule.type)}
-                  </strong>
-                </label>
+              <header className="rule-card-heading">
+                <h3>{ruleName(rule.type)}</h3>
+                <span className="rule-card-number">{String(index + 1).padStart(2, "0")}</span>
+              </header>
+
+              <RuleFields
+                rule={rule}
+                editorPanelRef={panelRef}
+                onChange={(values) => updateConfig(index, values)}
+              />
+
+              <footer className="rule-card-footer">
+                <Switch
+                  size="small"
+                  checked={rule.enabled}
+                  onChange={(event) =>
+                    updateRule(index, { ...rule, enabled: event.target.checked })
+                  }
+                  slotProps={{ input: { "aria-label": t("rules:editor.enabledLabel", { name: ruleName(rule.type) }) } }}
+                />
                 <div className="rule-actions">
                   <Tooltip title={t("rules:editor.moveUp")}>
                     <span>
@@ -308,13 +314,7 @@ export function RuleEditor({ definitions, rules, onChange, isLoading = false }: 
                     </IconButton>
                   </Tooltip>
                 </div>
-              </div>
-
-              <RuleFields
-                rule={rule}
-                editorPanelRef={panelRef}
-                onChange={(values) => updateConfig(index, values)}
-              />
+              </footer>
             </article>
           ))}
         </div>

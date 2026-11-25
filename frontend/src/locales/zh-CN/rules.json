@@ -1,8 +1,8 @@
 {
   "editor": {
     "title": "规则编辑",
-    "clear": "清空规则",
-    "add": "添加规则",
+    "clear": "清空",
+    "add": "添加",
     "loading": "正在加载规则",
     "unavailable": "暂无可用规则",
     "checkRegistry": "无法加载可用规则。请刷新页面；若仍不可用，请重启应用。",

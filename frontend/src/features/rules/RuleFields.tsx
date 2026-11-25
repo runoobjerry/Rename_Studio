@@ -342,9 +342,9 @@ function DeleteFields({ rule, onChange }: RuleFieldsProps) {
           <FormControlLabel
             key={key}
             className="option-toggle"
-            sx={{ m: 0 }}
+            sx={{ m: 0, "&.Mui-disabled": { color: "text.disabled" } }}
             label={t(label)}
-            slotProps={{ typography: { variant: "caption", sx: { fontWeight: 700 } } }}
+            disableTypography
             disabled={disabled}
             control={
               <Checkbox
