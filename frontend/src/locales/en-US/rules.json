@@ -74,6 +74,16 @@
     "replaceName": "Replace current name",
     "range": "This numbering system supports {{min}}–{{max}}."
   },
+  "userInput": {
+    "text": "File name input",
+    "hint": "Enter new file names, one per line. Names are applied in order.",
+    "expand": "Expand input field",
+    "drawerTitle": "Enter new file names",
+    "position": "Apply text",
+    "prefix": "Add as prefix",
+    "suffix": "Add as suffix",
+    "replace": "Replace current name"
+  },
   "unsupported": "Unsupported rule type: {{type}}",
   "types": {
     "padding": {
@@ -99,6 +109,10 @@
     "serialize": {
       "name": "Serialize",
       "description": "Add sequential numbers in file order"
+    },
+    "user_input": {
+      "name": "Custom",
+      "description": "Apply new file names in order, one per line"
     }
   }
 }

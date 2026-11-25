@@ -1,11 +1,14 @@
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { useState } from "react";
 
 import type { RuleDefinition, RuleSpec } from "../../types";
 import { cloneRule, DEFAULT_RULES, RuleEditor } from "./RuleEditor";
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.unstubAllGlobals();
+});
 
 const definition: RuleDefinition = {
   type: "padding",
@@ -155,6 +158,46 @@ describe("RuleEditor", () => {
         from_right: false, ignore_extension: true,
       },
     }]);
+  });
+
+  it("adds a user input rule and shares its text between the card and drawer", async () => {
+    vi.stubGlobal("ResizeObserver", class { observe() {} disconnect() {} });
+    const definitions = [{ type: "user_input", config_schema: {} }];
+    const onChange = vi.fn();
+    function Editor() {
+      const [rules, setRules] = useState<RuleSpec[]>([]);
+      return <RuleEditor definitions={definitions} rules={rules} onChange={(next) => {
+        onChange(next);
+        setRules(next);
+      }} />;
+    }
+    render(<Editor />);
+    fireEvent.click(screen.getByRole("button", { name: "添加规则" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "自定义" }));
+    await waitFor(() => expect(screen.queryByRole("menu")).not.toBeInTheDocument());
+    expect(onChange).toHaveBeenLastCalledWith([{
+      type: "user_input", enabled: true, config: { text: "", position: "replace", ignore_extension: true },
+    }]);
+
+    const textarea = screen.getByRole("textbox", { name: "文件名输入" });
+    expect(textarea).toHaveAttribute("wrap", "off");
+    expect(textarea).toHaveAttribute("placeholder", "输入新的文件名，每行对应一个，按顺序应用。");
+    fireEvent.change(textarea, { target: { value: "第一行\n\n第三行" } });
+    fireEvent.click(screen.getByRole("radio", { name: "添加为后缀" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "忽略扩展名" }));
+    fireEvent.click(screen.getByRole("button", { name: "展开输入框" }));
+
+    const drawer = screen.getByRole("dialog", { name: "输入新的文件名" });
+    const expanded = within(drawer).getByRole("textbox", { name: "文件名输入" });
+    expect(expanded).toHaveValue("第一行\n\n第三行");
+    fireEvent.change(expanded, { target: { value: "  A\n\nB" } });
+    expect(onChange).toHaveBeenLastCalledWith([{
+      type: "user_input", enabled: true, config: { text: "  A\n\nB", position: "suffix", ignore_extension: false },
+    }]);
+
+    fireEvent.click(within(drawer).getByRole("button", { name: "关闭" }));
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "输入新的文件名" })).not.toBeInTheDocument());
+    expect(textarea).toHaveValue("  A\n\nB");
   });
 
   it("disables adding while loading and does not expose unimplemented rule types", () => {

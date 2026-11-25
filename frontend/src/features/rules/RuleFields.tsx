@@ -1,5 +1,5 @@
 import { useTranslation } from "react-i18next";
-import { useId, type ComponentProps } from "react";
+import { useId, type ComponentProps, type RefObject } from "react";
 import Alert from "@mui/material/Alert";
 import Box from "@mui/material/Box";
 import Checkbox from "@mui/material/Checkbox";
@@ -10,6 +10,7 @@ import TextField from "@mui/material/TextField";
 
 import { NumberField } from "../../components/NumberField";
 import type { RuleSpec } from "../../types";
+import { UserInputFields } from "./UserInputFields";
 
 const ruleFieldsSx = {
   "& .MuiInputBase-root": { height: 38, fontSize: 13 },
@@ -499,7 +500,7 @@ function SerializeFields({ rule, onChange }: RuleFieldsProps) {
   );
 }
 
-export function RuleFields(props: RuleFieldsProps) {
+export function RuleFields(props: RuleFieldsProps & { editorPanelRef: RefObject<HTMLElement> }) {
   const { t } = useTranslation();
   if (props.rule.type === "padding") return <PaddingFields {...props} />;
   if (props.rule.type === "replace" || props.rule.type === "remove") {
@@ -508,5 +509,6 @@ export function RuleFields(props: RuleFieldsProps) {
   if (props.rule.type === "insert") return <InsertFields {...props} />;
   if (props.rule.type === "delete") return <DeleteFields {...props} />;
   if (props.rule.type === "serialize") return <SerializeFields {...props} />;
+  if (props.rule.type === "user_input") return <UserInputFields {...props} />;
   return <Alert severity="error">{t("rules:unsupported", { type: props.rule.type })}</Alert>;
 }

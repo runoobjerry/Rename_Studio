@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import type { RuleSpec } from "../../types";
@@ -8,11 +8,12 @@ afterEach(cleanup);
 
 function RuleInput({ initialRule }: { initialRule: RuleSpec }) {
   const [rule, setRule] = useState(initialRule);
-  return <>
-    <RuleFields rule={rule}
+  const panelRef = useRef<HTMLElement>(null);
+  return <section ref={panelRef}>
+    <RuleFields rule={rule} editorPanelRef={panelRef}
       onChange={(config) => setRule((current) => ({ ...current, config: { ...current.config, ...config } }))} />
     <output aria-label="规则配置">{JSON.stringify(rule.config)}</output>
-  </>;
+  </section>;
 }
 
 describe("RuleFields numeric fields", () => {

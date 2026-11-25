@@ -19,7 +19,7 @@
 
 | 字段 | 类型 | 可空 | 说明 |
 | --- | --- | --- | --- |
-| `type` | string | 否 | 稳定类型。当前为 `padding`、`replace`、`remove`、`insert`、`delete`、`serialize`。 |
+| `type` | string | 否 | 稳定类型。当前为 `padding`、`replace`、`remove`、`insert`、`delete`、`serialize`、`user_input`。 |
 | `config_schema` | object | 否 | 配置的 JSON Schema。 |
 
 规则名称和说明由前端按 `type` 查找翻译。
@@ -138,3 +138,17 @@
 上表的数值上限、零与负值约束，以及仅十进制支持补齐的规则由 Rename Studio 定义。编号转换示例见 [ReNamer Serialize rule](https://www.den4b.com/docs/books/renamer/page/serialize-rule)。
 
 配置无效或实际生成的编号超出范围时，预览返回 HTTP 422 `RULE_CONFIGURATION_ERROR` 和 `details.rule_type: "serialize"`。配置校验错误保留错误类型、位置等诊断信息，省略原始输入。生成越界时还返回 `details.reason: "SERIALIZE_NUMBER_OUT_OF_RANGE"`，以及 `details.params` 中的 `item`（从 1 开始的请求项位置）、`min` 和 `max`。编号成功生成后，目标名称继续接受原有名称校验和冲突检测。
+
+#### user_input
+
+按预览请求的 `file_ids` 顺序逐行分配文本。工作台按文件表当前排序提交勾选项，文件夹也占一行。规则将分配到的文本作用于规则链计算到当前位置的名称。
+
+配置字段均可省略。
+
+| 字段 | 类型 | 默认值 | 有效值 |
+| --- | --- | --- | --- |
+| `text` | string | `""` | 每行一段文本。支持 LF、CRLF 和 CR 换行，保留行内空格。 |
+| `position` | string | `replace` | `prefix` 添加到名称开头，`suffix` 添加到名称末尾，`replace` 替换当前名称。 |
+| `ignore_extension` | boolean | `true` | 为 `true` 时保留文件的扩展名，为 `false` 时处理完整文件名。文件夹始终处理完整名称。 |
+
+空行占据一个位置。对应行为空或名单提前结束时，该项保持当前名称并继续应用后续规则。超出勾选项数量的行会被忽略。预览按文件源的命名规则校验最终名称，并检查名称冲突。应用方式参照 [ReNamer User Input rule](https://www.den4b.com/docs/books/renamer/page/user-input-rule)。

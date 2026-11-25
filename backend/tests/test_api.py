@@ -108,7 +108,7 @@ def test_rules_metadata_contains_identifiers_and_validation_schema(api_client: T
     assert response.status_code == 200
     definitions = response.json()
     assert {item["type"] for item in definitions} == {
-        "padding", "replace", "remove", "insert", "delete", "serialize",
+        "padding", "replace", "remove", "insert", "delete", "serialize", "user_input",
     }
     assert all(set(item) == {"type", "config_schema"} for item in definitions)
     padding = next(item["config_schema"] for item in definitions if item["type"] == "padding")
@@ -122,6 +122,11 @@ def test_rules_metadata_contains_identifiers_and_validation_schema(api_client: T
     }
     assert serialize["properties"]["reset_every"]["default"] is None
     assert serialize["properties"]["ignore_extension"]["default"] is True
+    user_input = next(item["config_schema"]["properties"] for item in definitions if item["type"] == "user_input")
+    assert user_input["text"]["default"] == ""
+    assert set(user_input["position"]["enum"]) == {"prefix", "suffix", "replace"}
+    assert user_input["position"]["default"] == "replace"
+    assert user_input["ignore_extension"]["default"] is True
 
 
 def test_delete_current_name_can_be_followed_by_insert(tmp_path: Path, api_client: TestClient) -> None:
@@ -185,6 +190,33 @@ def test_serialize_uses_request_order_in_preview_and_execution(tmp_path: Path, a
     assert result.json()["status"] == "completed"
     assert (tmp_path / "01-A02z.txt").read_text(encoding="utf-8") == "raw-A2.txt"
     assert (tmp_path / "02-B02ba.txt").read_text(encoding="utf-8") == "raw-B2.txt"
+
+
+def test_user_input_uses_request_order_through_preview_and_execution(tmp_path: Path, api_client: TestClient) -> None:
+    names = ["d.txt", "b.txt", "a.txt", "c.txt"]
+    for name in names:
+        (tmp_path / name).write_text(name, encoding="utf-8")
+
+    response = api_client.post("/storages/local/rename/preview", json={
+        "file_ids": names,
+        "location": {"kind": "root"},
+        "rules": [
+            {"type": "insert", "config": {"text": "before-"}},
+            {"type": "user_input", "config": {"text": "first\n\nthird"}},
+            {"type": "insert", "config": {"text": "after-"}},
+        ],
+    })
+    assert response.status_code == 200
+    preview = response.json()
+    expected = ["after-first.txt", "after-before-b.txt", "after-third.txt", "after-before-c.txt"]
+    assert preview["valid"] is True
+    assert [(item["file_id"], item["new_name"]) for item in preview["items"]] == list(zip(names, expected))
+    assert {path.name for path in tmp_path.iterdir()} == set(names)
+
+    execution = api_client.post("/rename/execute", json={"preview_id": preview["preview_id"]})
+    assert execution.status_code == 200
+    assert execution.json()["status"] == "completed"
+    assert [(tmp_path / name).read_text(encoding="utf-8") for name in expected] == names
 
 
 def test_serialize_duplicate_targets_block_execution(tmp_path: Path, api_client: TestClient) -> None:

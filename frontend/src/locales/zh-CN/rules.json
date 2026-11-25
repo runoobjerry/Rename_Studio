@@ -74,6 +74,16 @@
     "replaceName": "替换整个名称",
     "range": "此编号方式支持的范围为 {{min}}~{{max}}"
   },
+  "userInput": {
+    "text": "文件名输入",
+    "hint": "输入新的文件名，每行对应一个，按顺序应用。",
+    "expand": "展开输入框",
+    "drawerTitle": "输入新的文件名",
+    "position": "应用方式",
+    "prefix": "添加为前缀",
+    "suffix": "添加为后缀",
+    "replace": "替换当前名称"
+  },
   "unsupported": "不支持的规则类型：{{type}}",
   "types": {
     "padding": {
@@ -99,6 +109,10 @@
     "serialize": {
       "name": "序列编号",
       "description": "按照文件顺序添加连续编号"
+    },
+    "user_input": {
+      "name": "自定义",
+      "description": "按照顺序应用逐行输入的新文件名"
     }
   }
 }

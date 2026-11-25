@@ -14,6 +14,7 @@ from app.rules.padding import PaddingRule
 from app.rules.registry import RuleRegistry
 from app.rules.serialize import SerializeRule
 from app.rules.text_operations import RemoveRule, ReplaceRule
+from app.rules.user_input import UserInputRule
 from app.services.directory.directory_cache import DirectoryCache
 from app.services.directory.directory_service import DirectoryService
 from app.services.rename.batch_execute_service import ExecuteService
@@ -86,6 +87,7 @@ def get_rule_registry() -> RuleRegistry:
     registry.register(InsertRule())
     registry.register(DeleteRule())
     registry.register(SerializeRule())
+    registry.register(UserInputRule())
     return registry
 
 

@@ -104,6 +104,15 @@ export const DEFAULT_RULES: Record<string, RuleSpec> = {
       ignore_extension: true,
     },
   },
+  user_input: {
+    type: "user_input",
+    enabled: true,
+    config: {
+      text: "",
+      position: "replace",
+      ignore_extension: true,
+    },
+  },
 };
 
 export function cloneRule(rule: RuleSpec): RuleSpec {
@@ -113,6 +122,7 @@ export function cloneRule(rule: RuleSpec): RuleSpec {
 export function RuleEditor({ definitions, rules, onChange, isLoading = false }: RuleEditorProps) {
   const { t } = useTranslation();
   const menuId = useId();
+  const panelRef = useRef<HTMLElement>(null);
   const [anchor, setAnchor] = useState<HTMLElement | null>(null);
   const identities = useRef({ keys: new WeakMap<RuleSpec, number>(), nextKey: 0 });
   const availableRules = definitions.filter(
@@ -156,7 +166,7 @@ export function RuleEditor({ definitions, rules, onChange, isLoading = false }: 
   }
 
   return (
-    <section className="rule-editor-panel" aria-labelledby="rules-title">
+    <section ref={panelRef} className="rule-editor-panel" aria-labelledby="rules-title">
       <div className="panel-heading rule-editor-heading">
         <h2 id="rules-title">{t("rules:editor.title")}</h2>
         <div className="rule-heading-actions">
@@ -302,6 +312,7 @@ export function RuleEditor({ definitions, rules, onChange, isLoading = false }: 
 
               <RuleFields
                 rule={rule}
+                editorPanelRef={panelRef}
                 onChange={(values) => updateConfig(index, values)}
               />
             </article>

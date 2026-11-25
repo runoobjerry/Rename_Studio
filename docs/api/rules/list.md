@@ -134,10 +134,23 @@ GET /rules
       "title":"SerializeConfig",
       "type":"object"
     }
+  },
+  {
+    "type":"user_input",
+    "config_schema":{
+      "additionalProperties":false,
+      "properties":{
+        "text":{"default":"","title":"Text","type":"string"},
+        "position":{"default":"replace","enum":["prefix","suffix","replace"],"title":"Position","type":"string"},
+        "ignore_extension":{"default":true,"title":"Ignore Extension","type":"boolean"}
+      },
+      "title":"UserInputConfig",
+      "type":"object"
+    }
   }
 ]
 ```
 
 </details>
 
-删除范围、方向和分隔符的行为见[删除规则配置](index.md#delete)。各编号方式的取值范围和补齐限制见[序列编号配置](index.md#serialize)。
+删除范围、方向和分隔符的行为见[删除规则配置](index.md#delete)。各编号方式的取值范围和补齐限制见[序列编号配置](index.md#serialize)。输入列表的顺序和空行行为见[自定义规则配置](index.md#user_input)。
