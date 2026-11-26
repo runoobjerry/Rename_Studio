@@ -8,6 +8,7 @@ from app.providers.registry import ProviderRegistry
 from app.repositories.storage_repository import JsonStorageRepository
 from app.schemas.storage import StorageRecord, StorageState
 from app.services.storage.storage_manager import StorageManager
+from app.rules.case import CaseRule
 from app.rules.delete import DeleteRule
 from app.rules.insert import InsertRule
 from app.rules.padding import PaddingRule
@@ -86,6 +87,7 @@ def get_rule_registry() -> RuleRegistry:
     registry.register(RemoveRule())
     registry.register(InsertRule())
     registry.register(DeleteRule())
+    registry.register(CaseRule())
     registry.register(SerializeRule())
     registry.register(UserInputRule())
     return registry

@@ -97,6 +97,17 @@ export const DEFAULT_RULES: Record<string, RuleSpec> = {
       keep_delimiters: false,
     },
   },
+  case: {
+    type: "case",
+    enabled: true,
+    config: {
+      mode: "capitalize_words",
+      fragments: "",
+      preserve_case: false,
+      ignore_extension: true,
+      extension_case: "none",
+    },
+  },
   serialize: {
     type: "serialize",
     enabled: true,

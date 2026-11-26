@@ -108,7 +108,7 @@ def test_rules_metadata_contains_identifiers_and_validation_schema(api_client: T
     assert response.status_code == 200
     definitions = response.json()
     assert {item["type"] for item in definitions} == {
-        "padding", "replace", "remove", "insert", "delete", "serialize", "user_input",
+        "padding", "replace", "remove", "insert", "delete", "case", "serialize", "user_input",
     }
     assert all(set(item) == {"type", "config_schema"} for item in definitions)
     padding = next(item["config_schema"] for item in definitions if item["type"] == "padding")
@@ -116,6 +116,13 @@ def test_rules_metadata_contains_identifiers_and_validation_schema(api_client: T
     assert padding["properties"]["length"]["minimum"] == 1
     assert padding["properties"]["length"]["maximum"] == 255
     assert set(padding["required"]) == {"mode", "length"}
+    case = next(item["config_schema"]["properties"] for item in definitions if item["type"] == "case")
+    assert case["mode"]["default"] == "capitalize_words"
+    assert set(case["mode"]["enum"]) == {
+        "capitalize_words", "lower", "upper", "invert", "capitalize_first", "sentence", "none",
+    }
+    assert case["ignore_extension"]["default"] is True
+    assert set(case["extension_case"]["enum"]) == {"none", "upper", "lower"}
     serialize = next(item["config_schema"] for item in definitions if item["type"] == "serialize")
     assert set(serialize["properties"]["numbering_system"]["enum"]) == {
         "decimal", "alphabetic", "roman", "music", "chinese",
@@ -150,6 +157,31 @@ def test_delete_current_name_can_be_followed_by_insert(tmp_path: Path, api_clien
     assert preview["valid"] is True
     assert preview["items"][0]["new_name"] == "renamed.txt"
     assert list(tmp_path.iterdir()) == [source]
+
+
+def test_applies_case_only_rename_through_preview_and_execution(tmp_path: Path, api_client: TestClient) -> None:
+    source = tmp_path / "album_ipad.TxT"
+    source.write_text("content", encoding="utf-8")
+    expected = "Album_iPad.txt"
+
+    response = api_client.post("/storages/local/rename/preview", json={
+        "file_ids": [source.name],
+        "rules": [
+            {"type": "case", "config": {"mode": "upper", "fragments": "iPad", "extension_case": "lower"}},
+            {"type": "replace", "config": {"search": "ALBUM", "replacement": "Album"}},
+        ],
+    })
+    assert response.status_code == 200
+    preview = response.json()
+    assert preview["valid"] is True
+    assert preview["items"][0]["new_name"] == expected
+    assert [path.name for path in tmp_path.iterdir()] == [source.name]
+
+    execution = api_client.post("/rename/execute", json={"preview_id": preview["preview_id"]})
+    assert execution.status_code == 200
+    assert execution.json()["counts"]["renamed"] == 1
+    assert [path.name for path in tmp_path.iterdir()] == [expected]
+    assert (tmp_path / expected).read_text(encoding="utf-8") == "content"
 
 
 def test_serialize_uses_request_order_in_preview_and_execution(tmp_path: Path, api_client: TestClient) -> None:

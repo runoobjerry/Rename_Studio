@@ -57,6 +57,25 @@
     "fromRight": "从右到左",
     "keepDelimiters": "不移除分隔符"
   },
+  "case": {
+    "mode": "转换方式",
+    "modes": {
+      "capitalizeWords": "每个单词首字母大写",
+      "lower": "全部小写",
+      "upper": "全部大写",
+      "invert": "反转大小写",
+      "capitalizeFirst": "首字母大写",
+      "sentence": "每句首字母大写",
+      "none": "不做整体转换"
+    },
+    "extensionCase": "扩展名大小写",
+    "followSettings": "跟随转换设置",
+    "forceUpper": "始终大写",
+    "forceLower": "始终小写",
+    "fragments": "固定词语的大小写",
+    "fragmentsHint": "多个短语使用逗号分隔。",
+    "preserveCase": "保留其余字母的大小写"
+  },
   "serialize": {
     "numberingSystem": "编号方式",
     "systems": {
@@ -107,6 +126,10 @@
     "delete": {
       "name": "删除",
       "description": "删除名称中指定范围的字符"
+    },
+    "case": {
+      "name": "大小写",
+      "description": "转换名称及扩展名中的字母大小写"
     },
     "serialize": {
       "name": "序列编号",
