@@ -225,7 +225,7 @@ class WritableDriveServer(DriveServer):
                 reason = "insufficientFilePermissions" if data["name"] in self.fail_targets else "rateLimitExceeded"
                 result = {"error": {"errors": [{"reason": reason}]}}
             outcomes.append((index, status, result))
-        assert 0 < len(writes) <= 20
+        assert 0 < len(writes) <= 40
         self.writes.append(writes)
         return batch_response(outcomes, reverse=True)
 
@@ -914,14 +914,15 @@ async def test_unknown_part_prevents_retry_of_other_refused_parts(driver_factory
 
 @pytest.mark.asyncio
 async def test_write_batches_keep_successes_and_permanent_failures(driver_factory: Callable) -> None:
+    count = 41
     mimes = ["text/plain", FOLDER_MIME, "application/vnd.google-apps.document"]
-    server = WritableDriveServer([drive_file(str(index), f"old-{index}", mime=mimes[index % len(mimes)]) for index in range(21)])
+    server = WritableDriveServer([drive_file(str(index), f"old-{index}", mime=mimes[index % len(mimes)]) for index in range(count)])
     server.fail_targets.add("new-1")
-    result = await driver_factory(server).rename_many([RenameRequest(str(index), f"new-{index}") for index in range(21)])
-    assert [len(batch) for batch in server.writes] == [20, 1]
+    result = await driver_factory(server).rename_many([RenameRequest(str(index), f"new-{index}") for index in range(count)])
+    assert [len(batch) for batch in server.writes] == [40, 1]
     assert isinstance(result["1"], PermissionDeniedError)
-    assert all(result[str(index)].name == f"new-{index}" for index in range(21) if index != 1)
-    assert all(result[str(index)].mime_type == mimes[index % len(mimes)] for index in range(21) if index != 1)
+    assert all(result[str(index)].name == f"new-{index}" for index in range(count) if index != 1)
+    assert all(result[str(index)].mime_type == mimes[index % len(mimes)] for index in range(count) if index != 1)
 
 
 @pytest.mark.asyncio
@@ -1074,27 +1075,37 @@ async def test_execute_revalidates_google_snapshot_before_any_write(driver_facto
 @pytest.mark.asyncio
 @pytest.mark.parametrize("unreadable", [False, True])
 async def test_engine_reconciles_lost_google_write_without_replay(driver_factory: Callable, unreadable: bool) -> None:
-    server = WritableDriveServer([drive_file(str(index), f"old-{index}") for index in range(21)])
+    file_ids = [str(index) for index in range(81)]
+    server = WritableDriveServer([drive_file(file_id, f"old-{file_id}") for file_id in file_ids])
+    lost_ids: set[str] = set()
 
     def respond(request: httpx.Request) -> httpx.Response:
-        if unreadable and server.writes:
-            return httpx.Response(503, headers={"Retry-After": "0"})
+        if unreadable and request.method == "GET" and request.url.path.rsplit("/", 1)[-1] in lost_ids:
+            return httpx.Response(404)
         response = server(request)
-        if len(server.writes) == 1 and request.method == "POST" and b"\r\nPATCH " in request.content:
+        if not lost_ids and request.method == "POST" and b"\r\nPATCH " in request.content:
+            lost_ids.update(file_id for file_id, _ in server.writes[-1])
             raise httpx.ReadTimeout("Response lost after commit", request=request)
         return response
 
     driver = driver_factory(respond)
     preview, execute = rename_services(driver)
-    names = {f"old-{index}": f"new-{index}" for index in range(21)}
-    snapshot = await preview.preview(rename_request([str(index) for index in range(21)], names))
+    names = {f"old-{file_id}": f"new-{file_id}" for file_id in file_ids}
+    snapshot = await preview.preview(rename_request(file_ids, names))
     result = await execute.execute(snapshot.preview_id)
     counts = Counter(file_id for batch in server.writes for file_id, _ in batch)
     assert all(count == 1 for count in counts.values())
     if unreadable:
-        assert len(server.writes) == 1 and result.status != "completed"
-        assert all(item.error_code == "RENAME_OUTCOME_UNKNOWN" and item.actual_name is None for item in result.items[:20])
-        assert server.files["20"]["name"] == "old-20"
+        assert [len(batch) for batch in server.writes] == [40, 40]
+        assert result.status == "incomplete"
+        assert result.counts.renamed == 40
+        assert all(
+            item.error_code == "RENAME_OUTCOME_UNKNOWN" and item.actual_name is None
+            for item in result.items if item.file_id in lost_ids
+        )
+        assert result.items[-1].status == "skipped"
+        assert result.items[-1].details["reason"] == "RENAME_NOT_ATTEMPTED"
+        assert server.files[file_ids[-1]]["name"] == f"old-{file_ids[-1]}"
     else:
-        assert result.status == "completed" and [len(batch) for batch in server.writes] == [20, 1]
-    assert execute.progress(snapshot.preview_id).processed == 21
+        assert result.status == "completed" and [len(batch) for batch in server.writes] == [40, 40, 1]
+    assert execute.progress(snapshot.preview_id).processed == len(file_ids)

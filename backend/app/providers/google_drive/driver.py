@@ -58,6 +58,8 @@ class _FilePage(BaseModel):
 
 class GoogleDriveDriver(StorageDriver):
     provider_type = "google_drive"
+    execution_batch_size = 40
+    execution_batch_concurrency = 2
 
     def __init__(self, auth: StorageAuth, *, timeout: float = 30.0, client: httpx.AsyncClient | None = None) -> None:
         self._client = GoogleDriveClient(auth, timeout=timeout, client=client)

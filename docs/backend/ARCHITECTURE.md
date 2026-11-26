@@ -107,7 +107,18 @@ flowchart TB
   Drain --> Result
 ```
 
-复核用 `mode="verify"` 实时读取原目录的全部直接子项。复核失败标记 `execution_started: false`。即使请求取消，执行保护也会保留到已发出的写入收尾。成功项保留，因未知结果而未提交的项目返回 `skipped`，原因是 `RENAME_NOT_ATTEMPTED`。逐项状态与进度见[执行 API](../api/executions/index.md#execution-outcomes)。
+复核用 `mode="verify"` 实时读取原目录的全部直接子项。复核失败标记 `execution_started: false`。
+
+设 $N$ 为复核后需要改名的项数，$B$ 为 Provider 的单批上限，$C$ 为并发批次上限。令 $q = \lfloor N/B \rfloor$，$r = N \bmod B$。
+
+| 条件 | 批次大小与提交方式 |
+| --- | --- |
+| $N = 0$ | 跳过写入。 |
+| $1 \le N \le B$ | 提交一批，共 $N$ 项。 |
+| $B < N \le 2B$ 且 $C \ge 2$ | 并发提交两批，大小依次为 $\lceil N/2 \rceil$ 和 $\lfloor N/2 \rfloor$。 |
+| 其余情况 | 提交 $q$ 批，每批 $B$ 项。若 $r > 0$，追加一批 $r$ 项。最多同时执行 $C$ 批，有空位时补发下一批。 |
+
+即使请求取消，执行保护也会保留到已发出的写入收尾。成功项保留，因未知结果而未提交的项目返回 `skipped`，原因是 `RENAME_NOT_ATTEMPTED`。逐项状态与进度见[执行 API](../api/executions/index.md#execution-outcomes)。
 
 ### 单项直接执行
 

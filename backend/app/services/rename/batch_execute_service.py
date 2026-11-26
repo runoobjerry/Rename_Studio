@@ -176,6 +176,10 @@ class ExecuteService:
     ) -> dict[str, FileItem | AppError]:
         outcomes: dict[str, FileItem | AppError] = {}
         concurrency = driver.execution_batch_concurrency
+        batch_size = driver.execution_batch_size
+        request_count = len(requests)
+        if concurrency >= 2 and batch_size < request_count <= 2 * batch_size:
+            batch_size = (request_count + 1) // 2
         offset = 0
         active = 0
 
@@ -201,9 +205,9 @@ class ExecuteService:
                 )
 
         if concurrency == 1:
-            for offset in range(0, len(requests), driver.execution_batch_size):
-                batch = requests[offset:offset + driver.execution_batch_size]
-                task = asyncio.create_task(run_batch(offset // driver.execution_batch_size + 1, batch))
+            for offset in range(0, request_count, batch_size):
+                batch = requests[offset:offset + batch_size]
+                task = asyncio.create_task(run_batch(offset // batch_size + 1, batch))
                 try:
                     # 单组也保护已启动的写入，取消后等待其完成再释放执行锁。
                     batch_outcomes = await asyncio.shield(task)
@@ -228,9 +232,9 @@ class ExecuteService:
 
         def start_batches() -> None:
             nonlocal offset
-            while not stopped and not reconciling and len(pending) < concurrency and offset < len(requests):
-                index = offset // driver.execution_batch_size + 1
-                batch = requests[offset:offset + driver.execution_batch_size]
+            while not stopped and not reconciling and len(pending) < concurrency and offset < request_count:
+                index = offset // batch_size + 1
+                batch = requests[offset:offset + batch_size]
                 task = asyncio.create_task(run_batch(index, batch, lambda index=index: reconciling.add(index)))
                 pending[task] = (index, batch)
                 offset += len(batch)
