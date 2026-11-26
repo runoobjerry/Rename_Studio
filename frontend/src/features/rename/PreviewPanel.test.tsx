@@ -75,7 +75,7 @@ describe("PreviewPanel", () => {
     expect(screen.getByRole("region", { name: "修改预览" }).lastElementChild).toBe(alert);
     expect(table.queryByText("new-unknown.txt")).not.toBeInTheDocument();
     expect(table.queryByText("new-missing.txt")).not.toBeInTheDocument();
-    expect(table.getByText("new-renamed.txt")).toHaveClass("renamed-name");
+    expect(table.getByRole("cell", { name: "new-renamed.txt" })).toHaveClass("renamed-name");
     expect(table.getByText("修改失败")).toBeInTheDocument();
     expect(table.getAllByText("无变化")).toHaveLength(2);
     expect(screen.getByText("0 项待修改 · 2 项无需修改")).toBeInTheDocument();

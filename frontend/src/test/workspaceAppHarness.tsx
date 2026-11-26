@@ -23,7 +23,7 @@ export function installWorkspaceAppTestHooks() {
       addListener: vi.fn(), removeListener: vi.fn(),
       addEventListener: vi.fn(), removeEventListener: vi.fn(), dispatchEvent: vi.fn(),
     })));
-    vi.stubGlobal("ResizeObserver", class { observe() {} disconnect() {} });
+    vi.stubGlobal("ResizeObserver", class { observe() {} unobserve() {} disconnect() {} });
     vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (this: HTMLElement) {
       return { x: 0, y: 0, top: 0, left: 0, bottom: 30, right: 1000,
         width: this.tagName === "BUTTON" ? 80 : 1000, height: 30, toJSON: () => ({}) };

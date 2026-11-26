@@ -103,7 +103,7 @@ describe("workspace workflow wiring", () => {
     expect(screen.getByText("renamed-file-0.txt")).toBeInTheDocument();
     fireEvent.click(previewButton);
     await waitFor(() => expect(executeButton).toBeEnabled());
-    fireEvent.click(screen.getByRole("button", { name: "添加规则" }));
+    fireEvent.click(screen.getByRole("button", { name: "添加" }));
     fireEvent.click(screen.getByRole("menuitem", { name: "插入" }));
     expect(useRenameStore.getState().rules).toEqual([expect.objectContaining({ type: "insert", enabled: true })]);
     expect(executeButton).toBeDisabled();
@@ -127,7 +127,8 @@ describe("workspace workflow wiring", () => {
     expect(fileSelection).toBeDisabled();
     expect(allSelection).toBeDisabled();
     expect(invertSelection).toBeDisabled();
-    expect(screen.getByText("file-0.txt", { selector: "span" }).closest("button")).toBeDisabled();
+    const directoryButton = screen.getByText("file-0.txt", { selector: "button .file-name" }).closest("button");
+    expect(directoryButton).toBeDisabled();
     fireEvent.click(fileSelection);
     fireEvent.click(allSelection);
     fireEvent.click(invertSelection);

@@ -114,7 +114,7 @@ describe("RuleEditor", () => {
       />,
     );
 
-    const addButton = screen.getByRole("button", { name: /添加规则/ });
+    const addButton = screen.getByRole("button", { name: "添加" });
     addButton.focus();
     fireEvent.click(addButton);
     expect(screen.getByRole("menu")).toBeInTheDocument();
@@ -124,7 +124,7 @@ describe("RuleEditor", () => {
     expect(added).not.toBe(DEFAULT_RULES.padding);
     expect(added.config).not.toBe(DEFAULT_RULES.padding.config);
     await waitFor(() => expect(screen.queryByRole("menu")).not.toBeInTheDocument());
-    expect(screen.getByRole("button", { name: "添加规则" })).toHaveFocus();
+    expect(screen.getByRole("button", { name: "添加" })).toHaveFocus();
   });
 
   it("limits the menu viewport to eight rows without dropping overflow options", () => {
@@ -134,7 +134,7 @@ describe("RuleEditor", () => {
     try {
       extras.forEach((extra) => { DEFAULT_RULES[extra.type] = { ...DEFAULT_RULES.padding, type: extra.type }; });
       render(<RuleEditor definitions={extras} rules={[]} onChange={onChange} />);
-      fireEvent.click(screen.getByRole("button", { name: "添加规则" }));
+      fireEvent.click(screen.getByRole("button", { name: "添加" }));
       expect(screen.getAllByRole("menuitem")).toHaveLength(9);
       expect(screen.getByRole("menu")).toHaveStyle({ maxHeight: "294px", overflowY: "auto" });
       fireEvent.click(screen.getByRole("menuitem", { name: "test-0" }));
@@ -147,7 +147,7 @@ describe("RuleEditor", () => {
   it("adds sequence numbering with the API defaults", () => {
     const onChange = vi.fn();
     render(<RuleEditor definitions={[{ type: "serialize", config_schema: {} }]} rules={[]} onChange={onChange} />);
-    fireEvent.click(screen.getByRole("button", { name: "添加规则" }));
+    fireEvent.click(screen.getByRole("button", { name: "添加" }));
     fireEvent.click(screen.getByRole("menuitem", { name: "序列编号" }));
     expect(onChange).toHaveBeenCalledWith([{
       type: "serialize",
@@ -172,7 +172,7 @@ describe("RuleEditor", () => {
       }} />;
     }
     render(<Editor />);
-    fireEvent.click(screen.getByRole("button", { name: "添加规则" }));
+    fireEvent.click(screen.getByRole("button", { name: "添加" }));
     fireEvent.click(screen.getByRole("menuitem", { name: "自定义" }));
     await waitFor(() => expect(screen.queryByRole("menu")).not.toBeInTheDocument());
     expect(onChange).toHaveBeenLastCalledWith([{
@@ -202,9 +202,9 @@ describe("RuleEditor", () => {
 
   it("disables adding while loading and does not expose unimplemented rule types", () => {
     const { rerender } = render(<RuleEditor definitions={[definition]} rules={[]} onChange={vi.fn()} isLoading />);
-    expect(screen.getByRole("button", { name: "添加规则" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "添加" })).toBeDisabled();
     rerender(<RuleEditor definitions={[{ ...definition, type: "unknown" }]} rules={[]} onChange={vi.fn()} />);
-    expect(screen.getByRole("button", { name: "添加规则" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "添加" })).toBeDisabled();
   });
 
   it("updates the text fill character", () => {

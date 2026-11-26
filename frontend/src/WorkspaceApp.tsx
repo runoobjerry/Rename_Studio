@@ -21,6 +21,7 @@ import { SingleRenameDialog } from "./features/rename/SingleRenameDialog";
 import { StorageSidebar } from "./workspace/components/StorageSidebar";
 import { StorageLocationPanel } from "./workspace/components/StorageLocationPanel";
 import { useWorkspaceStorage } from "./workspace/hooks/useWorkspaceStorage";
+import { useWorkspaceTableSplit } from "./workspace/hooks/useWorkspaceTableSplit";
 import { useBrowserNavigation } from "./integrations/browser/useBrowserNavigation";
 import { FileBrowser, FileBrowserHeading } from "./features/files/FileBrowser";
 import { defaultFileSort, type FileSort } from "./features/files/fileSort";
@@ -93,6 +94,7 @@ function Workspace({ preference, setPreference, settingsError, hasSettings }: {
   const compactNavigation = useMediaQuery("(max-width: 950px)");
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [view, setView] = useState<AppView>("workspace");
+  const tableSplit = useWorkspaceTableSplit(view === "workspace");
   const [fileSort, setFileSort] = useState<FileSort>(defaultFileSort);
   const isWritePending = useRenameStore((state) => Boolean(state.pendingRenameRecord));
   const unknownExecution = useRenameStore((state) => state.unknownExecution);
@@ -233,7 +235,7 @@ function Workspace({ preference, setPreference, settingsError, hasSettings }: {
             {view === "workspace" && (
               <>
                 <div className="workspace-grid">
-                  <div className="workspace-primary">
+                  <div className="workspace-primary" ref={tableSplit.columnRef}>
                     <StorageLocationPanel
                       compactNavigation={compactNavigation}
                       listing={locationReady ? files.data : undefined}
@@ -302,6 +304,7 @@ function Workspace({ preference, setPreference, settingsError, hasSettings }: {
                         </div>
                       </section>
                     )}
+                    <div className="file-table-resize" aria-hidden="true" {...tableSplit.handleProps} />
                     <PreviewPanel
                       preview={previewData}
                       execution={executionData}

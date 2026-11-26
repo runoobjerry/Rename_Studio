@@ -53,7 +53,7 @@ describe("language settings", () => {
     expect(api.executePreview).not.toHaveBeenCalled();
     expect(api.releaseStoragePreview).not.toHaveBeenCalled();
     expect(api.fetchStorageFiles).toHaveBeenCalledTimes(filesRequests);
-    fireEvent.click(screen.getByRole("button", { name: "Start renaming" }));
+    fireEvent.click(screen.getByRole("button", { name: "Rename" }));
     await act(async () => { client.setQueryData(["app-settings"], serverSettings); });
     expect(await screen.findByRole("heading", { name: "确认修改" })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "取消" }));

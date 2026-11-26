@@ -17,7 +17,7 @@
   display: flex;
   flex-direction: column;
   height: 100vh;
-  overflow: hidden;
+  overflow: hidden auto;
 }
 
 .panel {
@@ -86,12 +86,39 @@
 }
 
 .workspace-primary {
+  /* 表头、4 行文件和上下边框。 */
+  --workspace-table-min-height: 192px;
+  --workspace-tables-height: calc(2 * var(--workspace-table-min-height));
+  --workspace-file-table-height: var(--workspace-table-min-height);
   display: grid;
-  grid-template-rows: auto minmax(0, max-content) minmax(min(140px, 25%), 1fr);
+  grid-template-rows: repeat(3, max-content);
+  align-content: start;
   min-width: 0;
   min-height: 0;
   height: 100%;
   gap: 12px;
+}
+
+.workspace-primary > .browser,
+.file-table-resize {
+  grid-area: 2 / 1;
+}
+
+.file-table-resize {
+  position: relative;
+  z-index: 1;
+  align-self: end;
+  /* 覆盖 1px 底边框与其下方的 12px 间距。 */
+  height: 13px;
+  transform: translateY(calc(100% - 1px));
+  pointer-events: none;
+}
+
+.workspace-primary[data-table-split-resizable] > .file-table-resize {
+  pointer-events: auto;
+  cursor: row-resize;
+  touch-action: none;
+  user-select: none;
 }
 
 .workspace-rules {
@@ -136,16 +163,17 @@
 .file-table-wrap,
 .preview-table-wrap,
 .preview-empty {
-  flex: 1 1 auto;
+  flex: 0 0 auto;
   min-height: 0;
   overflow: auto;
 }
 
-.file-table-wrap {
-  /* 表头和 10 行文件，加上面板的上下边框。 */
-  --file-table-height: calc(11 * var(--app-table-row-height) + 2px);
-  height: var(--file-table-height);
-  max-height: var(--file-table-height);
+.workspace-primary .file-table-wrap {
+  height: var(--workspace-file-table-height);
+}
+
+.workspace-primary :is(.preview-table-wrap, .preview-empty) {
+  height: calc(var(--workspace-tables-height) - var(--workspace-file-table-height));
 }
 
 .table-column-resize {
@@ -406,11 +434,6 @@
     height: auto;
   }
 
-  .workspace-primary {
-    grid-template-rows: auto auto auto;
-  }
-
-  .preview,
   .rule-editor-panel {
     max-height: 420px;
   }
