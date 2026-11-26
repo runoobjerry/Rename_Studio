@@ -14,6 +14,7 @@ export default defineConfig({
           if (!id.includes("node_modules")) return undefined;
 
           const normalizedId = id.replace(/\\/g, "/");
+          if (/\/node_modules\/(?:motion|framer-motion|motion-dom|motion-utils)\//.test(normalizedId)) return "motion";
           if (normalizedId.includes("/@mui/icons-material/")) return "mui-icons";
           if (
             normalizedId.includes("/@mui/") ||

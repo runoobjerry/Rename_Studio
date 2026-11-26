@@ -40,7 +40,7 @@
 
 | 入口 | 职责 |
 | --- | --- |
-| [RuleEditor](../../frontend/src/features/rules/RuleEditor.tsx)、[RuleFields](../../frontend/src/features/rules/RuleFields.tsx) | 规则链排序和规则字段编辑 |
+| [RuleEditor](../../frontend/src/features/rules/RuleEditor.tsx)、[RuleFields](../../frontend/src/features/rules/RuleFields.tsx)、[RuleParameterCard](../../frontend/src/features/rules/RuleParameterCard.tsx) | 规则链排序、规则字段编辑和简洁模式参数草稿 |
 | [useRenameWorkflow](../../frontend/src/features/rename/useRenameWorkflow.ts) | 有序有效选择、批量预览生命周期、单项与批量协调、未知结果门控 |
 | [useRenameExecution](../../frontend/src/features/rename/useRenameExecution.ts)、[useSingleRename](../../frontend/src/features/rename/useSingleRename.ts) | 独立的批量/单项请求、结果合并、错误和未知结果保护 |
 | [renameRecord](../../frontend/src/features/rename/renameRecord.ts)、[useRenameStore](../../frontend/src/stores/useRenameStore.ts) | 提交与最近逐项记录、确认元数据、选择、规则和独立待核对信息 |
@@ -51,7 +51,7 @@
 
 | 入口 | 职责 |
 | --- | --- |
-| [SettingsPage](../../frontend/src/features/settings/SettingsPage.tsx)、[StorageSettingsPanel](../../frontend/src/features/settings/StorageSettingsPanel.tsx) | 外观、语言、多连接配置与授权交互 |
+| [SettingsPage](../../frontend/src/features/settings/SettingsPage.tsx)、[StorageSettingsPanel](../../frontend/src/features/settings/StorageSettingsPanel.tsx) | 外观、语言、规则编辑偏好、多连接配置与授权交互 |
 | [useAppSettings](../../frontend/src/features/settings/useAppSettings.ts)、[useThemePreference](../../frontend/src/features/settings/useThemePreference.ts)、[useFactoryReset](../../frontend/src/workspace/hooks/useFactoryReset.ts) | 串行保存偏好、主题订阅及恢复出厂后的协调清理 |
 
 ### 接口、国际化与浏览器集成
@@ -103,6 +103,8 @@ flowchart TD
 选择先后不决定提交顺序；`useRenameWorkflow` 从排序后的完整目录取得可改名的选中项。筛选只影响显示，保留隐藏项的选择，不改变预览或执行范围；筛选条件保存在组件内存，切换类型保留关键词与扩展名。刷新成功后选择取交集，失败保留。全选/反选作用于完整可见且可选择集合。
 
 连接、账号、revision、目录、选择、规则、排序或选中项名称变化后，旧预览不可执行；替换、切换与迟到响应按生命周期释放快照。预览筛选以竖向单选切换全部、错误、无变化和待修改，默认显示全部；执行后待修改选项显示为已修改。筛选仅影响展示。批量执行经确认后提交 `preview_id`，结果使用服务端逐项状态，进度局部订阅且不触发重复执行。
+
+在「设置」→「规则编辑」开启「简洁 UI 模式」后，点击规则卡片的编辑按钮，从面板底部展开参数卡片。编辑期间规则列表不可操作，参数卡片收起后恢复。规则卡片内的启用开关即时生效。参数修改暂存在参数卡片内，点击「应用」后生效，并在满足现有预览条件时刷新预览。收起卡片会丢弃未应用的草稿。
 
 单项有独立请求和 `operation_id`，打开/取消不清除批量预览，提交时使其失效。成功只合并确认元数据，兼容 Local ID 改变。文件移走或明确不存在时移除旧项；归属不明时重新读取，不能直接当作未知写入。完整执行约束见[系统架构](../ARCHITECTURE.md#核心流程)和[单项契约](../api/executions/single.md)。
 

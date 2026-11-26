@@ -59,7 +59,7 @@ describe("API client", () => {
   });
   it("reads app settings and submits only changed preference fields", async () => {
     const payload = { preferences: {
-      language: "auto", theme: "dark", cloud_default_locations: {},
+      language: "auto", theme: "dark", compact_rule_editor: false, cloud_default_locations: {},
     } };
     const fetchMock = vi.fn().mockImplementation(async () => new Response(JSON.stringify(payload)));
     vi.stubGlobal("fetch", fetchMock);
@@ -73,7 +73,7 @@ describe("API client", () => {
   });
   it("requests the single factory reset endpoint", async () => {
     const response = { preferences: {
-      language: "auto", theme: "system", cloud_default_locations: {},
+      language: "auto", theme: "system", compact_rule_editor: false, cloud_default_locations: {},
     } };
     const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify(response)));
     vi.stubGlobal("fetch", fetchMock);

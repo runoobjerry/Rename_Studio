@@ -32,6 +32,7 @@ import { RuleEditor } from "./features/rules/RuleEditor";
 import { useRenameStore } from "./stores/useRenameStore";
 import { createAppTheme } from "./theme";
 import { useThemePreference } from "./features/settings/useThemePreference";
+import { useAppSettings } from "./features/settings/useAppSettings";
 import { settingsFailureMessage } from "./features/settings/settingsMessages";
 import { useFactoryReset } from "./workspace/hooks/useFactoryReset";
 import type { ThemePreference } from "./features/settings/useThemePreference";
@@ -94,6 +95,7 @@ function Workspace({ preference, setPreference, settingsError, hasSettings }: {
   const compactNavigation = useMediaQuery("(max-width: 950px)");
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [view, setView] = useState<AppView>("workspace");
+  const compactRuleEditor = useAppSettings().data?.preferences.compact_rule_editor ?? false;
   const tableSplit = useWorkspaceTableSplit(view === "workspace");
   const [fileSort, setFileSort] = useState<FileSort>(defaultFileSort);
   const isWritePending = useRenameStore((state) => Boolean(state.pendingRenameRecord));
@@ -117,7 +119,7 @@ function Workspace({ preference, setPreference, settingsError, hasSettings }: {
   } = workspaceStorage;
   const definitions = useQuery({ queryKey: ["rules"], queryFn: fetchRules });
   const {
-    selectedIds, rules, browserItems, changeSort, selectedCount,
+    selectedIds, rules, browserItems, changeSort, canPreview, isRenameBlocked,
     previewData, executionData, displayedUnknownOutcome, previewError, executeError, revalidationError, executionPreviewId,
     isPreviewing, isExecuting, hasExecuted,
     singleRenameTarget, singleRenameError, canSingleRename, isSingleRenaming,
@@ -170,7 +172,6 @@ function Workspace({ preference, setPreference, settingsError, hasSettings }: {
     setLocation(next, parent);
   }, [locationReady, supportsLocation, directoryBusy, isExecuting, pickLocalRoot.isPending, activeStorage?.busy, setLocation]);
 
-  const renameBlocked = externalPending || !locationReady || pickLocalRoot.isPending || !activeStorage || activeStorage.busy || files.isFetching || Boolean(files.error);
   const handleSelectStorage = (nextStorageId: string) => {
     if (isExecuting || pickLocalRoot.isPending) return;
     selectStorage(nextStorageId);
@@ -317,18 +318,26 @@ function Workspace({ preference, setPreference, settingsError, hasSettings }: {
                   </div>
                   <div className="workspace-rules">
                     <RuleEditor
+                      key={compactRuleEditor ? "compact" : "inline"}
                       definitions={definitions.data ?? []}
                       isLoading={definitions.isPending}
                       rules={rules}
                       onChange={(next) => { workspaceStorage.cancelExternalNavigation(); onRulesChange(next); }}
+                      compact={compactRuleEditor ? {
+                        confirmDisabled: isExecuting || isPreviewing,
+                        onConfirm: (next) => {
+                          if (next !== rules) workspaceStorage.cancelExternalNavigation();
+                          onRulesChange(next, true);
+                        },
+                      } : undefined}
                     />
                     <RenameActionsWithProgress
                       preview={previewData}
                       storageName={activeStorage?.name ?? ""}
-                      selectedCount={selectedCount}
+                      canPreview={canPreview}
                       isPreviewing={isPreviewing}
                       isExecuting={isExecuting}
-                      isBlocked={Boolean(unknownExecution) || renameBlocked}
+                      isBlocked={isRenameBlocked}
                       hasExecuted={hasExecuted}
                       executionPreviewId={executionPreviewId}
                       executeError={executeError}

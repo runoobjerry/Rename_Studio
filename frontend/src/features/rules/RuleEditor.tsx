@@ -1,10 +1,11 @@
 import { useTranslation } from "react-i18next";
-import { useId, useRef, useState } from "react";
+import { lazy, Suspense, useId, useLayoutEffect, useRef, useState } from "react";
 import ArrowDownwardRoundedIcon from "@mui/icons-material/ArrowDownwardRounded";
 import ArrowUpwardRoundedIcon from "@mui/icons-material/ArrowUpwardRounded";
 import ContentCopyRoundedIcon from "@mui/icons-material/ContentCopyRounded";
 import DeleteOutlineRoundedIcon from "@mui/icons-material/DeleteOutlineRounded";
 import DeleteSweepRoundedIcon from "@mui/icons-material/DeleteSweepRounded";
+import EditOutlinedIcon from "@mui/icons-material/EditOutlined";
 import AddRoundedIcon from "@mui/icons-material/AddRounded";
 import Button from "@mui/material/Button";
 import IconButton from "@mui/material/IconButton";
@@ -18,6 +19,10 @@ import type { RuleDefinition, RuleSpec } from "../../types";
 import { RuleFields } from "./RuleFields";
 import { MENU_METRICS } from "../../theme";
 
+const RuleParameterCard = lazy(() =>
+  import("./RuleParameterCard").then((module) => ({ default: module.RuleParameterCard })),
+);
+
 const ruleActionSx = { width: 30, height: 30, p: "5px" } as const;
 
 interface RuleEditorProps {
@@ -25,6 +30,10 @@ interface RuleEditorProps {
   rules: RuleSpec[];
   onChange: (rules: RuleSpec[]) => void;
   isLoading?: boolean;
+  compact?: {
+    confirmDisabled: boolean;
+    onConfirm: (rules: RuleSpec[]) => void;
+  };
 }
 
 export const DEFAULT_RULES: Record<string, RuleSpec> = {
@@ -119,11 +128,15 @@ export function cloneRule(rule: RuleSpec): RuleSpec {
   return { ...rule, config: { ...rule.config } };
 }
 
-export function RuleEditor({ definitions, rules, onChange, isLoading = false }: RuleEditorProps) {
+export function RuleEditor({ definitions, rules, onChange, isLoading = false, compact }: RuleEditorProps) {
   const { t } = useTranslation();
   const menuId = useId();
+  const parameterCardId = useId();
   const panelRef = useRef<HTMLElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
+  const editButtonRef = useRef<HTMLButtonElement | null>(null);
   const [anchor, setAnchor] = useState<HTMLElement | null>(null);
+  const [editingKey, setEditingKey] = useState<number | null>(null);
   const identities = useRef({ keys: new WeakMap<RuleSpec, number>(), nextKey: 0 });
   const availableRules = definitions.filter(
     (definition) => DEFAULT_RULES[definition.type] !== undefined,
@@ -138,12 +151,28 @@ export function RuleEditor({ definitions, rules, onChange, isLoading = false }: 
     return key;
   }
 
-  function updateRule(index: number, nextRule: RuleSpec) {
+  const editingIndex = compact && editingKey !== null ? rules.findIndex((rule) => ruleKey(rule) === editingKey) : -1;
+  const editingRule = rules[editingIndex];
+  const isEditing = editingRule !== undefined;
+
+  useLayoutEffect(() => {
+    listRef.current!.inert = isEditing;
+    if (!isEditing) {
+      const button = editButtonRef.current;
+      editButtonRef.current = null;
+      if (editingKey === null) button?.focus();
+      else setEditingKey(null);
+    }
+  }, [editingKey, isEditing]);
+
+  function replaceRule(index: number, nextRule: RuleSpec): RuleSpec[] {
     // 编辑延续原身份；复制和父组件传入的新对象获得新身份，不按位置或内容猜测。
     identities.current.keys.set(nextRule, ruleKey(rules[index]));
-    onChange(
-      rules.map((rule, ruleIndex) => (ruleIndex === index ? nextRule : rule)),
-    );
+    return rules.map((rule, ruleIndex) => (ruleIndex === index ? nextRule : rule));
+  }
+
+  function updateRule(index: number, nextRule: RuleSpec) {
+    onChange(replaceRule(index, nextRule));
   }
 
   function updateConfig(index: number, values: Record<string, unknown>) {
@@ -225,7 +254,7 @@ export function RuleEditor({ definitions, rules, onChange, isLoading = false }: 
           </Tooltip>
         ))}
       </Menu>
-      <div className="panel rule-editor-content">
+      <div className={editingRule ? "panel rule-editor-content rule-editor-content-editing" : "panel rule-editor-content"}>
         {isLoading ? (
           <div className="notice" role="status" aria-label={t("rules:editor.loading")}>
             <Skeleton height={28} />
@@ -240,7 +269,7 @@ export function RuleEditor({ definitions, rules, onChange, isLoading = false }: 
           <p className="empty-state">{t("rules:editor.empty")}</p>
         ) : null}
 
-        <div className="rule-list">
+        <div ref={listRef} className="rule-list">
           {rules.map((rule, index) => (
             <article className="rule-card" key={ruleKey(rule)}>
               <header className="rule-card-heading">
@@ -248,11 +277,13 @@ export function RuleEditor({ definitions, rules, onChange, isLoading = false }: 
                 <span className="rule-card-number">{String(index + 1).padStart(2, "0")}</span>
               </header>
 
-              <RuleFields
-                rule={rule}
-                editorPanelRef={panelRef}
-                onChange={(values) => updateConfig(index, values)}
-              />
+              {!compact && (
+                <RuleFields
+                  rule={rule}
+                  editorPanelRef={panelRef}
+                  onChange={(values) => updateConfig(index, values)}
+                />
+              )}
 
               <footer className="rule-card-footer">
                 <Switch
@@ -264,6 +295,23 @@ export function RuleEditor({ definitions, rules, onChange, isLoading = false }: 
                   slotProps={{ input: { "aria-label": t("rules:editor.enabledLabel", { name: ruleName(rule.type) }) } }}
                 />
                 <div className="rule-actions">
+                  {compact && (
+                    <Tooltip title={t("rules:editor.editParameters")}>
+                      <IconButton
+                        size="small"
+                        aria-label={t("rules:editor.editParameters")}
+                        aria-expanded={editingIndex === index}
+                        aria-controls={editingIndex === index ? parameterCardId : undefined}
+                        onClick={(event) => {
+                          editButtonRef.current = event.currentTarget;
+                          setEditingKey(ruleKey(rule));
+                        }}
+                        sx={ruleActionSx}
+                      >
+                        <EditOutlinedIcon fontSize="small" />
+                      </IconButton>
+                    </Tooltip>
+                  )}
                   <Tooltip title={t("rules:editor.moveUp")}>
                     <span>
                       <IconButton
@@ -318,6 +366,24 @@ export function RuleEditor({ definitions, rules, onChange, isLoading = false }: 
             </article>
           ))}
         </div>
+        {compact && editingRule && (
+          <Suspense fallback={
+            <div className="rule-parameter-card" role="status" aria-label={t("rules:editor.loading")}>
+              <Skeleton height={30} sx={{ mx: 1.5, my: 1 }} />
+            </div>
+          }>
+            <RuleParameterCard
+              id={parameterCardId}
+              name={ruleName(editingRule.type)}
+              rule={editingRule}
+              editorPanelRef={panelRef}
+              confirmDisabled={compact.confirmDisabled}
+              onConfirm={(config) => compact.onConfirm(config === editingRule.config
+                ? rules : replaceRule(editingIndex, { ...editingRule, config }))}
+              onCollapse={() => setEditingKey(null)}
+            />
+          </Suspense>
+        )}
       </div>
     </section>
   );

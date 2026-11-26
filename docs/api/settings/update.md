@@ -17,6 +17,7 @@
 | --- | --- | --- | --- | --- |
 | `language` | string | 否 | 否 | 省略保留原值，约束见 AppPreferences。 |
 | `theme` | string | 否 | 否 | 省略保留原值；`light`、`dark`、`system`。 |
+| `compact_rule_editor` | boolean | 否 | 否 | 省略保留原值。 |
 | `cloud_default_locations` | object | 否 | 否 | 省略保留全部记录；逐连接合并，键约束同 AppPreferences。 |
 | ↳ `<storage_id>` | CloudDefaultLocation | 否 | 是 | 对象整体替换此连接记录，`null` 删除；未提交的连接保持不变。 |
 
@@ -44,6 +45,7 @@ Content-Type: application/json
   "preferences":{
     "language":"zh-CN",
     "theme":"system",
+    "compact_rule_editor":false,
     "cloud_default_locations":{
       "f5b9d4cc28d24b44a531724776d32c21":{
         "account_id":"account-123",

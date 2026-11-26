@@ -102,6 +102,8 @@ class StorageManager:
             preferences.language = request.language
         if "theme" in fields:
             preferences.theme = request.theme
+        if "compact_rule_editor" in fields:
+            preferences.compact_rule_editor = request.compact_rule_editor
         if "cloud_default_locations" in fields:
             for storage_id, default in request.cloud_default_locations.items():
                 if default is None:

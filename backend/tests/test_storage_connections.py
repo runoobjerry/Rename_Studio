@@ -128,7 +128,7 @@ def test_new_install_only_creates_local_and_restores_it(tmp_path: Path) -> None:
     assert manager.record("default-local").name == "Local Files"
     assert manager.state.schema_version == 3
     assert manager.state.preferences.model_dump() == {
-        "language": "auto", "theme": "system",
+        "language": "auto", "theme": "system", "compact_rule_editor": False,
         "cloud_default_locations": {},
     }
     assert manager.record("default-local").config["root_path"] == str((tmp_path / "files").resolve())
@@ -305,7 +305,7 @@ def test_app_settings_api_partial_updates_preserve_other_fields_and_credentials(
         initial = client.get("/app-settings")
         assert initial.status_code == 200
         assert initial.json() == {"preferences": {
-            "language": "auto", "theme": "system",
+            "language": "auto", "theme": "system", "compact_rule_editor": False,
             "cloud_default_locations": {},
         }}
         updated = client.patch("/app-settings", json={"theme": "dark"})
@@ -314,7 +314,7 @@ def test_app_settings_api_partial_updates_preserve_other_fields_and_credentials(
         last = client.patch("/app-settings", json={"theme": "light"})
         assert last.status_code == 200
         assert last.json() == {"preferences": {
-            "language": "auto", "theme": "light", "cloud_default_locations": {},
+            "language": "auto", "theme": "light", "compact_rule_editor": False, "cloud_default_locations": {},
         }}
         rejected = client.patch("/app-settings", json={
             "credentials": {"refresh_token": "fixture-secret"},
@@ -349,7 +349,7 @@ def test_factory_reset_api_rejects_busy_and_never_returns_credentials(tmp_path: 
         done = client.post("/app-settings/factory-reset")
         assert done.status_code == 200
         assert done.json() == {"preferences": {
-            "language": "auto", "theme": "system", "cloud_default_locations": {},
+            "language": "auto", "theme": "system", "compact_rule_editor": False, "cloud_default_locations": {},
         }}
         assert "fixture-secret" not in busy.text + done.text
 
@@ -379,7 +379,7 @@ async def test_factory_reset_clears_connections_preferences_and_old_preview(tmp_
     result = factory_reset(manager, preview.store)
 
     assert result.preferences.model_dump() == {
-        "language": "auto", "theme": "system", "cloud_default_locations": {},
+        "language": "auto", "theme": "system", "compact_rule_editor": False, "cloud_default_locations": {},
     }
     assert list(manager.state.connections) == ["default-local"]
     restored = manager.record("default-local")

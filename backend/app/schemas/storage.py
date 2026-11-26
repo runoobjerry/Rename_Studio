@@ -65,6 +65,7 @@ class AppPreferences(BaseModel):
     model_config = ConfigDict(extra="forbid")
     language: LanguagePreference = "auto"
     theme: Literal["light", "dark", "system"] = "system"
+    compact_rule_editor: bool = False
     cloud_default_locations: dict[str, CloudDefaultLocation] = Field(default_factory=dict)
 
     @model_validator(mode="after")
@@ -81,6 +82,7 @@ class AppSettingsPatch(BaseModel):
     model_config = ConfigDict(extra="forbid")
     language: LanguagePreference = "auto"
     theme: Literal["light", "dark", "system"] = "system"
+    compact_rule_editor: bool = False
     # Replace one connection's current-account default; null removes it.
     cloud_default_locations: dict[str, CloudDefaultLocation | None] = Field(default_factory=dict)
 

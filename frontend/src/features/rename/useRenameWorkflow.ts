@@ -96,6 +96,7 @@ export function useRenameWorkflow({
       return { ...result, version: input.version };
     },
     onSuccess: (result, input) => {
+      input.fileNames.clear();
       if (!mounted.current || input.version !== previewVersion.current) {
         if (retainedPreview.current?.previewId === input.previousId) retainedPreview.current = null;
         releasePreview(input.storageId, result.preview_id);
@@ -124,6 +125,10 @@ export function useRenameWorkflow({
   const isExecuting = Boolean(pendingRenameRecord) || execution.isPending || singleRename.isSingleRenaming;
   const previousSession = useRef<string | null>(null);
   const isCurrentWorkspace = previousSession.current === workspaceSession;
+  const readyStorage = activeStorage && canRename && locationReady && !activeStorage.busy && !files.isFetching && !files.error
+    ? activeStorage : undefined;
+  const previewListing = readyStorage && isCurrentWorkspace && !isExecuting && !preview.isPending
+    ? files.data : undefined;
   const batchExecution = isCurrentWorkspace ? execution : undefined;
   // 忽略迟到响应。已接收的预览可继续展示，输入变化后只能重新预览。
   const acceptedPreview = preview.data?.preview_id === retainedPreview.current?.previewId ? preview.data : undefined;
@@ -151,14 +156,14 @@ export function useRenameWorkflow({
     setSelectedIds(selectedFiles.map((item) => item.id));
   }, [files.isSuccess, files.dataUpdatedAt, locationReady, selectedFiles, selectedIds.length,
     setSelectedIds, singleRename.isSingleRenaming]);
-  const requestPreview = () => {
-    if (!canRename || !locationReady || !isCurrentWorkspace || !files.data || files.isFetching || files.error || isExecuting || hasPendingRename() || preview.isPending || activeStorage?.busy) return;
-    const unknown = useRenameStore.getState().unknownExecution;
-    if (unknown) {
-      notify({ key: "files:verification.required" }, "warning");
+  const startPreview = (reportUnknown: boolean) => {
+    if (!previewListing) return;
+    const state = useRenameStore.getState();
+    if (state.pendingRenameRecord) return;
+    if (state.unknownExecution) {
+      if (reportUnknown) notify({ key: "files:verification.required" }, "warning");
       return;
     }
-    const state = useRenameStore.getState();
     const selected = new Set(state.selectedIds);
     const targets = renamableFiles.filter((item) => selected.has(item.id));
     if (!targets.length) return;
@@ -172,7 +177,7 @@ export function useRenameWorkflow({
     const retained = retainedPreview.current;
     const previousId = retained?.storageId === storageId ? retained.previewId : undefined;
     preview.mutate({ version: ++previewVersion.current, previousId,
-      storageId, location: files.data.location ?? location, fileIds, fileNames, rules: state.rules });
+      storageId, location: previewListing.location ?? location, fileIds, fileNames, rules: state.rules });
   };
 
   const resetOperation = () => {
@@ -209,10 +214,13 @@ export function useRenameWorkflow({
     });
   }, [changeSelection, setSelectedIds]);
 
-  const onRulesChange = (nextRules: RuleSpec[]) => {
+  const onRulesChange = (nextRules: RuleSpec[], refreshPreview = false) => {
     if (isExecuting || hasPendingRename()) return;
-    setRules(nextRules);
-    invalidatePreviewForChanges();
+    if (nextRules !== useRenameStore.getState().rules) {
+      setRules(nextRules);
+      invalidatePreviewForChanges();
+    }
+    if (refreshPreview) startPreview(false);
   };
 
   const changeSort = useCallback((nextSort: FileSort) => {
@@ -223,18 +231,18 @@ export function useRenameWorkflow({
 
   const executeRename = (previewId: string) => {
     // 已消费或结果未知的预览不能在同一页面重放；再次改名必须创建新预览。
-    if (!canRename || !locationReady || files.isFetching || files.error || preview.isPending ||
+    if (!readyStorage || preview.isPending ||
       isExecuting || execution.variables?.record.operationId === previewId ||
-      !activeStorage || activeStorage.busy || previewData?.version !== previewVersion.current || previewData?.preview_id !== previewId || !previewData.valid) return;
+      previewData?.version !== previewVersion.current || previewData?.preview_id !== previewId || !previewData.valid) return;
     const record = useRenameStore.getState().startRenameRecord({
-      operationId: previewId, kind: "batch", storageId, revision: activeStorage.revision, location,
+      operationId: previewId, kind: "batch", storageId, revision: readyStorage.revision, location,
       items: previewData.items.map((item) => ({
         before: { id: item.file_id, name: item.original_name }, targetName: item.new_name,
       })),
     });
     if (!record) return;
     execution.mutate({ previewItems: previewData.items, record, workspaceSession,
-      directoryKey: ["files", storageId, activeStorage.revision, location] });
+      directoryKey: ["files", storageId, readyStorage.revision, location] });
   };
 
   let previewError: string | undefined;
@@ -258,7 +266,8 @@ export function useRenameWorkflow({
 
   return {
     selectedIds, rules, browserItems, changeSort,
-    selectedCount: selectedFiles.length,
+    canPreview: Boolean(previewListing && !unknownExecution && selectedFiles.length > 0),
+    isRenameBlocked: !readyStorage || Boolean(unknownExecution),
     previewData, executionData: batchExecution?.data,
     displayedUnknownOutcome: unknownExecution ?? (isCurrentWorkspace ? retainedUnknownOutcome : null),
     previewError,
@@ -268,7 +277,7 @@ export function useRenameWorkflow({
     executionPreviewId: batchExecution?.variables?.record.operationId,
     isPreviewing: preview.isPending, isExecuting, hasExecuted: Boolean(batchExecution?.data),
     ...singleRename,
-    requestPreview, executeRename, onRulesChange,
+    requestPreview: () => startPreview(true), executeRename, onRulesChange,
     resetOperation, toggleFile, selectAllFiles, clearFiles, invertFiles,
     resetForStorageChange, onDirectoryRead,
   };

@@ -11,6 +11,8 @@
     "moveDown": "下移规则",
     "copy": "复制规则",
     "remove": "删除规则",
+    "editParameters": "编辑",
+    "collapseParameters": "收起",
     "enabledLabel": "{{name}}启用状态"
   },
   "fields": {

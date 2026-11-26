@@ -283,6 +283,10 @@
   flex: 1 1 auto;
 }
 
+.rule-editor-content-editing {
+  position: relative;
+}
+
 .rule-heading-actions,
 .rule-card-heading,
 .rule-card-footer,
@@ -339,6 +343,51 @@
   margin-top: 10px;
   padding-top: 8px;
   border-top: 1px solid var(--app-border);
+}
+
+.rule-list[inert] {
+  opacity: 0.55;
+}
+
+.rule-parameter-card {
+  position: absolute;
+  inset-inline: 8px;
+  inset-block-end: 8px;
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100% - 16px);
+  border: 1px solid var(--app-border);
+  border-radius: var(--app-corner-radius);
+  background: var(--app-surface-muted);
+  box-shadow: 0 8px 28px rgba(6, 25, 17, 0.16);
+}
+
+.rule-parameter-heading {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--app-border);
+}
+
+.rule-parameter-heading h3 {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin: 0;
+  font-size: inherit;
+  overflow-wrap: anywhere;
+}
+
+.rule-parameter-heading .MuiButton-root {
+  flex-shrink: 0;
+}
+
+.rule-parameter-fields {
+  overflow-y: auto;
+  padding: 12px;
+  scrollbar-color: var(--app-scrollbar-thumb) transparent;
+  scrollbar-width: thin;
 }
 
 .rule-actions {
@@ -436,6 +485,10 @@
 
   .rule-editor-panel {
     max-height: 420px;
+  }
+
+  .rule-editor-content-editing {
+    min-height: min(360px, 65dvh);
   }
 }
 

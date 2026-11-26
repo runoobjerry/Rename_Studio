@@ -31,6 +31,7 @@
 | --- | --- | --- | --- |
 | `language` | string | 否 | 默认 `auto`，或语言标识，如 `zh-CN`、`en-US`。 |
 | `theme` | string | 否 | 默认 `system`；`light`、`dark` 或 `system`。 |
+| `compact_rule_editor` | boolean | 否 | 是否启用规则编辑的简洁 UI 模式，默认 `false`。 |
 | `cloud_default_locations` | object | 否 | 默认 `{}`；键为 `storage_id`，值为 CloudDefaultLocation，每个连接保存当前账号的一条默认目录。 |
 
 语言标识长 2–63 字符，匹配 `^[A-Za-z]{2,8}(?:-[A-Za-z0-9]{1,8})*$`。后端不限制为前端已支持的语言集合。
@@ -72,7 +73,7 @@ GET /app-settings
 ```
 
 ```json
-{"preferences":{"language":"auto","theme":"system","cloud_default_locations":{}}}
+{"preferences":{"language":"auto","theme":"system","compact_rule_editor":false,"cloud_default_locations":{}}}
 ```
 
 <a id="endpoint-post-app-settings-factory-reset"></a>
@@ -97,7 +98,7 @@ POST /app-settings/factory-reset
 ```
 
 ```json
-{"preferences":{"language":"auto","theme":"system","cloud_default_locations":{}}}
+{"preferences":{"language":"auto","theme":"system","compact_rule_editor":false,"cloud_default_locations":{}}}
 ```
 
 #### Errors

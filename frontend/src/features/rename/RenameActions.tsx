@@ -28,7 +28,7 @@ const phaseLabels = {
 export interface RenameActionsProps {
   preview?: PreviewResponse;
   storageName: string;
-  selectedCount: number;
+  canPreview: boolean;
   isPreviewing: boolean;
   isExecuting: boolean;
   isBlocked?: boolean;
@@ -44,7 +44,7 @@ export interface RenameActionsProps {
 export function RenameActions({
   preview,
   storageName,
-  selectedCount,
+  canPreview,
   isPreviewing,
   isExecuting,
   isBlocked = false,
@@ -87,7 +87,7 @@ export function RenameActions({
           fullWidth
           variant="outlined"
           startIcon={isPreviewing ? <CircularProgress size={16} color="inherit" /> : <PreviewRoundedIcon />}
-          disabled={selectedCount === 0 || isPreviewing || isExecuting || isBlocked}
+          disabled={!canPreview}
           onClick={onPreview}
         >
           {isPreviewing ? t("files:rename.refreshing") : t("files:rename.preview")}
@@ -125,7 +125,7 @@ export function RenameActions({
         </DialogContent>
         <DialogActions>
           {revalidationError ? (
-            <Button disabled={selectedCount === 0 || isPreviewing || isExecuting || isBlocked}
+            <Button disabled={!canPreview}
               onClick={() => { setConfirming(false); onPreview(); }}>
               {t("files:rename.preview")}
             </Button>

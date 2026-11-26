@@ -65,6 +65,7 @@ export interface CloudDefaultLocation {
 export interface AppPreferences {
   language: string;
   theme: ThemePreference;
+  compact_rule_editor: boolean;
   cloud_default_locations: Record<string, CloudDefaultLocation>;
 }
 
@@ -75,6 +76,7 @@ export interface AppSettings {
 export interface AppSettingsPatch {
   language?: string;
   theme?: ThemePreference;
+  compact_rule_editor?: boolean;
   cloud_default_locations?: Record<string, CloudDefaultLocation | null>;
 }
 

@@ -4,7 +4,7 @@ import { readDefaultCloudLocation } from "./defaultCloudLocation";
 
 describe("storage-scoped cloud directory", () => {
   it("isolates file sources and accounts even when directory names match", () => {
-    const preferences: AppPreferences = { language: "auto", theme: "system", cloud_default_locations: {
+    const preferences: AppPreferences = { language: "auto", theme: "system", compact_rule_editor: false, cloud_default_locations: {
       one: { account_id: "account-a", location: { kind: "id", value: "opaque-one" } },
       two: { account_id: "account-b", location: { kind: "id", value: "opaque-two" } },
     } };

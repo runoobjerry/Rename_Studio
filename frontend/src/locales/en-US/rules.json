@@ -11,6 +11,8 @@
     "moveDown": "Move rule down",
     "copy": "Duplicate rule",
     "remove": "Delete rule",
+    "editParameters": "Edit",
+    "collapseParameters": "Collapse",
     "enabledLabel": "Enable {{name}}"
   },
   "fields": {

@@ -23,7 +23,7 @@ beforeEach(() => {
   systemDark = false;
   listeners = new Set();
   serverSettings = { preferences: {
-    language: "auto", theme: "system", cloud_default_locations: {},
+    language: "auto", theme: "system", compact_rule_editor: false, cloud_default_locations: {},
   } };
   client = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } });
   vi.mocked(fetchAppSettings).mockImplementation(async () => serverSettings);

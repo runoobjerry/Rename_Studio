@@ -9,9 +9,10 @@ import KeyboardArrowRightIcon from "@mui/icons-material/KeyboardArrowRight";
 import brandMark from "../../assets/brand-mark.svg";
 import GitHubIcon from "@mui/icons-material/GitHub";
 import { version } from "../../../package.json";
-import { Box, Button, Card, Divider, Dialog, DialogActions, DialogContent, DialogContentText, DialogTitle, MenuItem, Stack, TextField, Typography } from "@mui/material";
+import { Box, Button, Card, Divider, Dialog, DialogActions, DialogContent, DialogContentText, DialogTitle, MenuItem, Stack, Switch, TextField, Typography } from "@mui/material";
 import { StorageSettingsPanel } from "./StorageSettingsPanel";
 import { settingsFailureMessage } from "./settingsMessages";
+import { useAppSettings } from "./useAppSettings";
 import type { ThemePreference } from "./useThemePreference";
 
 interface SettingsPageProps {
@@ -29,6 +30,8 @@ export function SettingsPage({ preference, onPreferenceChange, onBack, executing
   onFactoryReset, resetDisabledReason, resetPending, resetEpoch }: SettingsPageProps) {
   const { t } = useTranslation("settings");
   const language = useLanguagePreference();
+  const appSettings = useAppSettings();
+  const [savingRuleEditor, setSavingRuleEditor] = useState(false);
   const selectedLanguage = languages.find(({ code }) => code.toLowerCase() === language.preference.toLowerCase())?.code ?? language.preference;
   const notify = useNotification();
   const buildTime = formatDate(new Date(import.meta.env.VITE_BUILD_TIME), {
@@ -39,6 +42,16 @@ export function SettingsPage({ preference, onPreferenceChange, onBack, executing
     void language.setPreference(next).catch((error: Error) => {
       notify(settingsFailureMessage(error, "language"), "error");
     });
+  };
+  const changeRuleEditor = async (compact: boolean) => {
+    setSavingRuleEditor(true);
+    try {
+      await appSettings.save({ compact_rule_editor: compact });
+    } catch (error) {
+      notify(settingsFailureMessage(error as Error, "ruleEditor"), "error");
+    } finally {
+      setSavingRuleEditor(false);
+    }
   };
   const [confirmOpen, setConfirmOpen] = useState(false);
   const confirmReset = () => {
@@ -82,6 +95,23 @@ export function SettingsPage({ preference, onPreferenceChange, onBack, executing
                   <MenuItem value={language.preference} disabled>{t("unavailableLanguage", { code: language.preference })}</MenuItem>
                 )}
               </TextField>
+            </Stack>
+          </Card>
+        </Box>
+        <Box component="section" aria-labelledby="rule-editor-settings-title">
+          <Typography id="rule-editor-settings-title" component="h2" variant="subtitle1" sx={{ mb: 1.25, fontWeight: 600 }}>{t("rules:editor.title")}</Typography>
+          <Card variant="outlined">
+            <Stack direction="row" sx={{ alignItems: "center", justifyContent: "space-between", gap: 2, p: { xs: 2, sm: 2.5 } }}>
+              <Box sx={{ minWidth: 0 }}>
+                <Typography id="compact-rule-editor-title" variant="body2" sx={{ fontWeight: 500 }}>{t("compactRuleEditor")}</Typography>
+                <Typography id="compact-rule-editor-help" variant="caption" sx={{ color: "text.secondary", mt: 0.5 }}>{t("compactRuleEditorHelp")}</Typography>
+              </Box>
+              <Switch
+                checked={appSettings.data?.preferences.compact_rule_editor ?? false}
+                disabled={resetPending || savingRuleEditor}
+                onChange={(_, compact) => void changeRuleEditor(compact)}
+                slotProps={{ input: { "aria-labelledby": "compact-rule-editor-title", "aria-describedby": "compact-rule-editor-help" } }}
+              />
             </Stack>
           </Card>
         </Box>

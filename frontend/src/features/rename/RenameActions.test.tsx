@@ -25,7 +25,7 @@ describe("RenameActions", () => {
     render(
       <RenameActions
         storageName="我的相册"
-        selectedCount={2}
+        canPreview
         isPreviewing={false}
         isExecuting={false}
         hasExecuted={false}
@@ -45,7 +45,7 @@ describe("RenameActions", () => {
       <RenameActions
         preview={validPreview}
         storageName="我的相册"
-        selectedCount={1}
+        canPreview
         isPreviewing={false}
         isExecuting={false}
         hasExecuted={false}
@@ -65,7 +65,7 @@ describe("RenameActions", () => {
     expect(screen.getByText("将按当前预览重命名文件来源「我的相册」中的 1 个项目。")).not.toBeVisible();
     expect(screen.getByRole("progressbar", { name: "修改进度" })).toHaveAttribute("aria-valuenow", "0");
     const message = "当前预览过期或文件状态发生变化。";
-    rerender(<RenameActions preview={validPreview} storageName="我的相册" selectedCount={1}
+    rerender(<RenameActions preview={validPreview} storageName="我的相册" canPreview
       isPreviewing={false} isExecuting={false} hasExecuted={false}
       revalidationError={message} executeError="Raw server diagnostic" onPreview={onPreview} onExecute={onExecute} />);
     const modal = within(screen.getByRole("dialog"));
@@ -78,19 +78,19 @@ describe("RenameActions", () => {
   });
 
   it("renders server counts while pending and closes when execution returns", async () => {
-    const props = { preview: validPreview, storageName: "我的相册", selectedCount: 1,
+    const props = { preview: validPreview, storageName: "我的相册", canPreview: true,
       isPreviewing: false, isExecuting: false, hasExecuted: false, onPreview: vi.fn(), onExecute: vi.fn() };
     const { rerender } = render(<RenameActions {...props} />);
     fireEvent.click(screen.getByRole("button", { name: "开始修改" }));
     expect(screen.getByRole("progressbar", { name: "修改进度" })).toHaveAttribute("aria-valuenow", "0");
-    rerender(<RenameActions {...props} isExecuting progress={{ preview_id: "preview-1", total: 200, processed: 199, phase: "renaming", error: null }} />);
+    rerender(<RenameActions {...props} canPreview={false} isExecuting progress={{ preview_id: "preview-1", total: 200, processed: 199, phase: "renaming", error: null }} />);
     expect(screen.getByRole("progressbar", { name: "修改进度" })).toHaveAttribute("aria-valuenow", "99");
     expect(screen.getByRole("heading", { name: "正在修改" })).toBeInTheDocument();
     expect(screen.getByRole("status")).toHaveTextContent("当前任务已处理 199 项，共 200 项");
     expect(screen.queryByText("正在修改…")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "应用" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "取消" })).toBeDisabled();
-    rerender(<RenameActions {...props} isExecuting progress={{ preview_id: "preview-1", total: 200, processed: 200, phase: "finished", error: null }} />);
+    rerender(<RenameActions {...props} canPreview={false} isExecuting progress={{ preview_id: "preview-1", total: 200, processed: 200, phase: "finished", error: null }} />);
     expect(screen.getByRole("heading", { name: "正在修改" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "应用" })).toBeDisabled();
     rerender(<RenameActions {...props} hasExecuted />);
@@ -98,11 +98,11 @@ describe("RenameActions", () => {
   });
 
   it("does not invent progress on polling failure and closes after the execution request fails", async () => {
-    const props = { preview: validPreview, storageName: "我的相册", selectedCount: 1,
+    const props = { preview: validPreview, storageName: "我的相册", canPreview: true,
       isPreviewing: false, isExecuting: false, hasExecuted: false, onPreview: vi.fn(), onExecute: vi.fn() };
     const { rerender } = render(<RenameActions {...props} />);
     fireEvent.click(screen.getByRole("button", { name: "开始修改" }));
-    rerender(<RenameActions {...props} isExecuting progressError="network unavailable"
+    rerender(<RenameActions {...props} canPreview={false} isExecuting progressError="network unavailable"
       progress={{ preview_id: "other-preview", total: 10, processed: 8, phase: "renaming", error: null }} />);
     expect(screen.getByRole("progressbar", { name: "修改进度" })).toHaveAttribute("aria-valuenow", "0");
     expect(screen.getByRole("status")).toHaveTextContent("暂时无法读取进度：network unavailable；执行请求仍在进行，请勿重复提交。");
