@@ -1,7 +1,10 @@
 import errno
 import stat
 from datetime import datetime, timezone
+from os import stat_result
+from os.path import samestat
 from pathlib import Path, PurePosixPath
+from unicodedata import normalize
 
 from app.core.errors import (
     AppError,
@@ -96,22 +99,45 @@ class LocalDriver(StorageDriver):
             error.details.update({"file_id": file_id})
             raise error from exc
 
+    def _is_case_only_rename(
+        self, source: Path, target: Path, source_stat: stat_result, target_stat: stat_result,
+    ) -> bool:
+        source_key = normalize("NFC", self.normalize_name(source.name))
+        if (
+            normalize("NFC", self.normalize_name(target.name)) != source_key
+            or not samestat(source_stat, target_stat)
+        ):
+            return False
+        if stat.S_ISDIR(target_stat.st_mode) or target_stat.st_nlink == 1:
+            return True
+        # 两个不同的硬链接也可以指向同一个文件，仍须保留各自的目录项。
+        return not any(
+            entry.name != source.name and normalize("NFC", self.normalize_name(entry.name)) == source_key
+            for entry in source.parent.iterdir()
+        )
+
     async def rename(self, file_id: str, new_name: str) -> FileItem:
         try:
             source = self._resolve(file_id)
             if source == self.root:
                 raise ValidationError("Configured storage root cannot be renamed", details={"reason": "ROOT_RENAME_UNSUPPORTED", "params": {}})
-            source.stat()
+            source_stat = source.stat()
             validation_error = self.validate_name(new_name)
             if validation_error is not None:
                 raise ValidationError(validation_error.message, details={"new_name": new_name, **validation_error.details})
 
             target = source.with_name(new_name)
-            if (target.exists() or self._is_link(target)) and target != source:
-                raise RenameConflictError(
-                    "Target filename already exists",
-                    details={"file_id": file_id, "new_name": new_name},
-                )
+            if target.name != source.name:
+                try:
+                    target_stat = target.lstat()
+                except FileNotFoundError:
+                    pass
+                else:
+                    if not self._is_case_only_rename(source, target, source_stat, target_stat):
+                        raise RenameConflictError(
+                            "Target filename already exists",
+                            details={"file_id": file_id, "new_name": new_name},
+                        )
             renamed = source.rename(target)
             try:
                 return self._to_item(renamed)

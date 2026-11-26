@@ -116,6 +116,21 @@ GET /rules
     }
   },
   {
+    "type":"case",
+    "config_schema":{
+      "additionalProperties":false,
+      "properties":{
+        "mode":{"default":"capitalize_words","enum":["capitalize_words","lower","upper","invert","capitalize_first","sentence","none"],"title":"Mode","type":"string"},
+        "fragments":{"default":"","title":"Fragments","type":"string"},
+        "preserve_case":{"default":false,"title":"Preserve Case","type":"boolean"},
+        "ignore_extension":{"default":true,"title":"Ignore Extension","type":"boolean"},
+        "extension_case":{"default":"none","enum":["none","upper","lower"],"title":"Extension Case","type":"string"}
+      },
+      "title":"CaseConfig",
+      "type":"object"
+    }
+  },
+  {
     "type":"serialize",
     "config_schema":{
       "additionalProperties":false,
@@ -153,4 +168,4 @@ GET /rules
 
 </details>
 
-删除范围、方向和分隔符的行为见[删除规则配置](index.md#delete)。各编号方式的取值范围和补齐限制见[序列编号配置](index.md#serialize)。输入列表的顺序和空行行为见[自定义规则配置](index.md#user_input)。
+删除范围、方向和分隔符的行为见[删除规则配置](index.md#delete)。转换方式、片段匹配和扩展名优先级见[大小写规则配置](index.md#case)。各编号方式的取值范围和补齐限制见[序列编号配置](index.md#serialize)。输入列表的顺序和空行行为见[自定义规则配置](index.md#user_input)。

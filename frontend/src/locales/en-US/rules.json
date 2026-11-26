@@ -57,6 +57,25 @@
     "fromRight": "Right to left",
     "keepDelimiters": "Do not remove delimiters"
   },
+  "case": {
+    "mode": "Case conversion",
+    "modes": {
+      "capitalizeWords": "Capitalize Each Word",
+      "lower": "lowercase",
+      "upper": "UPPERCASE",
+      "invert": "iNVERT cASE",
+      "capitalizeFirst": "Capitalize first letter",
+      "sentence": "Sentence case",
+      "none": "No general conversion"
+    },
+    "extensionCase": "Extension case",
+    "followSettings": "Use conversion settings",
+    "forceUpper": "Always uppercase",
+    "forceLower": "Always lowercase",
+    "fragments": "Letter case for specific words",
+    "fragmentsHint": "Separate multiple phrases with commas.",
+    "preserveCase": "Preserve existing case"
+  },
   "serialize": {
     "numberingSystem": "Numbering system",
     "systems": {
@@ -107,6 +126,10 @@
     "delete": {
       "name": "Delete",
       "description": "Delete characters in a specified range"
+    },
+    "case": {
+      "name": "Case",
+      "description": "Change letter case in names and extensions"
     },
     "serialize": {
       "name": "Serialize",

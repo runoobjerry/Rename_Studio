@@ -19,7 +19,7 @@
 
 | 字段 | 类型 | 可空 | 说明 |
 | --- | --- | --- | --- |
-| `type` | string | 否 | 稳定类型。当前为 `padding`、`replace`、`remove`、`insert`、`delete`、`serialize`、`user_input`。 |
+| `type` | string | 否 | 稳定类型。当前为 `padding`、`replace`、`remove`、`insert`、`delete`、`case`、`serialize`、`user_input`。 |
 | `config_schema` | object | 否 | 配置的 JSON Schema。 |
 
 规则名称和说明由前端按 `type` 查找翻译。
@@ -105,6 +105,22 @@
 按字符数删除时，从起始位置或起点分隔符的首个字符开始计数。保留分隔符时，从起点分隔符之后开始计数。按终点分隔符删除时，删除范围包含终点分隔符，保留分隔符时范围止于该分隔符之前。「之后」和「之前」均按选定方向理解。
 
 后续规则仍可使用删除后的名称。整条规则链的最终结果接受原有名称校验和冲突检测。规则选项参照 [ReNamer Delete rule](https://www.den4b.com/docs/books/renamer/page/delete-rule)。
+
+#### case
+
+转换规则链当前位置的名称大小写，可指定片段和扩展名的大小写。配置字段均可省略。
+
+| 字段 | 类型 | 默认值 | 有效值 |
+| --- | --- | --- | --- |
+| `mode` | string | `capitalize_words` | `capitalize_words` 将每个单词的首字母转为大写，`lower` 全部小写，`upper` 全部大写，`invert` 反转大小写，`capitalize_first` 将名称的首字母转为大写，`sentence` 将每句的首字母转为大写，`none` 跳过整体转换。 |
+| `fragments` | string | `""` | 用半角逗号分隔的文本片段，例如 `CD, DVD, PhD, iPad`。忽略各片段首尾的空白和空片段。 |
+| `preserve_case` | boolean | `false` | 适用于 `capitalize_words`、`capitalize_first` 和 `sentence`。为 `true` 时保留其余字母的原始大小写，为 `false` 时先将处理范围转为小写。 |
+| `ignore_extension` | boolean | `true` | 为 `true` 时整体转换和片段匹配只处理文件主名称，为 `false` 时处理完整文件名。 |
+| `extension_case` | string | `none` | `none` 跟随整体转换和片段设置，`upper` 将扩展名转为大写，`lower` 将扩展名转为小写。`upper` 和 `lower` 优先于其他设置。 |
+
+整体转换完成后，按输入顺序匹配片段。匹配忽略大小写，片段前后须是名称边界或非字母数字字符，包括下划线。命中后使用输入的大小写。例如，`iPad` 可以匹配 `album_ipad` 中的 `ipad`。`sentence` 用 `. ! ? 。 ！ ？` 分隔句子。
+
+最后应用 `extension_case`。无扩展名的文件和文件夹跳过此步骤。规则选项参照 [ReNamer Case rule](https://www.den4b.com/docs/books/renamer/page/case-rule)。
 
 #### serialize
 

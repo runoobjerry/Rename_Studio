@@ -360,6 +360,82 @@ function DeleteFields({ rule, onChange }: RuleFieldsProps) {
   );
 }
 
+const caseModes = {
+  capitalize_words: "rules:case.modes.capitalizeWords",
+  lower: "rules:case.modes.lower",
+  upper: "rules:case.modes.upper",
+  invert: "rules:case.modes.invert",
+  capitalize_first: "rules:case.modes.capitalizeFirst",
+  sentence: "rules:case.modes.sentence",
+  none: "rules:case.modes.none",
+} as const;
+
+function CaseFields({ rule, onChange }: RuleFieldsProps) {
+  const { t } = useTranslation();
+  const fragmentsId = useId();
+  const mode = valueAsString(rule, "mode", "capitalize_words");
+  const canPreserveCase = mode === "capitalize_words" || mode === "capitalize_first" || mode === "sentence";
+
+  return (
+    <>
+      <Box className="rule-fields" sx={ruleFieldsSx}>
+        <label>
+          {t("rules:case.mode")}
+          <TextField
+            select fullWidth size="small" value={mode}
+            onChange={(event) => onChange({ mode: event.target.value })}
+            slotProps={{ select: { SelectDisplayProps: { "aria-label": t("rules:case.mode") } } }}
+          >
+            {Object.entries(caseModes).map(([value, label]) => (
+              <MenuItem key={value} value={value}>{t(label)}</MenuItem>
+            ))}
+          </TextField>
+        </label>
+        <label>
+          {t("rules:case.extensionCase")}
+          <TextField
+            select fullWidth size="small" value={valueAsString(rule, "extension_case", "none")}
+            onChange={(event) => onChange({ extension_case: event.target.value })}
+            slotProps={{ select: { SelectDisplayProps: { "aria-label": t("rules:case.extensionCase") } } }}
+          >
+            <MenuItem value="none">{t("rules:case.followSettings")}</MenuItem>
+            <MenuItem value="upper">{t("rules:case.forceUpper")}</MenuItem>
+            <MenuItem value="lower">{t("rules:case.forceLower")}</MenuItem>
+          </TextField>
+        </label>
+        <label htmlFor={fragmentsId} style={{ gridColumn: "1 / -1" }}>
+          {t("rules:case.fragments")}
+          <TextField
+            id={fragmentsId}
+            fullWidth hiddenLabel size="small"
+            value={valueAsString(rule, "fragments", "")}
+            onChange={(event) => onChange({ fragments: event.target.value })}
+            helperText={t("rules:case.fragmentsHint")}
+          />
+        </label>
+      </Box>
+      <div className="rule-options">
+        <FormControlLabel
+          className="option-toggle"
+          sx={{ m: 0, "&.Mui-disabled": { color: "text.disabled" } }}
+          label={t("rules:case.preserveCase")}
+          disableTypography
+          disabled={!canPreserveCase}
+          control={
+            <Checkbox size="small" checked={Boolean(rule.config.preserve_case ?? false)}
+              onChange={(event) => onChange({ preserve_case: event.target.checked })} />
+          }
+        />
+        <label className="option-toggle">
+          <Checkbox size="small" checked={Boolean(rule.config.ignore_extension ?? true)}
+            onChange={(event) => onChange({ ignore_extension: event.target.checked })} />
+          {t("rules:fields.ignoreExtension")}
+        </label>
+      </div>
+    </>
+  );
+}
+
 const maxSequenceInput = 99_999_999;
 const numberingSystems = {
   decimal: { labelKey: "rules:serialize.systems.decimal", min: -maxSequenceInput, max: maxSequenceInput },
@@ -508,6 +584,7 @@ export function RuleFields(props: RuleFieldsProps & { editorPanelRef: RefObject<
   }
   if (props.rule.type === "insert") return <InsertFields {...props} />;
   if (props.rule.type === "delete") return <DeleteFields {...props} />;
+  if (props.rule.type === "case") return <CaseFields {...props} />;
   if (props.rule.type === "serialize") return <SerializeFields {...props} />;
   if (props.rule.type === "user_input") return <UserInputFields {...props} />;
   return <Alert severity="error">{t("rules:unsupported", { type: props.rule.type })}</Alert>;

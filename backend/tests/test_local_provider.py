@@ -131,6 +131,22 @@ async def test_rename_rejects_existing_target(tmp_path: Path) -> None:
 
 
 @pytest.mark.asyncio
+async def test_case_only_rename_rejects_a_distinct_hard_link_target(tmp_path: Path) -> None:
+    source = tmp_path / "report.txt"
+    source.write_text("content", encoding="utf-8")
+    target = tmp_path / "REPORT.txt"
+    if target.exists():
+        pytest.skip("Separate case variants require a case-sensitive filesystem")
+    target.hardlink_to(source)
+    driver = LocalDriver(tmp_path)
+
+    with pytest.raises(RenameConflictError):
+        await driver.rename(source.name, target.name)
+
+    assert {path.name for path in tmp_path.iterdir()} == {source.name, target.name}
+
+
+@pytest.mark.asyncio
 async def test_renames_directory_without_touching_children(tmp_path: Path) -> None:
     folder = tmp_path / "old-folder"
     folder.mkdir()
